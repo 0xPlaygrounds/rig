@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::ProviderError;
 use crate::message::{CallId, ToolName};
-use crate::operation::{Block, Completion, Finish, IfMalformed};
+use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::providers::openai::responses_api::{ReasoningSummary, ResponseStatus};
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
@@ -410,7 +410,7 @@ impl ResponsesDecoder {
             return Ok(());
         }
         self.awaiting_ciphertext.retain(|(at, _)| *at != index);
-        out.close(index, IfMalformed::Drop)
+        out.close(index)
     }
 
     /// Append a text delta to the item at `index`.
@@ -483,37 +483,29 @@ impl ResponsesDecoder {
         if let Some(id) = item_id(&item) {
             self.written_ids.insert(id.to_owned());
         }
-        // A call the provider cut short (`status: incomplete`, the token
-        // limit reached mid-arguments) is dropped when its arguments do not
-        // parse; a completed one with bad arguments fails the reply.
+        // A call the provider cut short (`status: incomplete`) keeps what its
+        // arguments state; the turn then ends with `Length`.
         let call = match &output {
             Output::FunctionCall(call) => Some((
                 &call.call_id,
                 &call.name,
                 call.arguments.as_str().to_owned(),
-                if call.status == super::ToolStatus::Incomplete {
-                    IfMalformed::Drop
-                } else {
-                    IfMalformed::Fail
-                },
             )),
             Output::CustomToolCall(call) => Some((
                 &call.call_id,
                 &call.name,
                 serde_json::json!({ "input": call.input }).to_string(),
-                IfMalformed::Fail,
             )),
             Output::Message(_) | Output::Reasoning { .. } | Output::Unknown(_) => None,
         };
-        if let Some((call_id, name, arguments, if_malformed)) = call {
+        if let Some((call_id, name, arguments)) = call {
             // A call with no name is not a call anything can answer.
             let Ok(name) = ToolName::new(name.as_str()) else {
-                return match if_malformed {
-                    IfMalformed::Fail => Err(ProviderError::Response(format!(
-                        "Responses tool call without a name: {item}"
-                    ))),
-                    IfMalformed::EmptyObject | IfMalformed::Drop | IfMalformed::KeepOpen => Ok(()),
-                };
+                tracing::warn!(
+                    index,
+                    "Responses tool call without a name; nothing can answer it"
+                );
+                return Ok(());
             };
             let block = Block::Call {
                 id: CallId::from_wire(call_id.as_str()),
@@ -522,7 +514,7 @@ impl ResponsesDecoder {
             self.vacate(index, out)?;
             out.open(index, block, item)?;
             out.push(index, &arguments)?;
-            return out.close(index, if_malformed);
+            return out.finish(index);
         }
         // An item done without being added opens here; so does one at an
         // index whose previous item still waits for its ciphertext.
@@ -547,7 +539,7 @@ impl ResponsesDecoder {
                 self.awaiting_ciphertext.push((index, id));
                 Ok(())
             }
-            _ => out.close(index, IfMalformed::Fail),
+            _ => out.finish(index),
         }
     }
 
@@ -680,7 +672,7 @@ impl ResponsesDecoder {
             self.done(index, item, &mut out)?;
         }
         for (index, _) in std::mem::take(&mut self.awaiting_ciphertext) {
-            out.close(index, IfMalformed::Fail)?;
+            out.finish(index)?;
         }
         out.raw(serde_json::to_value(&response)?);
         Ok(out.end(finish_of(&response)))

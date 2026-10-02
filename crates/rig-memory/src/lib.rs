@@ -332,7 +332,7 @@ impl HeuristicTokenCounter {
             AssistantContent::Reasoning(reasoning) => self.bytes_to_tokens(reasoning.text.len()),
             AssistantContent::ToolCall(call) => {
                 let name_bytes = call.function.name.len();
-                let args_bytes = call.function.arguments.to_string().len();
+                let args_bytes = call.function.arguments_value().to_string().len();
                 self.bytes_to_tokens(name_bytes + args_bytes)
             }
             AssistantContent::Image(_) => self.per_attachment_tokens,

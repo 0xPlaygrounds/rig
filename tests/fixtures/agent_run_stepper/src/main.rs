@@ -196,7 +196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut results = Vec::with_capacity(calls.len());
                 for call in calls {
                     let name = call.tool_call.function.name.clone();
-                    let arguments = call.tool_call.function.arguments.to_string();
+                    let arguments = call.tool_call.function.arguments_value().to_string();
                     let result =
                         block_on(catalog.execute(&name, &arguments, &mut ToolContext::new()));
                     assert!(result.is_success(), "dispatch by name through the catalog");
@@ -204,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
                         name,
-                        result.output().clone(),
+                        &result,
                     ));
                 }
                 run.tool_results(results)?;

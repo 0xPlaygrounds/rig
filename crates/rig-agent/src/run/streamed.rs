@@ -17,13 +17,11 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{FinishReason, Message};
 use rig_core::error::ProviderError;
-use rig_core::json_utils;
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName, ToolResult,
+    AssistantContent, AssistantMessage, CallId, ToolCall, ToolName, ToolResult,
 };
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 
-use super::policy::InvalidToolCallReason;
 use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
 
 /// Detect unknown payloads containing assistant content that assembly would lose:
@@ -44,9 +42,7 @@ fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool 
 /// `AgentRun::resolve_streamed_invalid_tool_call`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedInvalidToolCall {
-    /// The rejected tool call. For malformed arguments its `arguments` is
-    /// `Null`: no object was ever parsed, and fabricating one would
-    /// misrepresent the wire.
+    /// The rejected tool call.
     pub tool_call: ToolCall,
     /// Raw argument payload for diagnostics, when available.
     pub args: Option<String>,
@@ -54,8 +50,6 @@ pub struct StreamedInvalidToolCall {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active tool choice for this turn.
     pub allowed_tool_names: BTreeSet<String>,
-    /// Why the call was rejected.
-    pub reason: InvalidToolCallReason,
 }
 
 /// Snapshot of a streamed turn at the moment an invalid tool call appeared.
@@ -197,20 +191,16 @@ pub enum StreamedTurnEvent {
         /// The validated call.
         call: ToolCall,
     },
-    /// The model emitted an unknown or disallowed tool call, or one whose
-    /// arguments are not JSON. Resolve it via
+    /// The model emitted an unknown or disallowed tool call. Resolve it via
     /// `AgentRun::resolve_streamed_invalid_tool_call`, then apply the
     /// outcome with [`StreamedTurnAssembler::resolve_pending_invalid`].
     InvalidToolCall(StreamedInvalidToolCall),
 }
 
+/// A complete tool call with a disallowed name, awaiting resolution.
 #[derive(Clone, Serialize, Deserialize)]
-enum PendingInvalid {
-    /// A complete tool call with a disallowed name.
-    Call { tool_call: ToolCall },
-    /// A tool call whose arguments were not JSON. The reply ended with it,
-    /// so the only resolutions are abandon or fail.
-    MalformedArgs { tool_call: ToolCall },
+struct PendingInvalid {
+    tool_call: ToolCall,
 }
 
 /// Serializable accumulator for one streamed turn. Persisted state requires the
@@ -353,13 +343,7 @@ impl StreamedTurnAssembler {
                 {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
-                        Some(json_utils::serialize_json_value(
-                            &tool_call.function.arguments,
-                        )),
-                        PendingInvalid::Call {
-                            tool_call: tool_call.clone(),
-                        },
-                        InvalidToolCallReason::UnknownTool,
+                        Some(tool_call.function.arguments_value().to_string()),
                     ));
                 }
                 self.pending_tool_calls.push(tool_call.clone());
@@ -384,11 +368,9 @@ impl StreamedTurnAssembler {
             return Vec::new();
         };
 
-        match (resolution, pending) {
-            (
-                StreamedResolution::Repaired { tool_name },
-                PendingInvalid::Call { mut tool_call },
-            ) => {
+        let PendingInvalid { mut tool_call } = pending;
+        match resolution {
+            StreamedResolution::Repaired { tool_name } => {
                 if let Ok(tool_name) = ToolName::new(tool_name.clone()) {
                     self.repaired_calls
                         .push((tool_call.id.clone(), tool_name.clone()));
@@ -397,15 +379,8 @@ impl StreamedTurnAssembler {
                 self.pending_tool_calls.push(tool_call.clone());
                 vec![StreamedTurnEvent::EmitToolCall { call: tool_call }]
             }
-            // Repair is rejected upstream for malformed arguments (the run
-            // fails closed); reaching here would be a protocol violation, so
-            // the call is simply not resurrected.
-            (StreamedResolution::Repaired { .. }, PendingInvalid::MalformedArgs { .. })
-            | (StreamedResolution::TurnAbandoned { .. }, _) => Vec::new(),
-            (
-                StreamedResolution::Ignored,
-                PendingInvalid::Call { tool_call } | PendingInvalid::MalformedArgs { tool_call },
-            ) => {
+            StreamedResolution::TurnAbandoned { .. } => Vec::new(),
+            StreamedResolution::Ignored => {
                 self.ignored_calls.push(tool_call.id);
                 Vec::new()
             }
@@ -462,48 +437,21 @@ impl StreamedTurnAssembler {
         }
     }
 
-    /// Park resolution on `pending` and surface the rejected call to the
-    /// caller as an [`StreamedTurnEvent::InvalidToolCall`].
+    /// Park resolution on `tool_call` and surface it to the caller as an
+    /// [`StreamedTurnEvent::InvalidToolCall`].
     fn surface_invalid_call(
         &mut self,
         tool_call: ToolCall,
         args: Option<String>,
-        pending: PendingInvalid,
-        reason: InvalidToolCallReason,
     ) -> Vec<StreamedTurnEvent> {
         let invalid = StreamedInvalidToolCall {
-            tool_call,
+            tool_call: tool_call.clone(),
             args,
             executable_tool_names: self.executable_tool_names.clone(),
             allowed_tool_names: self.allowed_tool_names.clone(),
-            reason,
         };
-        self.pending_invalid = Some(pending);
+        self.pending_invalid = Some(PendingInvalid { tool_call });
         vec![StreamedTurnEvent::InvalidToolCall(invalid)]
-    }
-
-    /// Surface a call whose arguments were not JSON, the error that ended
-    /// the reply, for resolution. Retains raw argument text and call
-    /// identity, with `Null` parsed arguments.
-    pub fn surface_malformed_input(
-        &mut self,
-        detail: &rig_core::error::MalformedToolInput,
-    ) -> Vec<StreamedTurnEvent> {
-        let Ok(name) = ToolName::new(detail.name.clone()) else {
-            return Vec::new();
-        };
-        let tool_call = ToolCall::new(
-            detail.id.clone(),
-            ToolFunction::new(name, serde_json::Value::Null),
-        );
-        self.surface_invalid_call(
-            tool_call.clone(),
-            Some(detail.raw.clone()),
-            PendingInvalid::MalformedArgs { tool_call },
-            InvalidToolCallReason::MalformedArguments {
-                error: detail.error.clone(),
-            },
-        )
     }
 }
 

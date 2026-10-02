@@ -28,6 +28,7 @@ fn tool_call_msg() -> Message {
 fn tool_result_msg() -> Message {
     Message::User {
         content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: rig_core::message::CallId::from_wire("call_1"),
             name: rig_core::message::ToolName::new("t").expect("tool name"),
             content: vec![ToolResultContent::text("ok")],

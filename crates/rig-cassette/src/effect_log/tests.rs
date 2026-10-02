@@ -705,7 +705,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
                     serde_json::json!({
                         "event": "arguments",
                         "part": part,
-                        "json": call.function.arguments.to_string(),
+                        "json": call.function.arguments_value().to_string(),
                     }),
                     serde_json::json!({
                         "event": "end",

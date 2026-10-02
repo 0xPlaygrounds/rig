@@ -30,10 +30,10 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
     use rig_core::message::{AssistantContent, CallId, ToolCall, ToolFunction};
     let generated = ToolCall::new(
         CallId::from_wire(""),
-        ToolFunction {
-            name: rig_core::message::ToolName::new("test").expect("tool name"),
-            arguments: serde_json::json!({}),
-        },
+        ToolFunction::new(
+            rig_core::message::ToolName::new("test").expect("tool name"),
+            serde_json::json!({}),
+        ),
     );
     let hint = generated.id.wire().into_owned();
     let real = ToolCall::from_wire(&hint, generated.function.clone());

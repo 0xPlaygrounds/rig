@@ -197,7 +197,7 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
             .iter()
             .find_map(|part| match part {
                 rig_core::message::AssistantContent::ToolCall(call) => {
-                    Some(call.function.arguments.to_string())
+                    Some(call.function.arguments_value().to_string())
                 }
                 rig_core::message::AssistantContent::Text(_)
                 | rig_core::message::AssistantContent::Reasoning(_)

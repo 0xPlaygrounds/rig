@@ -75,7 +75,7 @@ async fn required_tool_choice_is_accepted() {
                 .expect("response should contain a tool call");
             assert_eq!(tool_call.function.name, "subtract");
             assert_eq!(
-                tool_call.function.arguments,
+                tool_call.function.arguments_value(),
                 serde_json::json!({"x": 2, "y": 5})
             );
         },
@@ -112,7 +112,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
             assert_eq!(tool_calls.len(), 1, "expected exactly one tool call");
             assert_eq!(tool_calls[0].function.name, "subtract");
             assert_eq!(
-                tool_calls[0].function.arguments,
+                tool_calls[0].function.arguments_value(),
                 serde_json::json!({"x": 9, "y": 4})
             );
         },
@@ -212,7 +212,7 @@ async fn strict_required_tool_choice_is_accepted() {
             assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
             assert_eq!(tool_call.function.name, "subtract");
             assert_eq!(
-                tool_call.function.arguments,
+                tool_call.function.arguments_value(),
                 serde_json::json!({"x": 11, "y": 6})
             );
         },

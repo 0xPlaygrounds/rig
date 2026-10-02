@@ -209,7 +209,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} must keep its daemon-issued call id"
                 );
                 assert!(
-                    streamed.function.arguments.is_object(),
+                    streamed.function.invalid_arguments.is_none(),
                     "{name} arguments must assemble into an object, got {:?}",
                     streamed.function.arguments
                 );
@@ -286,14 +286,14 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
                 "the daemon-issued call id must be preserved"
             );
             assert!(
-                call.function.arguments.is_object(),
+                call.function.invalid_arguments.is_none(),
                 "each call's arguments must assemble uncorrupted, got {:?}",
                 call.function.arguments
             );
         }
         let argument_sets: std::collections::HashSet<String> = add_calls
             .iter()
-            .map(|call| call.function.arguments.to_string())
+            .map(|call| call.function.arguments_value().to_string())
             .collect();
         assert!(
             argument_sets.len() >= 2,
@@ -345,16 +345,17 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
                     AssistantContent::ToolCall(rig::message::ToolCall {
                         id: call_id.clone(),
-                        function: rig::message::ToolFunction {
-                            name: rig_core::message::ToolName::new("add").expect("tool name"),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
-                        },
+                        function: rig::message::ToolFunction::new(
+                            rig_core::message::ToolName::new("add").expect("tool name"),
+                            serde_json::json!({"x": 2, "y": 3}),
+                        ),
                         native: None,
                     }),
                 ])),
                 rig::message::Message::User {
                     content: vec![rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
+                            is_error: false,
                             call: call_id,
                             name: rig_core::message::ToolName::new("add".to_owned())
                                 .expect("tool name"),

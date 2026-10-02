@@ -306,7 +306,7 @@ fn qwen_parser_preserves_zero_arg_unicode_and_escaped_payloads() {
         })
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].function.arguments, serde_json::json!({}));
+    assert_eq!(calls[0].function.arguments_value(), serde_json::json!({}));
     assert_eq!(
         calls[1].function.arguments["text"],
         serde_json::json!("Grüße 東京 \"quoted\" C:\\tmp")

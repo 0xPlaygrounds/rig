@@ -723,7 +723,10 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
                 "the complete call survives; only the truncated one is dropped: {:?}",
                 normalized.choice
             );
-            assert_eq!(calls[0].function.arguments, json!({ "team": "platform" }));
+            assert_eq!(
+                calls[0].function.arguments_value(),
+                json!({ "team": "platform" })
+            );
             assert_eq!(
                 normalized.finish_reason(),
                 Some(rig::completion::FinishReason::Length)

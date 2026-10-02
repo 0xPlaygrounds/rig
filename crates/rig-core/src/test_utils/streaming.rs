@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::completion::{CompletionResponse, Usage};
 use crate::error::ProviderError;
-use crate::operation::{Block, CallFragment, Completion, Finish, IfMalformed};
+use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::wire::{Decoder, Flow, Out, WireEvent};
 
 /// Provider descriptor name reported by the test doubles.
@@ -324,7 +324,7 @@ impl<'id> MockDecoder<'id> {
                     },
                 )?;
                 out.announce(index, arguments)?;
-                out.close(index, IfMalformed::Fail)?;
+                out.finish(index)?;
             }
             MockStreamEvent::ToolCallNameDelta { id, name } => {
                 out.end_run()?;
@@ -353,7 +353,7 @@ impl<'id> MockDecoder<'id> {
             MockStreamEvent::ToolCallEnd { id } => {
                 let index = self.call_index(&mut out, &id);
                 self.calls.remove(&id);
-                out.close(index, IfMalformed::Fail)?;
+                out.finish(index)?;
             }
             MockStreamEvent::Reasoning { id, text } => {
                 out.end_run()?;
@@ -361,7 +361,7 @@ impl<'id> MockDecoder<'id> {
                 match self.reasoning.iter().position(|(open, _)| *open == id) {
                     Some(at) => {
                         let (_, index) = self.reasoning.remove(at);
-                        out.close(index, IfMalformed::Fail)?;
+                        out.finish(index)?;
                     }
                     None => {
                         let index = out.fresh_index();
@@ -392,7 +392,7 @@ impl<'id> MockDecoder<'id> {
             MockStreamEvent::FinalResponse(finish) => {
                 out.end_run()?;
                 for (_, index) in std::mem::take(&mut self.reasoning) {
-                    out.close(index, IfMalformed::Fail)?;
+                    out.finish(index)?;
                 }
                 // The mock's document is its scripted end, serialized.
                 out.raw(serde_json::to_value(&finish)?);

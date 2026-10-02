@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use super::{Block, CallFragment, Completion, Finish, IfMalformed, Turn, events_of};
+use super::{Block, CallFragment, Completion, Finish, Turn, events_of};
 use crate::completion::CompletionResponse;
 use crate::driver::{Decoded, decode_with};
 use crate::error::ProviderError;
@@ -52,11 +52,11 @@ fn blocks_keep_the_order_their_items_opened_in() {
         )?;
         out.push(2, "{}")?;
         // The call finishes first, the reasoning last: neither moves.
-        out.close(2, IfMalformed::Fail)?;
+        out.finish(2)?;
         out.push(1, "answer")?;
-        out.close(1, IfMalformed::Fail)?;
+        out.finish(1)?;
         out.push(0, "think")?;
-        out.close(0, IfMalformed::Fail)
+        out.finish(0)
     });
     let kinds: Vec<_> = response(decoded)
         .choice
@@ -89,7 +89,7 @@ fn deltas_merge_into_the_item_signatures_concatenate_and_unknown_fields_survive(
             out.merge(7, &object(delta))?;
         }
         out.push(7, "hm")?;
-        out.close(7, IfMalformed::Fail)
+        out.finish(7)
     });
     let block = response(decoded).choice.remove(0);
     assert_eq!(
@@ -112,11 +112,11 @@ fn deltas_merge_into_the_item_signatures_concatenate_and_unknown_fields_survive(
 fn empty_text_survives_only_with_a_provider_item() {
     let decoded = write(|out| {
         out.open(0, Block::Text, Value::Null)?;
-        out.close(0, IfMalformed::Fail)?;
+        out.finish(0)?;
         out.open(1, Block::Text, json!({"thoughtSignature": "c2ln"}))?;
-        out.close(1, IfMalformed::Fail)?;
+        out.finish(1)?;
         out.open(2, Block::Reasoning { redacted: true }, Value::Null)?;
-        out.close(2, IfMalformed::Fail)
+        out.finish(2)
     });
     let choice = response(decoded).choice;
     assert_eq!(choice.len(), 2);
@@ -138,7 +138,7 @@ fn an_opaque_item_closes_as_its_assembled_item() {
             0,
             &object(json!({"type": "compaction_delta", "content": "summary"})),
         )?;
-        out.close(0, IfMalformed::Fail)
+        out.finish(0)
     });
     assert_eq!(
         response(decoded).choice,
@@ -169,7 +169,7 @@ fn a_buffered_call_opens_at_its_first_fragment_and_closes_whole() {
             },
         )?;
         out.end_run()?;
-        out.close(0, IfMalformed::Fail)
+        out.finish(0)
     });
     let choice = response(decoded).choice;
     assert_eq!(
@@ -185,7 +185,7 @@ fn a_buffered_call_opens_at_its_first_fragment_and_closes_whole() {
 }
 
 #[test]
-fn a_call_that_never_got_an_id_is_issued_one_only_when_closed() {
+fn a_call_that_never_got_an_id_is_issued_one() {
     let closed = write(|out| {
         out.fragment(
             3,
@@ -195,7 +195,7 @@ fn a_call_that_never_got_an_id_is_issued_one_only_when_closed() {
                 ..CallFragment::default()
             },
         )?;
-        out.close(3, IfMalformed::Fail)
+        out.finish(3)
     });
     assert!(matches!(
         response(closed).choice.as_slice(),
@@ -212,7 +212,10 @@ fn a_call_that_never_got_an_id_is_issued_one_only_when_closed() {
             },
         )
     });
-    assert!(response(ended).choice.is_empty());
+    assert!(matches!(
+        response(ended).choice.as_slice(),
+        [AssistantContent::ToolCall(call)] if call.id.is_local()
+    ));
 }
 
 #[test]
@@ -228,7 +231,7 @@ fn a_reused_call_id_fails_the_reply() {
                 Value::Null,
             )?;
             out.push(index, "{}")?;
-            out.close(index, IfMalformed::Fail)?;
+            out.finish(index)?;
         }
         Ok(())
     });
@@ -287,13 +290,13 @@ fn a_restated_response_streams_the_same_blocks() {
         out.open(0, Block::Text, json!({"type": "text", "text": ""}))?;
         out.merge(0, &object(json!({"text": "hi"})))?;
         out.push(0, "hi")?;
-        out.close(0, IfMalformed::Fail)?;
+        out.finish(0)?;
         out.open(
             1,
             Block::Opaque { replay: false },
             json!({"type": "computer_call"}),
         )?;
-        out.close(1, IfMalformed::Fail)
+        out.finish(1)
     });
     let original = response(decoded);
     let events = events_of(&original).expect("restates");
@@ -315,8 +318,8 @@ fn starts_follow_item_order_and_a_dropped_item_leaves_a_gap() {
         out.open(0, Block::Text, Value::Null)?;
         out.open(1, Block::Text, Value::Null)?;
         out.push(1, "second")?;
-        out.close(0, IfMalformed::Fail)?;
-        out.close(1, IfMalformed::Fail)
+        out.finish(0)?;
+        out.finish(1)
     });
     let items: Vec<_> = decoded.items.iter().flatten().cloned().collect();
     let transcript = Transcript::from_items(items).expect("a gap is a valid sequence");
@@ -332,7 +335,7 @@ fn starts_follow_item_order_and_a_dropped_item_leaves_a_gap() {
 }
 
 #[test]
-fn a_call_closed_without_a_name_fails_the_reply() {
+fn a_call_closed_without_a_name_is_dropped() {
     let decoded = write(|out| {
         out.fragment(
             0,
@@ -342,7 +345,7 @@ fn a_call_closed_without_a_name_fails_the_reply() {
                 ..CallFragment::default()
             },
         )?;
-        out.close(0, IfMalformed::Fail)
+        out.finish(0)
     });
-    assert!(matches!(decoded.outcome, Err(ProviderError::Response(_))));
+    assert!(response(decoded).choice.is_empty());
 }

@@ -213,7 +213,7 @@ async fn required_tool_choice_streams_tool_call() {
             assert_eq!(run.tool_calls.len(), 1, "expected one streamed tool call");
             assert_eq!(run.tool_calls[0].function.name, "subtract");
             assert_eq!(
-                run.tool_calls[0].function.arguments,
+                run.tool_calls[0].function.arguments_value(),
                 serde_json::json!({"x": 8, "y": 3})
             );
             assert_eq!(

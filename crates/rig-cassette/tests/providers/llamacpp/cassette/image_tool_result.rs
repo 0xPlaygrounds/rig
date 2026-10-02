@@ -31,6 +31,7 @@ const VISION_MODEL: &str = "Qwen3-VL-2B-Instruct-Q8_0";
 
 fn image_tool_result() -> ToolResult {
     ToolResult {
+        is_error: false,
         call: CallId::from_wire("call_1"),
         name: rig_core::message::ToolName::new("view_file".to_string()).expect("tool name"),
         content: vec![ToolResultContent::image_base64(

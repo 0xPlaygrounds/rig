@@ -252,10 +252,10 @@ fn a_conversation_is_sent_as_given_and_an_empty_one_is_rejected() {
 fn call(id: &str, name: &str) -> ToolCall {
     ToolCall::from_wire(
         id,
-        ToolFunction {
-            name: crate::message::ToolName::new(name.to_owned()).expect("tool name"),
-            arguments: serde_json::json!({"q": id}),
-        },
+        ToolFunction::new(
+            crate::message::ToolName::new(name.to_owned()).expect("tool name"),
+            serde_json::json!({"q": id}),
+        ),
     )
 }
 

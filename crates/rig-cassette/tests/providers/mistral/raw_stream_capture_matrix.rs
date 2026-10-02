@@ -307,7 +307,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
     assert_eq!(observation.tool_calls.len(), 1, "one streamed tool call");
     let call = &observation.tool_calls[0];
     assert_eq!(call.function.name, TOOL_NAME);
-    assert_eq!(call.function.arguments, recorded_arguments);
+    assert_eq!(call.function.arguments_value(), recorded_arguments);
     assert_matches_recorded_token(
         call.id.provider().map(|provider| provider.as_str()),
         Some(recorded_id.as_str()),

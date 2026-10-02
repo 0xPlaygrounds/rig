@@ -792,7 +792,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     "the tool name must never be fabricated into the provider call id"
                 );
                 assert!(
-                    call.function.arguments.is_object(),
+                    call.function.invalid_arguments.is_none(),
                     "each call's arguments must survive uncorrupted, got {:?}",
                     call.function.arguments
                 );
@@ -808,7 +808,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
             );
             let argument_sets: std::collections::HashSet<String> = add_calls
                 .iter()
-                .map(|call| call.function.arguments.to_string())
+                .map(|call| call.function.arguments_value().to_string())
                 .collect();
             assert_eq!(
                 argument_sets,
@@ -937,14 +937,15 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
                     AssistantContent::ToolCall(ToolCall::new(
                         cross_provider_handle.clone(),
-                        rig::message::ToolFunction {
-                            name: rig_core::message::ToolName::new("add").expect("tool name"),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
-                        },
+                        rig::message::ToolFunction::new(
+                            rig_core::message::ToolName::new("add").expect("tool name"),
+                            serde_json::json!({"x": 2, "y": 3}),
+                        ),
                     )),
                 ])),
                 rig::message::Message::User {
                     content: vec![UserContent::ToolResult(rig::message::ToolResult {
+                        is_error: false,
                         call: cross_provider_handle,
                         name: rig_core::message::ToolName::new("add".to_owned())
                             .expect("tool name"),

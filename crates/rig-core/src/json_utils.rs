@@ -148,6 +148,75 @@ pub fn parse_tool_arguments(arguments: &str) -> serde_json::Result<serde_json::V
     serde_json::from_str(arguments)
 }
 
+/// The longest object a cut-off JSON text `text` still states: open strings,
+/// arrays and objects are closed and a dangling key or separator dropped, as
+/// pi's streaming JSON parse does. `None` when no prefix states an object.
+pub fn parse_partial_object(text: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
+    // Bounds the work on a large cut-off input: the last valid cut is
+    // almost always near its end.
+    const MAX_ATTEMPTS: usize = 256;
+    let mut stack = Vec::new();
+    let mut in_string = false;
+    let mut escaped = false;
+    // Prefix lengths a value just ended at, with the containers open there.
+    let mut cuts: Vec<(usize, Vec<u8>, bool)> = Vec::new();
+    let bytes = text.as_bytes();
+    for (at, byte) in bytes.iter().enumerate() {
+        if in_string {
+            match (escaped, *byte) {
+                (true, _) => escaped = false,
+                (false, b'\\') => escaped = true,
+                (false, b'"') => {
+                    in_string = false;
+                    cuts.push((at + 1, stack.clone(), false));
+                }
+                (false, _) => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => in_string = true,
+            b'{' | b'[' => {
+                stack.push(*byte);
+                cuts.push((at + 1, stack.clone(), false));
+            }
+            b'}' | b']' => {
+                stack.pop();
+                cuts.push((at + 1, stack.clone(), false));
+            }
+            b if b.is_ascii_alphanumeric() || *b == b'.' || *b == b'-' || *b == b'+' => {
+                let next = bytes.get(at + 1).copied();
+                if !next.is_some_and(|n| {
+                    n.is_ascii_alphanumeric() || n == b'.' || n == b'-' || n == b'+'
+                }) {
+                    cuts.push((at + 1, stack.clone(), false));
+                }
+            }
+            _ => {}
+        }
+    }
+    if in_string {
+        let at = text.len() - usize::from(escaped);
+        cuts.push((at, stack.clone(), true));
+    }
+    cuts.iter()
+        .rev()
+        .take(MAX_ATTEMPTS)
+        .find_map(|(at, open, quote)| {
+            let mut candidate = text.get(..*at)?.to_owned();
+            if *quote {
+                candidate.push('"');
+            }
+            for container in open.iter().rev() {
+                candidate.push(if *container == b'{' { '}' } else { ']' });
+            }
+            match serde_json::from_str(&candidate) {
+                Ok(serde_json::Value::Object(object)) => Some(object),
+                _ => None,
+            }
+        })
+}
+
 /// Serde adapters for JSON encoded inside strings. Empty or whitespace-only
 /// strings deserialize to empty objects.
 pub mod stringified_json {

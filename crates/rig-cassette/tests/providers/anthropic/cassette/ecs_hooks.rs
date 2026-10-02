@@ -145,7 +145,7 @@ async fn patch_tool_args_effect_log() {
                     Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                         content.iter().find_map(|c| match c {
                             AssistantContent::ToolCall(call) => {
-                                Some(call.function.arguments.clone())
+                                Some(call.function.arguments_value())
                             }
                             _ => None,
                         })

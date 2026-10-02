@@ -311,10 +311,10 @@ mod grammar_guards {
     /// on `response.output_item.done` with arguments truncated mid-JSON and
     /// item status `incomplete`, then ends with `response.incomplete`. The
     /// pipeline must accept both frames (no `Corrupt` classification), end
-    /// with a `Length` terminal, and — per the settled truncation policy —
-    /// never fabricate a tool call from the partial arguments.
+    /// with a `Length` terminal, and keep the call with what its partial
+    /// arguments state, their text kept beside them.
     #[tokio::test]
-    async fn incomplete_mid_tool_call_ends_with_length_and_no_fabricated_call() {
+    async fn incomplete_mid_tool_call_ends_with_length_and_keeps_the_call() {
         use rig_core::completion::FinishReason;
         use rig_core::message::AssistantContent;
 
@@ -341,17 +341,17 @@ mod grammar_guards {
             Some(FinishReason::Length),
             "max_output_tokens incompletion must normalize to a Length finish"
         );
+        let calls: Vec<_> = drained
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
         assert!(
-            drained.tool_call_names().is_empty(),
-            "partial arguments must not fabricate a streamed tool call, got {:?}",
-            drained.tool_call_names()
-        );
-        assert!(
-            !drained
-                .choice
-                .iter()
-                .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-            "partial arguments must not fabricate an aggregated tool call"
+            matches!(calls.as_slice(), [call] if call.function.invalid_arguments.is_some()),
+            "the cut-off call is kept with its partial text: {calls:?}"
         );
     }
 
@@ -410,15 +410,15 @@ mod grammar_guards {
                 _ => None,
             })
             .collect();
-        let shape: Vec<(&str, &serde_json::Value)> = calls
+        let shape: Vec<(&str, serde_json::Value)> = calls
             .iter()
-            .map(|call| (call.function.name.as_str(), &call.function.arguments))
+            .map(|call| (call.function.name.as_str(), call.function.arguments_value()))
             .collect();
         assert_eq!(
             shape,
             vec![
-                ("get_weather", &json!({"city": "Tokyo"})),
-                ("get_time", &json!({"zone": "UTC"})),
+                ("get_weather", json!({"city": "Tokyo"})),
+                ("get_time", json!({"zone": "UTC"})),
             ],
             "two id-less indexed calls must assemble distinct and uncorrupted"
         );

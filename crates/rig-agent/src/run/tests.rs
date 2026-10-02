@@ -1168,23 +1168,6 @@ fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
     )
 }
 
-fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value) -> ModelTurn {
-    ModelTurn::new(
-        rig_core::message::AssistantMessage::default(),
-        vec![AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction::new(
-                rig_core::message::ToolName::new(name.to_string()).expect("tool name"),
-                arguments,
-            ),
-        ))],
-        Usage::default(),
-        tool_names(&["add"]),
-        tool_names(&["add", name]),
-        hand_raw(),
-    )
-}
-
 /// Every assistant tool call in `messages` must have a matching user tool
 /// result — an unanswered tool_use is rejected by providers on replay.
 fn assert_no_orphan_tool_use(messages: &[Message]) {
@@ -1281,37 +1264,6 @@ fn output_tool_response_content_is_the_output_while_history_keeps_prose() {
         response.messages.last(),
         Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if assistant_text_from_choice(content) == r#"Here is the summary:{"x":1}"#
-    ));
-}
-
-#[test]
-fn scalar_output_tool_call_is_serialized_as_reparseable_json() {
-    let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
-
-    expect_call_model(&mut run);
-    expect_continue(
-        run.model_response(output_tool_turn_with_args(
-            "call_1",
-            "final_result",
-            json!("complete"),
-        ))
-        .expect("model_response should succeed"),
-    );
-
-    let response = expect_done(&mut run);
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&response.output())
-            .expect("scalar output must remain valid JSON"),
-        json!("complete")
-    );
-    assert_eq!(response.output(), r#""complete""#);
-
-    let messages = response.messages;
-    assert_no_orphan_tool_use(&messages);
-    assert!(matches!(
-        messages.last(),
-        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
-            if assistant_text_from_choice(content) == r#""complete""#
     ));
 }
 

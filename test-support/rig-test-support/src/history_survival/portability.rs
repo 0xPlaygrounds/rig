@@ -158,6 +158,7 @@ impl Source {
                     .unwrap_or("Tokyo")
                     .to_owned();
                 UserContent::ToolResult(ToolResult {
+                    is_error: false,
                     call: call.id.clone(),
                     name: call.function.name.clone(),
                     content: vec![ToolResultContent::text(weather_report(&city))],

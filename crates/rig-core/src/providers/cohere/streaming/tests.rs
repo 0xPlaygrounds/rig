@@ -535,8 +535,8 @@ async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
         calls.iter().all(|call| call.id.provider().is_none()),
         "{calls:?}"
     );
-    assert_eq!(calls[0].function.arguments, json!({"n": 1}));
-    assert_eq!(calls[1].function.arguments, json!({"n": 2}));
+    assert_eq!(calls[0].function.arguments_value(), json!({"n": 1}));
+    assert_eq!(calls[1].function.arguments_value(), json!({"n": 2}));
 }
 
 /// Every event of this wire has a sample, so a new one fails to compile
@@ -601,7 +601,7 @@ async fn a_streamed_call_without_an_id_is_kept() {
         panic!("one call: {:?}", response.choice);
     };
     assert!(call.id.is_local());
-    assert_eq!(call.function.arguments, json!({"x": 1}));
+    assert_eq!(call.function.arguments_value(), json!({"x": 1}));
 }
 
 /// An item kind rig has never seen is kept as an item that replays, and a

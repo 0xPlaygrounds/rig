@@ -52,7 +52,6 @@ fn assert_request_building(case: &str, error: &ProviderError) {
         | ProviderError::InvalidAuthentication(_)
         | ProviderError::CacheExpired { .. }
         | ProviderError::MismatchedDimensions { .. }
-        | ProviderError::MalformedToolInput(_)
         | ProviderError::Truncated
         | ProviderError::DuplicateCallId(_)
         | ProviderError::Relayed(_) => {

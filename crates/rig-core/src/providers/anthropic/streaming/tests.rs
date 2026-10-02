@@ -546,7 +546,10 @@ fn a_call_assembles_its_input_into_its_item() {
         panic!("one call: {:?}", response.choice);
     };
     assert_eq!(call.id.to_string(), "toolu_1");
-    assert_eq!(call.function.arguments, json!({"location": "Paris"}));
+    assert_eq!(
+        call.function.arguments_value(),
+        json!({"location": "Paris"})
+    );
     assert_eq!(
         item(&response.choice[0]),
         Some(
@@ -558,19 +561,23 @@ fn a_call_assembles_its_input_into_its_item() {
 }
 
 #[test]
-fn malformed_streamed_call_input_fails_the_reply() {
+fn malformed_streamed_call_input_keeps_what_it_states() {
     let frames = reply(
         vec![block(
             0,
             json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}),
-            &[json!({"type": "input_json_delta", "partial_json": "{\"x\":"})],
+            &[json!({"type": "input_json_delta", "partial_json": "{\"x\": \"ab"})],
         )],
-        "tool_use",
+        "max_tokens",
     );
-    assert!(matches!(
-        streamed(&frames),
-        Err(ProviderError::MalformedToolInput(_))
-    ));
+    let response = streamed(&frames).expect("a cut-off call does not fail the reply");
+    let call = response.tool_calls().next().expect("the call is kept");
+    assert_eq!(call.function.arguments_value(), json!({"x": "ab"}));
+    assert_eq!(
+        call.function.invalid_arguments.as_deref(),
+        Some("{\"x\": \"ab")
+    );
+    assert_eq!(response.stop(), StopReason::Length);
 }
 
 #[test]

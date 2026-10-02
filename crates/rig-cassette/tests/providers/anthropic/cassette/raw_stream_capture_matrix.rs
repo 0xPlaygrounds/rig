@@ -746,7 +746,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     );
     let call = streamed_calls[0];
     assert_eq!(call.function.name, "get_weather");
-    assert_eq!(call.function.arguments, recorded_input);
+    assert_eq!(call.function.arguments_value(), recorded_input);
     assert_ids_match_recording(
         &[call
             .id

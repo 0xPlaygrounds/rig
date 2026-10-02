@@ -10,8 +10,10 @@
 
 use std::collections::BTreeSet;
 
-use crate::message::{AssistantContent, CallId, Message, ToolName, ToolResultContent, UserContent};
-use crate::tool::ToolOutput;
+use crate::message::{
+    self, AssistantContent, CallId, Message, ToolName, ToolResultContent, UserContent,
+};
+use crate::tool::ToolResult;
 
 /// Why a history is not a canonical transcript. See [`validate_canonical`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -103,16 +105,27 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
     Ok(())
 }
 
-/// Shape a canonical real tool output as a tool result without reparsing text.
-pub fn tool_result_output(call: CallId, name: ToolName, output: ToolOutput) -> UserContent {
-    UserContent::tool_result(call, name, output.into_content())
+/// Shape a tool's result as the tool result the model reads, without
+/// reparsing text. Anything but a success is an error result.
+pub fn tool_result_output(call: CallId, name: ToolName, result: &ToolResult) -> UserContent {
+    UserContent::ToolResult(message::ToolResult {
+        call,
+        name,
+        content: result.output().clone().into_content(),
+        is_error: !result.is_success(),
+    })
 }
 
-/// Constructs a synthetic tool result containing verbatim text, such as recovery
-/// feedback or a skip reason. JSON-shaped text is not reinterpreted as structured
-/// or multimodal output.
+/// Constructs the error result of a call that never ran, its text verbatim,
+/// such as recovery feedback or a skip reason. JSON-shaped text is not
+/// reinterpreted as structured or multimodal output.
 pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> UserContent {
-    UserContent::tool_result(call, name, vec![ToolResultContent::text(message)])
+    UserContent::ToolResult(message::ToolResult {
+        call,
+        name,
+        content: vec![ToolResultContent::text(message)],
+        is_error: true,
+    })
 }
 
 /// The result every other call of a turn gets when one call was retried or

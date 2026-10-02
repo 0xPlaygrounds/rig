@@ -278,6 +278,10 @@ pub struct ToolResult {
     pub name: ToolName,
     /// One or more content items produced by the tool.
     pub content: Vec<ToolResultContent>,
+    /// Whether the tool failed, was refused, or never ran: `content` then
+    /// says why.
+    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    pub is_error: bool,
 }
 
 /// Describes one typed item in a tool result.
@@ -367,23 +371,130 @@ impl ToolCall {
             call: self.id.clone(),
             name: self.function.name.clone(),
             content,
+            is_error: false,
+        }
+    }
+
+    /// The result reporting that this call failed, with `content` saying
+    /// why.
+    pub fn error_result(&self, content: Vec<ToolResultContent>) -> ToolResult {
+        ToolResult {
+            is_error: true,
+            ..self.result(content)
         }
     }
 }
 
-/// Describes a tool function to call with a name and arguments, generally produced by a provider.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+/// A tool function to call: its name and its arguments, always a JSON
+/// object.
+///
+/// Arguments the model sent that are not an object are kept as text in
+/// `invalid_arguments`, with `arguments` holding what could be read of them
+/// (`{}` when nothing could), so a malformed call never fails a reply and
+/// every wire receives an object.
+///
+/// ```
+/// use rig_core::message::{ToolFunction, ToolName};
+///
+/// let name = ToolName::new("search")?;
+/// let call = ToolFunction::parse(name.clone(), r#"{"q": "ab"#);
+/// assert_eq!(call.arguments["q"], "ab");
+/// assert_eq!(call.invalid_arguments.as_deref(), Some(r#"{"q": "ab"#));
+///
+/// let call = ToolFunction::new(name, serde_json::json!("{\"q\":1}"));
+/// assert_eq!(call.arguments["q"], 1);
+/// assert!(call.invalid_arguments.is_none());
+/// # Ok::<(), rig_core::message::EmptyToolName>(())
+/// ```
+#[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ToolFunction {
     /// Tool/function name to invoke.
     pub name: ToolName,
-    /// JSON arguments for the tool/function.
-    pub arguments: serde_json::Value,
+    /// The arguments.
+    pub arguments: serde_json::Map<String, serde_json::Value>,
+    /// The arguments as the model sent them, when they were not a JSON
+    /// object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invalid_arguments: Option<String>,
 }
 
 impl ToolFunction {
-    /// Create a tool function call payload.
+    /// A call to `name` with `arguments`. An object is kept; a string
+    /// holding an object is unwrapped once; `null` is `{}`; anything else is
+    /// `{}` with its JSON text in `invalid_arguments`.
     pub fn new(name: ToolName, arguments: serde_json::Value) -> Self {
-        Self { name, arguments }
+        use serde_json::Value;
+        let (arguments, invalid_arguments) = match arguments {
+            Value::Object(arguments) => (arguments, None),
+            Value::Null => (serde_json::Map::new(), None),
+            Value::String(text) => {
+                return Self::parse(name, &text);
+            }
+            other => (serde_json::Map::new(), Some(other.to_string())),
+        };
+        Self {
+            name,
+            arguments,
+            invalid_arguments,
+        }
+    }
+
+    /// A call to `name` with the argument JSON `text`. Blank text is `{}`.
+    /// Text that is not an object keeps what a cut-off object still states,
+    /// or `{}`, and is kept in `invalid_arguments`. A string holding an
+    /// object is unwrapped once.
+    pub fn parse(name: ToolName, text: &str) -> Self {
+        use serde_json::Value;
+        let parsed = crate::json_utils::parse_tool_arguments(text);
+        let (arguments, invalid) = match parsed {
+            Ok(Value::Object(arguments)) => (arguments, false),
+            Ok(Value::Null) => (serde_json::Map::new(), false),
+            Ok(Value::String(inner)) => match serde_json::from_str(&inner) {
+                Ok(Value::Object(arguments)) => (arguments, false),
+                _ => (serde_json::Map::new(), true),
+            },
+            Ok(_) => (serde_json::Map::new(), true),
+            Err(_) => (
+                crate::json_utils::parse_partial_object(text).unwrap_or_default(),
+                true,
+            ),
+        };
+        Self {
+            name,
+            arguments,
+            invalid_arguments: invalid.then(|| text.to_owned()),
+        }
+    }
+
+    /// The arguments as a JSON value.
+    pub fn arguments_value(&self) -> serde_json::Value {
+        serde_json::Value::Object(self.arguments.clone())
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolFunction {
+    /// Arguments stored in any JSON shape are read through
+    /// [`ToolFunction::new`], so a history saved before arguments were
+    /// always objects still loads.
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Repr {
+            name: ToolName,
+            #[serde(default)]
+            arguments: serde_json::Value,
+            #[serde(default)]
+            invalid_arguments: Option<String>,
+        }
+        let Repr {
+            name,
+            arguments,
+            invalid_arguments,
+        } = Repr::deserialize(deserializer)?;
+        let mut function = Self::new(name, arguments);
+        if invalid_arguments.is_some() {
+            function.invalid_arguments = invalid_arguments;
+        }
+        Ok(function)
     }
 }
 
@@ -783,6 +894,7 @@ impl UserContent {
             call,
             name,
             content,
+            is_error: false,
         })
     }
 }
@@ -801,7 +913,7 @@ impl AssistantContent {
     /// Creates a tool call from a provider-issued ID, name, and arguments.
     /// Rig issues an id when `id` is empty.
     pub fn tool_call(id: impl Into<String>, name: ToolName, arguments: serde_json::Value) -> Self {
-        AssistantContent::ToolCall(ToolCall::from_wire(id, ToolFunction { name, arguments }))
+        AssistantContent::ToolCall(ToolCall::from_wire(id, ToolFunction::new(name, arguments)))
     }
 
     /// Creates reasoning text with no provider item.

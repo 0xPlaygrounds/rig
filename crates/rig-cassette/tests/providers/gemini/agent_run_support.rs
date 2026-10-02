@@ -199,7 +199,7 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
             }
             let output = execute_arithmetic(
                 &call.tool_call.function.name,
-                &call.tool_call.function.arguments,
+                &call.tool_call.function.arguments_value(),
             );
             let content = vec![ToolResultContent::json(serde_json::json!(output))];
             UserContent::tool_result(

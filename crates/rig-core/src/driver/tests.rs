@@ -662,67 +662,45 @@ async fn a_unary_call_closes_its_attempt_as_decoded() {
     );
 }
 
-/// How an attempt ended, when it did.
-fn ending(log: &ObservationLog) -> Option<AdapterEvent> {
-    log.trace()
-        .observations
-        .iter()
-        .find_map(|observation| match &observation.action {
-            crate::observe::Action::Adapter { observation }
-                if matches!(observation.event, AdapterEvent::Finished { .. }) =>
-            {
-                Some(observation.event.clone())
-            }
-            _ => None,
-        })
-}
-
-/// A malformed complete tool input is a decode defect that ends the reply,
-/// so the attempt ends as a decode error in both modes.
+/// A tool call whose input is not JSON never fails the reply: the call is
+/// kept with its raw text, in both modes.
 #[tokio::test]
-async fn a_malformed_tool_input_ends_the_attempt_as_a_decode_error() {
-    let decode_error = AdapterEvent::Finished {
-        ending: crate::observe::AdapterEnding::Error {
-            boundary: crate::observe::AdapterErrorBoundary::Decode,
-            kind: "response".into(),
-            status: None,
-            retryable: false,
-        },
-    };
-
-    let (log, context) = observed();
+async fn a_malformed_tool_input_is_kept_with_its_raw_text() {
     let http = RecordingHttpClient::new(
         r#"{"type":"tool","name":"add","arguments":"{not json","usage":{"output_tokens":1}}"#,
     );
-    let error = call(&Echo::unary(), &http, prompt(), Some(context))
+    let response = call(&Echo::unary(), &http, prompt(), None)
         .await
-        .expect_err("the defect fails a whole reply");
-    assert!(
-        matches!(error, ProviderError::MalformedToolInput(_)),
-        "{error:?}"
+        .expect("a malformed call does not fail the reply");
+    let call_of = |response: &crate::completion::CompletionResponse| {
+        response
+            .tool_calls()
+            .map(|call| {
+                (
+                    call.function.arguments_value(),
+                    call.function.invalid_arguments.clone(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        call_of(&response),
+        [(serde_json::json!({}), Some("{not json".to_owned()))]
     );
-    assert_eq!(ending(&log), Some(decode_error.clone()));
 
-    let (log, context) = observed();
     let http = MockStreamingClient {
         sse_bytes: Bytes::from_static(
             b"data: {\"type\":\"tool\",\"name\":\"add\",\"arguments\":\"{not json\"}\n\n\
               data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
         ),
     };
-    let items: Vec<_> = Model::new(Echo::streaming(), http)
-        .stream_observed(prompt(), context)
+    let streamed = Model::new(Echo::streaming(), http)
+        .stream(prompt())
         .expect("the stream opens")
-        .collect()
-        .await;
-    assert!(
-        matches!(
-            items.last(),
-            Some(Err(ProviderError::MalformedToolInput(_)))
-        ),
-        "the defect ends the stream: {items:?}"
-    );
-    assert_eq!(ending(&log), Some(decode_error));
+        .finish()
+        .await
+        .expect("a malformed call does not fail the stream");
+    assert_eq!(call_of(&streamed), call_of(&response));
 }
 
 #[tokio::test]

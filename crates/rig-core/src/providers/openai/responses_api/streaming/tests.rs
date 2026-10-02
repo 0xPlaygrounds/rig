@@ -1171,11 +1171,11 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
 }
 
 /// The `max_output_tokens`-mid-tool-call shape: `arguments_delta` frames
-/// stream partial JSON and the done item restates the same truncated bytes
-/// (unparseable). Whether or not fragments preceded the restatement, the
-/// partial arguments never fabricate a call.
+/// stream partial JSON and the done item restates the same truncated bytes.
+/// Whether or not fragments preceded the restatement, the call keeps what
+/// its arguments state, with the text they arrived as.
 #[test]
-fn an_unparseable_restatement_never_becomes_a_call() {
+fn a_cut_off_call_keeps_what_its_arguments_state() {
     let delta = json!({
         "type": "response.function_call_arguments.delta",
         "item_id": "fc_1",
@@ -1198,11 +1198,20 @@ fn an_unparseable_restatement_never_becomes_a_call() {
     });
     for events in [vec![delta, done.clone()], vec![done]] {
         let decoded = decoded_body(&body_of(&events));
-        assert!(
-            decoded
-                .ended()
-                .iter()
-                .all(|content| !matches!(content, AssistantContent::ToolCall(_))),
+        let calls: Vec<_> = decoded
+            .ended()
+            .into_iter()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some((
+                    call.function.arguments_value(),
+                    call.function.invalid_arguments,
+                )),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            calls,
+            [(json!({"x": 481}), Some("{\"x\":481".to_owned()))],
             "{:?}",
             decoded.events()
         );
@@ -1875,7 +1884,7 @@ fn each_output_item_is_one_block_holding_the_item_in_output_order() {
         assert_eq!(first.text, "First thought.");
         assert_eq!(check.text, "Let me check.");
         assert_eq!(call.id, crate::message::CallId::from_wire("call_1"));
-        assert_eq!(call.function.arguments, json!({ "q": "a" }));
+        assert_eq!(call.function.arguments_value(), json!({ "q": "a" }));
         assert_eq!(second.text, "Second thought.");
         assert_eq!(done.text, "Done.");
         assert_eq!(response.stop(), crate::message::StopReason::ToolUse);
@@ -2067,7 +2076,7 @@ fn a_custom_tool_call_is_a_call_whose_arguments_hold_its_input() {
     assert_eq!(decoded.id, crate::message::CallId::from_wire("call_9"));
     assert_eq!(decoded.function.name, "apply_patch");
     assert_eq!(
-        decoded.function.arguments,
+        decoded.function.arguments_value(),
         json!({ "input": "*** Begin Patch\n*** End Patch" })
     );
     assert_eq!(natives(&response), [call]);

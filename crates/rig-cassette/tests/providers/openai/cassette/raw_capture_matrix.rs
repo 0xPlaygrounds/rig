@@ -621,12 +621,12 @@ async fn chat_tool_call_raw_round_trips_typed() {
         body["choices"][0]["finish_reason"]
     );
     // The normalized side parsed the same call.
-    let normalized_calls: Vec<(&str, &Value)> = response
+    let normalized_calls: Vec<(&str, Value)> = response
         .choice
         .iter()
         .filter_map(|content| match content {
             AssistantContent::ToolCall(call) => {
-                Some((call.function.name.as_str(), &call.function.arguments))
+                Some((call.function.name.as_str(), call.function.arguments_value()))
             }
             _ => None,
         })
@@ -635,7 +635,7 @@ async fn chat_tool_call_raw_round_trips_typed() {
         normalized_calls,
         vec![(
             "ping",
-            &serde_json::from_str::<Value>(raw_arguments).expect("raw arguments are JSON")
+            serde_json::from_str::<Value>(raw_arguments).expect("raw arguments are JSON")
         )],
         "{SCENARIO}: the normalized tool call is raw's, parsed"
     );

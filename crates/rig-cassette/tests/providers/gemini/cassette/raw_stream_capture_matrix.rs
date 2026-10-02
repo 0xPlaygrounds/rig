@@ -323,7 +323,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
         .find(|call| call.function.name == Adder::NAME)
         .expect("the stream should carry the forced add call");
     assert_eq!(
-        call.function.arguments,
+        call.function.arguments_value(),
         serde_json::json!({ "x": 2, "y": 3 })
     );
 

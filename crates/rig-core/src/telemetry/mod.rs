@@ -608,7 +608,7 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
             AssistantContent::ToolCall(tool_call) => vec![TelemetryPart::ToolCall {
                 id: Some(tool_call.id.to_string()),
                 name: tool_call.function.name.clone().into(),
-                arguments: tool_call.function.arguments.clone(),
+                arguments: tool_call.function.arguments_value(),
             }],
             AssistantContent::Reasoning(reasoning) => vec![TelemetryPart::Reasoning {
                 content: reasoning.text.clone(),

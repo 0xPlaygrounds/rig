@@ -743,7 +743,7 @@ pub(crate) fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json:
             .filter_map(|content| match content {
                 AssistantContent::ToolCall(call) => Some((
                     call.function.name.to_string(),
-                    call.function.arguments.clone(),
+                    call.function.arguments_value(),
                 )),
                 _ => None,
             })

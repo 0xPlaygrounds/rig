@@ -8,7 +8,7 @@ use super::interactions_api_types::{
 };
 use crate::error::ProviderError;
 use crate::message::{AssistantContent, DocumentSourceKind, Image, ImageMediaType, MimeType};
-use crate::operation::{Block, CallFragment, Completion, Finish, IfMalformed};
+use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 use serde_json::{Map, Value, json};
@@ -298,7 +298,7 @@ impl InteractionsDecoder {
                 {
                     out.edit(index, |item| item["arguments"] = arguments)?;
                 }
-                out.close(index, IfMalformed::Fail)
+                out.finish(index)
             }
             Some(Kind::Output) => {
                 let mut image = None;
@@ -311,10 +311,10 @@ impl InteractionsDecoder {
                         out.discard(index);
                         out.content(image)
                     }
-                    None => out.close(index, IfMalformed::Fail),
+                    None => out.finish(index),
                 }
             }
-            Some(Kind::Thought | Kind::Opaque) => out.close(index, IfMalformed::Fail),
+            Some(Kind::Thought | Kind::Opaque) => out.finish(index),
         }
     }
 }

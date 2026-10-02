@@ -341,9 +341,7 @@ impl HookContext {
     }
 }
 
-pub use crate::run::policy::{
-    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest,
-};
+pub use crate::run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 
 /// Completion-call event.
 ///

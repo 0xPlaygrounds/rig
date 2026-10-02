@@ -154,7 +154,7 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
             .expect("tool_choice: required must produce a call");
         assert_eq!(call.function.name, "ping");
         assert_eq!(
-            call.function.arguments,
+            call.function.arguments_value(),
             json!({}),
             "a zero-argument call must normalize to an empty object"
         );
@@ -334,7 +334,7 @@ async fn two_independent_calls_arrive_in_one_turn() {
         );
         for call in &calls {
             assert!(
-                call.function.arguments.is_object(),
+                call.function.invalid_arguments.is_none(),
                 "each call's arguments must parse: {call:?}"
             );
         }
@@ -691,6 +691,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
             .call(
                 CompletionRequest::new(Message::User {
                     content: vec![UserContent::ToolResult(ToolResult {
+                        is_error: false,
                         call: CallId::from_wire("call_text"),
                         name: rig_core::message::ToolName::new("lookup".to_string())
                             .expect("tool name"),
@@ -751,6 +752,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
             .call(
                 CompletionRequest::new(Message::User {
                     content: vec![UserContent::ToolResult(ToolResult {
+                        is_error: false,
                         call: CallId::from_wire("call_json"),
                         name: rig_core::message::ToolName::new("lookup".to_string())
                             .expect("tool name"),

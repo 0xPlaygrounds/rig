@@ -4157,10 +4157,10 @@ async fn stream_tool_execution_committed_carries_effective_rewritten_args() {
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
             MultiTurnStreamItem::ToolCall { tool_call, .. } => {
-                model_args = Some(tool_call.function.arguments)
+                model_args = Some(tool_call.function.arguments_value())
             }
             MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
-                exec_args = Some(tool_call.function.arguments);
+                exec_args = Some(tool_call.function.arguments_value());
             }
             _ => {}
         }
@@ -4700,26 +4700,6 @@ impl AgentHook for RepairInvalidToHook {
     }
 }
 
-#[derive(Clone)]
-struct CaptureAndRepairInvalidHook {
-    replacement: &'static str,
-    args: Arc<Mutex<Vec<Option<String>>>>,
-}
-
-impl AgentHook for CaptureAndRepairInvalidHook {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        self.args
-            .lock()
-            .expect("invalid args")
-            .push(event.args.clone());
-        Some(InvalidToolCallAction::repair(self.replacement))
-    }
-}
-
 /// An invalid tool call repaired by a hook recovers identically under run()
 /// and stream(): the renamed tool executes and both drivers reach the same
 /// output, tool-result content, and final message history.
@@ -4800,72 +4780,6 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
-}
-
-#[tokio::test]
-async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_stream() {
-    let blocking_args = Arc::new(Mutex::new(Vec::new()));
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc1", "unknown_echo", json!("payload")),
-        MockTurn::text("done"),
-    ]))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(blocking_hook.clone())
-    .add_hook(CaptureAndRepairInvalidHook {
-        replacement: EchoStringArgs::NAME,
-        args: blocking_args.clone(),
-    })
-    .run()
-    .await
-    .expect("blocking scalar repair should succeed");
-
-    let streaming_args = Arc::new(Mutex::new(Vec::new()));
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::tool_call("tc1", "unknown_echo", json!("payload")),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-        vec![
-            MockStreamEvent::text("done"),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-    ]))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(streaming_hook.clone())
-    .add_hook(CaptureAndRepairInvalidHook {
-        replacement: EchoStringArgs::NAME,
-        args: streaming_args.clone(),
-    })
-    .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) =
-            item.expect("streaming scalar repair should succeed")
-        {
-            final_response = Some(response);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    let canonical_args = vec![Some(serde_json::to_string("payload").unwrap())];
-    assert_eq!(*blocking_args.lock().unwrap(), canonical_args);
-    assert_eq!(*streaming_args.lock().unwrap(), canonical_args);
-    assert_eq!(blocking_hook.tool_results(), vec!["payload"]);
-    assert_eq!(streaming_hook.tool_results(), vec!["payload"]);
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_response.output(), "done");
-    assert_eq!(
-        serde_json::to_value(blocking.messages).unwrap(),
-        serde_json::to_value(final_response.messages()).unwrap()
     );
 }
 
@@ -5599,31 +5513,6 @@ async fn tool_target_patch_is_refused_on_stream() {
     check_tool_target_patch_is_refused(true).await;
 }
 
-struct EchoStringArgs;
-
-impl Tool for EchoStringArgs {
-    const NAME: &'static str = "echo_string_args";
-    type Error = rig::tool::ToolExecutionError;
-    type Args = String;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Echo a JSON string argument".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "string"})
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
-        Ok(args)
-    }
-}
-
 #[derive(serde::Deserialize)]
 struct FirstGenerationArgs {
     old: String,
@@ -5835,111 +5724,6 @@ async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
         streaming_hook.shared_events()
     );
     assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-}
-
-#[tokio::test]
-async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
-    let turns = [
-        ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
-            id: "tc-string",
-            name: EchoStringArgs::NAME,
-            args: json!("original"),
-        }]),
-        ScriptedTurn::Text("done"),
-    ];
-
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
-        turns.iter().map(ScriptedTurn::as_blocking_turn),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(blocking_hook.clone())
-    .run()
-    .await
-    .expect("blocking string call should execute");
-
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(streaming_hook.clone())
-    .stream();
-    let mut final_output = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) =
-            item.expect("streaming string call should execute")
-        {
-            final_output = Some(response.output().to_string());
-        }
-    }
-
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_output.as_deref(), Some("done"));
-    assert_eq!(blocking_hook.tool_results(), vec!["original"]);
-    assert_eq!(streaming_hook.tool_results(), vec!["original"]);
-}
-
-#[tokio::test]
-async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
-    let turns = [
-        ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
-            id: "tc-string",
-            name: EchoStringArgs::NAME,
-            args: json!("original"),
-        }]),
-        ScriptedTurn::Text("done"),
-    ];
-    let replacement = json!("sanitized");
-
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
-        turns.iter().map(ScriptedTurn::as_blocking_turn),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(blocking_hook.clone())
-    .add_hook(RewriteToolArgsHook(replacement.clone()))
-    .run()
-    .await
-    .expect("blocking string rewrite should execute");
-
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(streaming_hook.clone())
-    .add_hook(RewriteToolArgsHook(replacement))
-    .stream();
-    let mut final_output = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) =
-            item.expect("streaming string rewrite should execute")
-        {
-            final_output = Some(response.output().to_string());
-        }
-    }
-
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_output.as_deref(), Some("done"));
-    assert_eq!(blocking_hook.tool_results(), vec!["sanitized"]);
-    assert_eq!(streaming_hook.tool_results(), vec!["sanitized"]);
 }
 
 #[tokio::test]

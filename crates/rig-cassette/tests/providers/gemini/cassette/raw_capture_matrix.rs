@@ -189,7 +189,7 @@ fn tool_functions(choice: &[AssistantContent]) -> Vec<(String, Value)> {
         .filter_map(|content| match content {
             AssistantContent::ToolCall(call) => Some((
                 call.function.name.to_string(),
-                call.function.arguments.clone(),
+                call.function.arguments_value(),
             )),
             _ => None,
         })
@@ -398,7 +398,7 @@ async fn raw_exposes_forced_function_call() {
         .expect("the normalized choice carries the forced tool call");
     assert_eq!(call.function.name, Adder::NAME);
     assert_eq!(
-        call.function.arguments,
+        call.function.arguments_value(),
         serde_json::json!({ "x": 2, "y": 3 })
     );
 

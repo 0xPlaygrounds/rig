@@ -21,7 +21,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, CallId, ImageMediaType, ToolName};
-use rig_core::operation::{Block, Completion, IfMalformed};
+use rig_core::operation::{Block, Completion};
 use rig_core::wire::{Flow, Out, WireEvent};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -118,7 +118,7 @@ impl StreamState {
     fn stop(&mut self, out: &mut Out<'_, Completion>, index: usize) -> Result<(), ProviderError> {
         self.flush(out, index)?;
         if out.is_open(index) {
-            out.close(index, IfMalformed::Fail)?;
+            out.finish(index)?;
         }
         Ok(())
     }

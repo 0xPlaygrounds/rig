@@ -3,7 +3,7 @@ use super::super::response::PromptError;
 use super::super::{AgentRun, AgentRunStep};
 use super::*;
 use rig_core::completion::{CompletionResponse, Usage};
-use rig_core::message::{Reasoning, ToolResultContent, UserContent};
+use rig_core::message::{Reasoning, ToolFunction, ToolResultContent, UserContent};
 use rig_core::streaming::Transcript;
 use serde_json::json;
 
@@ -56,7 +56,7 @@ fn call(part: u32, call: &ToolCall) -> Vec<serde_json::Value> {
         event(json!({
             "event": "arguments",
             "part": part,
-            "json": call.function.arguments.to_string(),
+            "json": call.function.arguments_value().to_string(),
         })),
         event(json!({
             "event": "end",
@@ -688,7 +688,7 @@ fn streamed_invalid_tool_call_repair_releases_the_renamed_call() {
         panic!("expected the repaired call, got {events:?}");
     };
     assert_eq!(call.function.name, "add");
-    assert_eq!(call.function.arguments, json!({"x": 1}));
+    assert_eq!(call.function.arguments_value(), json!({"x": 1}));
     assert_eq!(call.id, CallId::from_wire("tc_1"));
 }
 

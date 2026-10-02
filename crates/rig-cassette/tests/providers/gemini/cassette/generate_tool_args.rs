@@ -182,7 +182,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                             AssistantContent::ToolCall(tool_call)
                                 if tool_call.function.name == PlanTrip::NAME =>
                             {
-                                Some(tool_call.function.arguments.clone())
+                                Some(tool_call.function.arguments_value())
                             }
                             _ => None,
                         })
@@ -224,7 +224,7 @@ async fn nested_arguments_streaming() {
                 .iter()
                 .find(|tool_call| tool_call.function.name == PlanTrip::NAME)
                 .expect("stream should emit the plan_trip tool call");
-            assert_expected_plan_trip_arguments(&tool_call.function.arguments);
+            assert_expected_plan_trip_arguments(&tool_call.function.arguments_value());
         },
     )
     .await;

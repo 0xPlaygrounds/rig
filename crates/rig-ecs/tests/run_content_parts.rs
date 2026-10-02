@@ -59,6 +59,7 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
                 additional_params: Some(serde_json::json!({"document_metadata": true})),
             }),
             UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: CallId::from_wire("provider-call-1"),
                 name: rig_core::message::ToolName::new("read").expect("tool name"),
                 content: vec![
@@ -233,6 +234,7 @@ fn leaf_children_and_nested_results_are_rejected_even_when_removed() {
     for nested_result in [false, true] {
         let (mut world, utterance) = world(MessageParts::User {
             content: vec![UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: CallId::from_wire("call"),
                 name: rig_core::message::ToolName::new("tool").expect("tool name"),
                 content: vec![ToolResultContent::text("child")],

@@ -215,7 +215,7 @@ fn test_tool_call_response_conversion() {
             // Vertex issues no call ids: rig issues one.
             assert!(id.is_local());
             assert_eq!(function.name, "add");
-            assert_eq!(function.arguments, args);
+            assert_eq!(function.arguments_value(), args);
         }
         _ => panic!("Expected ToolCall"),
     }
@@ -433,7 +433,7 @@ fn multiple_missing_call_ids_are_distinct() {
     );
     assert!(calls.iter().all(|call| call.id.provider().is_none()));
     for (i, call) in calls.iter().enumerate() {
-        assert_eq!(call.function.arguments, serde_json::json!({"n":i}));
+        assert_eq!(call.function.arguments_value(), serde_json::json!({"n":i}));
     }
 }
 

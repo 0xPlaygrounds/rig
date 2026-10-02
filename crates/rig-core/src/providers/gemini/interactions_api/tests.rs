@@ -43,10 +43,10 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
     use message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
 
     let call = |call_id: &str, name: &str| {
-        let function = ToolFunction {
-            name: crate::message::ToolName::new(name.to_owned()).expect("tool name"),
-            arguments: json!({}),
-        };
+        let function = ToolFunction::new(
+            crate::message::ToolName::new(name.to_owned()).expect("tool name"),
+            json!({}),
+        );
         Message::Assistant(message::AssistantMessage::new(vec![
             AssistantContent::ToolCall(ToolCall::from_wire(call_id, function)),
         ]))
@@ -127,6 +127,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
     // when one exists, else the id rig issued.
     let call = message::CallId::from_wire("");
     let content = message::UserContent::ToolResult(message::ToolResult {
+        is_error: false,
         call: call.clone(),
         name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
         content: vec![message::ToolResultContent::text("ok")],
@@ -143,6 +144,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
 #[test]
 fn test_tool_result_preserves_text_and_json_types() {
     let content = message::UserContent::ToolResult(message::ToolResult {
+        is_error: false,
         call: crate::message::CallId::from_wire("call-123"),
         name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
         content: vec![
@@ -207,6 +209,7 @@ fn test_tool_result_text_and_json_singletons_remain_scalar() {
 
     for (tool_content, expected) in cases {
         let content = message::UserContent::ToolResult(message::ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire("call-123"),
             name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
             content: vec![tool_content],
@@ -238,6 +241,7 @@ fn test_tool_result_rich_singletons_use_tagged_content() {
 
     for (tool_content, expected) in cases {
         let content = message::UserContent::ToolResult(message::ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire("call-123"),
             name: crate::message::ToolName::new("get_weather".to_string()).expect("tool name"),
             content: vec![tool_content],
@@ -255,6 +259,7 @@ fn test_tool_result_rich_singletons_use_tagged_content() {
 #[test]
 fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     let tool_result = message::UserContent::ToolResult(message::ToolResult {
+        is_error: false,
         call: crate::message::CallId::from_wire("call-image"),
         name: crate::message::ToolName::new("render".to_string()).expect("tool name"),
         content: vec![
@@ -1081,7 +1086,10 @@ fn an_edited_block_is_rebuilt() {
         panic!("an assistant turn");
     };
     if let Some(message::AssistantContent::ToolCall(call)) = turn.content.get_mut(1) {
-        call.function.arguments = json!({"x": 8, "y": 11});
+        call.function.arguments = json!({"x": 8, "y": 11})
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
     }
     let steps = encoded_steps(
         &interactions_wire(),

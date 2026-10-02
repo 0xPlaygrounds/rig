@@ -38,6 +38,7 @@ fn history(text: &str) -> Vec<MessageParts> {
         ])),
         MessageParts::User {
             content: vec![UserContent::ToolResult(rig_core::message::ToolResult {
+                is_error: false,
                 call: rig_core::message::CallId::from_wire("c1"),
                 name: rig_core::message::ToolName::new("probe".to_owned()).expect("tool name"),
                 content: vec![

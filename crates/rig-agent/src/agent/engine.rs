@@ -17,7 +17,7 @@ use rig_core::{
     completion::ModelRef,
     effect::{EffectId, EffectKind, Outcome},
     error::{ErrorKind, ErrorReport},
-    message::{AssistantContent, Message, ToolCall, UserContent},
+    message::{AssistantContent, Message, ToolCall, ToolFunction, UserContent},
     telemetry::SpanCombinator,
     wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync},
 };
@@ -38,7 +38,10 @@ use super::{
     },
     run::{
         response::{MemoryAppend, PromptResponse, finalize_output_tool_choice},
-        transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
+        transcript::{
+            assistant_text_from_choice, is_empty_assistant_turn, tool_result_message,
+            tool_result_output,
+        },
     },
     runner::AgentRunner,
     streaming::MultiTurnStreamItem,
@@ -47,7 +50,6 @@ use super::{
 use crate::run::UnhandledInvalidToolCall;
 use crate::{
     completion::PromptError,
-    json_utils,
     streaming::{Item, StreamEvent},
     tool::{ToolCatalog, ToolResult},
 };
@@ -800,10 +802,9 @@ impl TurnSource for StreamingTurnSource {
             let mut held: Vec<StreamEvent> = Vec::new();
 
             'turn: while let Some(item) = stream.next().await {
-                // A stream error ends the reply. Unparsable tool-call input
-                // still takes the same recovery seam as an unknown tool name.
-                // At most one event per item forwards the item itself, so moving
-                // it out of the slot avoids cloning every streamed fragment.
+                // A stream error ends the reply. At most one event per item
+                // forwards the item itself, so moving it out of the slot
+                // avoids cloning every streamed fragment.
                 let (mut item_slot, mut events, ended): (
                     Option<Item<StreamEvent>>,
                     VecDeque<StreamedTurnEvent>,
@@ -816,15 +817,10 @@ impl TurnSource for StreamingTurnSource {
                             return;
                         }
                     },
-                    Err(err) => match ErrorReport::from(&err).detail {
-                        Some(rig_core::error::ErrorDetail::MalformedToolInput(detail)) => {
-                            (None, assembler.surface_malformed_input(&detail).into(), true)
-                        }
-                        _ => {
-                            yield Err(err.into());
-                            return;
-                        }
-                    },
+                    Err(err) => {
+                        yield Err(err.into());
+                        return;
+                    }
                 };
                 while let Some(event) = events.pop_front() {
                     match event {
@@ -1471,7 +1467,23 @@ pub(crate) async fn run_single_tool(
     let tool_context = &runner.tool_context;
     let record_content = runner.config.record_telemetry_content;
     let tool_name = tool_call.function.name.as_str();
-    let args = json_utils::serialize_json_value(&tool_call.function.arguments);
+    // Arguments the model sent that are not a JSON object never reach the
+    // tool: the model reads why, and calls again.
+    if let Some(raw) = &tool_call.function.invalid_arguments {
+        let content = tool_result_message(
+            tool_call.id.clone(),
+            tool_call.function.name.clone(),
+            format!(
+                "The arguments for tool `{tool_name}` are not a JSON object: {raw}. \
+                 Call the tool again with a JSON object as its arguments."
+            ),
+        );
+        return Ok(ToolCallOutcome {
+            content,
+            execution: ToolExecution::Skipped,
+        });
+    }
+    let args = tool_call.function.arguments_value().to_string();
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
@@ -1525,8 +1537,8 @@ pub(crate) async fn run_single_tool(
         ToolExecution::Skipped
     } else {
         let mut effective_tool_call = tool_call.clone();
-        effective_tool_call.function.arguments = serde_json::from_str(&effective_args)
-            .unwrap_or_else(|_| serde_json::Value::String(effective_args.clone()));
+        effective_tool_call.function =
+            ToolFunction::parse(tool_call.function.name.clone(), &effective_args);
         ToolExecution::Executed(effective_tool_call)
     };
     // Outcome metadata describes the execution itself, while result content
@@ -1536,11 +1548,7 @@ pub(crate) async fn run_single_tool(
     if record_content {
         tool_span.record("gen_ai.tool.call.result", exec.output().render());
     }
-    let content = tool_result_output(
-        tool_call.id.clone(),
-        tool_call.function.name.clone(),
-        exec.output().clone(),
-    );
+    let content = tool_result_output(tool_call.id.clone(), tool_call.function.name.clone(), &exec);
     Ok(ToolCallOutcome { content, execution })
 }
 

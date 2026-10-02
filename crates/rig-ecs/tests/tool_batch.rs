@@ -771,27 +771,27 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
     for generated_invalid in [false, true] {
         let generated = ToolCall::new(
             CallId::from_wire(""),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "multiply"
                 } else {
                     "peer_add"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x": 2, "y": 3}),
-            },
+                serde_json::json!({"x": 2, "y": 3}),
+            ),
         );
         let explicit = ToolCall::from_wire(
             generated.id.wire(),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "peer_add"
                 } else {
                     "multiply"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x": 4, "y": 5}),
-            },
+                serde_json::json!({"x": 4, "y": 5}),
+            ),
         );
         let original = [generated, explicit];
         let (mut app, agent, _, requests) = tooling(vec![
@@ -942,27 +942,27 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
     for generated_invalid in [false, true] {
         let generated = ToolCall::new(
             CallId::from_wire(""),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "multiply"
                 } else {
                     "add"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x":2,"y":3}),
-            },
+                serde_json::json!({"x":2,"y":3}),
+            ),
         );
         let explicit = ToolCall::from_wire(
             generated.id.wire(),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "add"
                 } else {
                     "multiply"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x":4,"y":5}),
-            },
+                serde_json::json!({"x":4,"y":5}),
+            ),
         );
         let calls = [generated, explicit];
         let (mut app, agent, _, requests) = tooling(vec![

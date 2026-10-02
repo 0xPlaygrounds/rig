@@ -70,7 +70,7 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
                 _ => None,
             });
             let tool_call = tool_call.expect("completion should include the ping tool call");
-            assert_eq!(tool_call.function.arguments, json!({}));
+            assert_eq!(tool_call.function.arguments_value(), json!({}));
             assert!(response.usage.input_tokens.is_some_and(|n| n > 0), "usage should have input tokens");
             assert!(
                 response.usage.output_tokens.is_some_and(|n| n > 0),
@@ -99,7 +99,7 @@ async fn stream_tool_call_completed_response_without_output() {
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream item should be ok") {
                     Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) if tool_call.function.name == "ping" => {
-                        assert_eq!(tool_call.function.arguments, json!({}));
+                        assert_eq!(tool_call.function.arguments_value(), json!({}));
                         saw_ping_tool_call = true;
                     }
                     _ => {}

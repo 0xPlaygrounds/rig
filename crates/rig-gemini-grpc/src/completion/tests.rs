@@ -285,14 +285,15 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     let call = |wire_id: &str, name: &str| {
         message::Message::from(vec![AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
-            ToolFunction {
-                name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-                arguments: serde_json::json!({}),
-            },
+            ToolFunction::new(
+                rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
+                serde_json::json!({}),
+            ),
         ))])
     };
     let result = |wire_id: &str, name: &str| message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: rig_core::message::CallId::from_wire(wire_id),
             name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
             content: vec![ToolResultContent::text("out")],
@@ -385,6 +386,7 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
     );
 
     let error = encode(vec![UserContent::ToolResult(ToolResult {
+        is_error: false,
         call: rig_core::message::CallId::from_wire("call_1"),
         name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
         content: vec![ToolResultContent::Image(Image {

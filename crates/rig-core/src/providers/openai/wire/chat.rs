@@ -12,7 +12,7 @@ use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::observe::ObservedError;
-use crate::operation::{Block, CallFragment, Completion, IfMalformed};
+use crate::operation::{Block, CallFragment, Completion};
 use crate::providers::internal::openai_chat_completions_compatible::{
     map_native_finish_reason, map_openai_finish_reason, provider_error_envelope,
 };
@@ -1116,7 +1116,7 @@ impl ChatDecoder {
             if incoming.evicts(id.unwrap_or_default(), name.unwrap_or_default()) {
                 // The wire reused this call's index: the call it held is
                 // delivered even when its arguments never parse.
-                self.close_call(index, IfMalformed::EmptyObject, out)?;
+                self.close_call(index, false, out)?;
             }
         }
         let at = *self.open_calls.entry(index).or_insert_with(|| {
@@ -1150,7 +1150,7 @@ impl ChatDecoder {
         {
             // A probe: the call closes if its input parses, and stays open
             // for more fragments otherwise.
-            self.close_call(index, IfMalformed::KeepOpen, out)?;
+            self.close_call(index, true, out)?;
         }
         Ok(())
     }
@@ -1160,18 +1160,24 @@ impl ChatDecoder {
         self.calls.get(*self.open_calls.get(&index)?)?.as_ref()
     }
 
-    /// Close the call at wire `index` with the call as its native.
+    /// Finish the call at wire `index` with the call as its native; with
+    /// `probe`, only when its arguments are already a complete object.
     fn close_call(
         &mut self,
         index: usize,
-        if_malformed: IfMalformed,
+        probe: bool,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         if let Some(call) = self.open_call(index).cloned() {
             out.edit(index, |item| *item = call)?;
         }
-        out.close(index, if_malformed)?;
-        if !out.is_open(index) {
+        let closed = if probe {
+            out.close_if_complete(index)?
+        } else {
+            out.finish(index)?;
+            true
+        };
+        if closed {
             self.open_calls.remove(&index);
         }
         Ok(())
@@ -1187,49 +1193,25 @@ impl ChatDecoder {
         }
     }
 
-    /// Close every open call. A call the output-token budget cut short is
-    /// dropped; any other call whose arguments do not parse fails the reply,
-    /// and so does one whose arguments the provider said were complete.
+    /// Close every open call. Arguments the output-token budget cut short
+    /// keep what they state; a call of a kind rig does not model (a `custom`
+    /// tool call) is kept as it came.
     fn close_calls(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        let cut_short = matches!(self.final_finish_reason, Some(FinishReason::Length));
         let open: Vec<usize> = self.open_calls.keys().copied().collect();
         for index in open {
-            let arguments = self
-                .open_call(index)
-                .and_then(|call| call.pointer("/function/arguments"))
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default();
-            let named = self
-                .open_call(index)
-                .and_then(|call| call.pointer("/function/name"))
+            let call = self.open_call(index).cloned().unwrap_or_default();
+            let named = call
+                .pointer("/function/name")
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|name| !name.is_empty());
-            // A cut before the first argument token leaves no call at all.
-            if cut_short
-                && (!named
-                    || arguments.trim().is_empty()
-                    || crate::json_utils::parse_tool_arguments(arguments).is_err())
-            {
-                tracing::debug!("dropping a streamed tool call cut off before it completed");
-                self.drop_call(index, out);
-                continue;
-            }
-            if !named {
-                // A call of a kind rig does not model (a `custom` tool call)
-                // is kept as it came; a function call without a name fails.
-                let call = self.open_call(index).cloned().unwrap_or_default();
-                let kind = call.get("type").and_then(serde_json::Value::as_str);
-                if kind.is_none_or(|kind| kind == "function") {
-                    return Err(ProviderError::Response(format!(
-                        "tool call without a name: {call}"
-                    )));
-                }
+            let kind = call.get("type").and_then(serde_json::Value::as_str);
+            if !named && kind.is_some_and(|kind| kind != "function") {
                 self.drop_call(index, out);
                 let at = out.fresh_index();
                 out.whole(at, Block::Opaque { replay: true }, call, "")?;
                 continue;
             }
-            self.close_call(index, IfMalformed::Fail, out)?;
+            self.close_call(index, false, out)?;
         }
         Ok(())
     }
@@ -1344,7 +1326,7 @@ impl ChatDecoder {
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect();
             out.edit(index, |item| *item = serde_json::Value::Object(fields))?;
-            out.close(index, IfMalformed::Fail)?;
+            out.finish(index)?;
         }
         let calls: Vec<_> = self.calls.drain(..).flatten().collect();
         if !calls.is_empty() {

@@ -259,10 +259,7 @@ pub fn tool_result_part(
             (result, status)
         }
     };
-    Ok((
-        tool_result_output(id, name, result.output().clone()),
-        status,
-    ))
+    Ok((tool_result_output(id, name, &result), status))
 }
 
 /// Return `None` if text fits the limit; otherwise retain head and tail totaling

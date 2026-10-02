@@ -325,6 +325,7 @@ fn close(
                 call: call.id,
                 name: call.function.name,
                 content: vec![ToolResultContent::text(NO_RESULT_PROVIDED)],
+                is_error: true,
             })
         })
         .collect();

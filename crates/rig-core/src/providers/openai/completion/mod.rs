@@ -1021,7 +1021,7 @@ impl From<message::ToolCall> for ToolCall {
             r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name.into(),
-                arguments: tool_call.function.arguments,
+                arguments: serde_json::Value::Object(tool_call.function.arguments),
             },
         }
     }

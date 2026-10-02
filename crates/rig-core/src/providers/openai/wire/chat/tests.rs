@@ -152,7 +152,7 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
         );
     }
     assert_eq!(call.function.name, "ping");
-    assert_eq!(call.function.arguments, serde_json::json!({}));
+    assert_eq!(call.function.arguments_value(), serde_json::json!({}));
     assert_eq!(buffered.finish_reason(), Some(FinishReason::ToolCalls));
     assert_eq!(buffered.usage.output_tokens, Some(10));
 }
@@ -688,16 +688,12 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
 }
 
 /// A tool call the output-token budget cut mid-arguments must not take the
-/// turn down with it — the defect [#2359](https://github.com/0xPlaygrounds/rig/pull/2359)
-/// fixed, and the one the `Chat` wire's strict argument decode reintroduced.
-///
-/// The body carries two calls under `finish_reason: "length"`: one complete,
-/// one whose argument string stops inside a JSON string. Only the cut one is
-/// unusable, and everything else — the good call, the text beside it, the
-/// usage the caller is billed for, the id, the finish reason — is output the
-/// provider genuinely delivered.
+/// turn down with it (#2359). The body carries two calls under
+/// `finish_reason: "length"`: one complete, one whose argument string stops
+/// inside a JSON string. The cut one keeps what its arguments state, with
+/// their text, and everything else the provider delivered survives.
 #[tokio::test]
-async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
+async fn a_tool_call_cut_mid_arguments_keeps_what_it_states() {
     const BODY: &str = concat!(
         r#"{"id":"chatcmpl-cut","object":"chat.completion","model":"gpt-4.1-nano","#,
         r#""choices":[{"index":0,"finish_reason":"length","message":{"role":"assistant","#,
@@ -725,20 +721,24 @@ async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
             _ => None,
         })
         .collect();
-    let [call] = calls.as_slice() else {
-        panic!(
-            "exactly the complete call survives — a half-parsed one must never reach \
-             the caller: {:?}",
-            folded.choice
-        );
+    let [call, cut] = calls.as_slice() else {
+        panic!("both calls survive: {:?}", folded.choice);
     };
+    assert_eq!(
+        cut.function.arguments_value(),
+        serde_json::json!({"note": "The"})
+    );
+    assert_eq!(
+        cut.function.invalid_arguments.as_deref(),
+        Some(r#"{"note": "The"#)
+    );
     assert_eq!(
         call.id.provider().map(|provider| provider.as_str()),
         Some("call_whole")
     );
     assert_eq!(call.function.name, "record");
     assert_eq!(
-        call.function.arguments,
+        call.function.arguments_value(),
         serde_json::json!({"note": "first"})
     );
 
@@ -756,13 +756,10 @@ async fn a_tool_call_cut_mid_arguments_drops_only_itself() {
     assert_eq!(folded.finish_reason(), Some(FinishReason::Length));
 }
 
-/// The tolerance is scoped to the budget, not to bad JSON in general.
-///
-/// A `tool_calls` finish reason is the provider claiming it finished the
-/// call; malformed arguments there are its own defect, and silently rewriting
-/// the turn as though the call had never been returned would hide it.
+/// Malformed arguments on a completed tool turn never fail the reply: the
+/// call is kept with its raw text, and the agent answers it with an error.
 #[tokio::test]
-async fn malformed_arguments_on_a_completed_tool_turn_stay_a_decode_error() {
+async fn malformed_arguments_on_a_completed_tool_turn_keep_their_text() {
     const BODY: &str = concat!(
         r#"{"id":"chatcmpl-bad","object":"chat.completion","model":"gpt-4.1-nano","#,
         r#""choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","#,
@@ -772,16 +769,18 @@ async fn malformed_arguments_on_a_completed_tool_turn_stay_a_decode_error() {
         r#""usage":{"prompt_tokens":165,"completion_tokens":20,"total_tokens":185}}"#,
     );
 
-    let error = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
+    let response = crate::driver::Model::new(wire(), RecordingHttpClient::new(BODY))
         .call(prompt("Record a note."))
         .await
-        .expect_err("a completed tool-call turn with malformed arguments is a defect");
-    assert!(
-        matches!(
-            error,
-            ProviderError::Json(_) | ProviderError::MalformedToolInput(_)
-        ),
-        "the malformed payload must stay loud rather than be dropped: {error:?}"
+        .expect("a malformed call does not fail the reply");
+    let call = response.tool_calls().next().expect("the call is kept");
+    assert_eq!(
+        call.function.arguments_value(),
+        serde_json::json!({"note": "The"})
+    );
+    assert_eq!(
+        call.function.invalid_arguments.as_deref(),
+        Some(r#"{"note": "The"#)
     );
 }
 
@@ -818,7 +817,7 @@ async fn valid_arguments_survive_a_length_truncated_turn() {
         Some("call_odd")
     );
     assert_eq!(
-        call.function.arguments,
+        call.function.arguments_value(),
         serde_json::json!({"unexpected": 1})
     );
     assert_eq!(folded.finish_reason(), Some(FinishReason::Length));
@@ -1463,9 +1462,9 @@ fn groq_replays_its_streamed_message_without_the_channel() {
     );
 }
 
-/// A streamed function call that never gets a name fails the reply, a call
-/// of a kind rig does not model is kept as it came, and content that is not
-/// text fails too.
+/// A streamed function call that never gets a name is dropped, since
+/// nothing can answer it; a call of a kind rig does not model is kept as it
+/// came, and content that is not text fails the reply.
 #[test]
 fn malformed_and_unknown_calls_are_never_dropped_silently() {
     use crate::wire::Mode;
@@ -1476,7 +1475,9 @@ fn malformed_and_unknown_calls_are_never_dropped_silently() {
                 "function": {"arguments": "{}"}}]}),
         Some("tool_calls"),
     )];
-    assert!(crate::test_utils::history::decode(&wire, Mode::Streaming, nameless).is_err());
+    let response = crate::test_utils::history::decode(&wire, Mode::Streaming, nameless)
+        .expect("a nameless call does not fail the reply");
+    assert!(response.choice.is_empty(), "{:?}", response.choice);
 
     let custom = vec![delta_chunk(
         serde_json::json!({"tool_calls": [{"index": 0, "id": "call_1", "type": "custom",

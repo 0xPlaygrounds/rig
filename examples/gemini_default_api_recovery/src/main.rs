@@ -260,7 +260,7 @@ async fn consume_workspace_like_stream(
                     .tool_calls
                     .push(tool_call.function.name.clone().into());
                 let execution: JavaScriptProgram =
-                    serde_json::from_value(tool_call.function.arguments.clone())
+                    serde_json::from_value(tool_call.function.arguments_value())
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }

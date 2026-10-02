@@ -240,7 +240,9 @@ fn tool_result_output_preserves_multimodal_tool_output() {
     let user_content = tool_result_output(
         rig_core::message::CallId::from_wire("call_1"),
         rig_core::message::ToolName::new("render_reference_image").expect("tool name"),
-        crate::tool::ToolOutput::content(content).expect("fixture content is non-empty"),
+        &crate::tool::ToolResult::success(
+            crate::tool::ToolOutput::content(content).expect("fixture content is non-empty"),
+        ),
     );
 
     let tool_result = match user_content {
@@ -2701,7 +2703,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 AssistantContent::ToolCall(tool_call)
                     if tool_call.id == rig_core::message::CallId::from_wire("tool_call_1")
                         && tool_call.function.name == "default_api"
-                        && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
+                        && tool_call.function.arguments_value() == serde_json::json!({"x": 2, "y": 3})
             ))
     ));
     assert!(matches!(
@@ -2946,7 +2948,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 AssistantContent::ToolCall(tool_call)
                     if tool_call.id == rig_core::message::CallId::from_wire("tool_call_1")
                         && tool_call.function.name == "default_api"
-                        && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
+                        && tool_call.function.arguments_value() == serde_json::json!({"x": 2, "y": 3})
             ))
     ));
     assert!(matches!(
@@ -3752,7 +3754,10 @@ async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
         panic!("one call: {ended:?}");
     };
     assert_eq!(call.function.name, "add");
-    assert_eq!(call.function.arguments, serde_json::json!({"x": 1, "y": 2}));
+    assert_eq!(
+        call.function.arguments_value(),
+        serde_json::json!({"x": 1, "y": 2})
+    );
     assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
     assert_eq!(
         hook.observed(),

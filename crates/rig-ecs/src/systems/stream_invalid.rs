@@ -156,7 +156,7 @@ pub fn discover_streamed_invalid_calls(
                 InvalidCall {
                     id: call.id.clone(),
                     name: name.to_owned(),
-                    arguments: call.function.arguments.clone(),
+                    arguments: call.function.arguments_value(),
                     prefix,
                     stream_offset: Some(index),
                 },

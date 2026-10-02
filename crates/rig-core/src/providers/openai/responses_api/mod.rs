@@ -392,7 +392,7 @@ fn input_items(
                             "type": "function_call",
                             "call_id": call.id.wire(),
                             "name": call.function.name.as_str(),
-                            "arguments": call.function.arguments.to_string(),
+                            "arguments": call.function.arguments_value().to_string(),
                         })));
                     }
                     crate::message::AssistantContent::Reasoning(_) => {}

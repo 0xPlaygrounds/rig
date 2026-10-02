@@ -310,11 +310,14 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     let normalized_call = normalized_calls[0];
     assert_eq!(normalized_call.function.name, TOOL_NAME);
     assert!(
-        normalized_call.function.arguments.is_object(),
+        normalized_call.function.invalid_arguments.is_none(),
         "the normalized call carries arguments as an object: {}",
-        normalized_call.function.arguments
+        normalized_call.function.arguments_value()
     );
-    assert_eq!(normalized_call.function.arguments, recorded_arguments);
+    assert_eq!(
+        normalized_call.function.arguments_value(),
+        recorded_arguments
+    );
     assert_matches_recorded_token(
         normalized_call
             .id

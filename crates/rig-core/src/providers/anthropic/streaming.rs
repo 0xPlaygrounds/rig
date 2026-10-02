@@ -7,7 +7,7 @@ use super::completion::{
 use crate::error::ProviderError;
 use crate::message::{CallId, ToolName};
 use crate::observe::ObservedError;
-use crate::operation::{Block, Completion, Finish, IfMalformed};
+use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
@@ -281,7 +281,7 @@ impl MessagesDecoder {
         }
         // `content_block_stop` promises a complete block: malformed input
         // fails the reply.
-        out.close(index, IfMalformed::Fail)
+        out.finish(index)
     }
 
     fn metadata(&mut self, message: &CompletionResponse) {

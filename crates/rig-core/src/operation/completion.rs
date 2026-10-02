@@ -20,10 +20,10 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
-use crate::error::{MalformedToolInput, ProviderError};
+use crate::error::ProviderError;
 use crate::message::{
-    Api, AssistantContent, AssistantMessage, CallId, LocalCallId, Opaque, Origin, Reasoning, Text,
-    ToolCall, ToolFunction, ToolName,
+    Api, AssistantContent, AssistantMessage, CallId, Image, LocalCallId, Opaque, Origin, Reasoning,
+    Text, ToolCall, ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -134,6 +134,9 @@ pub enum Block {
         /// Whether the provider withheld the text.
         redacted: bool,
     },
+    /// An image, its canonical fields stated at open; fragments append
+    /// base64 data.
+    Image(Image),
     /// A tool call with its id and name.
     Call {
         /// The call's id.
@@ -166,6 +169,9 @@ pub struct Turn {
     /// The index of the block a boundary-less wire is streaming.
     run: Option<usize>,
     next_auto: usize,
+    /// The wire index of each position, for a wire whose choice follows
+    /// its indices ([`Out::order_by_index`]).
+    by_index: Option<BTreeMap<usize, usize>>,
     // The fold.
     choice: Vec<Option<AssistantContent>>,
     /// The text the consumer took of parts still open, by position.
@@ -182,8 +188,19 @@ struct Draft {
     body: Body,
 }
 
+/// Whether a closing item keeps its provider item as the block's native.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Closing {
+    /// The provider stated the item complete: it becomes the native.
+    Complete,
+    /// The item never completed: the block has no native, and an opaque
+    /// item does not replay.
+    Incomplete,
+}
+
 enum Body {
     Text(String),
+    Image(Image),
     Reasoning {
         text: String,
         redacted: bool,
@@ -203,6 +220,7 @@ impl Body {
         match self {
             Self::Text(_) => PartKind::Text,
             Self::Reasoning { .. } => PartKind::Reasoning,
+            Self::Image(_) => PartKind::Image,
             Self::Call { .. } => PartKind::ToolCall,
             Self::Opaque { .. } => PartKind::Opaque,
         }
@@ -245,36 +263,29 @@ impl Arguments {
         }
     }
 
-    /// The arguments as JSON: the announced ones when no fragment arrived.
-    fn parse(&self) -> Result<serde_json::Value, serde_json::Error> {
+    /// The call to `name` these arguments make: the announced ones when no
+    /// fragment arrived, else the text, read by [`ToolFunction::parse`].
+    fn function(&self, name: ToolName) -> ToolFunction {
         if self.text.is_empty()
             && let Some(announced) = &self.announced
         {
-            return Ok(announced.clone());
+            return ToolFunction::new(name, announced.clone());
         }
-        let arguments = crate::json_utils::parse_tool_arguments(&self.text)?;
+        let mut function = ToolFunction::parse(name, &self.text);
         if self.overflowed {
-            return Err(serde::de::Error::custom(
-                "tool-call input exceeded the accumulation bound",
-            ));
+            function.invalid_arguments = Some(self.text.clone());
         }
-        Ok(arguments)
+        function
     }
-}
 
-/// What to do with a call whose arguments do not parse when it closes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IfMalformed {
-    /// Fail the reply with [`ProviderError::MalformedToolInput`]: the
-    /// provider said the call was complete.
-    Fail,
-    /// Deliver the call with `{}` arguments: the provider superseded it
-    /// mid-assembly.
-    EmptyObject,
-    /// Drop it: its input never fully arrived.
-    Drop,
-    /// Leave it open: the close was a probe, and more input may follow.
-    KeepOpen,
+    /// Whether the text is a complete JSON object.
+    fn complete(&self) -> bool {
+        !self.overflowed
+            && matches!(
+                crate::json_utils::parse_tool_arguments(&self.text),
+                Ok(serde_json::Value::Object(_))
+            )
+    }
 }
 
 /// What one fragment of a buffered tool call carries.
@@ -310,6 +321,7 @@ impl Turn {
             native: None,
             run: None,
             next_auto: AUTO_INDEX,
+            by_index: None,
             choice: Vec::new(),
             open_text: BTreeMap::new(),
         }
@@ -352,6 +364,7 @@ impl Turn {
         }
         let body = match block {
             Block::Text => Body::Text(String::new()),
+            Block::Image(image) => Body::Image(image),
             Block::Reasoning { redacted } => Body::Reasoning {
                 text: String::new(),
                 redacted,
@@ -369,6 +382,9 @@ impl Turn {
 
     fn insert(&mut self, index: usize, body: Body, item: serde_json::Value) {
         let part = self.next();
+        if let Some(by_index) = &mut self.by_index {
+            by_index.insert(part.index(), index);
+        }
         let started = false;
         self.open.insert(
             index,
@@ -412,6 +428,15 @@ impl Turn {
                 arguments.push(fragment, name);
                 return Ok(());
             }
+            Body::Image(image) => {
+                if let crate::message::DocumentSourceKind::Base64(data) = &mut image.data {
+                    data.push_str(fragment);
+                    return Ok(());
+                }
+                return Err(ProviderError::Response(format!(
+                    "the reply wrote data to the image item {index}, which holds no base64 data"
+                )));
+            }
             Body::Opaque { .. } => {
                 return Err(ProviderError::Response(format!(
                     "the reply wrote text to the opaque item {index}"
@@ -432,14 +457,13 @@ impl Turn {
         Ok(())
     }
 
-    /// Close the item at `index`: its block becomes visible with the
-    /// provider's item as its native, or `if_malformed` decides for a call
-    /// whose arguments do not parse.
-    pub(crate) fn close_item(
+    /// Close the item at `index`: its block becomes visible, holding the
+    /// provider's item as its native when `closing` says it is complete.
+    fn close_item(
         &mut self,
         items: &mut Items,
         index: usize,
-        if_malformed: IfMalformed,
+        closing: Closing,
     ) -> Result<(), ProviderError> {
         let draft = self.open.remove(&index).ok_or_else(|| not_open(index))?;
         if self.run == Some(index) {
@@ -451,6 +475,10 @@ impl Turn {
             item,
             body,
         } = draft;
+        let item = match (closing, &body) {
+            (Closing::Complete, _) | (Closing::Incomplete, Body::Opaque { .. }) => item,
+            (Closing::Incomplete, _) => serde_json::Value::Null,
+        };
         let content = match body {
             Body::Text(text) => {
                 if text.is_empty() && item.is_null() {
@@ -469,60 +497,30 @@ impl Turn {
                 };
                 with_item(AssistantContent::Reasoning(reasoning), item)
             }
-            Body::Opaque { replay } => AssistantContent::Opaque(Opaque { item, replay }),
+            Body::Image(image) => with_item(AssistantContent::Image(image), item),
+            Body::Opaque { replay } => AssistantContent::Opaque(Opaque {
+                item,
+                replay: replay && closing == Closing::Complete,
+            }),
             Body::Call {
                 id,
                 name,
                 arguments,
             } => {
                 let Ok(name) = ToolName::new(name) else {
-                    // A call that names no tool is malformed.
-                    return match if_malformed {
-                        IfMalformed::Fail => Err(ProviderError::Response(
-                            "the provider closed a tool call without a name".to_owned(),
-                        )),
-                        IfMalformed::EmptyObject | IfMalformed::Drop | IfMalformed::KeepOpen => {
-                            Ok(())
-                        }
-                    };
+                    tracing::warn!(
+                        index,
+                        "the provider closed a tool call without a name; nothing can answer it"
+                    );
+                    return Ok(());
                 };
-                let parsed = match (arguments.parse(), if_malformed) {
-                    (Ok(parsed), _) => parsed,
-                    (Err(_), IfMalformed::KeepOpen) => {
-                        self.open.insert(
-                            index,
-                            Draft {
-                                part,
-                                started,
-                                item,
-                                body: Body::Call {
-                                    id,
-                                    name: name.into(),
-                                    arguments,
-                                },
-                            },
-                        );
-                        return Ok(());
-                    }
-                    (Err(_), IfMalformed::EmptyObject) => {
-                        serde_json::Value::Object(Default::default())
-                    }
-                    (Err(_), IfMalformed::Drop) => return Ok(()),
-                    (Err(error), IfMalformed::Fail) => {
-                        return Err(ProviderError::MalformedToolInput(MalformedToolInput {
-                            name: name.into(),
-                            id: id.unwrap_or_else(|| CallId::Local(LocalCallId::new())),
-                            raw: arguments.text,
-                            error: error.to_string(),
-                        }));
-                    }
-                };
+                let function = arguments.function(name);
                 let id = id.unwrap_or_else(|| CallId::Local(LocalCallId::new()));
                 if !self.call_ids.insert(id.clone()) {
                     return Err(ProviderError::DuplicateCallId(id));
                 }
                 let json = if arguments.text.is_empty() {
-                    parsed.to_string()
+                    serde_json::Value::Object(function.arguments.clone()).to_string()
                 } else {
                     arguments.text
                 };
@@ -534,7 +532,7 @@ impl Turn {
                     },
                 );
                 emit(items, StreamEvent::Arguments { part, json });
-                let call = ToolCall::new(id, ToolFunction::new(name, parsed));
+                let call = ToolCall::new(id, function);
                 let content = with_item(AssistantContent::ToolCall(call), item);
                 emit(items, StreamEvent::End { part, content });
                 return Ok(());
@@ -551,6 +549,23 @@ impl Turn {
         }
         emit(items, StreamEvent::End { part, content });
         Ok(())
+    }
+
+    /// Close the call at `index` when its arguments are a complete object;
+    /// otherwise leave it open. Whether it closed.
+    fn close_if_complete(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+    ) -> Result<bool, ProviderError> {
+        let complete = match &self.draft(index)?.body {
+            Body::Call { arguments, .. } => arguments.complete(),
+            Body::Text(_) | Body::Image(_) | Body::Reasoning { .. } | Body::Opaque { .. } => true,
+        };
+        if complete {
+            self.close_item(items, index, Closing::Complete)?;
+        }
+        Ok(complete)
     }
 
     pub(crate) fn run_item(
@@ -590,7 +605,7 @@ impl Turn {
 
     pub(crate) fn end_run(&mut self, items: &mut Items) -> Result<(), ProviderError> {
         match self.run.take() {
-            Some(index) => self.close_item(items, index, IfMalformed::Drop),
+            Some(index) => self.close_item(items, index, Closing::Complete),
             None => Ok(()),
         }
     }
@@ -633,7 +648,7 @@ impl Turn {
                 items,
                 StreamEvent::Arguments {
                     part,
-                    json: call.function.arguments.to_string(),
+                    json: call.function.arguments_value().to_string(),
                 },
             ),
             _ => {}
@@ -642,9 +657,10 @@ impl Turn {
         Ok(())
     }
 
-    /// Close every item still open, in the order they opened. A call closes
-    /// when it has an id and its arguments parse; one whose input never
-    /// completed is dropped.
+    /// Close every item still open when the provider ends the reply, in the
+    /// order they opened. The block a boundary-less wire was streaming is
+    /// complete; any other item was never stated complete, so its block has
+    /// no native. Calls keep what their arguments state.
     pub(crate) fn close_open(&mut self, items: &mut Items) {
         let mut open: Vec<(Part, usize)> = self
             .open
@@ -653,24 +669,35 @@ impl Turn {
             .collect();
         open.sort();
         for (_, index) in open {
-            if matches!(
-                self.open.get(&index),
-                Some(Draft {
-                    body: Body::Call { id: None, .. },
-                    ..
-                })
-            ) {
-                self.open.remove(&index);
-                continue;
+            let closing = if self.run == Some(index) {
+                Closing::Complete
+            } else {
+                Closing::Incomplete
+            };
+            if let Err(error) = self.close_item(items, index, closing) {
+                items.push_back(Err(error));
             }
-            let _ = self.close_item(items, index, IfMalformed::Drop);
         }
     }
 
-    /// The parts taken so far, in their position; a part that has not
-    /// ended is not among them.
+    /// The parts taken so far, in their position (in wire-index order on a
+    /// wire that asked for it); a part that has not ended is not among them.
     pub fn snapshot(&self) -> Vec<AssistantContent> {
-        self.choice.iter().flatten().cloned().collect()
+        let mut parts: Vec<(usize, &AssistantContent)> = self
+            .choice
+            .iter()
+            .enumerate()
+            .filter_map(|(position, part)| Some((position, part.as_ref()?)))
+            .collect();
+        if let Some(by_index) = &self.by_index {
+            parts.sort_by_key(|(position, _)| {
+                (
+                    by_index.get(position).copied().unwrap_or(usize::MAX),
+                    *position,
+                )
+            });
+        }
+        parts.into_iter().map(|(_, part)| part.clone()).collect()
     }
 
     /// Who the reply is from.
@@ -862,20 +889,52 @@ impl<'id> Out<'id, Completion> {
         Ok(())
     }
 
-    /// Close the item at `index`: its block becomes visible. Arguments that
-    /// do not parse are handled by `if_malformed`; a reused provider call
-    /// id is [`ProviderError::DuplicateCallId`]. Empty text and reasoning
-    /// with no provider item are dropped, and so is a call with no name. A
-    /// call that never got an id gets one rig issues.
-    pub fn close(&mut self, index: usize, if_malformed: IfMalformed) -> Result<(), ProviderError> {
+    /// Close the item at `index` the provider never stated complete: its
+    /// block becomes visible with no native, and an opaque item is kept but
+    /// does not replay. Empty text and reasoning are dropped, and so is a
+    /// call with no name. A call's arguments are read by
+    /// [`ToolFunction::parse`], so malformed ones never fail the reply; a
+    /// call that never got an id gets one rig issues, and a reused provider
+    /// call id is [`ProviderError::DuplicateCallId`].
+    pub fn close(&mut self, index: usize) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        fold.close_item(items, index, if_malformed)
+        fold.close_item(items, index, Closing::Incomplete)
     }
 
-    /// Open and close the item at `index` in one step: a whole block a
-    /// provider states in one piece, `text` its text, reasoning or argument
-    /// JSON.
+    /// Close the item at `index` the provider stated complete: [`Self::close`],
+    /// with the item as assembled becoming the block's native.
+    pub fn finish(&mut self, index: usize) -> Result<(), ProviderError> {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.close_item(items, index, Closing::Complete)
+    }
+
+    /// [`Self::finish`] with `item`, the whole item as the provider states
+    /// it at its end, in place of the one assembled.
+    pub fn finish_with(
+        &mut self,
+        index: usize,
+        item: serde_json::Value,
+    ) -> Result<(), ProviderError> {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.draft(index)?.item = item;
+        fold.close_item(items, index, Closing::Complete)
+    }
+
+    /// Finish the call at `index` only when its arguments are already a
+    /// complete JSON object, for a wire that may or may not send more
+    /// fragments. Whether it closed.
+    pub fn close_if_complete(&mut self, index: usize) -> Result<bool, ProviderError> {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.close_if_complete(items, index)
+    }
+
+    /// Open and finish the item at `index` in one step: a whole block a
+    /// provider states in one piece, `item` its provider item and `text`
+    /// its text, reasoning, argument JSON or base64 image data.
     pub fn whole(
         &mut self,
         index: usize,
@@ -885,7 +944,18 @@ impl<'id> Out<'id, Completion> {
     ) -> Result<(), ProviderError> {
         self.open(index, block, item)?;
         self.push(index, text)?;
-        self.close(index, IfMalformed::Fail)
+        self.finish(index)
+    }
+
+    /// Order the response's blocks by wire index rather than by when they
+    /// opened, for a wire whose indices are the provider's item order and
+    /// whose end may state items it never streamed. Call it before the
+    /// first item opens; blocks with no wire index go last.
+    pub fn order_by_index(&mut self) {
+        let mut shared = self.lock();
+        if shared.fold.by_index.is_none() {
+            shared.fold.by_index = Some(BTreeMap::new());
+        }
     }
 
     /// Buffer one fragment of the tool call the provider streams under

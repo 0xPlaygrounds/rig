@@ -2278,7 +2278,7 @@ pub fn golden_answer(log: &EffectLog) -> String {
                         if call.function.name.starts_with("final_result") =>
                     {
                         Some(rig_core::json_utils::serialize_json_value(
-                            &call.function.arguments,
+                            &call.function.arguments_value(),
                         ))
                     }
                     _ => None,
@@ -2873,7 +2873,7 @@ pub async fn call_tools(
             return Ok(tool_result_output(
                 call.tool_call.id.clone(),
                 name,
-                ToolOutput::text(DENY_REASON),
+                &rig_core::tool::ToolResult::skipped(DENY_REASON),
             ));
         }
         let (_, handle) = tools
@@ -2883,7 +2883,7 @@ pub async fn call_tools(
         let args = if is_add && hooks.contains(&Hook::PatchAddArgs) {
             PATCHED_ARGS.to_owned()
         } else {
-            call.tool_call.function.arguments.to_string()
+            call.tool_call.function.arguments_value().to_string()
         };
         // The bus's answer, mapped as the engine maps it: a layer's denial
         // is the skipped result the model sees, a cancel stops the run, any
@@ -2897,21 +2897,17 @@ pub async fn call_tools(
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
                     name,
-                    rig_core::tool::ToolResult::skipped(report.message)
-                        .output()
-                        .clone(),
+                    &rig_core::tool::ToolResult::skipped(report.message),
                 ));
             }
             Err(report) => {
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
                     name,
-                    rig_core::tool::ToolResult::failed(
+                    &rig_core::tool::ToolResult::failed(
                         rig_core::tool::ToolExecutionError::other(report.message.clone())
                             .with_model_feedback(report.message),
-                    )
-                    .output()
-                    .clone(),
+                    ),
                 ));
             }
         };
@@ -2932,12 +2928,12 @@ pub async fn call_tools(
             // run stops.
             return Err(CANCEL_ADD_OUTCOME);
         }
-        let mut output = answer.result.output().clone();
+        let mut result = answer.result;
         if is_add && hooks.contains(&Hook::ReplaceAddResult) {
-            output = ToolOutput::text(REPLACED_RESULT);
+            result = result.with_output(ToolOutput::text(REPLACED_RESULT));
         }
         // The engine's own shaping of a result (`rig_core::transcript`).
-        Ok(tool_result_output(call.tool_call.id.clone(), name, output))
+        Ok(tool_result_output(call.tool_call.id.clone(), name, &result))
     };
     futures::stream::iter(calls)
         .map(dispatch)

@@ -743,7 +743,7 @@ fn parallel_tool_calls_end_in_a_tool_use_finish() {
     assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
     let calls: Vec<_> = response
         .tool_calls()
-        .map(|call| (call.id.to_string(), call.function.arguments.clone()))
+        .map(|call| (call.id.to_string(), call.function.arguments_value()))
         .collect();
     assert_eq!(
         calls,
@@ -795,9 +795,9 @@ fn calls_missing_a_block_stop_end_with_the_reply() {
     assert_eq!(ids, ["call_a", "call_b"]);
 }
 
-/// A call whose input was cut off mid-JSON never arrives.
+/// A call whose input was cut off mid-JSON keeps what its input states.
 #[test]
-fn a_call_cut_off_mid_input_is_dropped() {
+fn a_call_cut_off_mid_input_keeps_what_it_states() {
     let response = streamed(vec![
         tool_start(0, "call_a", "get_weather"),
         tool_input(0, "{\"location\":\"Par"),
@@ -805,21 +805,28 @@ fn a_call_cut_off_mid_input_is_dropped() {
         metadata(3, 1),
     ])
     .expect("decodes");
-    assert_eq!(response.tool_calls().count(), 0);
+    let calls: Vec<_> = response
+        .tool_calls()
+        .map(|call| call.function.arguments_value())
+        .collect();
+    assert_eq!(calls, [serde_json::json!({"location": "Par"})]);
     assert_eq!(response.finish_reason(), Some(FinishReason::Length));
 }
 
-/// Input the provider said was complete must parse.
+/// Input that is not JSON never fails the reply: the call keeps its text.
 #[test]
-fn malformed_tool_json_fails_the_reply() {
-    let error = streamed(ended(vec![
+fn malformed_tool_json_is_kept_with_its_text() {
+    let response = streamed(ended(vec![
         tool_start(0, "call_a", "get_weather"),
         tool_input(0, "{\"location\": not-json"),
         stop(0),
     ]))
-    .expect_err("malformed input fails");
-    assert_eq!(error.kind(), rig_core::error::ErrorKind::Response);
-    assert!(error.to_string().contains("get_weather"), "{error}");
+    .expect("malformed input does not fail the reply");
+    let call = response.tool_calls().next().expect("the call is kept");
+    assert_eq!(
+        call.function.invalid_arguments.as_deref(),
+        Some("{\"location\": not-json")
+    );
 }
 
 /// Images and tool results arrive in pieces and become one block at their

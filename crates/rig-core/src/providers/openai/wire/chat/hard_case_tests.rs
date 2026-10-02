@@ -115,7 +115,7 @@ async fn a_late_id_and_a_late_name_still_open_the_call() {
     };
     assert_eq!(provider_id(call), Some("call_late"));
     assert_eq!(call.function.name, "add");
-    assert_eq!(call.function.arguments, json!({"a": 1, "b": 2}));
+    assert_eq!(call.function.arguments_value(), json!({"a": 1, "b": 2}));
 }
 
 #[tokio::test]
@@ -136,8 +136,8 @@ async fn id_less_calls_get_distinct_rig_issued_ids() {
     };
     assert!(first.id.is_local() && second.id.is_local());
     assert_ne!(first.id, second.id, "each id-less call has its own id");
-    assert_eq!(first.function.arguments, json!({"a": 1}));
-    assert_eq!(second.function.arguments, json!({"a": 2}));
+    assert_eq!(first.function.arguments_value(), json!({"a": 1}));
+    assert_eq!(second.function.arguments_value(), json!({"a": 2}));
 }
 
 #[tokio::test]
@@ -174,7 +174,7 @@ async fn interleaved_indices_assemble_their_own_arguments() {
     let response = response.expect("the reply folds");
     let assembled: Vec<_> = calls(&response)
         .into_iter()
-        .map(|call| (provider_id(call), call.function.arguments.clone()))
+        .map(|call| (provider_id(call), call.function.arguments_value()))
         .collect();
     assert_eq!(
         assembled,
@@ -201,7 +201,7 @@ async fn a_whole_call_in_one_chunk_folds_on_llamacpp() {
         panic!("one call: {:?}", response.choice);
     };
     assert_eq!(provider_id(call), Some("call_whole"));
-    assert_eq!(call.function.arguments, json!({"a": 1, "b": 2}));
+    assert_eq!(call.function.arguments_value(), json!({"a": 1, "b": 2}));
 }
 
 #[tokio::test]
@@ -223,11 +223,11 @@ async fn null_placeholders_are_no_fragments() {
     let [call] = calls(&response)[..] else {
         panic!("one call: {:?}", response.choice);
     };
-    assert_eq!(call.function.arguments, json!({"a": 1}));
+    assert_eq!(call.function.arguments_value(), json!({"a": 1}));
 }
 
 #[tokio::test]
-async fn a_length_cut_inside_a_call_drops_only_that_call() {
+async fn a_length_cut_inside_a_call_keeps_what_it_states() {
     let (_, response) = stream(
         &OPENAI,
         &[
@@ -246,7 +246,10 @@ async fn a_length_cut_inside_a_call_drops_only_that_call() {
     .await;
     let response = response.expect("the reply folds");
     let ids: Vec<_> = calls(&response).into_iter().map(provider_id).collect();
-    assert_eq!(ids, [Some("call_whole")]);
+    assert_eq!(ids, [Some("call_whole"), Some("call_cut")]);
+    let cut = calls(&response)[1].function.clone();
+    assert_eq!(cut.arguments_value(), json!({"note": "The"}));
+    assert_eq!(cut.invalid_arguments.as_deref(), Some(r#"{"note":"The"#));
     assert!(
         response
             .choice

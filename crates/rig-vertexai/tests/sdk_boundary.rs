@@ -175,7 +175,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     };
     assert_eq!(call.function.name, "lookup_weather");
     assert_eq!(
-        call.function.arguments,
+        call.function.arguments_value(),
         serde_json::json!({"city": "Lisbon"})
     );
 }

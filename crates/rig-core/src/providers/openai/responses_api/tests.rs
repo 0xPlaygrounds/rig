@@ -84,6 +84,7 @@ fn weather_tool_definition() -> completion::ToolDefinition {
 fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
     message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire("call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
             content: vec![content],
@@ -157,6 +158,7 @@ fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
 
     let input = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire("call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
             content,
@@ -246,6 +248,7 @@ fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
     ];
     let input = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire("call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
             content,
@@ -2323,7 +2326,10 @@ fn an_edited_block_is_rebuilt_and_edited_reasoning_is_not_sent() {
             message::AssistantContent::Reasoning(reasoning) => reasoning.text.push('!'),
             message::AssistantContent::Text(text) => text.text.push('!'),
             message::AssistantContent::ToolCall(call) => {
-                call.function.arguments = json!({"q": "edited"});
+                call.function.arguments = json!({"q": "edited"})
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default();
             }
             message::AssistantContent::Image(_) | message::AssistantContent::Opaque(_) => {}
         }

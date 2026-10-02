@@ -739,10 +739,10 @@ fn test_reasoning_signature_is_emitted_in_gemini_part() {
 fn test_message_conversion_tool_call() {
     let tool_call = message::ToolCall::from_wire(
         "call-123",
-        message::ToolFunction {
-            name: crate::message::ToolName::new("test_function".to_string()).expect("tool name"),
-            arguments: json!({"arg1": "value1"}),
-        },
+        message::ToolFunction::new(
+            crate::message::ToolName::new("test_function".to_string()).expect("tool name"),
+            json!({"arg1": "value1"}),
+        ),
     );
 
     let msg = message::Message::from(tool_call);
@@ -1023,7 +1023,7 @@ fn test_tool_result_with_image_content() {
     };
 
     // Create a tool result with both text and image content
-    let tool_result = ToolResult {
+    let tool_result = ToolResult { is_error: false,
         call: crate::message::CallId::from_wire("call-123"),
         name: crate::message::ToolName::new("test_tool".to_string()).expect("tool name"),
         content: vec![ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),ToolResultContent::Image(Image {
@@ -1086,6 +1086,7 @@ fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("ordered_tool".to_string()).expect("tool name"),
             content: vec![
@@ -1127,6 +1128,7 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("ordered_tool".to_string()).expect("tool name"),
             content: vec![
@@ -1161,6 +1163,7 @@ fn mixed_url_image_and_response_value_is_rejected() {
 
     let tool_result = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("url_tool".to_string()).expect("tool name"),
             content: vec![
@@ -1197,6 +1200,7 @@ fn tool_result_rejects_unsupported_image_media_types() {
     ] {
         let message = message::Message::User {
             content: vec![message::UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: crate::message::CallId::from_wire(""),
                 name: crate::message::ToolName::new("image_tool".to_string()).expect("tool name"),
                 content: vec![ToolResultContent::image_base64(
@@ -1224,6 +1228,7 @@ fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: crate::message::CallId::from_wire(""),
             name: crate::message::ToolName::new("collision_tool".to_string()).expect("tool name"),
             content: vec![
@@ -1281,6 +1286,7 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
     for (tool_content, expected) in cases {
         let message = message::Message::User {
             content: vec![message::UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: crate::message::CallId::from_wire(""),
                 name: crate::message::ToolName::new("test_tool".to_string()).expect("tool name"),
                 content: vec![tool_content],
@@ -1306,14 +1312,15 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
     // An id-less wire: rig issued the id (Gemini REST issued none).
     let call = ToolCall::new(
         CallId::from_wire(""),
-        ToolFunction {
-            name: crate::message::ToolName::new("lookup".to_string()).expect("tool name"),
-            arguments: json!({}),
-        },
+        ToolFunction::new(
+            crate::message::ToolName::new("lookup".to_string()).expect("tool name"),
+            json!({}),
+        ),
     );
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
+            is_error: false,
             call: call.id.clone(),
             name: call.function.name.clone(),
             content: vec![ToolResultContent::text("out")],
@@ -1444,6 +1451,7 @@ fn test_tool_result_with_url_image_is_rejected() {
     };
 
     let tool_result = ToolResult {
+        is_error: false,
         call: crate::message::CallId::from_wire(""),
         name: crate::message::ToolName::new("screenshot_tool".to_string()).expect("tool name"),
         content: vec![ToolResultContent::Image(Image {

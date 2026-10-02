@@ -152,7 +152,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
     let call = call.expect("the call ended");
     assert_eq!(call.id.to_string(), "call_1");
     assert_eq!(call.function.name, "calculator");
-    assert_eq!(call.function.arguments, serde_json::json!({"x": 1}));
+    assert_eq!(call.function.arguments_value(), serde_json::json!({"x": 1}));
     let response = stream.finish().await.expect("the reply ended");
     assert_eq!(response.usage.total_tokens, Some(7));
     assert_eq!(model.request_count(), 1);

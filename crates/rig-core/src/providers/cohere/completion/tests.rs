@@ -165,7 +165,10 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
         Some("subtract_1")
     );
     assert_eq!(call.function.name, "subtract");
-    assert_eq!(call.function.arguments, serde_json::json!({"x": 5, "y": 2}));
+    assert_eq!(
+        call.function.arguments_value(),
+        serde_json::json!({"x": 5, "y": 2})
+    );
 }
 
 #[test]

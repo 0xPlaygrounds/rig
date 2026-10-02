@@ -66,7 +66,7 @@ fn tool_calls(choice: &[AssistantContent]) -> Vec<(String, serde_json::Value)> {
         .filter_map(|part| match part {
             AssistantContent::ToolCall(call) => Some((
                 call.function.name.to_string(),
-                call.function.arguments.clone(),
+                call.function.arguments_value(),
             )),
             _ => None,
         })

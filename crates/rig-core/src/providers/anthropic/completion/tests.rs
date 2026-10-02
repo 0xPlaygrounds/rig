@@ -3174,33 +3174,6 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
     assert!(stream.next().await.is_none());
 }
 
-#[test]
-fn coerce_tool_input_normalizes_non_object_arguments() {
-    use serde_json::json;
-
-    // Object passes through untouched.
-    assert_eq!(
-        coerce_tool_input(json!({"q": "rust", "n": 3})),
-        json!({"q": "rust", "n": 3})
-    );
-
-    // A JSON string that encodes an object is parsed into that object.
-    assert_eq!(
-        coerce_tool_input(json!("{\"q\":\"rust\"}")),
-        json!({"q": "rust"})
-    );
-
-    // A non-JSON string, a JSON string that is not an object, null, arrays,
-    // numbers and bools all collapse to an empty object: the only shape the
-    // Anthropic API accepts for tool_use.input.
-    assert_eq!(coerce_tool_input(json!("not json")), json!({}));
-    assert_eq!(coerce_tool_input(json!("[1,2,3]")), json!({}));
-    assert_eq!(coerce_tool_input(json!(null)), json!({}));
-    assert_eq!(coerce_tool_input(json!([1, 2, 3])), json!({}));
-    assert_eq!(coerce_tool_input(json!(42)), json!({}));
-    assert_eq!(coerce_tool_input(json!(true)), json!({}));
-}
-
 // Regression test for issue #1429: PR #1431 added the `DocumentSource::Url`
 // wire variant and response-side parsing, but the request-side
 // `UserContent::Document` conversion still rejected URL-backed PDFs even

@@ -57,8 +57,7 @@
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
-    MultiTurnStreamItem,
+    AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
 };
 use rig::completion::PromptError;
 use rig::providers::anthropic;
@@ -132,14 +131,6 @@ impl AgentHook for OnMalformed {
         _ctx: &HookContext,
         context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        assert!(
-            matches!(
-                context.reason,
-                InvalidToolCallReason::MalformedArguments { .. }
-            ),
-            "hook must be consulted for malformed arguments, got {:?}",
-            context.reason
-        );
         assert!(
             context
                 .args

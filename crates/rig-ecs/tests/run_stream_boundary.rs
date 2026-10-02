@@ -203,7 +203,7 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     assert!(calls[0].id.is_local());
     assert_eq!(calls[0].function.name, "wrong");
     assert_eq!(
-        calls[0].function.arguments,
+        calls[0].function.arguments_value(),
         serde_json::json!({"x": 2, "y": 3}),
         "the retained prefix holds the call as it ended"
     );
@@ -304,7 +304,7 @@ fn early_repair_survives_the_calls_completion() {
     assert!(calls[0].id.is_local(), "the writer issues the call's id");
     assert_eq!(calls[0].function.name, "add");
     assert_eq!(
-        calls[0].function.arguments,
+        calls[0].function.arguments_value(),
         serde_json::json!({"x": 2, "y": 3})
     );
 }

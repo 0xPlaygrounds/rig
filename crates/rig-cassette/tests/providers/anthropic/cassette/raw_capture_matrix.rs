@@ -668,7 +668,7 @@ async fn raw_exposes_tool_use_block() {
         .expect("the normalized choice carries the tool call");
     assert_eq!(normalized_call.function.name, "get_weather");
     assert_eq!(
-        normalized_call.function.arguments,
+        normalized_call.function.arguments_value(),
         recorded_tool_use["input"]
     );
     assert_eq!(

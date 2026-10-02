@@ -66,7 +66,19 @@ fn result(id: &str, text: &str) -> UserContent {
         call: CallId::from_wire(id),
         name: ToolName::new("lookup").expect("a name"),
         content: vec![ToolResultContent::text(text)],
+        is_error: false,
     })
+}
+
+/// The error result `adapt` gives a call nothing answered.
+fn no_result(id: &str) -> UserContent {
+    match result(id, NO_RESULT_PROVIDED) {
+        UserContent::ToolResult(result) => UserContent::ToolResult(ToolResult {
+            is_error: true,
+            ..result
+        }),
+        other => other,
+    }
 }
 
 fn signed_reasoning() -> AssistantContent {
@@ -239,7 +251,7 @@ fn unanswered_calls_get_an_error_result_before_the_next_message() {
         Message::User {
             content: vec![
                 result("c2", "two"),
-                result("c1", NO_RESULT_PROVIDED),
+                no_result("c1"),
                 UserContent::text("and then"),
             ],
         }
@@ -247,13 +259,13 @@ fn unanswered_calls_get_an_error_result_before_the_next_message() {
     assert_eq!(
         adapted[4],
         Message::User {
-            content: vec![result("c3", NO_RESULT_PROVIDED)],
+            content: vec![no_result("c3")],
         }
     );
     assert_eq!(
         adapted.last(),
         Some(&Message::User {
-            content: vec![result("c4", NO_RESULT_PROVIDED)],
+            content: vec![no_result("c4")],
         })
     );
     assert_eq!(adapted.len(), 8);
@@ -308,6 +320,7 @@ fn images_become_placeholders_for_a_model_without_image_input() {
             UserContent::Image(image()),
             UserContent::text("look"),
             UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: CallId::from_wire("c1"),
                 name: ToolName::new("lookup").expect("a name"),
                 content: vec![
@@ -330,6 +343,7 @@ fn images_become_placeholders_for_a_model_without_image_input() {
                 UserContent::text(USER_IMAGE_OMITTED),
                 UserContent::text("look"),
                 UserContent::ToolResult(ToolResult {
+                    is_error: false,
                     call: CallId::from_wire("c1"),
                     name: ToolName::new("lookup").expect("a name"),
                     content: vec![ToolResultContent::text(TOOL_IMAGE_OMITTED)],

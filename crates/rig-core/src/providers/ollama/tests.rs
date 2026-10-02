@@ -1166,15 +1166,16 @@ fn daemon_issued_call_ids_replay_and_minted_handles_do_not() {
         RigMessage::Assistant(crate::message::AssistantMessage::new(vec![
             AssistantContent::ToolCall(ToolCall::new(
                 id,
-                ToolFunction {
-                    name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
-                    arguments: serde_json::json!({"x": 1}),
-                },
+                ToolFunction::new(
+                    crate::message::ToolName::new("add".to_owned()).expect("tool name"),
+                    serde_json::json!({"x": 1}),
+                ),
             )),
         ]))
     };
     let result = |call: CallId| RigMessage::User {
         content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
             call,
             name: crate::message::ToolName::new("add".to_owned()).expect("tool name"),
             content: vec![ToolResultContent::text("2")],

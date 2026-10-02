@@ -772,19 +772,6 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
     }
 }
 
-/// Preserve object arguments or decode an object from a JSON string.
-/// Replace other values with `{}` because Messages requires object tool input.
-fn coerce_tool_input(input: serde_json::Value) -> serde_json::Value {
-    match input {
-        v @ serde_json::Value::Object(_) => v,
-        serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(&s) {
-            Ok(serde_json::Value::Object(m)) => serde_json::Value::Object(m),
-            _ => serde_json::json!({}),
-        },
-        _ => serde_json::json!({}),
-    }
-}
-
 /// One assistant block on the wire, `id` its call's spelling: the
 /// provider's item while it is current, else the block rebuilt from its
 /// canonical fields as pi rebuilds it. `None` for a block with nothing
@@ -824,7 +811,7 @@ fn assistant_content(
         Block::ToolCall(call) => Some(Content::ToolUse {
             id: id.map_or_else(|| call.id.wire().into_owned(), str::to_owned),
             name: call.function.name.into(),
-            input: coerce_tool_input(call.function.arguments),
+            input: serde_json::Value::Object(call.function.arguments),
         }),
         Block::Opaque(opaque) => Some(Content::Native(opaque.item)),
         Block::Image(_) => {

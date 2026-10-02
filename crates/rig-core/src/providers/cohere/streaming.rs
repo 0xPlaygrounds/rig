@@ -8,7 +8,7 @@
 //! ```
 
 use crate::error::ProviderError;
-use crate::operation::{Block, CallFragment, Completion, Finish, IfMalformed};
+use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::cohere::completion::{
     CompletionResponse, FinishReason, Usage, map_finish_reason,
 };
@@ -311,7 +311,7 @@ impl ChatDecoder {
         if out.is_open(writer) {
             let item = self.content.get(index).cloned().unwrap_or_default();
             out.edit(writer, |slot| *slot = item)?;
-            out.close(writer, IfMalformed::Fail)?;
+            out.finish(writer)?;
         }
         Ok(())
     }
@@ -408,7 +408,7 @@ impl ChatDecoder {
             return Ok(());
         }
         out.edit(CALL_INDEX + index, |item| *item = call)?;
-        out.close(CALL_INDEX + index, IfMalformed::Fail)
+        out.finish(CALL_INDEX + index)
     }
 
     /// The unary reply, restated as the events of its message, then the end
@@ -493,7 +493,7 @@ impl ChatDecoder {
                 plan.insert("tool_plan".to_owned(), text.clone());
             }
             out.edit(index, |item| *item = Value::Object(plan))?;
-            out.close(index, IfMalformed::Fail)?;
+            out.finish(index)?;
         }
         for index in self.tool_calls.open() {
             self.close_call(index, &mut out)?;

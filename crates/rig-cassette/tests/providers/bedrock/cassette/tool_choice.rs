@@ -135,7 +135,7 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
                 .find(|tool_call| tool_call.function.name == Adder::NAME)
                 .expect("expected add tool call");
             assert_eq!(
-                add_call.function.arguments,
+                add_call.function.arguments_value(),
                 serde_json::json!({ "x": 20, "y": 22 })
             );
         },
@@ -186,7 +186,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
                 .find(|tool_call| tool_call.function.name == Adder::NAME)
                 .expect("expected add tool call");
             assert_eq!(
-                add_call.function.arguments,
+                add_call.function.arguments_value(),
                 serde_json::json!({ "x": 20, "y": 22 })
             );
         },

@@ -211,6 +211,7 @@ fn test_user_tool_result_message_conversion() {
     // handle, no provider id, and the required executed-tool name that
     // becomes `functionResponse.name`.
     let tool_result = ToolResult {
+        is_error: false,
         call: CallId::from_wire(""),
         name: rig_core::message::ToolName::new("add".to_string()).expect("tool name"),
         content: vec![ToolResultContent::Text(Text::new("8".to_string()))],
@@ -245,6 +246,7 @@ fn structured_tool_result_stays_structured_at_the_vertex_boundary() {
     let value = serde_json::json!({ "answer": 8 });
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("lookup".to_string()).expect("tool name"),
             content: vec![ToolResultContent::json(value.clone())],
@@ -270,6 +272,7 @@ fn image_tool_result_maps_to_native_function_response_part() {
     let raw = vec![0, 1, 2, 255];
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
             content: vec![ToolResultContent::image_base64(
@@ -309,6 +312,7 @@ fn mixed_tool_result_preserves_structured_and_media_order() {
     ];
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
             content,
@@ -374,6 +378,7 @@ fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
     ];
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
             content,
@@ -408,6 +413,7 @@ fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
 fn unsupported_tool_result_image_media_type_is_rejected_locally() {
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire(""),
             name: rig_core::message::ToolName::new("inspect".to_string()).expect("tool name"),
             content: vec![ToolResultContent::image_raw(

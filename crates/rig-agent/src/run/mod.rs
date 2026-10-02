@@ -40,9 +40,7 @@ pub mod policy;
 pub mod response;
 pub mod streamed;
 
-pub use policy::{
-    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest,
-};
+pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::json_utils;
@@ -80,7 +78,6 @@ struct InvalidToolCallDiagnostic<'a> {
     executable_tool_names: &'a BTreeSet<String>,
     allowed_tool_names: &'a BTreeSet<String>,
     history: &'a [Message],
-    reason: &'a InvalidToolCallReason,
 }
 
 impl InvalidToolCallDiagnostic<'_> {
@@ -93,32 +90,14 @@ impl InvalidToolCallDiagnostic<'_> {
         )
     }
 
-    /// Report the rejected call as an unknown tool or malformed-input response error.
+    /// Report the rejected call as an unknown tool.
     fn unknown_current(&self) -> PromptError {
-        match self.reason {
-            InvalidToolCallReason::UnknownTool => {
-                self.unknown(self.tool_call.function.name.to_string())
-            }
-            InvalidToolCallReason::MalformedArguments { error } => {
-                PromptError::Report(malformed_tool_input_report(self.tool_call, error))
-            }
-        }
+        self.unknown(self.tool_call.function.name.to_string())
     }
 
     fn cancelled(&self, reason: String) -> PromptError {
         PromptError::cancelled(self.history.to_vec(), reason)
     }
-}
-
-/// Reconstruct a malformed-input response report from the diagnostic call.
-fn malformed_tool_input_report(tool_call: &ToolCall, error: &str) -> rig_core::error::ErrorReport {
-    rig_core::error::ErrorReport::new(
-        rig_core::error::ErrorKind::Response,
-        format!(
-            "tool call `{}` arrived with malformed JSON input: {error}",
-            tool_call.function.name
-        ),
-    )
 }
 
 enum ValidatedInvalidToolCallAction {
@@ -837,15 +816,12 @@ impl AgentRun {
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.to_string(),
             tool_call_id: Some(tool_call.id.clone()),
-            args: Some(json_utils::serialize_json_value(
-                &tool_call.function.arguments,
-            )),
+            args: Some(tool_call.function.arguments_value().to_string()),
             available_tools: resolving.executable_tool_names.iter().cloned().collect(),
             allowed_tools: resolving.allowed_tool_names.iter().cloned().collect(),
             tool_choice: self.tool_choice.clone(),
             chat_history: self.diagnostic_history(resolving),
             is_streaming: false,
-            reason: InvalidToolCallReason::UnknownTool,
         })
     }
 
@@ -915,7 +891,7 @@ impl AgentRun {
                             )
                         })
                         .count();
-                    let args = tool_call.function.arguments.clone();
+                    let args = tool_call.function.arguments_value();
                     let tool_call_id = tool_call.id.clone();
                     let output = json_utils::serialize_json_value(&args);
 
@@ -1154,22 +1130,13 @@ impl AgentRun {
                     Ok(ValidatedInvalidToolCallAction::Retry { feedback })
                 }
             }
-            InvalidToolCallAction::Repair { tool_name } => match diagnostic.reason {
-                // Repair replaces a *name*; it cannot rewrite argument
-                // bytes, so a repair of malformed input would dispatch a
-                // tool with arguments the model never produced. Fail closed
-                // with the same report `Fail` gives.
-                InvalidToolCallReason::MalformedArguments { .. } => {
-                    Err(diagnostic.unknown_current())
+            InvalidToolCallAction::Repair { tool_name } => {
+                if diagnostic.allowed_tool_names.contains(&tool_name) {
+                    Ok(ValidatedInvalidToolCallAction::Repair { tool_name })
+                } else {
+                    Err(diagnostic.unknown(tool_name))
                 }
-                InvalidToolCallReason::UnknownTool => {
-                    if diagnostic.allowed_tool_names.contains(&tool_name) {
-                        Ok(ValidatedInvalidToolCallAction::Repair { tool_name })
-                    } else {
-                        Err(diagnostic.unknown(tool_name))
-                    }
-                }
-            },
+            }
             InvalidToolCallAction::Stop { reason } => Err(diagnostic.cancelled(reason)),
             InvalidToolCallAction::Skip { reason } => {
                 if matches!(self.tool_choice, Some(ToolChoice::None)) {
@@ -1222,7 +1189,6 @@ impl AgentRun {
                 tool_call: &tool_call,
                 executable_tool_names: &resolving.executable_tool_names,
                 allowed_tool_names: &resolving.allowed_tool_names,
-                reason: &InvalidToolCallReason::UnknownTool,
                 history: &diagnostic_history,
             },
         )?;
@@ -1259,10 +1225,10 @@ impl AgentRun {
                 self.advance_resolution()
             }
             ValidatedInvalidToolCallAction::Skip { reason } => {
-                let user_content = UserContent::tool_result(
+                let user_content = tool_result_message(
                     tool_call.id.clone(),
                     tool_call.function.name.clone(),
-                    vec![ToolResultContent::from(reason)],
+                    reason,
                 );
                 // Keyed by the call's position: `next_index` is exactly the
                 // invalid call's slot in `items`, and later mutations only
@@ -1481,7 +1447,6 @@ impl AgentRun {
             chat_history: self
                 .streamed_diagnostic_history(partial, Some(invalid.tool_call.clone())),
             is_streaming: true,
-            reason: invalid.reason.clone(),
         }
     }
 
@@ -1510,7 +1475,6 @@ impl AgentRun {
                 tool_call: &invalid.tool_call,
                 executable_tool_names: &invalid.executable_tool_names,
                 allowed_tool_names: &invalid.allowed_tool_names,
-                reason: &invalid.reason,
                 history: &diagnostic_history,
             },
         )?;

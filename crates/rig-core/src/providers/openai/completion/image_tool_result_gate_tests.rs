@@ -24,6 +24,7 @@ fn params(
         model: "test-model".to_string(),
         request: crate::completion::CompletionRequest::new(message::Message::User {
             content: vec![message::UserContent::ToolResult(message::ToolResult {
+                is_error: false,
                 call: crate::message::CallId::from_wire("call_1"),
                 name: crate::message::ToolName::new("view_file".to_string()).expect("tool name"),
                 content,

@@ -1857,7 +1857,7 @@ pub fn land_batch(
         let output_call = minted.0.as_deref().and_then(|name| {
             outs.content.iter().find_map(|part| match part {
                 AssistantContent::ToolCall(call) if call.function.name == name => {
-                    Some(call.function.arguments.to_string())
+                    Some(call.function.arguments_value().to_string())
                 }
                 AssistantContent::ToolCall(_)
                 | AssistantContent::Text(_)
@@ -2343,7 +2343,7 @@ pub fn read_turn(
                     InvalidCall {
                         id: call.id.clone(),
                         name: call.function.name.to_string(),
-                        arguments: call.function.arguments.clone(),
+                        arguments: call.function.arguments_value(),
                         prefix: Vec::new(),
                         stream_offset: None,
                     },
@@ -2480,7 +2480,7 @@ pub fn materialise_batch(
                     tool.key.clone(),
                     EffectKind::ToolCall {
                         name: call.function.name.to_string(),
-                        args: call.function.arguments.to_string(),
+                        args: call.function.arguments_value().to_string(),
                     },
                 ),
                 ToolInputs(inputs.clone()),
@@ -2534,7 +2534,7 @@ fn reprompt_for(
     match read.calls().find(|call| call.function.name == name) {
         Some(call) => {
             let missing = schema
-                .map(|schema| missing_required_fields(schema, &call.function.arguments))
+                .map(|schema| missing_required_fields(schema, &call.function.arguments_value()))
                 .unwrap_or_default();
             if missing.is_empty() {
                 return None;
@@ -2646,7 +2646,7 @@ pub fn materialise_answer(
             ));
             continue;
         };
-        let output = call.function.arguments.to_string();
+        let output = call.function.arguments_value().to_string();
         let mut final_content: Vec<_> = read
             .content
             .iter()

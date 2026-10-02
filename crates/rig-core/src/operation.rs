@@ -22,7 +22,7 @@ mod listing;
 mod modality;
 mod verify;
 
-pub use completion::{Block, CallFragment, Completion, Finish, IfMalformed, Turn};
+pub use completion::{Block, CallFragment, Completion, Finish, Turn};
 pub use listing::{ModelListing, ModelPage};
 #[cfg(feature = "audio")]
 pub use modality::AudioGeneration;

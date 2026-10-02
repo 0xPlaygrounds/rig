@@ -11,10 +11,10 @@ fn call(id: CallId) -> Message {
     Message::Assistant(crate::message::AssistantMessage::new(vec![
         AssistantContent::ToolCall(ToolCall::new(
             id,
-            ToolFunction {
-                name: crate::message::ToolName::new("test").expect("tool name"),
-                arguments: serde_json::json!({}),
-            },
+            ToolFunction::new(
+                crate::message::ToolName::new("test").expect("tool name"),
+                serde_json::json!({}),
+            ),
         )),
     ]))
 }
@@ -22,6 +22,7 @@ fn call(id: CallId) -> Message {
 fn result(id: CallId) -> Message {
     Message::User {
         content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: id,
             name: crate::message::ToolName::new("possibly_repaired").expect("tool name"),
             content: vec![crate::message::ToolResultContent::text("")],

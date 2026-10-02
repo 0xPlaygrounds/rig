@@ -18,6 +18,7 @@ fn empty_histories() -> Vec<MessageParts> {
         >::new())),
         MessageParts::User {
             content: vec![UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: CallId::from_wire("call_1"),
                 name: ToolName::new("lookup").expect("tool name"),
                 content: Vec::new(),

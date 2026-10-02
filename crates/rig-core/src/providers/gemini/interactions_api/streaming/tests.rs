@@ -181,7 +181,7 @@ fn announced_arguments_never_concatenate_with_fragments() {
         })
         .collect();
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].function.arguments, json!({"x": 2}));
+    assert_eq!(calls[0].function.arguments_value(), json!({"x": 2}));
     assert_eq!(calls[0].id.provider().map(|id| id.as_str()), Some("fc_1"));
     assert_eq!(
         replayed(&response),
@@ -198,7 +198,7 @@ fn announced_arguments_finalize_a_call_with_no_fragments() {
     let Some(AssistantContent::ToolCall(tool_call)) = response.choice.first() else {
         panic!("one call: {:?}", response.choice);
     };
-    assert_eq!(tool_call.function.arguments, json!({"x": 7}));
+    assert_eq!(tool_call.function.arguments_value(), json!({"x": 7}));
     assert_eq!(replayed(&response), [call]);
 }
 
@@ -219,7 +219,10 @@ fn a_missing_step_stop_does_not_lose_the_call() {
     let Some(AssistantContent::ToolCall(tool_call)) = response.choice.first() else {
         panic!("one call: {:?}", response.choice);
     };
-    assert_eq!(tool_call.function.arguments, json!({"city": "Paris"}));
+    assert_eq!(
+        tool_call.function.arguments_value(),
+        json!({"city": "Paris"})
+    );
 }
 
 /// A resumed stream can join a step after its start: the deltas open the

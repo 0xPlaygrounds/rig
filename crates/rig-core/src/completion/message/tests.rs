@@ -69,10 +69,10 @@ fn a_rig_issued_call_id_round_trips_as_local() {
     // the round trip never turns it into a provider id.
     let call = super::ToolCall::from_wire(
         "",
-        super::ToolFunction {
-            name: super::ToolName::new("add").expect("tool name"),
-            arguments: serde_json::json!({}),
-        },
+        super::ToolFunction::new(
+            super::ToolName::new("add").expect("tool name"),
+            serde_json::json!({}),
+        ),
     );
     assert!(call.id.is_local());
 
@@ -228,4 +228,40 @@ fn media_constructors_name_their_source_encoding() {
         )),
         DocumentSourceKind::string("# Notes")
     );
+}
+
+#[test]
+fn tool_arguments_are_always_an_object() {
+    use super::{ToolFunction, ToolName};
+    use serde_json::json;
+    let name = || ToolName::new("search").expect("tool name");
+    let cases = [
+        (json!({"q": "rust"}), json!({"q": "rust"}), None),
+        (json!("{\"q\":\"rust\"}"), json!({"q": "rust"}), None),
+        (json!("\"{\\\"q\\\":1}\""), json!({"q": 1}), None),
+        (json!(null), json!({}), None),
+        (json!(""), json!({}), None),
+        (json!("not json"), json!({}), Some("not json")),
+        (json!("[1,2,3]"), json!({}), Some("[1,2,3]")),
+        (json!([1, 2, 3]), json!({}), Some("[1,2,3]")),
+        (json!(42), json!({}), Some("42")),
+        (json!(true), json!({}), Some("true")),
+    ];
+    for (given, arguments, invalid) in cases {
+        let function = ToolFunction::new(name(), given.clone());
+        assert_eq!(function.arguments_value(), arguments, "{given}");
+        assert_eq!(function.invalid_arguments.as_deref(), invalid, "{given}");
+    }
+}
+
+#[test]
+fn a_stored_call_with_any_arguments_shape_loads() {
+    let stored = serde_json::json!({"name": "search", "arguments": null});
+    let function: super::ToolFunction =
+        serde_json::from_value(stored).expect("a stored call loads");
+    assert_eq!(function.arguments_value(), serde_json::json!({}));
+    let stored = serde_json::json!({"name": "search", "arguments": "{\"q\":1}"});
+    let function: super::ToolFunction =
+        serde_json::from_value(stored).expect("a stored call loads");
+    assert_eq!(function.arguments_value(), serde_json::json!({"q": 1}));
 }

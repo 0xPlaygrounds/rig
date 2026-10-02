@@ -48,6 +48,9 @@ pub enum ContentPart {
         /// Executed tool name, including hook repairs.
         #[reflect(remote = crate::agent::reflect::ToolNameReflect)]
         name: message::ToolName,
+        /// Whether the tool failed, was refused, or never ran.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        is_error: bool,
     },
     /// Structured JSON under a tool result; never implicitly parsed from text.
     Json(#[reflect(remote = super::reflect::JsonPartReflect)] serde_json::Value),
@@ -283,6 +286,7 @@ fn user(
             ContentPart::ToolResult {
                 call: value.call,
                 name: value.name,
+                is_error: value.is_error,
             }
         }
     };
@@ -457,9 +461,14 @@ fn to_user<'a>(
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        ContentPart::ToolResult { call, name } => UserContent::ToolResult(message::ToolResult {
+        ContentPart::ToolResult {
             call,
             name,
+            is_error,
+        } => UserContent::ToolResult(message::ToolResult {
+            call,
+            name,
+            is_error,
             content: ordered(get, entity)?
                 .into_iter()
                 .map(|child| read_edited_part(get, child, true, edits))

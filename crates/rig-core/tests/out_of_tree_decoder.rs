@@ -11,7 +11,7 @@ use rig_core::completion::{CompletionRequest, FinishReason, ReplayTarget, Usage}
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::message::{Api, AssistantContent};
-use rig_core::operation::{Block, CallFragment, Completion, Finish, IfMalformed};
+use rig_core::operation::{Block, CallFragment, Completion, Finish};
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 
@@ -69,7 +69,7 @@ impl<'id> Decoder<'id, Completion, Frame> for VendorDecoder<'id> {
             Frame::Done => {
                 out.end_run()?;
                 for index in out.open_items() {
-                    out.close(index, IfMalformed::Fail)?;
+                    out.finish(index)?;
                 }
                 return Ok(out.end(Finish {
                     usage: Usage::default(),
@@ -182,7 +182,7 @@ fn calls(choice: &[AssistantContent]) -> Vec<(String, String, serde_json::Value)
             AssistantContent::ToolCall(call) => Some((
                 call.id.to_string(),
                 call.function.name.to_string(),
-                call.function.arguments.clone(),
+                call.function.arguments_value(),
             )),
             _ => None,
         })

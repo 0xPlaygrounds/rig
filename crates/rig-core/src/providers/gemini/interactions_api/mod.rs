@@ -422,7 +422,7 @@ fn assistant_step(block: &message::AssistantContent) -> Result<Value, EncodeErro
         }),
         message::AssistantContent::ToolCall(call) => Step::FunctionCall(FunctionCallContent {
             name: Some(call.function.name.clone().into()),
-            arguments: Some(call.function.arguments.clone()),
+            arguments: Some(call.function.arguments_value()),
             id: Some(call.id.wire().into_owned()),
         }),
         message::AssistantContent::Image(image) => {

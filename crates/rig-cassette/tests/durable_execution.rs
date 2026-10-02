@@ -247,7 +247,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     let name = call.tool_call.function.name.clone();
                     let answer = within(tool.call(
                         name.clone(),
-                        call.tool_call.function.arguments.to_string(),
+                        call.tool_call.function.arguments_value().to_string(),
                         ToolContext::new(),
                     ))
                     .await
@@ -256,7 +256,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
                         name,
-                        answer.result.output().clone(),
+                        &answer.result,
                     ));
                 }
                 run.tool_results(results).expect("tool results");

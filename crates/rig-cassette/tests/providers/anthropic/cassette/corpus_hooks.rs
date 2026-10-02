@@ -172,7 +172,7 @@ async fn patch_tool_args_effect_log_is_the_golden_fixture() {
             .find_map(|message| match message {
                 Message::Assistant(rig::message::AssistantMessage { content, .. }) => {
                     content.iter().find_map(|c| match c {
-                        AssistantContent::ToolCall(call) => Some(call.function.arguments.clone()),
+                        AssistantContent::ToolCall(call) => Some(call.function.arguments_value()),
                         _ => None,
                     })
                 }

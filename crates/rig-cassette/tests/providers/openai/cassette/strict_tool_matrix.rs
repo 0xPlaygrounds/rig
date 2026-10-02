@@ -69,7 +69,7 @@ fn record_fact_arguments(choice: &[AssistantContent]) -> Value {
         .iter()
         .find_map(|content| match content {
             AssistantContent::ToolCall(call) if call.function.name == RECORD_FACT => {
-                Some(call.function.arguments.clone())
+                Some(call.function.arguments_value())
             }
             _ => None,
         })
@@ -171,7 +171,7 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
                 .iter()
                 .find(|call| call.function.name == RECORD_FACT)
                 .expect("stream should complete the record_fact tool call");
-            assert_source_omitted(&call.function.arguments);
+            assert_source_omitted(&call.function.arguments_value());
         },
     )
     .await;

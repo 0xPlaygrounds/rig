@@ -302,7 +302,7 @@ async fn extractor_hook_receives_canonical_response_fields() {
         content.as_slice(),
         [AssistantContent::ToolCall(tool_call)]
             if tool_call.function.name == SUBMIT_TOOL_NAME
-                && tool_call.function.arguments == json!({"name": "John"})
+                && tool_call.function.arguments_value() == json!({"name": "John"})
     ));
 }
 

@@ -378,7 +378,9 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
                         .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
                         .cloned()
                         .collect();
-                    parts.push(AssistantContent::text(call.function.arguments.to_string()));
+                    parts.push(AssistantContent::text(
+                        call.function.arguments_value().to_string(),
+                    ));
                     parts
                 } else {
                     response.choice.clone()

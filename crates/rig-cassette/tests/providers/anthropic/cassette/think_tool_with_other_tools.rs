@@ -260,7 +260,7 @@ fn collect_assistant_tool_calls(messages: &[Message]) -> Vec<(String, serde_json
                 if let AssistantContent::ToolCall(tool_call) = item {
                     tool_calls.push((
                         tool_call.function.name.to_string(),
-                        tool_call.function.arguments.clone(),
+                        tool_call.function.arguments_value(),
                     ));
                 }
             }

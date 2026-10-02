@@ -104,7 +104,7 @@ impl StreamWriter {
         };
         let call = ToolCall::new(
             CallId::Local(LocalCallId::new()),
-            ToolFunction { name, arguments },
+            ToolFunction::new(name, arguments),
         );
         let written = self.turn.end_run(&mut self.items).and_then(|()| {
             self.turn

@@ -83,7 +83,7 @@ pub fn assert_update_contract(updates: &Updates) -> (CompletionResponse, Vec<Del
                 serde_json::from_str::<serde_json::Value>(&text)
                     .ok()
                     .as_ref(),
-                Some(&call.function.arguments),
+                Some(&call.function.arguments_value()),
                 "part {index}'s arguments"
             ),
             _ => assert_eq!(text, finished_text(expected), "part {index}'s fragments"),

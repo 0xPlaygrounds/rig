@@ -100,7 +100,9 @@ pub(crate) fn to_aws(
         AssistantContent::ToolCall(call) => aws_bedrock::ToolUseBlock::builder()
             .tool_use_id(call.id.wire())
             .name(call.function.name)
-            .input(json::to_document(call.function.arguments))
+            .input(json::to_document(serde_json::Value::Object(
+                call.function.arguments,
+            )))
             .build()
             .map(|call| Some(aws_bedrock::ContentBlock::ToolUse(call)))
             .map_err(ProviderError::request),

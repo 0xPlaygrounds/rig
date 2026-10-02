@@ -793,7 +793,7 @@ pub async fn assert_stream_contains_zero_arg_tool_call_named(
         }) = chunk.expect("stream item should be ok")
             && tool_call.function.name == expected_name
         {
-            assert_eq!(tool_call.function.arguments, json!({}));
+            assert_eq!(tool_call.function.arguments_value(), json!({}));
             saw_matching_tool_call = true;
         }
     }
@@ -1616,7 +1616,7 @@ pub fn assert_raw_stream_tool_call_arguments_are_objects(
 
     for tool_call in &observation.tool_calls {
         assert!(
-            tool_call.function.arguments.is_object(),
+            tool_call.function.invalid_arguments.is_none(),
             "tool call `{}` must surface object arguments, got {:?}",
             tool_call.function.name,
             tool_call.function.arguments,

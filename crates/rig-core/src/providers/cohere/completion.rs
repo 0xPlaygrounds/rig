@@ -379,7 +379,7 @@ fn assistant_message(turn: message::AssistantMessage) -> Result<Message, message
                     "type": "function",
                     "function": {
                         "name": call.function.name,
-                        "arguments": call.function.arguments.to_string(),
+                        "arguments": call.function.arguments_value().to_string(),
                     },
                 }));
             }

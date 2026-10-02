@@ -732,7 +732,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                     content,
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.function.name == AlphaSignal::NAME
-                            && tool_call.function.arguments == json!({})
+                            && tool_call.function.arguments_value() == json!({})
                 )),
                 "required tool choice should force lookup_harbor_label"
             );

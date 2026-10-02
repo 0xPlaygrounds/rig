@@ -87,7 +87,10 @@ impl Serve for Scripted {
                             }
                             AssistantContent::ToolCall(call) => {
                                 if writer
-                                    .tool_call(call.function.name, call.function.arguments)
+                                    .tool_call(
+                                        call.function.name.clone(),
+                                        call.function.arguments_value(),
+                                    )
                                     .await
                                     .is_err()
                                 {

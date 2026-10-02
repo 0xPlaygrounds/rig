@@ -264,6 +264,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                 .call(
                     CompletionRequest::new(Message::User {
                         content: vec![UserContent::ToolResult(ToolResult {
+                            is_error: false,
                             call: CallId::from_wire("call_long"),
                             name: rig_core::message::ToolName::new("dump".to_string())
                                 .expect("tool name"),

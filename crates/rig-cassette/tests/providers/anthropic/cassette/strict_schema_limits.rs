@@ -77,7 +77,7 @@ fn assert_single_tool_call(
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 1, "exactly one tool call is expected");
     assert_eq!(calls[0].function.name, expected_name);
-    assert_eq!(&calls[0].function.arguments, expected_arguments);
+    assert_eq!(&calls[0].function.arguments_value(), expected_arguments);
 }
 
 #[tokio::test]

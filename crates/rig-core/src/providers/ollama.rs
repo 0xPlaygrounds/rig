@@ -21,7 +21,7 @@ use crate::error::ProviderError;
 use crate::message::DocumentSourceKind;
 use crate::message::{CallId, ToolName};
 use crate::model::ModelInfo;
-use crate::operation::{Block, Completion, Finish, IfMalformed};
+use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal;
 use crate::providers::openai::wire::dto::open_once;
 use crate::wire::{Flow, Out};
@@ -411,7 +411,7 @@ impl OllamaDecoder {
                     .to_owned()
             });
             out.edit(index, |item| *item = json!({ key: part }))?;
-            out.close(index, IfMalformed::Fail)?;
+            out.finish(index)?;
             *slot = None;
             *segment = Some(String::new());
         }
@@ -566,7 +566,7 @@ impl OllamaDecoder {
                 fields.insert(key.to_owned(), part.into());
             }
             out.edit(index, |item| *item = Value::Object(fields))?;
-            out.close(index, IfMalformed::Fail)?;
+            out.finish(index)?;
         }
         if !self.tool_calls.is_empty() {
             message.insert(
@@ -816,6 +816,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                             call,
                             name,
                             content,
+                            is_error: _,
                         }) => {
                             let function_name = name;
                             if !pending_user_content.is_empty() {

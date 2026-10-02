@@ -216,7 +216,7 @@ async fn parallel_tool_use_stays_distinct() {
                 streamed.id
             );
             assert!(
-                streamed.function.arguments.is_object(),
+                streamed.function.invalid_arguments.is_none(),
                 "{name} arguments must assemble into an object, got {:?}",
                 streamed.function.arguments
             );

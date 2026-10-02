@@ -32,14 +32,15 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
     let call = |wire_id: &str, name: &str| {
         Message::from(vec![AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
-            ToolFunction {
-                name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-                arguments: serde_json::json!({}),
-            },
+            ToolFunction::new(
+                rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
+                serde_json::json!({}),
+            ),
         ))])
     };
     let result = |wire_id: &str, name: &str| Message::User {
         content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire(wire_id),
             name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
             content: vec![ToolResultContent::text("out")],

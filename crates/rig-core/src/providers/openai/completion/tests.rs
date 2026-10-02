@@ -91,6 +91,7 @@ fn test_document(id: &str, text: &str) -> crate::completion::Document {
 
 fn request_with_multi_block_tool_result() -> CoreCompletionRequest {
     let tool_result = message::ToolResult {
+        is_error: false,
         call: crate::message::CallId::from_wire("call-id"),
         name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
         content: vec![
@@ -288,6 +289,7 @@ fn tool_result_string_content_flattens_multiple_text_blocks() {
 #[test]
 fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
     let result = message::ToolResult {
+        is_error: false,
         call: crate::message::CallId::from_wire("call-id"),
         name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
         content: vec![
@@ -1650,10 +1652,10 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
     use crate::message::{AssistantContent, ToolFunction, UserContent};
     let generated = message::ToolCall {
         id: crate::message::CallId::from_wire(""),
-        function: ToolFunction {
-            name: crate::message::ToolName::new("test").expect("tool name"),
-            arguments: serde_json::json!({}),
-        },
+        function: ToolFunction::new(
+            crate::message::ToolName::new("test").expect("tool name"),
+            serde_json::json!({}),
+        ),
         native: None,
     };
     let hint = generated.id.wire().into_owned();
