@@ -64,6 +64,23 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
          decoded choice, so the history it sends holds no text block to carry the phase",
     ),
     (
+        "gemini/agent_run_recovery/repair_renames_tool_call_and_executes_it.yaml",
+        "thought_signature",
+        "the repair hook renames the call, and an edited block replays from its canonical \
+         fields, so the signature its provider item carried is not sent",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream.yaml",
+        "thought_signature",
+        "the same rename by a repair hook, on a streamed turn",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
+        "thought_signature",
+        "a streamed turn abandoned at an invalid call was cut short, so it replays from its \
+         canonical fields",
+    ),
+    (
         "gemini/auto_caching/support_chat_100_current_turn.yaml",
         "thought_signature",
         "the run opts into ThoughtReplay::CurrentTurn, which stops re-sending a turn's \
@@ -120,6 +137,7 @@ struct RecordedResponse {
 
 struct Exchange {
     dialect: Dialect,
+    path: String,
     request: Value,
     status: u16,
     response: String,
@@ -156,6 +174,7 @@ fn exchanges(contents: &str) -> Vec<Exchange> {
                 .unwrap_or(request);
             Some(Exchange {
                 dialect: Dialect::from_path(&interaction.when.path),
+                path: interaction.when.path,
                 request,
                 status: interaction.then.status,
                 response: interaction.then.body.unwrap_or_default(),
@@ -238,6 +257,27 @@ fn census_report(census: &BTreeMap<String, Census>) -> String {
     lines.join("\n")
 }
 
+/// The model an exchange addressed: the request's `model`, or the model
+/// segment of a Gemini or Bedrock path.
+fn model_of(exchange: &Exchange) -> Option<&str> {
+    if let Some(model) = exchange.request.get("model").and_then(Value::as_str) {
+        return Some(model.strip_prefix("models/").unwrap_or(model));
+    }
+    let path = exchange.path.as_str();
+    if let Some((_, rest)) = path.split_once("/models/") {
+        return rest.split(':').next();
+    }
+    path.split_once("/model/")
+        .and_then(|(_, rest)| rest.split('/').next())
+}
+
+/// Whether `later` continues on the model that answered `earlier`. A
+/// continuation on another model replays canonical fields only, which the
+/// session cells assert on their own.
+fn same_model(earlier: &Exchange, later: &Exchange) -> bool {
+    model_of(earlier) == model_of(later)
+}
+
 /// Continuation pairs across the corpus: `(scenario, pair index, response
 /// of the earlier exchange, request of the later one)`.
 fn continuation_pairs(
@@ -278,6 +318,9 @@ fn delivered_opaque_fields_reach_the_next_request() {
     let mut legacy_absent: Vec<String> = Vec::new();
 
     for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
+        if !same_model(earlier, later) {
+            continue;
+        }
         compared += 1;
         let placeholders = legacy_tokens(earlier.dialect, &earlier.response);
         legacy += placeholders.len();
