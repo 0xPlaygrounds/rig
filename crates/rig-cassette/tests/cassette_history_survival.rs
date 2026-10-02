@@ -54,13 +54,6 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
          so the id returns on a call whose name no longer anchors it",
     ),
     (
-        "copilot/reasoning_roundtrip/streaming.yaml",
-        "phase",
-        "the shared reasoning round trip rebuilds turn 1's answer from the streamed text \
-         deltas rather than from rig's decoded choice, so the history it sends holds no \
-         text block to carry the message's phase",
-    ),
-    (
         "xai/prompt_caching/streaming_probe.yaml",
         "encrypted_content",
         "the streaming cache probe rebuilds each answer from its text deltas rather than \
@@ -167,6 +160,10 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
         "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
     ),
     (
+        "openai/refusal_matrix/chat_refusal_turn_survives_into_history.yaml",
+        "the cell builds its history by hand from the refusal text",
+    ),
+    (
         "openrouter/refusal_matrix/blocking_refusal_survives_into_history.yaml",
         "the cell builds its history by hand from the refusal text",
     ),
@@ -188,6 +185,14 @@ const PAIRING_EXEMPT: &[(&str, &str)] = &[];
 /// reason. Absent entries are findings: a provider that could carry the kind
 /// but has no recording of it is a coverage gap.
 const KIND_COVERAGE_EXEMPT: &[(&str, &str, &str)] = &[];
+
+/// Providers no committed cassette continues a conversation for, with the
+/// reason. An entry is stale once the provider has a continuation pair.
+const CONTINUATION_EXEMPT: &[(&str, &str)] = &[(
+    "mistral",
+    "its multi-turn cells are unrecorded: Mistral rate-limited their re-record after the \
+     history shape changed",
+)];
 
 #[derive(Deserialize)]
 struct RecordedInteraction {
@@ -816,9 +821,17 @@ fn every_provider_and_content_kind_is_examined() {
 
     let mut findings = Vec::new();
     for (provider, entry) in &census {
-        if entry.continuation_pairs == 0 {
+        let exempt = CONTINUATION_EXEMPT
+            .iter()
+            .any(|(exempt, _)| exempt == provider);
+        if entry.continuation_pairs == 0 && !exempt {
             findings.push(format!(
                 "{provider}: no continuation pair was compared; the survival check never looked at it"
+            ));
+        }
+        if entry.continuation_pairs > 0 && exempt {
+            findings.push(format!(
+                "{provider}: CONTINUATION_EXEMPT is stale, the corpus now continues its conversations"
             ));
         }
     }

@@ -132,24 +132,24 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Your favorite color is teal, the tool label is crimson-harbor, and the release lane is canary.",
+        "text": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary.",
         "native": {
           "item": {
-            "content": "Your favorite color is teal, the tool label is crimson-harbor, and the release lane is canary."
+            "content": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary."
           },
-          "fingerprint": 12117625395794459753
+          "fingerprint": 14063974276520564551
         }
       }
     ],
     "usage": {
       "input_tokens": 446,
-      "output_tokens": 24,
-      "total_tokens": 470
+      "output_tokens": 26,
+      "total_tokens": 472
     },
-    "response_id": "chatcmpl-34b7078f-6737-4f11-9a40-ebf9a767a8f9",
+    "response_id": "chatcmpl-9fb5a62c-d459-4f6d-a97b-bb8dc926b227",
     "finish_reason": "stop",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m36k0ertexj9k41g2sc4ab0m",
+    "provider_request_id": "req_01m3xpyr27ezq80faw9wn4gqc5",
     "raw": {
       "choices": [
         {
@@ -157,30 +157,30 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Your favorite color is teal, the tool label is crimson-harbor, and the release lane is canary.",
+            "content": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-34b7078f-6737-4f11-9a40-ebf9a767a8f9",
+      "id": "chatcmpl-9fb5a62c-d459-4f6d-a97b-bb8dc926b227",
       "model": "qwen/qwen3.8-27b",
       "object": "chat.completion",
       "service_tier": "on_demand",
-      "system_fingerprint": "fp_fea14bdc83",
+      "system_fingerprint": "fp_5e14805ce3",
       "usage": {
-        "completion_time": 0.045711825,
-        "completion_tokens": 24,
-        "prompt_time": 0.031356318,
+        "completion_time": 0.051113163,
+        "completion_tokens": 26,
+        "prompt_time": 0.036887346,
         "prompt_tokens": 446,
-        "queue_time": 0.022916197,
-        "total_time": 0.077068143,
-        "total_tokens": 470
+        "queue_time": 0.021058039,
+        "total_time": 0.088000509,
+        "total_tokens": 472
       },
       "usage_breakdown": null,
       "x_groq": {
-        "id": "req_01m36k0ertexj9k41g2sc4ab0m",
-        "seed": 1755392102
+        "id": "req_01m3xpyr27ezq80faw9wn4gqc5",
+        "seed": 1967209663
       }
     }
   },
@@ -1078,7 +1078,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "rjcxzfxjx",
+          "id": "g2kt0jsh4",
           "name": "ping_empty",
           "arguments": {},
           "native": {
@@ -1087,10 +1087,10 @@
                 "arguments": "{}",
                 "name": "ping_empty"
               },
-              "id": "rjcxzfxjx",
+              "id": "g2kt0jsh4",
               "type": "function"
             },
-            "fingerprint": 4061784377124179741
+            "fingerprint": 13078668078359292951
           }
         }
       }
@@ -1100,37 +1100,37 @@
       "output_tokens": 15,
       "total_tokens": 911
     },
-    "response_id": "chatcmpl-a1b62843-c67f-40ab-9744-5896de6aed3e",
+    "response_id": "chatcmpl-85e2a940-558a-42e0-a7f3-c938d7495e4a",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m36jrmkwe8bv901tpke4ndvd",
+    "provider_request_id": "req_01m3xpz3ttefcrm0kszwe9f3jh",
     "raw": {
       "usage": {
         "prompt_tokens": 896,
         "completion_tokens": 15,
         "total_tokens": 911,
-        "queue_time": 0.023389366,
-        "prompt_time": 0.071908552,
-        "completion_time": 0.030638144,
-        "total_time": 0.102546696
+        "queue_time": 0.018612682,
+        "prompt_time": 0.065464429,
+        "completion_time": 0.029734004,
+        "total_time": 0.095198433
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-a1b62843-c67f-40ab-9744-5896de6aed3e",
+      "response_id": "chatcmpl-85e2a940-558a-42e0-a7f3-c938d7495e4a",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_5e14805ce3",
+        "system_fingerprint": "fp_c14f15bfae",
         "x_groq": {
-          "id": "req_01m36jrmkwe8bv901tpke4ndvd",
-          "seed": 602109842,
+          "id": "req_01m3xpz3ttefcrm0kszwe9f3jh",
+          "seed": 1277902507,
           "usage": {
-            "completion_time": 0.030638144,
+            "completion_time": 0.029734004,
             "completion_tokens": 15,
-            "prompt_time": 0.071908552,
+            "prompt_time": 0.065464429,
             "prompt_tokens": 896,
-            "queue_time": 0.023389366,
-            "total_time": 0.102546696,
+            "queue_time": 0.018612682,
+            "total_time": 0.095198433,
             "total_tokens": 911
           }
         },
@@ -1143,7 +1143,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "c48cct7h9",
+          "id": "79s6hyh3k",
           "name": "inspect_manifest",
           "arguments": {
             "flags": {
@@ -1169,10 +1169,10 @@
                 "arguments": "{\"flags\":{\"critical\":true,\"retries\":2},\"note\":\"line one; line two says \\\"hello\\\" and path C:/rig/groq\",\"project\":\"rig-groq\",\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}]}",
                 "name": "inspect_manifest"
               },
-              "id": "c48cct7h9",
+              "id": "79s6hyh3k",
               "type": "function"
             },
-            "fingerprint": 4663988139449481647
+            "fingerprint": 5793221978979935032
           }
         }
       }
@@ -1182,37 +1182,37 @@
       "output_tokens": 117,
       "total_tokens": 1048
     },
-    "response_id": "chatcmpl-3d9f4f94-5f45-42b2-b1f8-9a223ab2e078",
+    "response_id": "chatcmpl-20698c51-f44a-4ba1-bcdd-88ca7063d97c",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m36jrmtze59r64gtamc7nd09",
+    "provider_request_id": "req_01m3xpz405edrvpt9mgkf6rhd8",
     "raw": {
       "usage": {
         "prompt_tokens": 931,
         "completion_tokens": 117,
         "total_tokens": 1048,
-        "queue_time": 0.022806488,
-        "prompt_time": 0.074745969,
-        "completion_time": 0.326631343,
-        "total_time": 0.401377312
+        "queue_time": 0.005092458,
+        "prompt_time": 0.068847415,
+        "completion_time": 0.324734012,
+        "total_time": 0.393581427
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-3d9f4f94-5f45-42b2-b1f8-9a223ab2e078",
+      "response_id": "chatcmpl-20698c51-f44a-4ba1-bcdd-88ca7063d97c",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_5e14805ce3",
+        "system_fingerprint": "fp_c14f15bfae",
         "x_groq": {
-          "id": "req_01m36jrmtze59r64gtamc7nd09",
-          "seed": 683478589,
+          "id": "req_01m3xpz405edrvpt9mgkf6rhd8",
+          "seed": 1910425101,
           "usage": {
-            "completion_time": 0.326631343,
+            "completion_time": 0.324734012,
             "completion_tokens": 117,
-            "prompt_time": 0.074745969,
+            "prompt_time": 0.068847415,
             "prompt_tokens": 931,
-            "queue_time": 0.022806488,
-            "total_time": 0.401377312,
+            "queue_time": 0.005092458,
+            "total_time": 0.393581427,
             "total_tokens": 1048
           }
         },
@@ -1225,7 +1225,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "e4jqtc0z2",
+          "id": "7kwyzekzt",
           "name": "join_labels",
           "arguments": {
             "labels": [
@@ -1242,10 +1242,10 @@
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                 "name": "join_labels"
               },
-              "id": "e4jqtc0z2",
+              "id": "7kwyzekzt",
               "type": "function"
             },
-            "fingerprint": 14112700735325794073
+            "fingerprint": 10445042809985292314
           }
         }
       }
@@ -1255,37 +1255,37 @@
       "output_tokens": 55,
       "total_tokens": 1142
     },
-    "response_id": "chatcmpl-cffe4fb7-f783-4dfb-8274-6c0f203288be",
+    "response_id": "chatcmpl-452da7db-ac02-42c6-91ff-3a188fe521a9",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m36jrnb2e9b9pjaw346y1rex",
+    "provider_request_id": "req_01m3xpz4ekeh7rv1p3rgyc7pzm",
     "raw": {
       "usage": {
         "prompt_tokens": 1087,
         "completion_tokens": 55,
         "total_tokens": 1142,
-        "queue_time": 0.023290193,
-        "prompt_time": 0.093072468,
-        "completion_time": 0.128306431,
-        "total_time": 0.221378899
+        "queue_time": 0.017703681,
+        "prompt_time": 0.096602367,
+        "completion_time": 0.128948654,
+        "total_time": 0.225551021
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-cffe4fb7-f783-4dfb-8274-6c0f203288be",
+      "response_id": "chatcmpl-452da7db-ac02-42c6-91ff-3a188fe521a9",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "system_fingerprint": "fp_5e14805ce3",
         "x_groq": {
-          "id": "req_01m36jrnb2e9b9pjaw346y1rex",
-          "seed": 1169938239,
+          "id": "req_01m3xpz4ekeh7rv1p3rgyc7pzm",
+          "seed": 859060968,
           "usage": {
-            "completion_time": 0.128306431,
+            "completion_time": 0.128948654,
             "completion_tokens": 55,
-            "prompt_time": 0.093072468,
+            "prompt_time": 0.096602367,
             "prompt_tokens": 1087,
-            "queue_time": 0.023290193,
-            "total_time": 0.221378899,
+            "queue_time": 0.017703681,
+            "total_time": 0.225551021,
             "total_tokens": 1142
           }
         },
@@ -1298,7 +1298,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "k16tyypvm",
+          "id": "4v369nxe7",
           "name": "optional_nullable_probe",
           "arguments": {
             "name": "sentinel",
@@ -1310,10 +1310,10 @@
                 "arguments": "{\"name\":\"sentinel\",\"nullable_code\":null}",
                 "name": "optional_nullable_probe"
               },
-              "id": "k16tyypvm",
+              "id": "4v369nxe7",
               "type": "function"
             },
-            "fingerprint": 17043940933034453819
+            "fingerprint": 1019743510327147306
           }
         }
       }
@@ -1323,37 +1323,37 @@
       "output_tokens": 41,
       "total_tokens": 1216
     },
-    "response_id": "chatcmpl-fd4388ed-687c-4082-b31b-be8e7b3ac528",
+    "response_id": "chatcmpl-95ce9d55-eef0-45f5-b920-70accb0639e7",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m36jrnqzetarjf0tc6erdxzs",
+    "provider_request_id": "req_01m3xpz4r2ekgrnxqqa2e4q9gp",
     "raw": {
       "usage": {
         "prompt_tokens": 1175,
         "completion_tokens": 41,
         "total_tokens": 1216,
-        "queue_time": 0.023295957,
-        "prompt_time": 0.094309532,
-        "completion_time": 0.113911155,
-        "total_time": 0.208220687
+        "queue_time": 0.006044054,
+        "prompt_time": 0.086244505,
+        "completion_time": 0.099730922,
+        "total_time": 0.185975427
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-fd4388ed-687c-4082-b31b-be8e7b3ac528",
+      "response_id": "chatcmpl-95ce9d55-eef0-45f5-b920-70accb0639e7",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_5e14805ce3",
+        "system_fingerprint": "fp_c14f15bfae",
         "x_groq": {
-          "id": "req_01m36jrnqzetarjf0tc6erdxzs",
-          "seed": 1581393356,
+          "id": "req_01m3xpz4r2ekgrnxqqa2e4q9gp",
+          "seed": 437195435,
           "usage": {
-            "completion_time": 0.113911155,
+            "completion_time": 0.099730922,
             "completion_tokens": 41,
-            "prompt_time": 0.094309532,
+            "prompt_time": 0.086244505,
             "prompt_tokens": 1175,
-            "queue_time": 0.023295957,
-            "total_time": 0.208220687,
+            "queue_time": 0.006044054,
+            "total_time": 0.185975427,
             "total_tokens": 1216
           }
         },
@@ -1366,7 +1366,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "nc94bxy3q",
+          "id": "a97vpt53k",
           "name": "escape_echo",
           "arguments": {
             "text": "Line 1\nLine \"2\" with colon: ok and unicode snowman ☃"
@@ -1377,10 +1377,10 @@
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with colon: ok and unicode snowman ☃\"}",
                 "name": "escape_echo"
               },
-              "id": "nc94bxy3q",
+              "id": "a97vpt53k",
               "type": "function"
             },
-            "fingerprint": 15434021279633942263
+            "fingerprint": 14852438972980927968
           }
         }
       }
@@ -1390,37 +1390,37 @@
       "output_tokens": 43,
       "total_tokens": 1289
     },
-    "response_id": "chatcmpl-d3aa504a-79b0-408b-8ebb-8309f8a807ba",
+    "response_id": "chatcmpl-040cddad-b9fa-4398-aae1-983c5a0d9129",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m36jrp14efj9ve0h2kz74961",
+    "provider_request_id": "req_01m3xpz51zed9v64s14qx2fx9v",
     "raw": {
       "usage": {
         "prompt_tokens": 1246,
         "completion_tokens": 43,
         "total_tokens": 1289,
-        "queue_time": 0.02545509,
-        "prompt_time": 0.100148308,
-        "completion_time": 0.151163614,
-        "total_time": 0.251311922
+        "queue_time": 0.057968056,
+        "prompt_time": 0.093485267,
+        "completion_time": 0.14590573,
+        "total_time": 0.239390997
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-d3aa504a-79b0-408b-8ebb-8309f8a807ba",
+      "response_id": "chatcmpl-040cddad-b9fa-4398-aae1-983c5a0d9129",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_57c7e760a9",
+        "system_fingerprint": "fp_fea14bdc83",
         "x_groq": {
-          "id": "req_01m36jrp14efj9ve0h2kz74961",
-          "seed": 93507697,
+          "id": "req_01m3xpz51zed9v64s14qx2fx9v",
+          "seed": 1382778215,
           "usage": {
-            "completion_time": 0.151163614,
+            "completion_time": 0.14590573,
             "completion_tokens": 43,
-            "prompt_time": 0.100148308,
+            "prompt_time": 0.093485267,
             "prompt_tokens": 1246,
-            "queue_time": 0.02545509,
-            "total_time": 0.251311922,
+            "queue_time": 0.057968056,
+            "total_time": 0.239390997,
             "total_tokens": 1289
           }
         },
@@ -1432,52 +1432,52 @@
     "mode": "streaming",
     "choice": [
       {
-        "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
+        "text": "All five checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
         "native": {
           "item": {
-            "content": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK."
+            "content": "All five checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK."
           },
-          "fingerprint": 12626281395971937337
+          "fingerprint": 10073005224191248143
         }
       }
     ],
     "usage": {
       "input_tokens": 1328,
-      "output_tokens": 29,
-      "total_tokens": 1357
+      "output_tokens": 30,
+      "total_tokens": 1358
     },
-    "response_id": "chatcmpl-3eaf7c4c-2aab-4033-87c2-cbd3502ec710",
+    "response_id": "chatcmpl-183ceeab-4386-4d2c-80db-30889858cad7",
     "finish_reason": "stop",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m36jrpe7etqs2z4e7sjftn64",
+    "provider_request_id": "req_01m3xpz5d2e2w941bwx6p3zbq4",
     "raw": {
       "usage": {
         "prompt_tokens": 1328,
-        "completion_tokens": 29,
-        "total_tokens": 1357,
-        "queue_time": 0.022277903,
-        "prompt_time": 0.106835604,
-        "completion_time": 0.057130079,
-        "total_time": 0.163965683
+        "completion_tokens": 30,
+        "total_tokens": 1358,
+        "queue_time": 0.005864311,
+        "prompt_time": 0.110313252,
+        "completion_time": 0.059089073,
+        "total_time": 0.169402325
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-3eaf7c4c-2aab-4033-87c2-cbd3502ec710",
+      "response_id": "chatcmpl-183ceeab-4386-4d2c-80db-30889858cad7",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_57c7e760a9",
+        "system_fingerprint": "fp_5e14805ce3",
         "x_groq": {
-          "id": "req_01m36jrpe7etqs2z4e7sjftn64",
-          "seed": 1604590240,
+          "id": "req_01m3xpz5d2e2w941bwx6p3zbq4",
+          "seed": 1364304915,
           "usage": {
-            "completion_time": 0.057130079,
-            "completion_tokens": 29,
-            "prompt_time": 0.106835604,
+            "completion_time": 0.059089073,
+            "completion_tokens": 30,
+            "prompt_time": 0.110313252,
             "prompt_tokens": 1328,
-            "queue_time": 0.022277903,
-            "total_time": 0.163965683,
-            "total_tokens": 1357
+            "queue_time": 0.005864311,
+            "total_time": 0.169402325,
+            "total_tokens": 1358
           }
         },
         "service_tier": "on_demand"
@@ -3440,36 +3440,36 @@
     "choice": [
       {
         "reasoning": {
-          "text": "We have weather data: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen recommended, no umbrella needed. Provide one sentence.",
+          "text": "We need to provide a one-sentence answer: \"You should pack sunscreen because it's sunny with light clouds.\" We must not call any tool.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "We have weather data: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen recommended, no umbrella needed. Provide one sentence."
+              "reasoning": "We need to provide a one-sentence answer: \"You should pack sunscreen because it's sunny with light clouds.\" We must not call any tool."
             },
-            "fingerprint": 10054306524378455986
+            "fingerprint": 4066369710341807440
           }
         }
       },
       {
-        "text": "Since it’s sunny at 72°F with light clouds, pack sunscreen rather than an umbrella.",
+        "text": "Pack sunscreen—the sunny, light‑clouded weather in Tokyo today is ideal for sun protection rather than an umbrella.",
         "native": {
           "item": {
-            "content": "Since it’s sunny at 72°F with light clouds, pack sunscreen rather than an umbrella."
+            "content": "Pack sunscreen—the sunny, light‑clouded weather in Tokyo today is ideal for sun protection rather than an umbrella."
           },
-          "fingerprint": 14533292344897742722
+          "fingerprint": 6446055895833052640
         }
       }
     ],
     "usage": {
-      "input_tokens": 302,
-      "output_tokens": 71,
-      "total_tokens": 373,
-      "reasoning_tokens": 43
+      "input_tokens": 306,
+      "output_tokens": 62,
+      "total_tokens": 368,
+      "reasoning_tokens": 30
     },
-    "response_id": "chatcmpl-87ea40a7-02db-4830-83de-9d399a0a5a94",
+    "response_id": "chatcmpl-c6aeec68-62fa-4d3e-81a1-9dd978ac9451",
     "finish_reason": "stop",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m34ycnfrernsm5a63hw3zk72",
+    "provider_request_id": "req_01m3xpzgtre11rkdmcsj4s3sgm",
     "raw": {
       "choices": [
         {
@@ -3477,34 +3477,34 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Since it’s sunny at 72°F with light clouds, pack sunscreen rather than an umbrella.",
-            "reasoning": "We have weather data: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen recommended, no umbrella needed. Provide one sentence.",
+            "content": "Pack sunscreen—the sunny, light‑clouded weather in Tokyo today is ideal for sun protection rather than an umbrella.",
+            "reasoning": "We need to provide a one-sentence answer: \"You should pack sunscreen because it's sunny with light clouds.\" We must not call any tool.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-87ea40a7-02db-4830-83de-9d399a0a5a94",
+      "id": "chatcmpl-c6aeec68-62fa-4d3e-81a1-9dd978ac9451",
       "model": "openai/gpt-oss-20b",
       "object": "chat.completion",
       "service_tier": "on_demand",
-      "system_fingerprint": "fp_37c9245f64",
+      "system_fingerprint": "fp_a4315eb300",
       "usage": {
-        "completion_time": 0.073312805,
-        "completion_tokens": 71,
+        "completion_time": 0.07315433,
+        "completion_tokens": 62,
         "completion_tokens_details": {
-          "reasoning_tokens": 43
+          "reasoning_tokens": 30
         },
-        "prompt_time": 0.01484479,
-        "prompt_tokens": 302,
-        "queue_time": 0.021450978,
-        "total_time": 0.088157595,
-        "total_tokens": 373
+        "prompt_time": 0.015131982,
+        "prompt_tokens": 306,
+        "queue_time": 0.173115842,
+        "total_time": 0.088286312,
+        "total_tokens": 368
       },
       "usage_breakdown": null,
       "x_groq": {
-        "id": "req_01m34ycnfrernsm5a63hw3zk72",
-        "seed": 1205673104
+        "id": "req_01m3xpzgtre11rkdmcsj4s3sgm",
+        "seed": 1553388086
       }
     }
   },
@@ -3513,36 +3513,36 @@
     "choice": [
       {
         "reasoning": {
-          "text": "We must not call any tool. Provide one sentence: based on sunny, 22C, no rain, pack sunscreen.",
+          "text": "We need to answer: \"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.\" We have weather: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen. So answer: \"Pack sunscreen.\" Provide one sentence.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "We must not call any tool. Provide one sentence: based on sunny, 22C, no rain, pack sunscreen."
+              "reasoning": "We need to answer: \"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.\" We have weather: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen. So answer: \"Pack sunscreen.\" Provide one sentence."
             },
-            "fingerprint": 545168912509120548
+            "fingerprint": 7766443015652719632
           }
         }
       },
       {
-        "text": "Pack sunscreen, as the sunny, mild 22 °C weather suggests you’ll need sun protection rather than an umbrella.",
+        "text": "Pack sunscreen, as the sunny conditions in Tokyo today are ideal for sun protection.",
         "native": {
           "item": {
-            "content": "Pack sunscreen, as the sunny, mild 22 °C weather suggests you’ll need sun protection rather than an umbrella."
+            "content": "Pack sunscreen, as the sunny conditions in Tokyo today are ideal for sun protection."
           },
-          "fingerprint": 16311881448387719006
+          "fingerprint": 14621768058019605995
         }
       }
     ],
     "usage": {
-      "input_tokens": 302,
-      "output_tokens": 59,
-      "total_tokens": 361,
-      "reasoning_tokens": 26
+      "input_tokens": 306,
+      "output_tokens": 101,
+      "total_tokens": 407,
+      "reasoning_tokens": 76
     },
-    "response_id": "chatcmpl-06bbfce9-3d82-400f-a4c4-2a0e4cb32b51",
+    "response_id": "chatcmpl-6bb0d536-372a-4daa-87be-28f2d7712969",
     "finish_reason": "stop",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m34xtvadeyh9g15bmdhynvze",
+    "provider_request_id": "req_01m3xpzw35erkvqdgtk8eajxft",
     "raw": {
       "choices": [
         {
@@ -3550,34 +3550,34 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Pack sunscreen, as the sunny, mild 22 °C weather suggests you’ll need sun protection rather than an umbrella.",
-            "reasoning": "We must not call any tool. Provide one sentence: based on sunny, 22C, no rain, pack sunscreen.",
+            "content": "Pack sunscreen, as the sunny conditions in Tokyo today are ideal for sun protection.",
+            "reasoning": "We need to answer: \"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.\" We have weather: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen. So answer: \"Pack sunscreen.\" Provide one sentence.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-06bbfce9-3d82-400f-a4c4-2a0e4cb32b51",
+      "id": "chatcmpl-6bb0d536-372a-4daa-87be-28f2d7712969",
       "model": "openai/gpt-oss-20b",
       "object": "chat.completion",
       "service_tier": "on_demand",
-      "system_fingerprint": "fp_ef00694abe",
+      "system_fingerprint": "fp_37c9245f64",
       "usage": {
-        "completion_time": 0.082466613,
-        "completion_tokens": 59,
+        "completion_time": 0.105120205,
+        "completion_tokens": 101,
         "completion_tokens_details": {
-          "reasoning_tokens": 26
+          "reasoning_tokens": 76
         },
-        "prompt_time": 0.207343883,
-        "prompt_tokens": 302,
-        "queue_time": 0.18473422,
-        "total_time": 0.289810496,
-        "total_tokens": 361
+        "prompt_time": 0.01638749,
+        "prompt_tokens": 306,
+        "queue_time": 0.022025366,
+        "total_time": 0.121507695,
+        "total_tokens": 407
       },
       "usage_breakdown": null,
       "x_groq": {
-        "id": "req_01m34xtvadeyh9g15bmdhynvze",
-        "seed": 1192631135
+        "id": "req_01m3xpzw35erkvqdgtk8eajxft",
+        "seed": 820771202
       }
     }
   },
@@ -3774,211 +3774,6 @@
       "x_groq": {
         "id": "req_REDACTED_3",
         "seed": 712501221
-      }
-    }
-  },
-  "prompt_caching/streaming_probe.yaml#0": {
-    "mode": "streaming",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "The user says: \"Do not call any tools. Reply with",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning": "The user says: \"Do not call any tools. Reply with"
-            },
-            "fingerprint": 10309604309020478393
-          }
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 1795,
-      "output_tokens": 16,
-      "total_tokens": 1811,
-      "cached_input_tokens": 1792,
-      "reasoning_tokens": 14
-    },
-    "response_id": "chatcmpl-REDACTED_1",
-    "finish_reason": "length",
-    "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_REDACTED_1",
-    "raw": {
-      "usage": {
-        "prompt_tokens": 1795,
-        "completion_tokens": 16,
-        "total_tokens": 1811,
-        "prompt_tokens_details": {
-          "cached_tokens": 1792
-        },
-        "completion_tokens_details": {
-          "reasoning_tokens": 14
-        },
-        "queue_time": 0.028577239,
-        "prompt_time": 0.000075669,
-        "completion_time": 0.021637806,
-        "total_time": 0.021713475
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-REDACTED_1",
-      "model": "openai/gpt-oss-20b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_REDACTED_1",
-        "x_groq": {
-          "id": "req_REDACTED_1",
-          "seed": 25406097,
-          "usage": {
-            "completion_time": 0.021637806,
-            "completion_tokens": 16,
-            "completion_tokens_details": {
-              "reasoning_tokens": 14
-            },
-            "prompt_time": 0.000075669,
-            "prompt_tokens": 1795,
-            "prompt_tokens_details": {
-              "cached_tokens": 1792
-            },
-            "queue_time": 0.028577239,
-            "total_time": 0.021713475,
-            "total_tokens": 1811
-          }
-        },
-        "service_tier": "on_demand"
-      }
-    }
-  },
-  "prompt_caching/streaming_probe.yaml#1": {
-    "mode": "streaming",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "The user says: \"Do not call any tools. Reply with",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning": "The user says: \"Do not call any tools. Reply with"
-            },
-            "fingerprint": 10309604309020478393
-          }
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 1795,
-      "output_tokens": 16,
-      "total_tokens": 1811,
-      "reasoning_tokens": 14
-    },
-    "response_id": "chatcmpl-REDACTED_2",
-    "finish_reason": "length",
-    "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_REDACTED_2",
-    "raw": {
-      "usage": {
-        "prompt_tokens": 1795,
-        "completion_tokens": 16,
-        "total_tokens": 1811,
-        "completion_tokens_details": {
-          "reasoning_tokens": 14
-        },
-        "queue_time": 0.061284058,
-        "prompt_time": 0.099801676,
-        "completion_time": 0.017366705,
-        "total_time": 0.117168381
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-REDACTED_2",
-      "model": "openai/gpt-oss-20b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_REDACTED_2",
-        "x_groq": {
-          "id": "req_REDACTED_2",
-          "seed": 2141902940,
-          "usage": {
-            "completion_time": 0.017366705,
-            "completion_tokens": 16,
-            "completion_tokens_details": {
-              "reasoning_tokens": 14
-            },
-            "prompt_time": 0.099801676,
-            "prompt_tokens": 1795,
-            "queue_time": 0.061284058,
-            "total_time": 0.117168381,
-            "total_tokens": 1811
-          }
-        },
-        "service_tier": "on_demand"
-      }
-    }
-  },
-  "prompt_caching/streaming_probe.yaml#2": {
-    "mode": "streaming",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "The user says: \"Do not call any tools. Reply with",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning": "The user says: \"Do not call any tools. Reply with"
-            },
-            "fingerprint": 10309604309020478393
-          }
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 1824,
-      "output_tokens": 16,
-      "total_tokens": 1840,
-      "reasoning_tokens": 14
-    },
-    "response_id": "chatcmpl-REDACTED_3",
-    "finish_reason": "length",
-    "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_REDACTED_3",
-    "raw": {
-      "usage": {
-        "prompt_tokens": 1824,
-        "completion_tokens": 16,
-        "total_tokens": 1840,
-        "completion_tokens_details": {
-          "reasoning_tokens": 14
-        },
-        "queue_time": 0.021241704,
-        "prompt_time": 0.097307253,
-        "completion_time": 0.016109906,
-        "total_time": 0.113417159
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-REDACTED_3",
-      "model": "openai/gpt-oss-20b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_REDACTED_3",
-        "x_groq": {
-          "id": "req_REDACTED_3",
-          "seed": 999190413,
-          "usage": {
-            "completion_time": 0.016109906,
-            "completion_tokens": 16,
-            "completion_tokens_details": {
-              "reasoning_tokens": 14
-            },
-            "prompt_time": 0.097307253,
-            "prompt_tokens": 1824,
-            "queue_time": 0.021241704,
-            "total_time": 0.113417159,
-            "total_tokens": 1840
-          }
-        },
-        "service_tier": "on_demand"
       }
     }
   },

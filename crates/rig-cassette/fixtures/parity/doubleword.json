@@ -15641,10 +15641,10 @@
       "input_tokens": 4865,
       "output_tokens": 16,
       "total_tokens": 4881,
-      "cached_input_tokens": 4752,
+      "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0
     },
-    "response_id": "gen-1790146297-KJqMqgccFyH9vS41uddJ",
+    "response_id": "gen-1790928894-VhZVZlM5JTFngTg1Hz0g",
     "finish_reason": "length",
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
@@ -15654,7 +15654,7 @@
         "completion_tokens": 16,
         "total_tokens": 4881,
         "prompt_tokens_details": {
-          "cached_tokens": 4752,
+          "cached_tokens": 0,
           "cache_write_tokens": 0
         },
         "completion_tokens_details": {
@@ -15666,10 +15666,10 @@
           "ephemeral_5m_input_tokens": 0
         },
         "cache_creation_input_tokens": 0,
-        "cache_read_input_tokens": 4752
+        "cache_read_input_tokens": 0
       },
       "finish_reason": "length",
-      "response_id": "gen-1790146297-KJqMqgccFyH9vS41uddJ",
+      "response_id": "gen-1790928894-VhZVZlM5JTFngTg1Hz0g",
       "model": "Qwen/Qwen3.5-9B",
       "additional_params": {
         "created": 0,
@@ -15708,7 +15708,7 @@
       "cached_input_tokens": 4752,
       "cache_creation_input_tokens": 0
     },
-    "response_id": "gen-1790146298-8bO6cyIi4MrYRy19E2H4",
+    "response_id": "gen-1790928895-Jkb6BOXrIa95JMKqkNxt",
     "finish_reason": "length",
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
@@ -15733,7 +15733,7 @@
         "cache_read_input_tokens": 4752
       },
       "finish_reason": "length",
-      "response_id": "gen-1790146298-8bO6cyIi4MrYRy19E2H4",
+      "response_id": "gen-1790928895-Jkb6BOXrIa95JMKqkNxt",
       "model": "Qwen/Qwen3.5-9B",
       "additional_params": {
         "created": 0,
@@ -15772,7 +15772,7 @@
       "cached_input_tokens": 4752,
       "cache_creation_input_tokens": 0
     },
-    "response_id": "gen-1790146299-nzA9qoMs4TfKvPCEbJK6",
+    "response_id": "gen-1790928897-6hKgLgyjRvMKYMZxduvJ",
     "finish_reason": "length",
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
@@ -15797,7 +15797,7 @@
         "cache_read_input_tokens": 4752
       },
       "finish_reason": "length",
-      "response_id": "gen-1790146299-nzA9qoMs4TfKvPCEbJK6",
+      "response_id": "gen-1790928897-6hKgLgyjRvMKYMZxduvJ",
       "model": "Qwen/Qwen3.5-9B",
       "additional_params": {
         "created": 0,
@@ -19737,7 +19737,7 @@
     "choice": [
       {
         "reasoning": {
-          "text": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a city parameter, which should be \"London\".\n",
+          "text": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a \"city\" parameter, and the user has specified \"London\" as the city.\n",
           "redacted": false,
           "native": {
             "item": {
@@ -19745,19 +19745,19 @@
                 {
                   "format": "unknown",
                   "index": 0,
-                  "text": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a city parameter, which should be \"London\".\n",
+                  "text": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a \"city\" parameter, and the user has specified \"London\" as the city.\n",
                   "type": "reasoning.text"
                 }
               ],
-              "reasoning_content": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a city parameter, which should be \"London\".\n"
+              "reasoning_content": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a \"city\" parameter, and the user has specified \"London\" as the city.\n"
             },
-            "fingerprint": 7762342534600341264
+            "fingerprint": 9624802788994966248
           }
         }
       },
       {
         "tool_call": {
-          "id": "call_0b8dedcd01c04e86848cbad0",
+          "id": "chatcmpl-tool-b6f645624656ed15",
           "name": "weather",
           "arguments": {
             "city": "London"
@@ -19768,22 +19768,22 @@
                 "arguments": "{\"city\": \"London\"}",
                 "name": "weather"
               },
-              "id": "call_0b8dedcd01c04e86848cbad0",
+              "id": "chatcmpl-tool-b6f645624656ed15",
               "type": "function"
             },
-            "fingerprint": 15944131755305651009
+            "fingerprint": 146897492920966366
           }
         }
       }
     ],
     "usage": {
       "input_tokens": 307,
-      "output_tokens": 64,
-      "total_tokens": 371,
+      "output_tokens": 72,
+      "total_tokens": 379,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0
     },
-    "response_id": "resp_e63f1245-3cc8-483f-bf10-383fb2771a00",
+    "response_id": "resp_d4f97dcb-ca9c-41c3-b096-4083590a3249",
     "finish_reason": "tool_calls",
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
@@ -19793,12 +19793,12 @@
           "finish_reason": "tool_calls",
           "index": 0,
           "message": {
-            "reasoning_content": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a city parameter, which should be \"London\".\n",
+            "reasoning_content": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a \"city\" parameter, and the user has specified \"London\" as the city.\n",
             "reasoning_details": [
               {
                 "format": "unknown",
                 "index": 0,
-                "text": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a city parameter, which should be \"London\".\n",
+                "text": "The user is asking about the weather in London. I need to use the weather tool to get this information. The tool requires a \"city\" parameter, and the user has specified \"London\" as the city.\n",
                 "type": "reasoning.text"
               }
             ],
@@ -19810,7 +19810,7 @@
                   "arguments": "{\"city\": \"London\"}",
                   "name": "weather"
                 },
-                "id": "call_0b8dedcd01c04e86848cbad0",
+                "id": "chatcmpl-tool-b6f645624656ed15",
                 "type": "function"
               }
             ]
@@ -19818,7 +19818,7 @@
         }
       ],
       "created": 0,
-      "id": "resp_e63f1245-3cc8-483f-bf10-383fb2771a00",
+      "id": "resp_d4f97dcb-ca9c-41c3-b096-4083590a3249",
       "model": "Qwen/Qwen3.5-397B-A17B-FP8",
       "object": "chat.completion",
       "usage": {
@@ -19829,11 +19829,11 @@
         },
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
-        "completion_tokens": 64,
+        "completion_tokens": 72,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
-          "reasoning_tokens": 43
+          "reasoning_tokens": 44
         },
         "prompt_tokens": 307,
         "prompt_tokens_details": {
@@ -19842,7 +19842,7 @@
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 371
+        "total_tokens": 379
       }
     }
   },
@@ -19851,7 +19851,7 @@
     "choice": [
       {
         "reasoning": {
-          "text": "The tool returned the weather information for London. Now I need to format this as JSON with the city and weather fields as requested.\n",
+          "text": "The tool returned the weather information for London. Now I need to return only JSON matching the format {\"city\": string, \"weather\": string}, preserving the tool result. The city is \"London\" and the weather is \"all fire and brimstone\".\n",
           "redacted": false,
           "native": {
             "item": {
@@ -19859,13 +19859,13 @@
                 {
                   "format": "unknown",
                   "index": 0,
-                  "text": "The tool returned the weather information for London. Now I need to format this as JSON with the city and weather fields as requested.\n",
+                  "text": "The tool returned the weather information for London. Now I need to return only JSON matching the format {\"city\": string, \"weather\": string}, preserving the tool result. The city is \"London\" and the weather is \"all fire and brimstone\".\n",
                   "type": "reasoning.text"
                 }
               ],
-              "reasoning_content": "The tool returned the weather information for London. Now I need to format this as JSON with the city and weather fields as requested.\n"
+              "reasoning_content": "The tool returned the weather information for London. Now I need to return only JSON matching the format {\"city\": string, \"weather\": string}, preserving the tool result. The city is \"London\" and the weather is \"all fire and brimstone\".\n"
             },
-            "fingerprint": 6512881176274005311
+            "fingerprint": 9813447157827195050
           }
         }
       },
@@ -19881,13 +19881,13 @@
       }
     ],
     "usage": {
-      "input_tokens": 397,
-      "output_tokens": 46,
-      "total_tokens": 443,
+      "input_tokens": 415,
+      "output_tokens": 72,
+      "total_tokens": 487,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0
     },
-    "response_id": "resp_69afb574-1de6-4968-adfd-cf39fc03fa2a",
+    "response_id": "resp_9b0f4205-3975-4a3a-bcb3-cf901db75f81",
     "finish_reason": "stop",
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
@@ -19898,12 +19898,12 @@
           "index": 0,
           "message": {
             "content": "{\"city\": \"London\", \"weather\": \"all fire and brimstone\"}",
-            "reasoning_content": "The tool returned the weather information for London. Now I need to format this as JSON with the city and weather fields as requested.\n",
+            "reasoning_content": "The tool returned the weather information for London. Now I need to return only JSON matching the format {\"city\": string, \"weather\": string}, preserving the tool result. The city is \"London\" and the weather is \"all fire and brimstone\".\n",
             "reasoning_details": [
               {
                 "format": "unknown",
                 "index": 0,
-                "text": "The tool returned the weather information for London. Now I need to format this as JSON with the city and weather fields as requested.\n",
+                "text": "The tool returned the weather information for London. Now I need to return only JSON matching the format {\"city\": string, \"weather\": string}, preserving the tool result. The city is \"London\" and the weather is \"all fire and brimstone\".\n",
                 "type": "reasoning.text"
               }
             ],
@@ -19913,7 +19913,7 @@
         }
       ],
       "created": 0,
-      "id": "resp_69afb574-1de6-4968-adfd-cf39fc03fa2a",
+      "id": "resp_9b0f4205-3975-4a3a-bcb3-cf901db75f81",
       "model": "Qwen/Qwen3.5-397B-A17B-FP8",
       "object": "chat.completion",
       "usage": {
@@ -19924,20 +19924,20 @@
         },
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 0,
-        "completion_tokens": 46,
+        "completion_tokens": 72,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
-          "reasoning_tokens": 35
+          "reasoning_tokens": 54
         },
-        "prompt_tokens": 397,
+        "prompt_tokens": 415,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 443
+        "total_tokens": 487
       }
     }
   }

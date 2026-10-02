@@ -76,25 +76,25 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Your favorite color is teal, the label from the tool is crimson-harbor, and you chose the canary release lane.",
+        "text": "Your favorite color is teal, the label is crimson-harbor, and you chose the canary release lane.",
         "native": {
           "item": {
-            "content": "Your favorite color is teal, the label from the tool is crimson-harbor, and you chose the canary release lane.",
+            "content": "Your favorite color is teal, the label is crimson-harbor, and you chose the canary release lane.",
             "refusal": null
           },
-          "fingerprint": 12480111209099663977
+          "fingerprint": 44822596770189046
         }
       }
     ],
     "usage": {
       "input_tokens": 196,
-      "output_tokens": 26,
-      "total_tokens": 222,
+      "output_tokens": 23,
+      "total_tokens": 219,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098083-9GGrUlboBFxI1wXIkgLP",
+    "response_id": "gen-1790925565-Ud7Ew5LprmuuleOu41B0",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -105,7 +105,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Your favorite color is teal, the label from the tool is crimson-harbor, and you chose the canary release lane.",
+            "content": "Your favorite color is teal, the label is crimson-harbor, and you chose the canary release lane.",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -114,23 +114,23 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098083-9GGrUlboBFxI1wXIkgLP",
+      "id": "gen-1790925565-Ud7Ew5LprmuuleOu41B0",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_b8176c105e",
+      "service_tier": "default",
+      "system_fingerprint": "fp_1d2356bce8",
       "usage": {
-        "completion_tokens": 26,
+        "completion_tokens": 23,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.00075,
+        "cost": 0.00072,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00026,
-          "upstream_inference_cost": 0.00075,
+          "upstream_inference_completions_cost": 0.00023,
+          "upstream_inference_cost": 0.00072,
           "upstream_inference_prompt_cost": 0.00049
         },
         "is_byok": false,
@@ -141,7 +141,7 @@
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 222
+        "total_tokens": 219
       }
     }
   },
@@ -223,7 +223,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_iQcZJOsBb7eb834rq0hyuJEI",
+          "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
           "name": "lookup_harbor_label",
           "arguments": {},
           "native": {
@@ -232,16 +232,16 @@
                 "arguments": "{}",
                 "name": "lookup_harbor_label"
               },
-              "id": "call_iQcZJOsBb7eb834rq0hyuJEI",
+              "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
               "type": "function"
             },
-            "fingerprint": 5962288007452861358
+            "fingerprint": 15265050511659671474
           }
         }
       },
       {
         "tool_call": {
-          "id": "call_B2tEwlopa4FIVqJtadPwpzQL",
+          "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
           "name": "lookup_orchard_label",
           "arguments": {},
           "native": {
@@ -250,10 +250,10 @@
                 "arguments": "{}",
                 "name": "lookup_orchard_label"
               },
-              "id": "call_B2tEwlopa4FIVqJtadPwpzQL",
+              "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
               "type": "function"
             },
-            "fingerprint": 14449413665173907891
+            "fingerprint": 11553470084743583181
           }
         }
       }
@@ -266,7 +266,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
+    "response_id": "gen-1790925578-MCLRwuI1LuYJUZUdASKx",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -287,7 +287,7 @@
                   "arguments": "{}",
                   "name": "lookup_harbor_label"
                 },
-                "id": "call_iQcZJOsBb7eb834rq0hyuJEI",
+                "id": "call_Xc3UcNgMjYYouunedi5aKj0u",
                 "index": 0,
                 "type": "function"
               },
@@ -296,7 +296,7 @@
                   "arguments": "{}",
                   "name": "lookup_orchard_label"
                 },
-                "id": "call_B2tEwlopa4FIVqJtadPwpzQL",
+                "id": "call_0xoXrDVVR2zRfsJ1S7OaKxw8",
                 "index": 1,
                 "type": "function"
               }
@@ -306,12 +306,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152479-zU8yd87mbrqTdcQv3r0e",
+      "id": "gen-1790925578-MCLRwuI1LuYJUZUdASKx",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_24e955c341",
+      "service_tier": "default",
+      "system_fingerprint": "fp_3172c6e1cc",
       "usage": {
         "completion_tokens": 45,
         "completion_tokens_details": {
@@ -341,25 +341,25 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
+        "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
         "native": {
           "item": {
-            "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
+            "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
             "refusal": null
           },
-          "fingerprint": 3447351829490124892
+          "fingerprint": 8453353300682549933
         }
       }
     ],
     "usage": {
       "input_tokens": 225,
-      "output_tokens": 23,
-      "total_tokens": 248,
+      "output_tokens": 25,
+      "total_tokens": 250,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
+    "response_id": "gen-1790925578-h5dGOBen3XPoKyWUd59z",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -370,7 +370,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
+            "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -379,23 +379,23 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152482-8EEbqE82yyQKoUjfF3Iv",
+      "id": "gen-1790925578-h5dGOBen3XPoKyWUd59z",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_24e955c341",
+      "service_tier": "default",
+      "system_fingerprint": "fp_3172c6e1cc",
       "usage": {
-        "completion_tokens": 23,
+        "completion_tokens": 25,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0007925,
+        "cost": 0.0008125,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00023,
-          "upstream_inference_cost": 0.0007925,
+          "upstream_inference_completions_cost": 0.00025,
+          "upstream_inference_cost": 0.0008125,
           "upstream_inference_prompt_cost": 0.0005625
         },
         "is_byok": false,
@@ -406,7 +406,7 @@
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 248
+        "total_tokens": 250
       }
     }
   },
@@ -639,7 +639,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5",
+          "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
           "name": "ping_empty",
           "arguments": {},
           "native": {
@@ -648,10 +648,10 @@
                 "arguments": "{}",
                 "name": "ping_empty"
               },
-              "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5",
+              "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
               "type": "function"
             },
-            "fingerprint": 2962943159399386703
+            "fingerprint": 8926778202970173482
           }
         }
       }
@@ -664,7 +664,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152483-X0RaA3bVSthhPp9Yommm",
+    "response_id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -685,7 +685,7 @@
                   "arguments": "{}",
                   "name": "ping_empty"
                 },
-                "id": "call_OodHSAuE3XEjBGUXa0Ncd2i5",
+                "id": "call_ahn3g99ijtSgm82YpNmFl2ku",
                 "index": 0,
                 "type": "function"
               }
@@ -695,12 +695,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152483-X0RaA3bVSthhPp9Yommm",
+      "id": "gen-1790925591-8W8GKBliVOuV0okBjdWZ",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_38255cd5f6",
+      "service_tier": "default",
+      "system_fingerprint": "fp_ebb746cdfb",
       "usage": {
         "completion_tokens": 11,
         "completion_tokens_details": {
@@ -731,7 +731,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_WjBIpS8cb6V85xQdajiTm502",
+          "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
           "name": "inspect_manifest",
           "arguments": {
             "project": "rig-openrouter",
@@ -757,10 +757,10 @@
                 "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                 "name": "inspect_manifest"
               },
-              "id": "call_WjBIpS8cb6V85xQdajiTm502",
+              "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
               "type": "function"
             },
-            "fingerprint": 567292026494573225
+            "fingerprint": 6188167410003475985
           }
         }
       }
@@ -773,7 +773,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152484-sjsNyy0LQgK9SBlT8DBL",
+    "response_id": "gen-1790925592-W4OjwWmxm8jk52ge4pi2",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -794,7 +794,7 @@
                   "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                   "name": "inspect_manifest"
                 },
-                "id": "call_WjBIpS8cb6V85xQdajiTm502",
+                "id": "call_nxFkqXhcjOhV6HYoAg50kOq8",
                 "index": 0,
                 "type": "function"
               }
@@ -804,12 +804,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152484-sjsNyy0LQgK9SBlT8DBL",
+      "id": "gen-1790925592-W4OjwWmxm8jk52ge4pi2",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_38255cd5f6",
+      "service_tier": "default",
+      "system_fingerprint": "fp_ebb746cdfb",
       "usage": {
         "completion_tokens": 67,
         "completion_tokens_details": {
@@ -840,7 +840,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_jGcVnNB5MuX16G2mNcEmhquG",
+          "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
           "name": "join_labels",
           "arguments": {
             "labels": [
@@ -857,10 +857,10 @@
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                 "name": "join_labels"
               },
-              "id": "call_jGcVnNB5MuX16G2mNcEmhquG",
+              "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
               "type": "function"
             },
-            "fingerprint": 18015612625414848841
+            "fingerprint": 10116788674631974501
           }
         }
       }
@@ -873,7 +873,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152486-5vmOm1dZZxCH77Evla9L",
+    "response_id": "gen-1790925593-bRldEEaLSxk76bhnULrt",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -894,7 +894,7 @@
                   "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                   "name": "join_labels"
                 },
-                "id": "call_jGcVnNB5MuX16G2mNcEmhquG",
+                "id": "call_eNVnODVUwepBTOEU0VAmbiX1",
                 "index": 0,
                 "type": "function"
               }
@@ -904,12 +904,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152486-5vmOm1dZZxCH77Evla9L",
+      "id": "gen-1790925593-bRldEEaLSxk76bhnULrt",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_38255cd5f6",
+      "service_tier": "default",
+      "system_fingerprint": "fp_ebb746cdfb",
       "usage": {
         "completion_tokens": 31,
         "completion_tokens_details": {
@@ -940,7 +940,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_C6b8yTvrR6vo9pqiRomnds4Y",
+          "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
           "name": "escape_echo",
           "arguments": {
             "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
@@ -951,10 +951,10 @@
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                 "name": "escape_echo"
               },
-              "id": "call_C6b8yTvrR6vo9pqiRomnds4Y",
+              "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
               "type": "function"
             },
-            "fingerprint": 1204955092701872644
+            "fingerprint": 17371678809011819620
           }
         }
       }
@@ -967,7 +967,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152487-w7YQRbDCYaYesQr2dCJ9",
+    "response_id": "gen-1790925594-CotnfsjUZSYzEOWsMBTc",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -988,7 +988,7 @@
                   "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                   "name": "escape_echo"
                 },
-                "id": "call_C6b8yTvrR6vo9pqiRomnds4Y",
+                "id": "call_uep8urw3Iy0geNViQ6z3hwl9",
                 "index": 0,
                 "type": "function"
               }
@@ -998,12 +998,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152487-w7YQRbDCYaYesQr2dCJ9",
+      "id": "gen-1790925594-CotnfsjUZSYzEOWsMBTc",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_38255cd5f6",
+      "service_tier": "default",
+      "system_fingerprint": "fp_ebb746cdfb",
       "usage": {
         "completion_tokens": 31,
         "completion_tokens_details": {
@@ -1033,25 +1033,25 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "The scenario resulted in EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+        "text": "EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK indicate the successful execution of all tasks.",
         "native": {
           "item": {
-            "content": "The scenario resulted in EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+            "content": "EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK indicate the successful execution of all tasks.",
             "refusal": null
           },
-          "fingerprint": 3020637592651948494
+          "fingerprint": 13174632484692454668
         }
       }
     ],
     "usage": {
       "input_tokens": 580,
-      "output_tokens": 25,
-      "total_tokens": 605,
+      "output_tokens": 28,
+      "total_tokens": 608,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152488-mvkVIFyUNw6SNnE0OdhX",
+    "response_id": "gen-1790925595-AL2b4u38Ak8LV2wi3IAB",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -1062,7 +1062,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "The scenario resulted in EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+            "content": "EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK indicate the successful execution of all tasks.",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -1071,23 +1071,23 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152488-mvkVIFyUNw6SNnE0OdhX",
+      "id": "gen-1790925595-AL2b4u38Ak8LV2wi3IAB",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_38255cd5f6",
+      "service_tier": "default",
+      "system_fingerprint": "fp_ebb746cdfb",
       "usage": {
-        "completion_tokens": 25,
+        "completion_tokens": 28,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0017,
+        "cost": 0.00173,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00025,
-          "upstream_inference_cost": 0.0017,
+          "upstream_inference_completions_cost": 0.00028,
+          "upstream_inference_cost": 0.00173,
           "upstream_inference_prompt_cost": 0.00145
         },
         "is_byok": false,
@@ -1098,7 +1098,7 @@
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 605
+        "total_tokens": 608
       }
     }
   },
@@ -1107,7 +1107,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_LelbWhDCl1GYVoKJNOg6SdRt",
+          "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
           "name": "ping_empty",
           "arguments": {},
           "native": {
@@ -1116,10 +1116,10 @@
                 "arguments": "{}",
                 "name": "ping_empty"
               },
-              "id": "call_LelbWhDCl1GYVoKJNOg6SdRt",
+              "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
               "type": "function"
             },
-            "fingerprint": 9068796694329757212
+            "fingerprint": 6880823829132772345
           }
         }
       }
@@ -1132,7 +1132,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
+    "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -1157,14 +1157,14 @@
         "is_byok": false
       },
       "finish_reason": "tool_calls",
-      "response_id": "gen-1790152483-QhIYfqhgAWLCH8GHZFrW",
+      "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_38255cd5f6",
-        "service_tier": null
+        "system_fingerprint": "fp_ebb746cdfb",
+        "service_tier": "default"
       }
     }
   },
@@ -1173,7 +1173,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_vP9nx06h1MLfVYTPsCVxxq1g",
+          "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
           "name": "inspect_manifest",
           "arguments": {
             "project": "rig-openrouter",
@@ -1199,10 +1199,10 @@
                 "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                 "name": "inspect_manifest"
               },
-              "id": "call_vP9nx06h1MLfVYTPsCVxxq1g",
+              "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
               "type": "function"
             },
-            "fingerprint": 18042179026416668754
+            "fingerprint": 3110525312706441786
           }
         }
       }
@@ -1215,7 +1215,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
+    "response_id": "gen-1790925608-qMpIUBSz0Xp0wa8Z3AED",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -1240,14 +1240,14 @@
         "is_byok": false
       },
       "finish_reason": "tool_calls",
-      "response_id": "gen-1790152484-4NbSrYIKlBL3Iwysyeue",
+      "response_id": "gen-1790925608-qMpIUBSz0Xp0wa8Z3AED",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_38255cd5f6",
-        "service_tier": null
+        "system_fingerprint": "fp_ebb746cdfb",
+        "service_tier": "default"
       }
     }
   },
@@ -1256,7 +1256,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_QVr7yt00dAlbex31XdCOqBJD",
+          "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
           "name": "join_labels",
           "arguments": {
             "labels": [
@@ -1273,10 +1273,10 @@
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                 "name": "join_labels"
               },
-              "id": "call_QVr7yt00dAlbex31XdCOqBJD",
+              "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
               "type": "function"
             },
-            "fingerprint": 13448467409679687305
+            "fingerprint": 318456620788361877
           }
         }
       }
@@ -1289,7 +1289,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
+    "response_id": "gen-1790925609-c8tqwRDXiua0wvnFXuxs",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -1314,14 +1314,14 @@
         "is_byok": false
       },
       "finish_reason": "tool_calls",
-      "response_id": "gen-1790152486-rD4jemUWFNf9fIaNds5Z",
+      "response_id": "gen-1790925609-c8tqwRDXiua0wvnFXuxs",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_38255cd5f6",
-        "service_tier": null
+        "system_fingerprint": "fp_ebb746cdfb",
+        "service_tier": "default"
       }
     }
   },
@@ -1330,7 +1330,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_UvF9FPzIIy8sXt49XPWAgbW8",
+          "id": "call_WHDU9k2e8x3AfMj79UQrs2Ht",
           "name": "escape_echo",
           "arguments": {
             "text": "Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃"
@@ -1341,10 +1341,10 @@
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                 "name": "escape_echo"
               },
-              "id": "call_UvF9FPzIIy8sXt49XPWAgbW8",
+              "id": "call_WHDU9k2e8x3AfMj79UQrs2Ht",
               "type": "function"
             },
-            "fingerprint": 11505890387156962229
+            "fingerprint": 5593701275953130573
           }
         }
       }
@@ -1357,7 +1357,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
+    "response_id": "gen-1790925610-ELeCRRYvNFo3rojufI8Y",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -1382,14 +1382,14 @@
         "is_byok": false
       },
       "finish_reason": "tool_calls",
-      "response_id": "gen-1790152488-18Dwg0H8sXuxuq3880hc",
+      "response_id": "gen-1790925610-ELeCRRYvNFo3rojufI8Y",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_38255cd5f6",
-        "service_tier": null
+        "system_fingerprint": "fp_ebb746cdfb",
+        "service_tier": "default"
       }
     }
   },
@@ -1397,32 +1397,32 @@
     "mode": "streaming",
     "choice": [
       {
-        "text": "All tools executed successfully: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+        "text": "The results are EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
         "native": {
           "item": {
-            "content": "All tools executed successfully: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
+            "content": "The results are EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
           },
-          "fingerprint": 17315050189949547890
+          "fingerprint": 9104106927048642947
         }
       }
     ],
     "usage": {
       "input_tokens": 580,
-      "output_tokens": 26,
-      "total_tokens": 606,
+      "output_tokens": 24,
+      "total_tokens": 604,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
+    "response_id": "gen-1790925611-BpVqdBYdc5C8OYAhOwVM",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
     "raw": {
       "usage": {
         "prompt_tokens": 580,
-        "completion_tokens": 26,
-        "total_tokens": 606,
+        "completion_tokens": 24,
+        "total_tokens": 604,
         "prompt_tokens_details": {
           "cached_tokens": 0,
           "cache_write_tokens": 0
@@ -1430,23 +1430,23 @@
         "completion_tokens_details": {
           "reasoning_tokens": 0
         },
-        "cost": 0.00171,
+        "cost": 0.00169,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00026,
-          "upstream_inference_cost": 0.00171,
+          "upstream_inference_completions_cost": 0.00024,
+          "upstream_inference_cost": 0.00169,
           "upstream_inference_prompt_cost": 0.00145
         },
         "is_byok": false
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790152489-NMTT9aPrSljwvJSkzgoK",
+      "response_id": "gen-1790925611-BpVqdBYdc5C8OYAhOwVM",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_38255cd5f6",
-        "service_tier": null
+        "system_fingerprint": "fp_ebb746cdfb",
+        "service_tier": "default"
       }
     }
   },
@@ -2736,7 +2736,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152495-hVROVXFgz4kzFrQmPrKW",
+    "response_id": "gen-1790925624-FzkFdOnynjcEyzOHzzsR",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -2756,7 +2756,7 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152495-hVROVXFgz4kzFrQmPrKW",
+      "id": "gen-1790925624-FzkFdOnynjcEyzOHzzsR",
       "model": "openai/gpt-4.1-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
@@ -2955,7 +2955,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152497-GDvdZ62PvxS0dmgntTqu",
+    "response_id": "gen-1790925636-VaK1rSbTi3SqJjpi5jZR",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -2975,7 +2975,7 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152497-GDvdZ62PvxS0dmgntTqu",
+      "id": "gen-1790925636-VaK1rSbTi3SqJjpi5jZR",
       "model": "openai/gpt-4.1-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
@@ -3174,7 +3174,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152498-dgzQGtojjc6t3EvReal3",
+    "response_id": "gen-1790925649-oLjJvjdF6aAt8ElynYDz",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -3194,12 +3194,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152498-dgzQGtojjc6t3EvReal3",
+      "id": "gen-1790925649-oLjJvjdF6aAt8ElynYDz",
       "model": "openai/gpt-4o-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_ba31b96abb",
+      "service_tier": "default",
+      "system_fingerprint": "fp_dc56f5b7b3",
       "usage": {
         "completion_tokens": 4,
         "completion_tokens_details": {
@@ -3393,7 +3393,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152498-mTi9Op74fOYE4xSxIk9t",
+    "response_id": "gen-1790925664-BX74Tu9of8PCswOcw9lK",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -3413,12 +3413,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152498-mTi9Op74fOYE4xSxIk9t",
+      "id": "gen-1790925664-BX74Tu9of8PCswOcw9lK",
       "model": "openai/gpt-4o-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_ba31b96abb",
+      "service_tier": "default",
+      "system_fingerprint": "fp_dc56f5b7b3",
       "usage": {
         "completion_tokens": 4,
         "completion_tokens_details": {
@@ -3577,7 +3577,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152498-b4Dz2H0kJVn3CZnUTCu8",
+    "response_id": "gen-1790925678-282k8WiYoKfOPKOryS0l",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -3602,7 +3602,7 @@
         "is_byok": false
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790152498-b4Dz2H0kJVn3CZnUTCu8",
+      "response_id": "gen-1790925678-282k8WiYoKfOPKOryS0l",
       "model": "openai/gpt-4.1-mini",
       "additional_params": {
         "created": 0,
@@ -3745,7 +3745,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152499-6OoTYwScp7flxN7QkbCL",
+    "response_id": "gen-1790925692-zrWpiM4O7YgU0vF2IfTL",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -3770,7 +3770,7 @@
         "is_byok": false
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790152499-6OoTYwScp7flxN7QkbCL",
+      "response_id": "gen-1790925692-zrWpiM4O7YgU0vF2IfTL",
       "model": "openai/gpt-4.1-mini",
       "additional_params": {
         "created": 0,
@@ -3915,7 +3915,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152499-oDUduGVA52pLZhjtfemr",
+    "response_id": "gen-1790925707-XPa6Eusyqtp0odotXo1h",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -3940,14 +3940,14 @@
         "is_byok": false
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790152499-oDUduGVA52pLZhjtfemr",
+      "response_id": "gen-1790925707-XPa6Eusyqtp0odotXo1h",
       "model": "openai/gpt-4o-mini",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_ba31b96abb",
-        "service_tier": null
+        "system_fingerprint": "fp_dc56f5b7b3",
+        "service_tier": "default"
       }
     }
   },
@@ -4086,7 +4086,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152500-5IIdv3jwuMIfdV31Ou2F",
+    "response_id": "gen-1790925721-CQNfFKhedrNXd8jesPN3",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -4111,14 +4111,14 @@
         "is_byok": false
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790152500-5IIdv3jwuMIfdV31Ou2F",
+      "response_id": "gen-1790925721-CQNfFKhedrNXd8jesPN3",
       "model": "openai/gpt-4o-mini",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_ba31b96abb",
-        "service_tier": null
+        "system_fingerprint": "fp_dc56f5b7b3",
+        "service_tier": "default"
       }
     }
   },
@@ -6708,7 +6708,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_Zw0G5L2k8tddrgpppcPCJfTO",
+          "id": "call_soHKIpSh3ACptq1LrhKCSLwG",
           "name": "read_file_head",
           "arguments": {},
           "native": {
@@ -6717,16 +6717,16 @@
                 "arguments": "{}",
                 "name": "read_file_head"
               },
-              "id": "call_Zw0G5L2k8tddrgpppcPCJfTO",
+              "id": "call_soHKIpSh3ACptq1LrhKCSLwG",
               "type": "function"
             },
-            "fingerprint": 15751196523753327065
+            "fingerprint": 3478616149856954972
           }
         }
       },
       {
         "tool_call": {
-          "id": "call_qnB9ykc1UMZqbwpWW8Xifqvt",
+          "id": "call_tBQAdL4FTnd887hiK2uR12xf",
           "name": "read_file_tail",
           "arguments": {},
           "native": {
@@ -6735,10 +6735,10 @@
                 "arguments": "{}",
                 "name": "read_file_tail"
               },
-              "id": "call_qnB9ykc1UMZqbwpWW8Xifqvt",
+              "id": "call_tBQAdL4FTnd887hiK2uR12xf",
               "type": "function"
             },
-            "fingerprint": 2874820378907563131
+            "fingerprint": 10098934384227600776
           }
         }
       }
@@ -6751,7 +6751,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152508-9EacSNHdyUdzI6Q1xpIx",
+    "response_id": "gen-1790925735-wv2jLVtwcvdu46OpeAX3",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -6772,7 +6772,7 @@
                   "arguments": "{}",
                   "name": "read_file_head"
                 },
-                "id": "call_Zw0G5L2k8tddrgpppcPCJfTO",
+                "id": "call_soHKIpSh3ACptq1LrhKCSLwG",
                 "index": 0,
                 "type": "function"
               },
@@ -6781,7 +6781,7 @@
                   "arguments": "{}",
                   "name": "read_file_tail"
                 },
-                "id": "call_qnB9ykc1UMZqbwpWW8Xifqvt",
+                "id": "call_tBQAdL4FTnd887hiK2uR12xf",
                 "index": 1,
                 "type": "function"
               }
@@ -6791,12 +6791,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152508-9EacSNHdyUdzI6Q1xpIx",
+      "id": "gen-1790925735-wv2jLVtwcvdu46OpeAX3",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_636eed499b",
+      "service_tier": "default",
+      "system_fingerprint": "fp_3172c6e1cc",
       "usage": {
         "completion_tokens": 41,
         "completion_tokens_details": {
@@ -6826,25 +6826,25 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "The content of the last line in the file is: \"hello world\".",
+        "text": "- The last line from `test.txt` is: \"hello world\".\n- The tool to read the first line is currently unavailable.",
         "native": {
           "item": {
-            "content": "The content of the last line in the file is: \"hello world\".",
+            "content": "- The last line from `test.txt` is: \"hello world\".\n- The tool to read the first line is currently unavailable.",
             "refusal": null
           },
-          "fingerprint": 6162543526754705171
+          "fingerprint": 16367510374028638501
         }
       }
     ],
     "usage": {
       "input_tokens": 184,
-      "output_tokens": 16,
-      "total_tokens": 200,
+      "output_tokens": 28,
+      "total_tokens": 212,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152510-hqzaLLNwhvyGOKqfHfk8",
+    "response_id": "gen-1790925736-FnUQUs0WNQLDiDMMdvQ1",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -6855,7 +6855,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "The content of the last line in the file is: \"hello world\".",
+            "content": "- The last line from `test.txt` is: \"hello world\".\n- The tool to read the first line is currently unavailable.",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -6864,23 +6864,23 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152510-hqzaLLNwhvyGOKqfHfk8",
+      "id": "gen-1790925736-FnUQUs0WNQLDiDMMdvQ1",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_636eed499b",
+      "service_tier": "default",
+      "system_fingerprint": "fp_3172c6e1cc",
       "usage": {
-        "completion_tokens": 16,
+        "completion_tokens": 28,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.00062,
+        "cost": 0.00074,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00016,
-          "upstream_inference_cost": 0.00062,
+          "upstream_inference_completions_cost": 0.00028,
+          "upstream_inference_cost": 0.00074,
           "upstream_inference_prompt_cost": 0.00046
         },
         "is_byok": false,
@@ -6891,7 +6891,7 @@
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 200
+        "total_tokens": 212
       }
     }
   },
@@ -6900,7 +6900,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_7tV4BbVyMOfUOpYE1teFOMxF",
+          "id": "call_NcRZreqmVI9v6lvIN2T09MnP",
           "name": "read_file_head",
           "arguments": {},
           "native": {
@@ -6909,16 +6909,16 @@
                 "arguments": "{}",
                 "name": "read_file_head"
               },
-              "id": "call_7tV4BbVyMOfUOpYE1teFOMxF",
+              "id": "call_NcRZreqmVI9v6lvIN2T09MnP",
               "type": "function"
             },
-            "fingerprint": 16822852439307030007
+            "fingerprint": 11720470107485858792
           }
         }
       },
       {
         "tool_call": {
-          "id": "call_oBiZ49lkDWeYFt5ymKZ4FwyL",
+          "id": "call_ppXzq6peJHebssfKmTW4pDHz",
           "name": "read_file_tail",
           "arguments": {},
           "native": {
@@ -6927,10 +6927,10 @@
                 "arguments": "{}",
                 "name": "read_file_tail"
               },
-              "id": "call_oBiZ49lkDWeYFt5ymKZ4FwyL",
+              "id": "call_ppXzq6peJHebssfKmTW4pDHz",
               "type": "function"
             },
-            "fingerprint": 6239473800741976106
+            "fingerprint": 8224662554873776625
           }
         }
       }
@@ -6943,7 +6943,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152509-pbRI4Gm0cTXfHuAP3oFU",
+    "response_id": "gen-1790925749-OcIe61AsRBvFde31SeV1",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -6968,14 +6968,14 @@
         "is_byok": false
       },
       "finish_reason": "tool_calls",
-      "response_id": "gen-1790152509-pbRI4Gm0cTXfHuAP3oFU",
+      "response_id": "gen-1790925749-OcIe61AsRBvFde31SeV1",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_636eed499b",
-        "service_tier": null
+        "system_fingerprint": "fp_3172c6e1cc",
+        "service_tier": "default"
       }
     }
   },
@@ -6983,32 +6983,32 @@
     "mode": "streaming",
     "choice": [
       {
-        "text": "I was able to read the last line of \"test.txt\": \"hello world\". However, the tool to read the first line is currently unavailable.",
+        "text": "The content of the last line in `test.txt` is: \"hello world\". The tool to read the first line is currently unavailable.",
         "native": {
           "item": {
-            "content": "I was able to read the last line of \"test.txt\": \"hello world\". However, the tool to read the first line is currently unavailable."
+            "content": "The content of the last line in `test.txt` is: \"hello world\". The tool to read the first line is currently unavailable."
           },
-          "fingerprint": 16252668507706764817
+          "fingerprint": 14852654595579747623
         }
       }
     ],
     "usage": {
       "input_tokens": 184,
-      "output_tokens": 31,
-      "total_tokens": 215,
+      "output_tokens": 29,
+      "total_tokens": 213,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152510-SUvY5amLpftUWhD88EEc",
+    "response_id": "gen-1790925750-EjTDkUVMNJN4yAeTJ738",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
     "raw": {
       "usage": {
         "prompt_tokens": 184,
-        "completion_tokens": 31,
-        "total_tokens": 215,
+        "completion_tokens": 29,
+        "total_tokens": 213,
         "prompt_tokens_details": {
           "cached_tokens": 0,
           "cache_write_tokens": 0
@@ -7016,23 +7016,23 @@
         "completion_tokens_details": {
           "reasoning_tokens": 0
         },
-        "cost": 0.00077,
+        "cost": 0.00075,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00031,
-          "upstream_inference_cost": 0.00077,
+          "upstream_inference_completions_cost": 0.00029,
+          "upstream_inference_cost": 0.00075,
           "upstream_inference_prompt_cost": 0.00046
         },
         "is_byok": false
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790152510-SUvY5amLpftUWhD88EEc",
+      "response_id": "gen-1790925750-EjTDkUVMNJN4yAeTJ738",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_636eed499b",
-        "service_tier": null
+        "system_fingerprint": "fp_3172c6e1cc",
+        "service_tier": "default"
       }
     }
   },
@@ -7040,25 +7040,25 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Based on the sunny weather with light clouds in Tokyo, you should pack **sunscreen** rather than an umbrella, as there's no rain in the forecast and the sunny conditions will expose your skin to UV rays.",
+        "text": "Based on the sunny weather with light clouds and low humidity in Tokyo, you should pack **sunscreen** as the primary item, though an umbrella wouldn't hurt as a backup since there are some clouds present.",
         "native": {
           "item": {
-            "content": "Based on the sunny weather with light clouds in Tokyo, you should pack **sunscreen** rather than an umbrella, as there's no rain in the forecast and the sunny conditions will expose your skin to UV rays.",
+            "content": "Based on the sunny weather with light clouds and low humidity in Tokyo, you should pack **sunscreen** as the primary item, though an umbrella wouldn't hurt as a backup since there are some clouds present.",
             "refusal": null
           },
-          "fingerprint": 10754300528973312845
+          "fingerprint": 1026627084269381602
         }
       }
     ],
     "usage": {
-      "input_tokens": 809,
-      "output_tokens": 47,
-      "total_tokens": 856,
+      "input_tokens": 840,
+      "output_tokens": 46,
+      "total_tokens": 886,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790143005-oURy05oO1uO8BdEkhyWm",
+    "response_id": "gen-1790929368-HMkW7LmoDlD3YH6HX3F7",
     "finish_reason": "stop",
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
@@ -7069,7 +7069,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Based on the sunny weather with light clouds in Tokyo, you should pack **sunscreen** rather than an umbrella, as there's no rain in the forecast and the sunny conditions will expose your skin to UV rays.",
+            "content": "Based on the sunny weather with light clouds and low humidity in Tokyo, you should pack **sunscreen** as the primary item, though an umbrella wouldn't hurt as a backup since there are some clouds present.",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -7078,7 +7078,80 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790143005-oURy05oO1uO8BdEkhyWm",
+      "id": "gen-1790929368-HMkW7LmoDlD3YH6HX3F7",
+      "model": "anthropic/claude-haiku-4.5",
+      "object": "chat.completion",
+      "provider": "Amazon Bedrock",
+      "service_tier": "default",
+      "system_fingerprint": null,
+      "usage": {
+        "completion_tokens": 46,
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "reasoning_tokens": 0
+        },
+        "cost": 0.00107,
+        "cost_details": {
+          "upstream_inference_completions_cost": 0.00023,
+          "upstream_inference_cost": 0.00107,
+          "upstream_inference_prompt_cost": 0.00084
+        },
+        "is_byok": false,
+        "prompt_tokens": 840,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "video_tokens": 0
+        },
+        "total_tokens": 886
+      }
+    }
+  },
+  "portability_matrix/from_gemini.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and low humidity at 45%, you should pack **sunscreen** rather than an umbrella since rain is not expected.",
+        "native": {
+          "item": {
+            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and low humidity at 45%, you should pack **sunscreen** rather than an umbrella since rain is not expected.",
+            "refusal": null
+          },
+          "fingerprint": 16690009289468157580
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1099,
+      "output_tokens": 47,
+      "total_tokens": 1146,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    "response_id": "gen-1790925779-2yoWAKbXHvwq5v2K9qCD",
+    "finish_reason": "stop",
+    "model": "anthropic/claude-haiku-4.5",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and low humidity at 45%, you should pack **sunscreen** rather than an umbrella since rain is not expected.",
+            "reasoning": null,
+            "refusal": null,
+            "role": "assistant"
+          },
+          "native_finish_reason": "end_turn"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790925779-2yoWAKbXHvwq5v2K9qCD",
       "model": "anthropic/claude-haiku-4.5",
       "object": "chat.completion",
       "provider": "Amazon Bedrock",
@@ -7091,94 +7164,21 @@
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.001044,
+        "cost": 0.001334,
         "cost_details": {
           "upstream_inference_completions_cost": 0.000235,
-          "upstream_inference_cost": 0.001044,
-          "upstream_inference_prompt_cost": 0.000809
+          "upstream_inference_cost": 0.001334,
+          "upstream_inference_prompt_cost": 0.001099
         },
         "is_byok": false,
-        "prompt_tokens": 809,
+        "prompt_tokens": 1099,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 856
-      }
-    }
-  },
-  "portability_matrix/from_gemini.yaml#0": {
-    "mode": "unary",
-    "choice": [
-      {
-        "text": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and no precipitation mentioned, you should prioritize packing **sunscreen** over an umbrella, as there's no rain expected and the sunny weather poses a UV exposure risk.",
-        "native": {
-          "item": {
-            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and no precipitation mentioned, you should prioritize packing **sunscreen** over an umbrella, as there's no rain expected and the sunny weather poses a UV exposure risk.",
-            "refusal": null
-          },
-          "fingerprint": 6083733354769260754
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 796,
-      "output_tokens": 58,
-      "total_tokens": 854,
-      "cached_input_tokens": 0,
-      "cache_creation_input_tokens": 0,
-      "reasoning_tokens": 0
-    },
-    "response_id": "gen-1790109161-FZGbmwNQA2qiLiDFIcjZ",
-    "finish_reason": "stop",
-    "model": "anthropic/claude-haiku-4.5",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and no precipitation mentioned, you should prioritize packing **sunscreen** over an umbrella, as there's no rain expected and the sunny weather poses a UV exposure risk.",
-            "reasoning": null,
-            "refusal": null,
-            "role": "assistant"
-          },
-          "native_finish_reason": "end_turn"
-        }
-      ],
-      "created": 0,
-      "id": "gen-1790109161-FZGbmwNQA2qiLiDFIcjZ",
-      "model": "anthropic/claude-haiku-4.5",
-      "object": "chat.completion",
-      "provider": "Amazon Bedrock",
-      "service_tier": "default",
-      "system_fingerprint": null,
-      "usage": {
-        "completion_tokens": 58,
-        "completion_tokens_details": {
-          "audio_tokens": 0,
-          "image_tokens": 0,
-          "reasoning_tokens": 0
-        },
-        "cost": 0.001086,
-        "cost_details": {
-          "upstream_inference_completions_cost": 0.00029,
-          "upstream_inference_cost": 0.001086,
-          "upstream_inference_prompt_cost": 0.000796
-        },
-        "is_byok": false,
-        "prompt_tokens": 796,
-        "prompt_tokens_details": {
-          "audio_tokens": 0,
-          "cache_write_tokens": 0,
-          "cached_tokens": 0,
-          "video_tokens": 0
-        },
-        "total_tokens": 854
+        "total_tokens": 1146
       }
     }
   },
@@ -7186,25 +7186,25 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and no rain forecasted, you should prioritize packing sunscreen to protect against the sun, though an umbrella isn't necessary.",
+        "text": "Based on the current weather in Tokyo showing sunny conditions with light clouds and no rain, you should prioritize packing sunscreen rather than an umbrella.",
         "native": {
           "item": {
-            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and no rain forecasted, you should prioritize packing sunscreen to protect against the sun, though an umbrella isn't necessary.",
+            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds and no rain, you should prioritize packing sunscreen rather than an umbrella.",
             "refusal": null
           },
-          "fingerprint": 8130452813986385741
+          "fingerprint": 2456111813496564188
         }
       }
     ],
     "usage": {
       "input_tokens": 800,
-      "output_tokens": 50,
-      "total_tokens": 850,
+      "output_tokens": 34,
+      "total_tokens": 834,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790109163-0THYFA7VTgnNiwE6D0io",
+    "response_id": "gen-1790925795-JEPLMcFRwWpqfSCgottU",
     "finish_reason": "stop",
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
@@ -7215,7 +7215,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and no rain forecasted, you should prioritize packing sunscreen to protect against the sun, though an umbrella isn't necessary.",
+            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds and no rain, you should prioritize packing sunscreen rather than an umbrella.",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -7224,23 +7224,23 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790109163-0THYFA7VTgnNiwE6D0io",
+      "id": "gen-1790925795-JEPLMcFRwWpqfSCgottU",
       "model": "anthropic/claude-haiku-4.5",
       "object": "chat.completion",
       "provider": "Amazon Bedrock",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 50,
+        "completion_tokens": 34,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.00105,
+        "cost": 0.00097,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00025,
-          "upstream_inference_cost": 0.00105,
+          "upstream_inference_completions_cost": 0.00017,
+          "upstream_inference_cost": 0.00097,
           "upstream_inference_prompt_cost": 0.0008
         },
         "is_byok": false,
@@ -7251,7 +7251,7 @@
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 850
+        "total_tokens": 834
       }
     }
   },
@@ -9468,7 +9468,7 @@
     "choice": [
       {
         "reasoning": {
-          "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the string value \"cobalt\". Since they said \"Do not answer in prose\", I should just make the function call without any explanatory text before it.",
+          "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is straightforward - I need to call the lookup function with the parameter \"value\" set to \"cobalt\". I should not provide a prose answer.\n\nLet me make the function call.",
           "redacted": false,
           "native": {
             "item": {
@@ -9476,20 +9476,20 @@
                 {
                   "format": "anthropic-claude-v1",
                   "index": 0,
-                  "signature": "Ev4ECroBCBIYAipAPClJMNvJNuljRNLCACAOvWLdhef+DiNl6xOQY8bo5kSVnNTCfPMi4ILxlG1NwzLaVV/p6PtyO4t1plcVlY/fNTIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGQ5ODNmM2YtNDlmYS00YTQ2LTgyNTQtYjFiYjI0OTFhMmE5eh51cHJvZl8wMTFDZjRvdVpRNlBUc0xaN3ozS1JWcDKoAc/iytUGEgzT2NUQzJzuWpDIy/4aDLEDN0IRbMNGRJSBZyIwnznDpvCdf1SwngvIE80qUTRAWfaUjUMKUzsnRlJS1yKlBcwn50QvQNq2Pvnee/phKvACsmc4THBuSNU7LRPVkhhfij5JKr5Y5vFD0ZDfGuwyVHCQojsfM/GblJcFbZwZDulPbjm4GeTVVuM5GAfVDdLw15nQCZnUG8aPMa0RKpHLOLeefvUdU4dnpNKZWnAZJyhJJ17m2Q7ngFEdUlrts4WlIgZplfRjGkgDMltlZOUFBhUIdUXKeG3+ayHEZdYl63H32slgOVDUDWGq3XqousN58Ll61ca8IIzr5ZQRSu1DeC/gDE6Ek3QjQaJtkyFIq/lOChHo0MZJFU6ttzMIrifJudLydhuA/vQHU6lozh0mpTcM+I4ho0WAshhP0JcKnK6Atgfhn6Kw4OPpbyyyy8vHfAzb8tO56A3mQ+snaSa6Jl6g3DAaEcLJYUixvd1T8wXchMtULYzTuiWYszp/a5xJUGvaNKjEo0+i4M1MhbKXZBwmMRBXIi3GLmyZA8Tl/rbbIkwJFtq4nhUm2uAHMc+KQ24Xfy9E1zSHi2Ctkqa0arAYAQ==",
-                  "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the string value \"cobalt\". Since they said \"Do not answer in prose\", I should just make the function call without any explanatory text before it.",
+                  "signature": "EoAFCtgBCBIYAipAvXpOCxxTfvCHQgXAWhL1gjuXYHSYtYBHTfs9OUCS+KqUFzPVxyjcDQW+AH3oplUs62iiX4NII+cMZXV0P1zEIzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGQ5ODNmM2YtNDlmYS00YTQ2LTgyNTQtYjFiYjI0OTFhMmE5eh51cHJvZl8wMTFDZjRvdVpRNlBUc0xaN3ozS1JWcDKaARsKGWNsYXVkZS1oYWlrdS00LTUtMjAyNTEwMDGoAfG3/dUGEgxgvHJmScMm4crKYTsaDJ/X2E4zN+Yu48yBziIwPlnheQuEFjnENOVtOMPBBXXUyvCp6H4YthiDP2FpcO8B0mh5A9gEneAQjnaYILplKtQC8NHdNUuOWYvvVGJfxjAokLVENVBMAsr9UB1Fm9BkkSGEytHxX/y4SO5zAObrkhB71n4OD0ghrzh89UoAJ286/dJdfsmte54aFXKvT7WGKWnX7s4HR0LLTGHbcWkBiMHi6PaCwYmEHBemSDSmS/nCxZQs3f2S3Au0wWJFk+eeMqrFEpZSAEorsBi1NUwpFBvuKzE3boYMGEKiOCz32mGDj3NMDlE4rzdK/xVNQEB0UGdg7IZuVEDp/80Da3od/+m/IphmrGhOxhEr9ArmYGMrBhrK8omShf2K/i2Fh+XOXy8PC5geAF6SfkUf8U+0snVscHcXkujuhvHlp3JG+Xzy22LNKq2Py5LLv8J5fnefjxViAnAOZAjUSCKsRq+AjvmMZUOTnDpDGUy3tqlAm4uHFhgxsAwSssuJNL4+H8F4aTKbIT8Fg78WDClBkNjumJGWdYPgARgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS00LjUtaGFpa3UtMjAyNTEwMDF8YW50aHJvcGljIn0",
+                  "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is straightforward - I need to call the lookup function with the parameter \"value\" set to \"cobalt\". I should not provide a prose answer.\n\nLet me make the function call.",
                   "type": "reasoning.text"
                 }
               ],
-              "reasoning": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the string value \"cobalt\". Since they said \"Do not answer in prose\", I should just make the function call without any explanatory text before it."
+              "reasoning": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is straightforward - I need to call the lookup function with the parameter \"value\" set to \"cobalt\". I should not provide a prose answer.\n\nLet me make the function call."
             },
-            "fingerprint": 311916187313718818
+            "fingerprint": 8024553780899607151
           }
         }
       },
       {
         "tool_call": {
-          "id": "toolu_01BQJURdRiBX29UWMYZTZTjR",
+          "id": "toolu_01CFr9sFyXQ1zihtdGHy1Ehv",
           "name": "lookup",
           "arguments": {
             "value": "cobalt"
@@ -9500,23 +9500,23 @@
                 "arguments": "{\"value\": \"cobalt\"}",
                 "name": "lookup"
               },
-              "id": "toolu_01BQJURdRiBX29UWMYZTZTjR",
+              "id": "toolu_01CFr9sFyXQ1zihtdGHy1Ehv",
               "type": "function"
             },
-            "fingerprint": 1962595566730704145
+            "fingerprint": 14998154875589755052
           }
         }
       }
     ],
     "usage": {
       "input_tokens": 635,
-      "output_tokens": 142,
-      "total_tokens": 777,
+      "output_tokens": 138,
+      "total_tokens": 773,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "reasoning_tokens": 87
+      "reasoning_tokens": 83
     },
-    "response_id": "gen-1790095694-g4dDTsLluvLGRAfd5RJu",
+    "response_id": "gen-1790925807-BSSMkAkesh7TXjUxNq28",
     "finish_reason": "tool_calls",
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
@@ -9528,13 +9528,13 @@
           "logprobs": null,
           "message": {
             "content": null,
-            "reasoning": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the string value \"cobalt\". Since they said \"Do not answer in prose\", I should just make the function call without any explanatory text before it.",
+            "reasoning": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is straightforward - I need to call the lookup function with the parameter \"value\" set to \"cobalt\". I should not provide a prose answer.\n\nLet me make the function call.",
             "reasoning_details": [
               {
                 "format": "anthropic-claude-v1",
                 "index": 0,
-                "signature": "Ev4ECroBCBIYAipAPClJMNvJNuljRNLCACAOvWLdhef+DiNl6xOQY8bo5kSVnNTCfPMi4ILxlG1NwzLaVV/p6PtyO4t1plcVlY/fNTIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGQ5ODNmM2YtNDlmYS00YTQ2LTgyNTQtYjFiYjI0OTFhMmE5eh51cHJvZl8wMTFDZjRvdVpRNlBUc0xaN3ozS1JWcDKoAc/iytUGEgzT2NUQzJzuWpDIy/4aDLEDN0IRbMNGRJSBZyIwnznDpvCdf1SwngvIE80qUTRAWfaUjUMKUzsnRlJS1yKlBcwn50QvQNq2Pvnee/phKvACsmc4THBuSNU7LRPVkhhfij5JKr5Y5vFD0ZDfGuwyVHCQojsfM/GblJcFbZwZDulPbjm4GeTVVuM5GAfVDdLw15nQCZnUG8aPMa0RKpHLOLeefvUdU4dnpNKZWnAZJyhJJ17m2Q7ngFEdUlrts4WlIgZplfRjGkgDMltlZOUFBhUIdUXKeG3+ayHEZdYl63H32slgOVDUDWGq3XqousN58Ll61ca8IIzr5ZQRSu1DeC/gDE6Ek3QjQaJtkyFIq/lOChHo0MZJFU6ttzMIrifJudLydhuA/vQHU6lozh0mpTcM+I4ho0WAshhP0JcKnK6Atgfhn6Kw4OPpbyyyy8vHfAzb8tO56A3mQ+snaSa6Jl6g3DAaEcLJYUixvd1T8wXchMtULYzTuiWYszp/a5xJUGvaNKjEo0+i4M1MhbKXZBwmMRBXIi3GLmyZA8Tl/rbbIkwJFtq4nhUm2uAHMc+KQ24Xfy9E1zSHi2Ctkqa0arAYAQ==",
-                "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the string value \"cobalt\". Since they said \"Do not answer in prose\", I should just make the function call without any explanatory text before it.",
+                "signature": "EoAFCtgBCBIYAipAvXpOCxxTfvCHQgXAWhL1gjuXYHSYtYBHTfs9OUCS+KqUFzPVxyjcDQW+AH3oplUs62iiX4NII+cMZXV0P1zEIzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGQ5ODNmM2YtNDlmYS00YTQ2LTgyNTQtYjFiYjI0OTFhMmE5eh51cHJvZl8wMTFDZjRvdVpRNlBUc0xaN3ozS1JWcDKaARsKGWNsYXVkZS1oYWlrdS00LTUtMjAyNTEwMDGoAfG3/dUGEgxgvHJmScMm4crKYTsaDJ/X2E4zN+Yu48yBziIwPlnheQuEFjnENOVtOMPBBXXUyvCp6H4YthiDP2FpcO8B0mh5A9gEneAQjnaYILplKtQC8NHdNUuOWYvvVGJfxjAokLVENVBMAsr9UB1Fm9BkkSGEytHxX/y4SO5zAObrkhB71n4OD0ghrzh89UoAJ286/dJdfsmte54aFXKvT7WGKWnX7s4HR0LLTGHbcWkBiMHi6PaCwYmEHBemSDSmS/nCxZQs3f2S3Au0wWJFk+eeMqrFEpZSAEorsBi1NUwpFBvuKzE3boYMGEKiOCz32mGDj3NMDlE4rzdK/xVNQEB0UGdg7IZuVEDp/80Da3od/+m/IphmrGhOxhEr9ArmYGMrBhrK8omShf2K/i2Fh+XOXy8PC5geAF6SfkUf8U+0snVscHcXkujuhvHlp3JG+Xzy22LNKq2Py5LLv8J5fnefjxViAnAOZAjUSCKsRq+AjvmMZUOTnDpDGUy3tqlAm4uHFhgxsAwSssuJNL4+H8F4aTKbIT8Fg78WDClBkNjumJGWdYPgARgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS00LjUtaGFpa3UtMjAyNTEwMDF8YW50aHJvcGljIn0",
+                "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Do not answer in prose\n\nThe instruction is straightforward - I need to call the lookup function with the parameter \"value\" set to \"cobalt\". I should not provide a prose answer.\n\nLet me make the function call.",
                 "type": "reasoning.text"
               }
             ],
@@ -9546,7 +9546,7 @@
                   "arguments": "{\"value\": \"cobalt\"}",
                   "name": "lookup"
                 },
-                "id": "toolu_01BQJURdRiBX29UWMYZTZTjR",
+                "id": "toolu_01CFr9sFyXQ1zihtdGHy1Ehv",
                 "index": 0,
                 "type": "function"
               }
@@ -9556,23 +9556,23 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790095694-g4dDTsLluvLGRAfd5RJu",
+      "id": "gen-1790925807-BSSMkAkesh7TXjUxNq28",
       "model": "anthropic/claude-haiku-4.5",
       "object": "chat.completion",
       "provider": "Anthropic",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 142,
+        "completion_tokens": 138,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
-          "reasoning_tokens": 87
+          "reasoning_tokens": 83
         },
-        "cost": 0.001345,
+        "cost": 0.001325,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00071,
-          "upstream_inference_cost": 0.001345,
+          "upstream_inference_completions_cost": 0.00069,
+          "upstream_inference_cost": 0.001325,
           "upstream_inference_prompt_cost": 0.000635
         },
         "is_byok": false,
@@ -9583,7 +9583,7 @@
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 777
+        "total_tokens": 773
       }
     }
   },
@@ -9602,14 +9602,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 799,
+      "input_tokens": 795,
       "output_tokens": 5,
-      "total_tokens": 804,
+      "total_tokens": 800,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790095696-Ot7SW5OgZNHTCSdLwffF",
+    "response_id": "gen-1790925809-Ya1Y2gcpwQoHRhGzHAzq",
     "finish_reason": "stop",
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
@@ -9629,7 +9629,7 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790095696-Ot7SW5OgZNHTCSdLwffF",
+      "id": "gen-1790925809-Ya1Y2gcpwQoHRhGzHAzq",
       "model": "anthropic/claude-haiku-4.5",
       "object": "chat.completion",
       "provider": "Anthropic",
@@ -9642,21 +9642,21 @@
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.000824,
+        "cost": 0.00082,
         "cost_details": {
           "upstream_inference_completions_cost": 0.000025,
-          "upstream_inference_cost": 0.000824,
-          "upstream_inference_prompt_cost": 0.000799
+          "upstream_inference_cost": 0.00082,
+          "upstream_inference_prompt_cost": 0.000795
         },
         "is_byok": false,
-        "prompt_tokens": 799,
+        "prompt_tokens": 795,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 804
+        "total_tokens": 800
       }
     }
   },
@@ -9897,7 +9897,7 @@
     "choice": [
       {
         "reasoning": {
-          "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I should call the lookup function with the parameter value set to \"cobalt\". The user explicitly said not to answer in prose, so I should just make the call and then say DONE.",
+          "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the value \"cobalt\". Let me do that now.",
           "redacted": false,
           "native": {
             "item": {
@@ -9905,20 +9905,20 @@
                 {
                   "format": "anthropic-claude-v1",
                   "index": 0,
-                  "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I should call the lookup function with the parameter value set to \"cobalt\". The user explicitly said not to answer in prose, so I should just make the call and then say DONE.",
+                  "text": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the value \"cobalt\". Let me do that now.",
                   "type": "reasoning.text",
-                  "signature": "EvAECroBCBIYAipALzC0NhygI5PHMIsQz2SjFFw8Una9+MTh4SYzn2cVtWUD8jyZWMA4fGQip5k9wMDyNpuUyduVbQlJgYP84w5+eDIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGQ5ODNmM2YtNDlmYS00YTQ2LTgyNTQtYjFiYjI0OTFhMmE5eh51cHJvZl8wMTFDZjRvdVpRNlBUc0xaN3ozS1JWcDKoAdfiytUGEgwQD1bx1EzHo5KmiLkaDCj1YPqlTOLh2HzG6iIw8/WmTGqvLnm5MYSC2+0vDNLEQNLfCkhPLqIJS4lR3MsYHMmFAVqqL3ADsonqgGVnKuICqlXbYlCyXhro1IUFfSyjIePanuS9NOFYQVG/SORVAY8syZneTh/Z/fSSqDWFZe1gXB+tQFy8rd9Rz6niU8WzGjrp/Bebi8P1DIEo4qt82m3h19rcMB/rIt1ZuPpQtCDDuvJvK6SrQmaT/hKimowuHytbhACvkV+x94goo68PB3NTNsbSKBjPMfNGIsJGBsoGYK/5PPCJE13GJ5DdSk3+QNgY/lFHN8anfZ5jhjWmqC+3L+0qGoGBeQEA9QLLixoel1MCVT3OVKHB6Bqvo1762SU5Jk7EZ2zqELNf3n1xCOHXR0M5vjWxIB4KupA0pNy7VTV10luN/nz1nIpHiPjCyexodnPrGv6ef6PZTHeDP2uHKVNCooxC6zE6vMeo38n/LNmiR89ygizvMSab/vENFbMATo/MyetESjelgUwHtPdJE7nSSALovtnQZx/3xugkYbbsq2PPzsGzk5b3FLO8ftPiGAE="
+                  "signature": "Eq8ECtgBCBIYAipAEPimq5BSBBTiNW7RaGWsK59XorVd3LmNnz1WcvuFt0gT7e1BoZRU6JXjbeH2a0Kgkd9Z0F/0XsHcKqfOodseVzIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGQ5ODNmM2YtNDlmYS00YTQ2LTgyNTQtYjFiYjI0OTFhMmE5eh51cHJvZl8wMTFDZjRvdVpRNlBUc0xaN3ozS1JWcDKaARsKGWNsYXVkZS1oYWlrdS00LTUtMjAyNTEwMDGoAf63/dUGEgzEXFXJ5W+FlefSy4MaDG5Qd9CKGwqGR36BuSIwDwbAW3jyUwms/PARubYYB9XEuHfgAvXH4EfWVMhwkjwzyK1Bh+39CkeZzC7ZQNrQKoMCd8g6mHOgzTCFgEE8xKkhnffOK+hMzb6yseQId58gZ049lEhtAvetHc2fQmrCmtDIphzTPAnXWDyKGeqauvu4wfnN0v+bYHckvGKK6P9tQ54iiA8SI5uJ3TMWzlKS+Se5tA/KFXR5eZQhvOv052si29tnCLqJWIuq/sEBzKyJP4AwbQTV0eMykEYNg29YoQlLk8qG2zCv2yUEyaCt8dmX96f1HPIKZnqUcy3G1T4BeZEY2lhaGWJbGRHwPQrYQT9BkeZrMasV6WLWInDDc3PkirWUy7UXCfUwa7f+aH+VcA3gz1k6bSr2YhbZjSYjraMXT/MARqpmM8nudG3YQn3F2LgPkxgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS00LjUtaGFpa3UtMjAyNTEwMDF8YW50aHJvcGljIn0"
                 }
               ],
-              "reasoning": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I should call the lookup function with the parameter value set to \"cobalt\". The user explicitly said not to answer in prose, so I should just make the call and then say DONE."
+              "reasoning": "The user is asking me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the value \"cobalt\". Let me do that now."
             },
-            "fingerprint": 15475512668039111134
+            "fingerprint": 2788668735719956573
           }
         }
       },
       {
         "tool_call": {
-          "id": "toolu_01G8Ria3yLWfygvXQcKrLFVt",
+          "id": "toolu_01KpiiP79w6EKosBL5CztpUz",
           "name": "lookup",
           "arguments": {
             "value": "cobalt"
@@ -9929,48 +9929,48 @@
                 "arguments": "{\"value\": \"cobalt\"}",
                 "name": "lookup"
               },
-              "id": "toolu_01G8Ria3yLWfygvXQcKrLFVt",
+              "id": "toolu_01KpiiP79w6EKosBL5CztpUz",
               "type": "function"
             },
-            "fingerprint": 2777690320172031500
+            "fingerprint": 6438222051084384446
           }
         }
       }
     ],
     "usage": {
       "input_tokens": 635,
-      "output_tokens": 140,
-      "total_tokens": 775,
+      "output_tokens": 121,
+      "total_tokens": 756,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "reasoning_tokens": 85
+      "reasoning_tokens": 66
     },
-    "response_id": "gen-1790095702-Hqw14aopJJoV3RVdd8hd",
+    "response_id": "gen-1790925821-6V3Uml7G1jtyGRjOE2G3",
     "finish_reason": "tool_calls",
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
     "raw": {
       "usage": {
         "prompt_tokens": 635,
-        "completion_tokens": 140,
-        "total_tokens": 775,
+        "completion_tokens": 121,
+        "total_tokens": 756,
         "prompt_tokens_details": {
           "cached_tokens": 0,
           "cache_write_tokens": 0
         },
         "completion_tokens_details": {
-          "reasoning_tokens": 85
+          "reasoning_tokens": 66
         },
-        "cost": 0.001335,
+        "cost": 0.00124,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.0007,
-          "upstream_inference_cost": 0.001335,
+          "upstream_inference_completions_cost": 0.000605,
+          "upstream_inference_cost": 0.00124,
           "upstream_inference_prompt_cost": 0.000635
         },
         "is_byok": false
       },
       "finish_reason": "tool_calls",
-      "response_id": "gen-1790095702-Hqw14aopJJoV3RVdd8hd",
+      "response_id": "gen-1790925821-6V3Uml7G1jtyGRjOE2G3",
       "model": "anthropic/claude-haiku-4.5",
       "additional_params": {
         "created": 0,
@@ -9994,22 +9994,22 @@
       }
     ],
     "usage": {
-      "input_tokens": 797,
+      "input_tokens": 778,
       "output_tokens": 5,
-      "total_tokens": 802,
+      "total_tokens": 783,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790095703-78K4x8ptyDG6zMrY2Idf",
+    "response_id": "gen-1790925822-i5AmfXi1SqePgpP4LvzI",
     "finish_reason": "stop",
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 797,
+        "prompt_tokens": 778,
         "completion_tokens": 5,
-        "total_tokens": 802,
+        "total_tokens": 783,
         "prompt_tokens_details": {
           "cached_tokens": 0,
           "cache_write_tokens": 0
@@ -10017,16 +10017,16 @@
         "completion_tokens_details": {
           "reasoning_tokens": 0
         },
-        "cost": 0.000822,
+        "cost": 0.000803,
         "cost_details": {
           "upstream_inference_completions_cost": 0.000025,
-          "upstream_inference_cost": 0.000822,
-          "upstream_inference_prompt_cost": 0.000797
+          "upstream_inference_cost": 0.000803,
+          "upstream_inference_prompt_cost": 0.000778
         },
         "is_byok": false
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790095703-78K4x8ptyDG6zMrY2Idf",
+      "response_id": "gen-1790925822-i5AmfXi1SqePgpP4LvzI",
       "model": "anthropic/claude-haiku-4.5",
       "additional_params": {
         "created": 0,
@@ -24685,7 +24685,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_jx0a6J30GOjwbLDL1zdSYlAG",
+          "id": "call_C1J1omcZTfz7Z4g0T5wdRQBr",
           "name": "weather",
           "arguments": {
             "city": "London"
@@ -24696,10 +24696,10 @@
                 "arguments": "{\"city\":\"London\"}",
                 "name": "weather"
               },
-              "id": "call_jx0a6J30GOjwbLDL1zdSYlAG",
+              "id": "call_C1J1omcZTfz7Z4g0T5wdRQBr",
               "type": "function"
             },
-            "fingerprint": 12907976586372631496
+            "fingerprint": 17664068950390633525
           }
         }
       }
@@ -24712,7 +24712,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152626-fuTAxxlDCTfDojy7ieJU",
+    "response_id": "gen-1790925834-UvGrNmFdpFJLgxvPWB9i",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -24733,7 +24733,7 @@
                   "arguments": "{\"city\":\"London\"}",
                   "name": "weather"
                 },
-                "id": "call_jx0a6J30GOjwbLDL1zdSYlAG",
+                "id": "call_C1J1omcZTfz7Z4g0T5wdRQBr",
                 "index": 0,
                 "type": "function"
               }
@@ -24743,12 +24743,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152626-fuTAxxlDCTfDojy7ieJU",
+      "id": "gen-1790925834-UvGrNmFdpFJLgxvPWB9i",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_f1fdc30c4a",
+      "service_tier": "default",
+      "system_fingerprint": "fp_72616ef36c",
       "usage": {
         "completion_tokens": 13,
         "completion_tokens_details": {
@@ -24796,7 +24796,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152627-8Upji1MzdnvtlQivjLsY",
+    "response_id": "gen-1790925835-yL4S6v0FnoxLmAs2Ilne",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -24816,12 +24816,12 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790152627-8Upji1MzdnvtlQivjLsY",
+      "id": "gen-1790925835-yL4S6v0FnoxLmAs2Ilne",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_f1fdc30c4a",
+      "service_tier": "default",
+      "system_fingerprint": "fp_72616ef36c",
       "usage": {
         "completion_tokens": 18,
         "completion_tokens_details": {

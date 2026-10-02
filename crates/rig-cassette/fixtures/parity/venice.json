@@ -2124,226 +2124,6 @@
       }
     }
   },
-  "corpus_matrix/causal_completion_concurrent.yaml#0": {
-    "mode": "unary",
-    "choice": [
-      {
-        "tool_call": {
-          "id": "4ktxJd0Ry",
-          "name": "lookup",
-          "arguments": {
-            "q": "What is the capital of France?"
-          },
-          "native": {
-            "item": {
-              "function": {
-                "arguments": "{\"q\": \"What is the capital of France?\"}",
-                "name": "lookup"
-              },
-              "id": "4ktxJd0Ry",
-              "type": "function"
-            },
-            "fingerprint": 17941900002433005389
-          }
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 1083,
-      "output_tokens": 16,
-      "total_tokens": 1099
-    },
-    "response_id": "chatcmpl-R93OZjmNQ4hrHXLYXhA7kiK0",
-    "finish_reason": "tool_calls",
-    "model": "mistral-small-3-2-24b-instruct",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "tool_calls",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "content": "",
-            "name": null,
-            "reasoning_content": null,
-            "role": "assistant",
-            "tool_calls": [
-              {
-                "function": {
-                  "arguments": "{\"q\": \"What is the capital of France?\"}",
-                  "name": "lookup"
-                },
-                "id": "4ktxJd0Ry",
-                "type": "function"
-              }
-            ]
-          }
-        }
-      ],
-      "cost": {
-        "diem": 0,
-        "usd": 0.00010553125000000001
-      },
-      "created": 0,
-      "id": "chatcmpl-R93OZjmNQ4hrHXLYXhA7kiK0",
-      "model": "mistral-small-3-2-24b-instruct",
-      "object": "chat.completion",
-      "service_tier": "default",
-      "usage": {
-        "completion_tokens": 16,
-        "prompt_tokens": 1083,
-        "total_tokens": 1099
-      },
-      "venice_parameters": {
-        "disable_thinking": false,
-        "enable_e2ee": true,
-        "enable_web_citations": false,
-        "enable_web_scraping": false,
-        "enable_web_search": "off",
-        "enable_x_search": false,
-        "include_search_results_in_stream": false,
-        "include_venice_system_prompt": true,
-        "return_search_results_as_documents": false,
-        "strip_thinking_response": false,
-        "web_search_citations": []
-      }
-    }
-  },
-  "corpus_matrix/causal_completion_concurrent.yaml#1": {
-    "mode": "unary",
-    "choice": [
-      {
-        "text": "Paris",
-        "native": {
-          "item": {
-            "content": "Paris",
-            "name": null
-          },
-          "fingerprint": 10014039168603989904
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 970,
-      "output_tokens": 2,
-      "total_tokens": 972
-    },
-    "response_id": "chatcmpl-Rce6sxxi6xbG8GNMBd9kB20W",
-    "finish_reason": "stop",
-    "model": "mistral-small-3-2-24b-instruct",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "content": "Paris",
-            "name": null,
-            "reasoning_content": null,
-            "role": "assistant",
-            "tool_calls": []
-          }
-        }
-      ],
-      "cost": {
-        "diem": 0,
-        "usd": 0.00009143749999999999
-      },
-      "created": 0,
-      "id": "chatcmpl-Rce6sxxi6xbG8GNMBd9kB20W",
-      "model": "mistral-small-3-2-24b-instruct",
-      "object": "chat.completion",
-      "service_tier": "default",
-      "usage": {
-        "completion_tokens": 2,
-        "prompt_tokens": 970,
-        "total_tokens": 972
-      },
-      "venice_parameters": {
-        "disable_thinking": false,
-        "enable_e2ee": true,
-        "enable_web_citations": false,
-        "enable_web_scraping": false,
-        "enable_web_search": "off",
-        "enable_x_search": false,
-        "include_search_results_in_stream": false,
-        "include_venice_system_prompt": true,
-        "return_search_results_as_documents": false,
-        "strip_thinking_response": false,
-        "web_search_citations": []
-      }
-    }
-  },
-  "corpus_matrix/causal_completion_concurrent.yaml#2": {
-    "mode": "unary",
-    "choice": [
-      {
-        "text": "Paris",
-        "native": {
-          "item": {
-            "content": "Paris",
-            "name": null
-          },
-          "fingerprint": 10014039168603989904
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 1120,
-      "output_tokens": 2,
-      "total_tokens": 1122
-    },
-    "response_id": "chatcmpl-RxW9ah1ARIgnj5j2jVl0iPVm",
-    "finish_reason": "stop",
-    "model": "mistral-small-3-2-24b-instruct",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "content": "Paris",
-            "name": null,
-            "reasoning_content": null,
-            "role": "assistant",
-            "tool_calls": []
-          }
-        }
-      ],
-      "cost": {
-        "diem": 0,
-        "usd": 0.0001055
-      },
-      "created": 0,
-      "id": "chatcmpl-RxW9ah1ARIgnj5j2jVl0iPVm",
-      "model": "mistral-small-3-2-24b-instruct",
-      "object": "chat.completion",
-      "service_tier": "default",
-      "usage": {
-        "completion_tokens": 2,
-        "prompt_tokens": 1120,
-        "total_tokens": 1122
-      },
-      "venice_parameters": {
-        "disable_thinking": false,
-        "enable_e2ee": true,
-        "enable_web_citations": false,
-        "enable_web_scraping": false,
-        "enable_web_search": "off",
-        "enable_x_search": false,
-        "include_search_results_in_stream": false,
-        "include_venice_system_prompt": true,
-        "return_search_results_as_documents": false,
-        "strip_thinking_response": false,
-        "web_search_citations": []
-      }
-    }
-  },
   "corpus_matrix/causal_completion_serial.yaml#0": {
     "mode": "unary",
     "choice": [
@@ -12428,7 +12208,7 @@
       },
       {
         "tool_call": {
-          "id": "chatcmpl-tool-a9818439d95dcc14",
+          "id": "chatcmpl-tool-89a8f84ddef49f40",
           "name": "lookup_cache_policy",
           "arguments": {
             "topic": "prefix"
@@ -12439,16 +12219,16 @@
                 "arguments": "{\"topic\": \"prefix\"}",
                 "name": "lookup_cache_policy"
               },
-              "id": "chatcmpl-tool-a9818439d95dcc14",
+              "id": "chatcmpl-tool-89a8f84ddef49f40",
               "type": "function"
             },
-            "fingerprint": 10439863707675956611
+            "fingerprint": 5426142074431531237
           }
         }
       },
       {
         "tool_call": {
-          "id": "chatcmpl-tool-b8c6dc5573232886",
+          "id": "chatcmpl-tool-86f160754765d107",
           "name": "lookup_cache_policy",
           "arguments": {
             "topic": "breakpoint"
@@ -12459,10 +12239,10 @@
                 "arguments": "{\"topic\": \"breakpoint\"}",
                 "name": "lookup_cache_policy"
               },
-              "id": "chatcmpl-tool-b8c6dc5573232886",
+              "id": "chatcmpl-tool-86f160754765d107",
               "type": "function"
             },
-            "fingerprint": 4217907789878146049
+            "fingerprint": 390136568439546395
           }
         }
       }
@@ -12474,7 +12254,7 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 67
     },
-    "response_id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
+    "response_id": "chatcmpl-1365a093f4e5f6eb8496a0d0df54d27b",
     "finish_reason": "tool_calls",
     "model": "qwen3-5-9b",
     "provider_request_id": null,
@@ -12498,7 +12278,7 @@
                   "arguments": "{\"topic\": \"prefix\"}",
                   "name": "lookup_cache_policy"
                 },
-                "id": "chatcmpl-tool-a9818439d95dcc14",
+                "id": "chatcmpl-tool-89a8f84ddef49f40",
                 "type": "function"
               },
               {
@@ -12506,7 +12286,7 @@
                   "arguments": "{\"topic\": \"breakpoint\"}",
                   "name": "lookup_cache_policy"
                 },
-                "id": "chatcmpl-tool-b8c6dc5573232886",
+                "id": "chatcmpl-tool-86f160754765d107",
                 "type": "function"
               }
             ]
@@ -12522,7 +12302,7 @@
       },
       "created": 0,
       "ec_transfer_params": null,
-      "id": "chatcmpl-2d74dc6ccfdef743a4d17f0f22702ce3",
+      "id": "chatcmpl-1365a093f4e5f6eb8496a0d0df54d27b",
       "kv_transfer_params": null,
       "metrics": null,
       "model": "qwen3-5-9b",
@@ -12593,7 +12373,7 @@
       "cached_input_tokens": 5280,
       "reasoning_tokens": 22
     },
-    "response_id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
+    "response_id": "chatcmpl-cb704af513e7c7072ffd3a79deb58320",
     "finish_reason": "stop",
     "model": "qwen3-5-9b",
     "provider_request_id": null,
@@ -12623,7 +12403,7 @@
       },
       "created": 0,
       "ec_transfer_params": null,
-      "id": "chatcmpl-411fed5c884d7b9684fa94a863e9d615",
+      "id": "chatcmpl-cb704af513e7c7072ffd3a79deb58320",
       "kv_transfer_params": null,
       "metrics": null,
       "model": "qwen3-5-9b",
@@ -15408,7 +15188,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "L8JqeUxu0",
+          "id": "BdMeNhyrb",
           "name": "weather",
           "arguments": {
             "city": "London"
@@ -15419,10 +15199,10 @@
                 "arguments": "{\"city\": \"London\"}",
                 "name": "weather"
               },
-              "id": "L8JqeUxu0",
+              "id": "BdMeNhyrb",
               "type": "function"
             },
-            "fingerprint": 1246609283861869609
+            "fingerprint": 2522731039249390638
           }
         }
       }
@@ -15432,7 +15212,7 @@
       "output_tokens": 10,
       "total_tokens": 1066
     },
-    "response_id": "chatcmpl-RuNMe9TosVubQA1ShzZwhrzR",
+    "response_id": "chatcmpl-RSRBvc2JD9p6oWOLmjnoswrD",
     "finish_reason": "tool_calls",
     "model": "mistral-small-3-2-24b-instruct",
     "provider_request_id": null,
@@ -15453,7 +15233,7 @@
                   "arguments": "{\"city\": \"London\"}",
                   "name": "weather"
                 },
-                "id": "L8JqeUxu0",
+                "id": "BdMeNhyrb",
                 "type": "function"
               }
             ]
@@ -15465,7 +15245,7 @@
         "usd": 0.0001015
       },
       "created": 0,
-      "id": "chatcmpl-RuNMe9TosVubQA1ShzZwhrzR",
+      "id": "chatcmpl-RSRBvc2JD9p6oWOLmjnoswrD",
       "model": "mistral-small-3-2-24b-instruct",
       "object": "chat.completion",
       "service_tier": "default",
@@ -15504,11 +15284,11 @@
       }
     ],
     "usage": {
-      "input_tokens": 1099,
+      "input_tokens": 1093,
       "output_tokens": 18,
-      "total_tokens": 1117
+      "total_tokens": 1111
     },
-    "response_id": "chatcmpl-R9JIX0oAu05j11JWSLj5pawQ",
+    "response_id": "chatcmpl-RMUboDsjd9EPQp33YIOHYyUu",
     "finish_reason": "stop",
     "model": "mistral-small-3-2-24b-instruct",
     "provider_request_id": null,
@@ -15529,17 +15309,17 @@
       ],
       "cost": {
         "diem": 0,
-        "usd": 0.00010753125
+        "usd": 0.00010696875
       },
       "created": 0,
-      "id": "chatcmpl-R9JIX0oAu05j11JWSLj5pawQ",
+      "id": "chatcmpl-RMUboDsjd9EPQp33YIOHYyUu",
       "model": "mistral-small-3-2-24b-instruct",
       "object": "chat.completion",
       "service_tier": "default",
       "usage": {
         "completion_tokens": 18,
-        "prompt_tokens": 1099,
-        "total_tokens": 1117
+        "prompt_tokens": 1093,
+        "total_tokens": 1111
       },
       "venice_parameters": {
         "disable_thinking": false,

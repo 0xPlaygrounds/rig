@@ -92,7 +92,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             rig_ecs::agent::DefaultMaxTurns(None),
                             rig_ecs::agent::AdditionalParams(Some(
-                                json!({ "parallel_tool_calls" : false }),
+                                json!({ "parallel_tool_calls" : false, "store" : false }),
                             )),
                         ));
                         ecs.tool(ping);
