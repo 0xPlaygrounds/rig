@@ -50,25 +50,12 @@ fn test_deserialize_completion_response() {
     assert_eq!(id, "abc123");
     assert_eq!(finish_reason, FinishReason::ToolCall);
 
-    let Usage {
-        billed_units,
-        tokens,
-        ..
-    } = serde_json::from_value::<Usage>(usage.unwrap()).unwrap();
-    let BilledUnits {
-        input_tokens: billed_input_tokens,
-        output_tokens: billed_output_tokens,
-        ..
-    } = billed_units.unwrap();
-    let Tokens {
-        input_tokens,
-        output_tokens,
-    } = tokens.unwrap();
-
-    assert_eq!(billed_input_tokens.unwrap(), 78.0);
-    assert_eq!(billed_output_tokens.unwrap(), 27.0);
-    assert_eq!(input_tokens.unwrap(), 1028.0);
-    assert_eq!(output_tokens.unwrap(), 63.0);
+    let usage = usage.unwrap();
+    assert_eq!(usage["billed_units"]["input_tokens"], 78);
+    assert_eq!(usage["billed_units"]["output_tokens"], 27);
+    let usage = usage_of(&usage);
+    assert_eq!(usage.input_tokens, Some(1028));
+    assert_eq!(usage.output_tokens, Some(63));
 
     assert!(citations.is_empty());
     assert_eq!(tool_calls.len(), 1);
@@ -184,16 +171,11 @@ async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
 
 #[test]
 fn usage_is_mapped_from_tokens_and_carries_cached_input() {
-    let usage: Usage = serde_json::from_str(
-        r#"{
-                "billed_units": {"input_tokens": 135, "output_tokens": 24},
-                "cached_tokens": 112,
-                "tokens": {"input_tokens": 1610, "output_tokens": 56}
-            }"#,
-    )
-    .expect("usage should deserialize");
-
-    let mapped = crate::completion::Usage::from(&usage);
+    let mapped = usage_of(&serde_json::json!({
+        "billed_units": {"input_tokens": 135, "output_tokens": 24},
+        "cached_tokens": 112,
+        "tokens": {"input_tokens": 1610, "output_tokens": 56}
+    }));
     assert_eq!(mapped.input_tokens, Some(1610));
     assert_eq!(mapped.output_tokens, Some(56));
     assert_eq!(mapped.total_tokens, Some(1666));
@@ -234,16 +216,12 @@ async fn response_usage_matches_the_canonical_mapping() {
 /// is a subset of an input count Cohere did not send.
 #[test]
 fn usage_without_token_counts_is_unreported() {
-    let usage: Usage = serde_json::from_str("{}").expect("usage should deserialize");
     assert_eq!(
-        crate::completion::Usage::from(&usage),
+        usage_of(&serde_json::json!({})),
         crate::completion::Usage::default()
     );
-
-    let cached_only: Usage =
-        serde_json::from_str(r#"{"cached_tokens": 512}"#).expect("usage should deserialize");
     assert_eq!(
-        crate::completion::Usage::from(&cached_only),
+        usage_of(&serde_json::json!({"cached_tokens": 512})),
         crate::completion::Usage::default()
     );
 }

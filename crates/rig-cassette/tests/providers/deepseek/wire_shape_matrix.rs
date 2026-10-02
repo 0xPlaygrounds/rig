@@ -15,6 +15,11 @@
 //! expected `text``. All-text arrays still flatten to a plain string, byte for
 //! byte as before — which is why no existing fixture moved.
 //!
+//! DeepSeek's models read no images, so the history adapter now sends an
+//! image as its placeholder text before this rewrite sees it: the image
+//! cells pin that placeholder, and the document, audio and video cells still
+//! pin DeepSeek's own rejection.
+//!
 //! The fix-relevant live matrix is the complete input partition seen by the
 //! changed `flatten_text_content_parts(..., only_if_all_text)` call:
 //!
@@ -45,6 +50,7 @@
 use rig::completion::{Document, Message};
 use rig::message::{DocumentMediaType, DocumentSourceKind, ToolChoice, UserContent};
 use rig::providers::deepseek;
+use rig_core::completion::history::USER_IMAGE_OMITTED;
 use serde_json::{Value, json};
 
 use super::support::{
@@ -98,6 +104,17 @@ fn recorded_first_user_part_types(scenario: &str) -> Option<Vec<String>> {
     })
 }
 
+/// The text of a recorded request's first user message.
+fn recorded_first_user_text(scenario: &str) -> String {
+    let body = recorded_request(scenario);
+    body["messages"]
+        .as_array()
+        .and_then(|messages| messages.iter().find(|message| message["role"] == "user"))
+        .and_then(|user| user["content"].as_str())
+        .expect("the first user message is a string")
+        .to_owned()
+}
+
 fn assert_rejected_by_deepseek(error: &rig::error::ProviderError, context: &str) {
     let rendered = error.to_string();
     assert!(
@@ -111,42 +128,40 @@ fn assert_rejected_by_deepseek(error: &rig::error::ProviderError, context: &str)
 // ================================================================
 
 #[tokio::test]
-async fn blocking_image_base64_part_reaches_the_wire() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_image_base64_part_reaches_the_wire";
+async fn blocking_image_base64_part_becomes_a_placeholder() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_image_base64_part_becomes_a_placeholder";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_image_base64_part_reaches_the_wire",
+        "wire_shape_matrix/blocking_image_base64_part_becomes_a_placeholder",
         |client| async move {
-            let model = client.completion(MODEL);
-            let error = model
+            client
+                .completion(MODEL)
                 .call(
                     CompletionRequest::new(multimodal_prompt(red_png()))
                         .additional_params(non_thinking_params())
                         .max_tokens(16),
                 )
                 .await
-                .expect_err("DeepSeek rejects an image part rather than answering without it");
-            assert_rejected_by_deepseek(&error, "blocking base64 image");
+                .expect("DeepSeek reads no images, so it gets the image as text");
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("blocking_image_base64_part_reaches_the_wire should replay from its cassette");
+    .expect("blocking_image_base64_part_becomes_a_placeholder should replay from its cassette");
 
     assert_eq!(
-        recorded_first_user_part_types(SCENARIO),
-        Some(vec!["text".to_owned(), "image_url".to_owned()]),
-        "the image part must survive finalization instead of being deleted"
+        recorded_first_user_text(SCENARIO),
+        format!("What colour is the attachment?\n{USER_IMAGE_OMITTED}")
     );
 }
 
 #[tokio::test]
-async fn blocking_image_url_part_reaches_the_wire() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_image_url_part_reaches_the_wire";
+async fn blocking_image_url_part_becomes_a_placeholder() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_image_url_part_becomes_a_placeholder";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_image_url_part_reaches_the_wire",
+        "wire_shape_matrix/blocking_image_url_part_becomes_a_placeholder",
         |client| async move {
-            let model = client.completion(MODEL);
-            let error = model
+            client
+                .completion(MODEL)
                 .call(
                     CompletionRequest::new(multimodal_prompt(UserContent::image_url(
                         "https://example.invalid/red.png",
@@ -157,17 +172,16 @@ async fn blocking_image_url_part_reaches_the_wire() {
                     .max_tokens(16),
                 )
                 .await
-                .expect_err("DeepSeek rejects an image part rather than answering without it");
-            assert_rejected_by_deepseek(&error, "blocking url image");
+                .expect("DeepSeek reads no images, so it gets the image as text");
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("blocking_image_url_part_reaches_the_wire should replay from its cassette");
+    .expect("blocking_image_url_part_becomes_a_placeholder should replay from its cassette");
 
     assert_eq!(
-        recorded_first_user_part_types(SCENARIO),
-        Some(vec!["text".to_owned(), "image_url".to_owned()])
+        recorded_first_user_text(SCENARIO),
+        format!("What colour is the attachment?\n{USER_IMAGE_OMITTED}")
     );
 }
 
@@ -272,18 +286,17 @@ async fn blocking_video_part_reaches_the_wire() {
     );
 }
 
-/// The boundary the flatten predicate turns on: an array with **no** text part
-/// at all. `parts.iter().all(is_text)` is false here, so the array survives
-/// whole rather than flattening to the empty string — which is what the old
-/// `false` argument produced, an empty user turn.
+/// The boundary the flatten predicate turned on: a message with **no** text
+/// part at all. DeepSeek reads no images, so the adapter sends the image as
+/// its placeholder text and the turn is never empty.
 #[tokio::test]
-async fn blocking_image_only_message_reaches_the_wire() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_image_only_message_reaches_the_wire";
+async fn blocking_image_only_message_becomes_a_placeholder() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_image_only_message_becomes_a_placeholder";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_image_only_message_reaches_the_wire",
+        "wire_shape_matrix/blocking_image_only_message_becomes_a_placeholder",
         |client| async move {
-            let model = client.completion(MODEL);
-            let error = model
+            client
+                .completion(MODEL)
                 .call(
                     CompletionRequest::new(Message::User {
                         content: vec![red_png()],
@@ -292,67 +305,43 @@ async fn blocking_image_only_message_reaches_the_wire() {
                     .max_tokens(16),
                 )
                 .await
-                .expect_err("an image-only turn is rejected, not silently emptied");
-            assert_rejected_by_deepseek(&error, "blocking image-only");
+                .expect("an image-only turn reaches DeepSeek as its placeholder, never emptied");
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("blocking_image_only_message_reaches_the_wire should replay from its cassette");
+    .expect("blocking_image_only_message_becomes_a_placeholder should replay from its cassette");
 
-    assert_eq!(
-        recorded_first_user_part_types(SCENARIO),
-        Some(vec!["image_url".to_owned()]),
-        "the lone image part must not be flattened away to an empty string"
-    );
+    assert_eq!(recorded_first_user_text(SCENARIO), USER_IMAGE_OMITTED);
 }
 
 #[tokio::test]
-async fn streaming_image_part_reaches_the_wire() {
-    const SCENARIO: &str = "wire_shape_matrix/streaming_image_part_reaches_the_wire";
+async fn streaming_image_part_becomes_a_placeholder() {
+    const SCENARIO: &str = "wire_shape_matrix/streaming_image_part_becomes_a_placeholder";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/streaming_image_part_reaches_the_wire",
+        "wire_shape_matrix/streaming_image_part_becomes_a_placeholder",
         |client| async move {
-            let model = client.completion(MODEL);
-            // The SSE connect may surface the rejection as a connect error or
-            // as the stream's first item, depending on how the transport
-            // reports a 400 on an event-stream request; both are the provider
-            // rejecting the part rather than answering without it.
-            let rendered = match model.stream(
-                CompletionRequest::new(multimodal_prompt(red_png()))
-                    .additional_params(non_thinking_params())
-                    .max_tokens(16),
-            ) {
-                Err(error) => error.to_string(),
-                Ok(stream) => {
-                    let outcome = collect_raw_stream_outcome(stream).await;
-                    assert!(
-                        outcome.tool_calls.is_empty() && outcome.text.is_empty(),
-                        "a rejected request must produce no content: {:?}",
-                        outcome.order
-                    );
-                    outcome.errors.join("\n")
-                }
-            };
-            assert!(
-                rendered.contains("unknown variant") || rendered.contains("expected `text`"),
-                "streaming image: expected DeepSeek's own rejection, got {rendered}"
-            );
+            let stream = client
+                .completion(MODEL)
+                .stream(
+                    CompletionRequest::new(multimodal_prompt(red_png()))
+                        .additional_params(non_thinking_params())
+                        .max_tokens(16),
+                )
+                .expect("the request encodes");
+            let outcome = collect_raw_stream_outcome(stream).await;
+            assert!(outcome.errors.is_empty(), "{:?}", outcome.errors);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("streaming_image_part_reaches_the_wire should replay from its cassette");
+    .expect("streaming_image_part_becomes_a_placeholder should replay from its cassette");
 
     assert_eq!(
-        recorded_first_user_part_types(SCENARIO),
-        Some(vec!["text".to_owned(), "image_url".to_owned()])
+        recorded_first_user_text(SCENARIO),
+        format!("What colour is the attachment?\n{USER_IMAGE_OMITTED}")
     );
 }
-
-// ================================================================
-// B. Controls: every all-text shape still flattens, byte for byte
-// ================================================================
 
 #[tokio::test]
 async fn blocking_all_text_parts_still_flatten_to_a_string() {

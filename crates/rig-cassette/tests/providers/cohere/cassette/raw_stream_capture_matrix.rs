@@ -128,9 +128,8 @@ async fn raw_roundtrips_streaming_completion_response() {
         typed
             .usage
             .as_ref()
-            .and_then(|usage| usage.tokens.as_ref())
-            .and_then(|tokens| tokens.input_tokens)
-            .map(|tokens| tokens as u64),
+            .and_then(|usage| usage.pointer("/tokens/input_tokens"))
+            .and_then(serde_json::Value::as_u64),
         terminal.usage.input_tokens
     );
 

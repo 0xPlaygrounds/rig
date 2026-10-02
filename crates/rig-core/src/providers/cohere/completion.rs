@@ -120,50 +120,6 @@ pub(crate) fn usage_of(usage: &serde_json::Value) -> crate::completion::Usage {
     }
 }
 
-#[derive(Copy, Debug, Deserialize, Clone, Serialize)]
-pub struct Usage {
-    #[serde(default)]
-    pub billed_units: Option<BilledUnits>,
-    #[serde(default)]
-    pub tokens: Option<Tokens>,
-    /// Subset of `tokens.input_tokens`; excluded from `billed_units.input_tokens`.
-    #[serde(default)]
-    pub cached_tokens: Option<f64>,
-}
-
-/// [`usage_of`] the usage this typed view reads.
-impl From<&Usage> for crate::completion::Usage {
-    fn from(usage: &Usage) -> crate::completion::Usage {
-        usage_of(&serde_json::to_value(usage).unwrap_or_default())
-    }
-}
-
-impl From<Usage> for crate::completion::Usage {
-    fn from(usage: Usage) -> crate::completion::Usage {
-        crate::completion::Usage::from(&usage)
-    }
-}
-
-#[derive(Copy, Debug, Deserialize, Clone, Serialize)]
-pub struct BilledUnits {
-    #[serde(default)]
-    pub output_tokens: Option<f64>,
-    #[serde(default)]
-    pub classifications: Option<f64>,
-    #[serde(default)]
-    pub search_units: Option<f64>,
-    #[serde(default)]
-    pub input_tokens: Option<f64>,
-}
-
-#[derive(Copy, Debug, Deserialize, Clone, Serialize)]
-pub struct Tokens {
-    #[serde(default)]
-    pub input_tokens: Option<f64>,
-    #[serde(default)]
-    pub output_tokens: Option<f64>,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Document {
     pub id: String,
@@ -481,15 +437,15 @@ fn assistant_message(turn: message::AssistantMessage) -> Option<Message> {
     if content.is_empty() && tool_calls.is_empty() {
         return None;
     }
-    let mut message = serde_json::json!({
-        "role": "assistant",
-        "content": content,
-        "tool_calls": tool_calls,
-    });
+    let mut message = serde_json::Map::from_iter([
+        ("role".to_owned(), "assistant".into()),
+        ("content".to_owned(), content.into()),
+        ("tool_calls".to_owned(), tool_calls.into()),
+    ]);
     for (field, text) in rebuilt.reasoning(None) {
-        message[field] = text.into();
+        message.insert(field, text.into());
     }
-    Some(Message::Native(message))
+    Some(Message::Native(serde_json::Value::Object(message)))
 }
 
 /// Cohere's `tool_choice` is a bare string; only `REQUIRED`/`NONE` are valid.

@@ -10,6 +10,11 @@
 //! call. The two transports disagreed about
 //! identical wire bytes.
 //!
+//! Both transports now keep the cut call, as pi does: its arguments are what
+//! pi's tolerant parse reads from the text (blank text is an empty object),
+//! and a call whose text never parses keeps it as `invalid_arguments`, so the
+//! agent answers it with an error result and never runs it.
+//!
 //! Live budget sweep against `deepseek-v4-flash` (thinking disabled), one tool
 //! whose required `summary` argument must be long:
 //!
@@ -132,6 +137,19 @@ fn tool_calls(choice: &[AssistantContent]) -> Vec<&rig::message::ToolCall> {
             _ => None,
         })
         .collect()
+}
+
+/// The one cut call `calls` holds: kept with what its arguments state, and
+/// the text they arrived as, so nothing runs it.
+fn assert_one_cut_call<'a>(calls: impl IntoIterator<Item = &'a rig::message::ToolCall>) {
+    let calls: Vec<&rig::message::ToolCall> = calls.into_iter().collect();
+    let [call] = calls.as_slice() else {
+        panic!("the cut call is kept: {calls:?}");
+    };
+    assert!(
+        call.function.invalid_arguments.is_some(),
+        "a call whose arguments never parse keeps their text: {call:?}"
+    );
 }
 
 fn text(choice: &[AssistantContent]) -> String {
@@ -270,11 +288,7 @@ async fn assert_blocking_truncation_survives(client: &OpenAiModels, max_tokens: 
         Some(rig::completion::FinishReason::Length),
         "the surviving turn reports the truncation"
     );
-    assert!(
-        tool_calls(&response.choice).is_empty(),
-        "an unusable call must not reach the caller: {:?}",
-        response.choice
-    );
+    assert_one_cut_call(tool_calls(&response.choice));
     assert!(
         response.usage.total_tokens.is_some_and(|n| n > 0)
             && response.usage.input_tokens.is_some_and(|n| n > 0),
@@ -312,11 +326,7 @@ async fn assert_streaming_truncation_survives(
         "stream errors: {:?}",
         outcome.errors
     );
-    assert!(
-        outcome.tool_calls.is_empty(),
-        "the stream must drop the truncated call: {:?}",
-        outcome.tool_call_names()
-    );
+    assert_one_cut_call(&outcome.tool_calls);
     assert_eq!(
         outcome.finish_reason(),
         Some(rig::completion::FinishReason::Length),
@@ -391,11 +401,11 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
                     16,
                 ))
                 .await?;
+            // Blank arguments are an empty object, as pi reads them.
             let calls = tool_calls(&normalized.choice);
-            assert!(
-                calls.is_empty(),
-                "`length` identifies the empty argument slot as an incomplete call"
-            );
+            assert_eq!(calls.len(), 1, "{:?}", normalized.choice);
+            assert_eq!(calls[0].function.arguments_value(), json!({}));
+            assert!(calls[0].function.invalid_arguments.is_none());
             Ok::<(), anyhow::Error>(())
         },
     )
@@ -430,7 +440,8 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
                 ))
                 .await?;
             let calls = tool_calls(&normalized.choice);
-            assert!(calls.is_empty());
+            assert_eq!(calls.len(), 1, "{:?}", normalized.choice);
+            assert_eq!(calls[0].function.arguments_value(), json!({}));
             assert_eq!(
                 normalized.finish_reason(),
                 Some(rig::completion::FinishReason::Length),
@@ -584,10 +595,9 @@ async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
                 16,
             ))?)
             .await;
-            assert!(
-                outcome.tool_calls.is_empty(),
-                "`length` prevents an incomplete zero-byte call from reaching a tool"
-            );
+            // Blank arguments are an empty object, as pi reads them.
+            assert_eq!(outcome.tool_call_names(), vec!["file_report"]);
+            assert_eq!(outcome.tool_calls[0].function.arguments_value(), json!({}));
             assert_eq!(
                 outcome.finish_reason(),
                 Some(rig::completion::FinishReason::Length)
@@ -719,10 +729,11 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
                     .iter()
                     .map(|call| call.function.name.as_str())
                     .collect::<Vec<_>>(),
-                vec!["page_oncall"],
-                "the complete call survives; only the truncated one is dropped: {:?}",
+                vec!["page_oncall", "file_report"],
+                "both calls are kept: {:?}",
                 normalized.choice
             );
+            assert_one_cut_call(calls.iter().skip(1).copied());
             assert_eq!(
                 calls[0].function.arguments_value(),
                 json!({ "team": "platform" })
@@ -757,7 +768,11 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
                 56,
             ))?)
             .await;
-            assert_eq!(outcome.tool_call_names(), vec!["page_oncall"]);
+            assert_eq!(
+                outcome.tool_call_names(),
+                vec!["page_oncall", "file_report"]
+            );
+            assert_one_cut_call(outcome.tool_calls.iter().skip(1));
             assert_eq!(
                 outcome.finish_reason(),
                 Some(rig::completion::FinishReason::Length)
@@ -799,7 +814,7 @@ async fn blocking_text_before_a_truncated_call_survives() {
                 "the assistant text the truncated call took down with it: {:?}",
                 normalized.choice
             );
-            assert!(tool_calls(&normalized.choice).is_empty());
+            assert_one_cut_call(tool_calls(&normalized.choice));
             assert_eq!(
                 normalized.finish_reason(),
                 Some(rig::completion::FinishReason::Length)
@@ -837,7 +852,7 @@ async fn streaming_text_before_a_truncated_call_survives() {
             ))?)
             .await;
             assert!(!outcome.text.trim().is_empty(), "streamed text survives");
-            assert!(outcome.tool_calls.is_empty());
+            assert_one_cut_call(&outcome.tool_calls);
             assert_eq!(
                 outcome.finish_reason(),
                 Some(rig::completion::FinishReason::Length)
@@ -880,7 +895,7 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
                 "the reasoning block the truncated call took down with it: {:?}",
                 normalized.choice
             );
-            assert!(tool_calls(&normalized.choice).is_empty());
+            assert_one_cut_call(tool_calls(&normalized.choice));
             assert!(normalized.usage.reasoning_tokens.is_some_and(|n| n > 0));
             Ok::<(), anyhow::Error>(())
         },
@@ -916,7 +931,7 @@ async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
             )
             .await;
             assert!(!outcome.reasoning.trim().is_empty());
-            assert!(outcome.tool_calls.is_empty());
+            assert_one_cut_call(&outcome.tool_calls);
             assert_eq!(
                 outcome.finish_reason(),
                 Some(rig::completion::FinishReason::Length)
@@ -1095,10 +1110,10 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                 .stream();
             let observation = crate::support::collect_stream_observation(&mut stream).await;
 
-            assert!(
-                observation.tool_calls.is_empty(),
-                "the streamed truncated call must not surface: {:?}",
-                observation.tool_calls
+            assert_eq!(
+                observation.tool_calls,
+                vec!["file_report".to_owned()],
+                "the streamed cut call surfaces, kept with its text"
             );
             assert_eq!(
                 invocations.load(std::sync::atomic::Ordering::SeqCst),
@@ -1114,10 +1129,9 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
 }
 
-/// The empty-arguments boundary is safety-sensitive at agent level: without
-/// consulting the outer `length` reason, `{}` would be dispatched to a
-/// zero-argument side-effect tool even though generation ended before the
-/// first argument token.
+/// The empty-arguments boundary at agent level: generation ended before the
+/// first argument token, and blank arguments are an empty object, as pi
+/// reads them, so a zero-argument tool runs once.
 #[tokio::test]
 async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
     const SCENARIO: &str =
@@ -1145,8 +1159,8 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
             }
             assert_eq!(
                 invocations.load(std::sync::atomic::Ordering::SeqCst),
-                0,
-                "the incomplete empty-argument call must not be dispatched"
+                1,
+                "blank arguments are an empty object"
             );
             Ok::<(), anyhow::Error>(())
         },
@@ -1181,11 +1195,11 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                 .max_turns(1)
                 .stream();
             let observation = crate::support::collect_stream_observation(&mut stream).await;
-            assert!(observation.tool_calls.is_empty());
+            assert_eq!(observation.tool_calls, vec!["file_report".to_owned()]);
             assert_eq!(
                 invocations.load(std::sync::atomic::Ordering::SeqCst),
-                0,
-                "the incomplete empty-argument call must not be dispatched"
+                1,
+                "blank arguments are an empty object"
             );
             Ok::<(), anyhow::Error>(())
         },

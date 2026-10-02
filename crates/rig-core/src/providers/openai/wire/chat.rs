@@ -1350,9 +1350,10 @@ impl ChatDecoder {
 
     /// Finish the call at wire `index`, through [`CallKind::of`], with the
     /// call as its native; with `probe`, only when its arguments are already
-    /// a complete object. A custom call's arguments are its `{"input"}`; a
-    /// call of a kind rig cannot answer is kept as an item that is never
-    /// sent back.
+    /// a complete object. A call the output budget cut short closes with no
+    /// native: the provider never stated it complete. A custom call's
+    /// arguments are its `{"input"}`; a call of a kind rig cannot answer is
+    /// kept as an item that is never sent back.
     #[deny(clippy::wildcard_enum_match_arm)]
     fn close_call(
         &mut self,
@@ -1360,6 +1361,7 @@ impl ChatDecoder {
         probe: bool,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        let cut = matches!(self.final_finish_reason, Some(FinishReason::Length));
         let call = self.open_call(index).cloned().unwrap_or_default();
         match CallKind::of(&call) {
             CallKind::Function => {}
@@ -1384,6 +1386,9 @@ impl ChatDecoder {
         out.edit(index, |item| *item = call)?;
         let closed = if probe {
             out.close_if_complete(index)?
+        } else if cut {
+            out.close(index)?;
+            true
         } else {
             out.finish(index)?;
             true

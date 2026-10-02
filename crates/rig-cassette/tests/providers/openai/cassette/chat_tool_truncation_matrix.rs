@@ -437,9 +437,20 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
                 Some(FinishReason::Length),
                 "{scenario}"
             );
+            // A cut call is kept with what its arguments state, as pi's
+            // tolerant parse reads them; the agent never runs it.
+            assert_eq!(
+                observation.arguments.len(),
+                1,
+                "{scenario}: the cut call is kept"
+            );
+            let summary = observation.arguments[0]["summary"]
+                .as_str()
+                .unwrap_or_default();
             assert!(
-                observation.arguments.is_empty(),
-                "{scenario}: partial call is dropped"
+                PROMPT.starts_with(summary) && summary != PROMPT,
+                "{scenario}: the cut call states a prefix: {:?}",
+                observation.arguments
             );
         }
         Surface::Agent if complete => assert_eq!(

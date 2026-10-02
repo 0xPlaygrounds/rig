@@ -548,3 +548,43 @@ fn every_call_kind_has_a_sample() {
     assert_eq!(samples[3], CallKind::Unknown);
     assert_every_variant(&samples, index, 3);
 }
+
+/// Change 7: an item is a block's native only when the provider stated it
+/// complete. A call the budget cut keeps no native, and so replays from its
+/// canonical fields; a finished call and the reasoning the reply ended keep
+/// theirs.
+#[test]
+fn only_a_complete_item_becomes_a_native() {
+    let wire = wire(&DEEPSEEK, "deepseek-v4-flash");
+    let reply = |arguments: &str, finish: &str| {
+        let frames = vec![
+            chunk(
+                json!({"role": "assistant", "reasoning_content": "plan"}),
+                None,
+            ),
+            chunk(
+                json!({"tool_calls": [{"index": 0, "id": "call_1", "type": "function",
+                    "function": {"name": "add", "arguments": arguments}}]}),
+                Some(finish),
+            ),
+            WireFrame::Text("[DONE]".to_owned()),
+        ];
+        decode(&wire, Mode::Streaming, frames).expect("the reply decodes")
+    };
+    let cut = reply(r#"{"x": 1"#, "length");
+    let [
+        AssistantContent::Reasoning(reasoning),
+        AssistantContent::ToolCall(call),
+    ] = cut.choice.as_slice()
+    else {
+        panic!("reasoning and the cut call: {:?}", cut.choice);
+    };
+    assert!(reasoning.native.is_some(), "the reply ended the reasoning");
+    assert!(call.native.is_none(), "the budget cut the call: {call:?}");
+    let whole = reply(r#"{"x": 1}"#, "tool_calls");
+    assert!(
+        whole.tool_calls().all(|call| call.native.is_some()),
+        "{:?}",
+        whole.choice
+    );
+}

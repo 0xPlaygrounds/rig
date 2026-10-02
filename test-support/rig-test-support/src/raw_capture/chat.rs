@@ -227,20 +227,25 @@ pub fn assert_terminal_reproduces_frame(
 }
 
 /// The terminal record `raw` holds, read back and required to be exactly the
-/// decoder's record serialized.
+/// decoder's record serialized, its usage the provider's own object.
 ///
 /// A streamed reply is many frames and no single one of them is the answer,
-/// so what rides along is the record the decoder reassembled — which makes an
+/// so what rides along is the record the decoder reassembled, which makes an
 /// exact typed round trip the right claim here, unlike the blocking path
-/// where `raw` is the reply *document*. The returned typed record is the
-/// cell's handle on whatever its dialect keeps beside the shared fields.
+/// where `raw` is the reply *document*. The usage stays as the provider sent
+/// it, so it reads back typed but is compared as the record holds it. The
+/// returned typed record is the cell's handle on whatever its dialect keeps
+/// beside the shared fields.
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
     let raw = &terminal.raw;
     let typed = Terminal::deserialize(raw)
         .expect("raw is the chat-completions terminal record, serialized");
+    let mut serialized = serde_json::to_value(&typed).expect("typed serializes");
+    if let (Some(usage), Some(fields)) = (raw.get("usage"), serialized.as_object_mut()) {
+        fields.insert("usage".to_owned(), usage.clone());
+    }
     assert_eq!(
-        serde_json::to_value(&typed).expect("typed serializes"),
-        *raw,
+        serialized, *raw,
         "the captured value is the typed terminal serialized, nothing more"
     );
     assert_eq!(

@@ -57,16 +57,13 @@ impl Rebuilt {
                     let mut field = None;
                     if let (None, Some(Value::Object(item))) = (&part, item) {
                         for (key, value) in item {
-                            match value {
-                                Value::String(_) => {
-                                    field.get_or_insert(key);
-                                }
-                                value => {
-                                    crate::providers::openai::wire::dto::merge_fields(
-                                        &mut rebuilt.fields,
-                                        &Map::from_iter([(key, value)]),
-                                    );
-                                }
+                            if value.is_string() {
+                                field.get_or_insert(key);
+                            } else {
+                                crate::providers::openai::wire::dto::merge_fields(
+                                    &mut rebuilt.fields,
+                                    &Map::from_iter([(key, value)]),
+                                );
                             }
                         }
                     }

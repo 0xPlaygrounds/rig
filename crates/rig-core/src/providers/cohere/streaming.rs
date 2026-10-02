@@ -151,9 +151,7 @@ pub struct MessageEndDelta {
 /// it: a streamed response's `raw`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
-    /// The usage as Cohere sent it, which
-    /// [`completion::Usage`](crate::providers::cohere::completion::Usage)
-    /// reads typed.
+    /// The usage as Cohere sent it.
     pub usage: Option<Value>,
     /// Cohere's own `finish_reason` from the `message-end` event, when reported.
     #[serde(default)]

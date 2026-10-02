@@ -43,9 +43,11 @@ async fn text_only_content_parts_are_flattened() {
 }
 
 #[tokio::test]
-async fn tool_exchange_history_is_stripped_and_remerged() {
+async fn tool_exchange_history_reaches_perplexity_as_text() {
+    // Perplexity takes no tools, so the adapter renders the call and its
+    // result as text the model still reads.
     with_perplexity_cassette(
-        "migration_pain_points/tool_exchange_history_is_stripped_and_remerged",
+        "migration_pain_points/tool_exchange_history_reaches_perplexity_as_text",
         |client| async move {
             let model = client.completion(perplexity::SONAR);
             let tool_call = ToolCall::from_wire(
@@ -81,7 +83,7 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                     .additional_params(json!({"search_context_size": "low"})),
                 )
                 .await
-                .expect("Perplexity should accept sanitized tool-exchange history");
+                .expect("Perplexity should accept a tool exchange rendered as text");
 
             let text = assistant_text_response(&response.choice)
                 .expect("response should contain assistant text");

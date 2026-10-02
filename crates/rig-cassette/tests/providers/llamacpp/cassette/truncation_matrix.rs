@@ -103,14 +103,20 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
                 Some(FinishReason::Length),
                 "the turn ran out of budget, and that is what authorizes the tolerance"
             );
+            let calls: Vec<&rig::message::ToolCall> = response
+                .choice
+                .iter()
+                .filter_map(|item| match item {
+                    AssistantContent::ToolCall(call) => Some(call),
+                    _ => None,
+                })
+                .collect();
+            let [call] = calls.as_slice() else {
+                panic!("the cut call is kept: {:?}", response.choice);
+            };
             assert!(
-                !response
-                    .choice
-                    .iter()
-                    .any(|item| matches!(item, AssistantContent::ToolCall(_))),
-                "a call whose arguments never parse is unusable and must be dropped, \
-                 not handed to the caller half-formed: {:?}",
-                response.choice
+                call.function.invalid_arguments.is_some(),
+                "a call whose arguments never parse keeps their text, so nothing runs it: {call:?}"
             );
             assert!(
                 response.usage.output_tokens.is_some_and(|n| n > 0),
@@ -139,7 +145,7 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
 
 /// The streaming path applies the same boundary.
 #[tokio::test]
-async fn the_streaming_path_drops_the_same_cut_call() {
+async fn the_streaming_path_keeps_the_same_cut_call() {
     use futures::StreamExt as _;
     use rig::streaming::StreamEvent;
 
@@ -156,22 +162,23 @@ async fn the_streaming_path_drops_the_same_cut_call() {
                 )
                 .expect("stream should start");
 
-            let mut completed_calls = 0usize;
+            let mut invalid_calls = 0usize;
             while let Some(item) = stream.next().await {
                 if let Item::Event(StreamEvent::End {
-                    content: AssistantContent::ToolCall(_),
+                    content: AssistantContent::ToolCall(call),
                     ..
                 }) = item.expect("no stream item may be an error")
+                    && call.function.invalid_arguments.is_some()
                 {
-                    completed_calls += 1
+                    invalid_calls += 1
                 }
             }
             stream.finish().await.expect(
                 "the stream must terminate cleanly even though its only tool call was unusable",
             );
             assert_eq!(
-                completed_calls, 0,
-                "a call cut before its arguments parse must not be emitted as complete"
+                invalid_calls, 1,
+                "a call cut before its arguments parse is kept with their text"
             );
         },
     )

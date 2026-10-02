@@ -55,22 +55,23 @@ async fn usage_is_reported_from_token_counts() {
                 .usage
                 .as_ref()
                 .expect("Cohere should report usage");
-            let tokens = raw_usage
-                .tokens
-                .as_ref()
-                .expect("Cohere should report `usage.tokens`");
-            let raw_input_tokens = tokens.input_tokens;
-            let expected_input_tokens = tokens.input_tokens.expect("input token count") as u64;
-            let expected_output_tokens = tokens.output_tokens.expect("output token count") as u64;
-            let billed_input_tokens = raw_usage
-                .billed_units
-                .as_ref()
-                .expect("Cohere should report `usage.billed_units`")
-                .input_tokens;
-            let cached = raw_usage
-                .cached_tokens
-                .expect("Cohere should report `usage.cached_tokens`");
-            let expected_usage = rig::completion::Usage::from(raw_usage);
+            let count = |pointer: &str| {
+                raw_usage
+                    .pointer(pointer)
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or_else(|| panic!("Cohere should report `usage{pointer}`"))
+            };
+            let expected_input_tokens = count("/tokens/input_tokens");
+            let expected_output_tokens = count("/tokens/output_tokens");
+            let billed_input_tokens = count("/billed_units/input_tokens");
+            let cached = count("/cached_tokens");
+            let expected_usage = rig::completion::Usage {
+                input_tokens: Some(expected_input_tokens),
+                output_tokens: Some(expected_output_tokens),
+                total_tokens: Some(expected_input_tokens + expected_output_tokens),
+                cached_input_tokens: Some(cached),
+                ..Default::default()
+            };
 
             assert_eq!(response.usage.input_tokens, Some(expected_input_tokens));
             assert_eq!(response.usage.output_tokens, Some(expected_output_tokens));
@@ -80,11 +81,11 @@ async fn usage_is_reported_from_token_counts() {
             );
 
             assert_ne!(
-                raw_input_tokens, billed_input_tokens,
+                expected_input_tokens, billed_input_tokens,
                 "expected Cohere's two input counters to differ, so the assertions above are meaningful"
             );
 
-            assert_eq!(response.usage.cached_input_tokens, Some(cached as u64));
+            assert_eq!(response.usage.cached_input_tokens, Some(cached));
             assert_eq!(expected_usage, response.usage);
         },
     )
