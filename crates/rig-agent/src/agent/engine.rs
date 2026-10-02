@@ -1473,10 +1473,7 @@ pub(crate) async fn run_single_tool(
         let content = tool_result_message(
             tool_call.id.clone(),
             tool_call.function.name.clone(),
-            format!(
-                "The arguments for tool `{tool_name}` are not a JSON object: {raw}. \
-                 Call the tool again with a JSON object as its arguments."
-            ),
+            rig_core::transcript::invalid_arguments_feedback(tool_name, raw),
         );
         return Ok(ToolCallOutcome {
             content,

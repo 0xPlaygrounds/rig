@@ -1193,3 +1193,46 @@ fn approving_a_batch_held_call_by_any_route_keeps_the_batch_and_the_scene_consis
         .unwrap_or_else(|error| panic!("{route}: the checkpoint loads: {error}"));
     }
 }
+
+/// A call whose arguments are not a JSON object never reaches the tool:
+/// the batch answers it at once with an error result naming the problem,
+/// and the model gets another turn.
+#[test]
+fn a_call_with_malformed_arguments_is_answered_without_dispatch() {
+    let malformed = AssistantContent::ToolCall(rig_core::message::ToolCall::new(
+        rig_core::message::CallId::from_wire("c1"),
+        rig_core::message::ToolFunction::parse(
+            rig_core::message::ToolName::new("add").unwrap(),
+            r#"{"x": 1, "y": "#,
+        ),
+    ));
+    let (mut app, agent, adder, requests) = tooling(vec![
+        vec![malformed],
+        vec![AssistantContent::text("retrying")],
+    ]);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    ended(&mut app, run, "answered");
+    let log = app.world().resource::<EffectLogResource>().log();
+    let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
+    assert_eq!(keys, [MODEL, MODEL], "the tool never ran");
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 0);
+    let requests = requests.lock().unwrap();
+    let result = requests[1]
+        .chat_history
+        .iter()
+        .find_map(|message| match message {
+            Message::User { content } => content.iter().find_map(|part| match part {
+                UserContent::ToolResult(result) => Some(result.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .expect("the call is answered");
+    assert!(result.is_error, "{result:?}");
+    assert!(
+        result.content.iter().any(|part| part
+            .as_text()
+            .is_some_and(|text| text.contains("not a JSON object"))),
+        "{result:?}"
+    );
+}

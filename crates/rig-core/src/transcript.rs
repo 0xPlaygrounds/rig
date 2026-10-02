@@ -128,6 +128,15 @@ pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> Use
     })
 }
 
+/// What the model reads when its call to `tool` sent `raw`, arguments that
+/// are not a JSON object: the tool never ran, and the model calls it again.
+pub fn invalid_arguments_feedback(tool: &str, raw: &str) -> String {
+    format!(
+        "The arguments for tool `{tool}` are not a JSON object: {raw}. \
+         Call the tool again with a JSON object as its arguments."
+    )
+}
+
 /// The result every other call of a turn gets when one call was retried or
 /// skipped: none of the turn's calls ran.
 pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =

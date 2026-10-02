@@ -2502,6 +2502,27 @@ pub fn materialise_batch(
             .unwrap_or_default();
         let count = batch.len();
         for (index, (call, tool)) in batch.into_iter().enumerate() {
+            // Arguments that are not a JSON object never reach the tool: the
+            // call is answered at once, and the model reads why.
+            if let Some(raw) = &call.function.invalid_arguments {
+                commands.spawn((
+                    ToolCallSlot {
+                        index,
+                        id: call.id.clone(),
+                        name: call.function.name.clone(),
+                    },
+                    EffectOutcome(Ok(rig_core::effect::Outcome::ToolResult {
+                        result: rig_core::tool::ToolResult::skipped(
+                            rig_core::transcript::invalid_arguments_feedback(
+                                call.function.name.as_str(),
+                                raw,
+                            ),
+                        ),
+                    })),
+                    ChildOf(turn),
+                ));
+                continue;
+            }
             let mut effect = commands.spawn((
                 PendingEffect::new(
                     tool.key.clone(),
