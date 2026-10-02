@@ -64,6 +64,10 @@ async fn required_forces_function_call() {
                 .call(request)
                 .await
                 .expect("required tool choice completion should succeed");
+            super::super::history::assert_recorded_history(
+                bedrock::completion::AMAZON_NOVA_LITE,
+                &response,
+            );
 
             let names = response
                 .choice

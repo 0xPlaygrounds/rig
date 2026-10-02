@@ -28,6 +28,10 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .call(request)
                 .await
                 .expect("Bedrock request should succeed");
+            super::super::history::assert_recorded_history(
+                bedrock::completion::AMAZON_NOVA_LITE,
+                &response,
+            );
             let raw = InternalConverseOutput::deserialize(&response.raw)
                 .expect("raw should deserialize into the Converse frame");
             let raw_text = raw
