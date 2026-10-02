@@ -536,6 +536,7 @@ fn generate_content_response_round_trips_through_serde_json_value() {
             finish_reason: proto::candidate::FinishReason::Stop as i32,
             index: Some(0),
             finish_message: Some("done".to_string()),
+            ..Default::default()
         }],
         usage_metadata: Some(proto::UsageMetadata {
             prompt_token_count: 10,

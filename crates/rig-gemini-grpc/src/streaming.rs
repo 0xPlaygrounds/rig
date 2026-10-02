@@ -58,8 +58,9 @@ impl<'id> Decoder<'id, Completion, proto::GenerateContentResponse> for GrpcAdapt
     }
 }
 
-/// `response` as the REST chunk it transcodes to. An unspecified finish
-/// reason is left out, as the REST API does.
+/// `response` as the REST chunk it transcodes to: its parts, finish reason,
+/// safety ratings and citations. An unspecified finish reason is left out,
+/// as the REST API does.
 fn rest_chunk(response: proto::GenerateContentResponse) -> GenerateContentChunk {
     let candidates = response
         .candidates
@@ -86,6 +87,38 @@ fn rest_chunk(response: proto::GenerateContentResponse) -> GenerateContentChunk 
             }
             if let Some(index) = candidate.index {
                 fields.insert("index".to_owned(), index.into());
+            }
+            if !candidate.safety_ratings.is_empty() {
+                let ratings: Vec<Value> = candidate
+                    .safety_ratings
+                    .iter()
+                    .map(|rating| {
+                        json!({
+                            "category": rating.category().as_str_name(),
+                            "probability": rating.probability().as_str_name(),
+                            "blocked": rating.blocked,
+                        })
+                    })
+                    .collect();
+                fields.insert("safetyRatings".to_owned(), ratings.into());
+            }
+            if let Some(citations) = candidate.citation_metadata {
+                let sources: Vec<Value> = citations
+                    .citation_sources
+                    .into_iter()
+                    .map(|source| {
+                        json!({
+                            "startIndex": source.start_index,
+                            "endIndex": source.end_index,
+                            "uri": source.uri,
+                            "license": source.license,
+                        })
+                    })
+                    .collect();
+                fields.insert(
+                    "citationMetadata".to_owned(),
+                    json!({ "citationSources": sources }),
+                );
             }
             fields
         })

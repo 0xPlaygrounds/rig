@@ -442,7 +442,7 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
         terminal.finish_reason(),
         Some(rig_core::completion::FinishReason::Stop)
     );
-    assert_eq!(terminal.model().as_deref(), Some("gemini-2.5-flash"));
+    assert_eq!(terminal.model(), Some("gemini-2.5-flash"));
     assert_eq!(
         terminal.identity().response_id.as_deref(),
         Some("resp-grpc-stream")
@@ -493,5 +493,37 @@ async fn a_trailing_signed_part_continues_the_text_it_follows() {
             AssistantContent::text("289!")
                 .with_native(json!({ "text": "289!", "thoughtSignature": "c2ln" }))
         ]
+    );
+}
+
+/// Safety ratings and citations reach the turn's message-level native in
+/// their REST spelling.
+#[tokio::test]
+async fn safety_ratings_and_citations_are_the_turns_native() {
+    let mut frame = terminal_frame();
+    if let Some(candidate) = frame.candidates.first_mut() {
+        candidate.safety_ratings = vec![proto::SafetyRating {
+            category: proto::HarmCategory::Harassment as i32,
+            probability: proto::safety_rating::HarmProbability::Negligible as i32,
+            blocked: false,
+        }];
+        candidate.citation_metadata = Some(proto::CitationMetadata {
+            citation_sources: vec![proto::CitationSource {
+                start_index: Some(0),
+                end_index: Some(4),
+                uri: Some("https://example.com".to_owned()),
+                license: None,
+            }],
+        });
+    }
+    let terminal = normalized_terminal(vec![frame]).await;
+    let native = terminal.native.map(|native| native.item).expect("a native");
+    assert_eq!(
+        native["safetyRatings"],
+        json!([{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE", "blocked": false }])
+    );
+    assert_eq!(
+        native["citationMetadata"]["citationSources"][0]["uri"],
+        json!("https://example.com")
     );
 }

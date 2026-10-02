@@ -263,10 +263,7 @@ async fn long_history_replay_nonstreaming() {
                 response.usage
             );
             assert!(
-                response
-                    .model()
-                    .as_deref()
-                    .is_some_and(|version| !version.is_empty()),
+                response.model().is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"
             );
         },

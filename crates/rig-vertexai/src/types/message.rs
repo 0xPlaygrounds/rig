@@ -92,11 +92,12 @@ pub(crate) fn content_from_message(
                 .set_parts(parts))
         }
         Message::Assistant(turn) => {
-            // Vertex function calls and responses carry no id.
+            // Vertex function calls and responses carry no id, and the SDK's
+            // byte signatures cannot hold Google's placeholder spelling.
             let parts = turn
                 .content
                 .iter()
-                .filter_map(|block| assistant_part(block, None).transpose())
+                .filter_map(|block| assistant_part(block, None, false).transpose())
                 .map(|part| serde_json::from_value(part?).map_err(ProviderError::request))
                 .collect::<Result<Vec<vertexai::model::Part>, ProviderError>>()?;
             Ok(vertexai::model::Content::new()

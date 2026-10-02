@@ -235,14 +235,23 @@ impl crate::completion::ReplayTarget for GenerateContent {
 /// responses: Claude, gpt-oss, and Gemini 3 or later.
 pub fn requires_tool_call_id(model: &str) -> bool {
     let model = model.to_ascii_lowercase();
-    let major = model.strip_prefix("gemini-").and_then(|rest| {
-        let rest = rest.strip_prefix("live-").unwrap_or(rest);
-        let end = rest
-            .find(|c: char| !c.is_ascii_digit())
-            .unwrap_or(rest.len());
-        rest.get(..end)?.parse::<u32>().ok()
-    });
-    model.starts_with("claude-") || model.starts_with("gpt-oss-") || major.is_some_and(|m| m >= 3)
+    model.starts_with("claude-") || model.starts_with("gpt-oss-") || gemini_3_or_later(&model)
+}
+
+/// Whether `model` is Gemini 3 or later, which validates the thought
+/// signatures of function calls.
+fn gemini_3_or_later(model: &str) -> bool {
+    let model = model.to_ascii_lowercase();
+    model
+        .strip_prefix("gemini-")
+        .and_then(|rest| {
+            let rest = rest.strip_prefix("live-").unwrap_or(rest);
+            let end = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            rest.get(..end)?.parse::<u32>().ok()
+        })
+        .is_some_and(|major| major >= 3)
 }
 
 /// `id` as `model` takes another model's call id: when the model takes ids
@@ -425,6 +434,7 @@ pub(crate) fn create_request_body(
 pub fn contents(history: Vec<completion::Message>, model: &str) -> Result<Vec<Value>, EncodeError> {
     let ids = requires_tool_call_id(model)
         .then(|| crate::providers::internal::wire_ids::WireIds::new(&history));
+    let sign = gemini_3_or_later(model);
     let id = |message: usize, content: usize| ids.as_ref()?.get(message, content);
     history
         .into_iter()
@@ -450,7 +460,7 @@ pub fn contents(history: Vec<completion::Message>, model: &str) -> Result<Vec<Va
                         .iter()
                         .enumerate()
                         .filter_map(|(index, block)| {
-                            assistant_part(block, id(at, index)).transpose()
+                            assistant_part(block, id(at, index), sign).transpose()
                         })
                         .collect::<Result<_, _>>()?,
                 ),
@@ -1166,10 +1176,14 @@ pub mod gemini_api_types {
     /// One assistant block as a Gemini part: the provider item it was
     /// decoded from while that is current, else a part rebuilt from its
     /// canonical fields, or `None` when it has nothing to send. A rebuilt
-    /// call carries `id`, its wire spelling, when the model takes ids.
+    /// call carries `id`, its wire spelling, when the model takes ids, and
+    /// Google's placeholder signature when `sign`: Gemini 3 rejects a call
+    /// it did not sign without one ("Function call is missing a
+    /// thought_signature in functionCall parts").
     pub fn assistant_part(
         block: &message::AssistantContent,
         id: Option<&str>,
+        sign: bool,
     ) -> Result<Option<Value>, EncodeError> {
         use message::AssistantContent;
         if let Some(item) = block.native_item() {
@@ -1196,7 +1210,14 @@ pub mod gemini_api_types {
                 if let (Some(id), Some(function_call)) = (id, function_call.as_object_mut()) {
                     function_call.insert("id".to_owned(), json!(id));
                 }
-                Some(json!({ "functionCall": function_call }))
+                let mut part = json!({ "functionCall": function_call });
+                if let (true, Some(part)) = (sign, part.as_object_mut()) {
+                    part.insert(
+                        "thoughtSignature".to_owned(),
+                        json!("skip_thought_signature_validator"),
+                    );
+                }
+                Some(part)
             }
             AssistantContent::Image(image) => {
                 Some(serde_json::to_value(image_to_part(image.clone())?)?)
@@ -1226,7 +1247,7 @@ pub mod gemini_api_types {
     fn is_base64(text: &str) -> bool {
         let body = text.trim_end_matches('=');
         !body.is_empty()
-            && text.len() % 4 == 0
+            && text.len().is_multiple_of(4)
             && text.len() - body.len() <= 2
             && body
                 .bytes()

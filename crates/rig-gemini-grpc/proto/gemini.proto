@@ -224,6 +224,50 @@ message Candidate {
   FinishReason finish_reason = 2;
   optional int32 index = 3;
   optional string finish_message = 4;
+  repeated SafetyRating safety_ratings = 5;
+  CitationMetadata citation_metadata = 6;
+}
+
+// Mirrors safety.proto.
+enum HarmCategory {
+  HARM_CATEGORY_UNSPECIFIED = 0;
+  HARM_CATEGORY_DEROGATORY = 1;
+  HARM_CATEGORY_TOXICITY = 2;
+  HARM_CATEGORY_VIOLENCE = 3;
+  HARM_CATEGORY_SEXUAL = 4;
+  HARM_CATEGORY_MEDICAL = 5;
+  HARM_CATEGORY_DANGEROUS = 6;
+  HARM_CATEGORY_HARASSMENT = 7;
+  HARM_CATEGORY_HATE_SPEECH = 8;
+  HARM_CATEGORY_SEXUALLY_EXPLICIT = 9;
+  HARM_CATEGORY_DANGEROUS_CONTENT = 10;
+  HARM_CATEGORY_CIVIC_INTEGRITY = 11;
+}
+
+message SafetyRating {
+  enum HarmProbability {
+    HARM_PROBABILITY_UNSPECIFIED = 0;
+    NEGLIGIBLE = 1;
+    LOW = 2;
+    MEDIUM = 3;
+    HIGH = 4;
+  }
+
+  HarmCategory category = 3;
+  HarmProbability probability = 4;
+  bool blocked = 5;
+}
+
+// Mirrors citation.proto.
+message CitationMetadata {
+  repeated CitationSource citation_sources = 1;
+}
+
+message CitationSource {
+  optional int32 start_index = 1;
+  optional int32 end_index = 2;
+  optional string uri = 3;
+  optional string license = 4;
 }
 
 message GenerateContentResponse {

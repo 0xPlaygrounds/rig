@@ -393,7 +393,7 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
     assert_eq!(restored.model(), original.model());
     assert_eq!(restored.usage, original.usage);
     assert_eq!(restored.choice, original.choice);
-    assert_eq!(restored.model().as_deref(), Some("gemini-2.5-flash-001"));
+    assert_eq!(restored.model(), Some("gemini-2.5-flash-001"));
     assert_eq!(
         restored.identity().response_id.as_deref(),
         Some("resp-vertex-1")

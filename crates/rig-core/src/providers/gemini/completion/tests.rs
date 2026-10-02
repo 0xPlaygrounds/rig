@@ -1960,7 +1960,8 @@ fn an_empty_signed_thought_replays_its_signature() {
 
 /// A part rebuilt from canonical fields follows pi's rebuild: text alone, a
 /// thought flag on reasoning, a call id only for a model that takes ids,
-/// and nothing for blank text or redacted reasoning.
+/// and nothing for blank text or redacted reasoning. Gemini 3 also gets
+/// Google's placeholder signature on the call, which it requires.
 #[test]
 fn canonical_blocks_rebuild_as_pi_rebuilds_them() {
     let call = message::AssistantContent::tool_call(
@@ -1978,14 +1979,17 @@ fn canonical_blocks_rebuild_as_pi_rebuilds_them() {
         message::AssistantContent::text("answer"),
         call,
     ]);
-    for (model, function_call) in [
+    for (model, call) in [
         (
             "gemini-2.5-flash",
-            json!({ "name": "lookup", "args": { "q": 1 } }),
+            json!({ "functionCall": { "name": "lookup", "args": { "q": 1 } } }),
         ),
         (
             "gemini-3-flash-preview",
-            json!({ "name": "lookup", "args": { "q": 1 }, "id": "call-1" }),
+            json!({
+                "functionCall": { "name": "lookup", "args": { "q": 1 }, "id": "call-1" },
+                "thoughtSignature": "skip_thought_signature_validator",
+            }),
         ),
     ] {
         let contents = contents(vec![message.clone()], model).expect("the turn encodes");
@@ -1994,7 +1998,7 @@ fn canonical_blocks_rebuild_as_pi_rebuilds_them() {
             json!([
                 { "thought": true, "text": "why" },
                 { "text": "answer" },
-                { "functionCall": function_call },
+                call,
             ]),
             "{model}"
         );

@@ -77,10 +77,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
                 "partial output text should still be surfaced"
             );
             assert!(
-                response
-                    .model()
-                    .as_deref()
-                    .is_some_and(|version| !version.is_empty()),
+                response.model().is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"
             );
             assert!(

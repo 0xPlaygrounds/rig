@@ -67,9 +67,8 @@
 //! | 32 | `a_text_signature_does_not_sign_the_chain_of_thought` (unit) | blocking | see below |
 //!
 //! Cells 26–32 cover Gemini 3's `thoughtSignature` on an answer part carrying
-//! no `thought` flag. Gemini requires every signature back inside the part
-//! that carried it, never merged into another part, so it stays on that
-//! answer text (`gemini::text_thought_signature`) rather than on reasoning.
+//! no `thought` flag. The signature stays in the provider item of the answer
+//! text that carried it, never on reasoning.
 //! Cells 26–27 are recorded; 28–32 state orderings one live turn cannot
 //! emit.
 //!

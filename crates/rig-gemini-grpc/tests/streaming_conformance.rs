@@ -80,6 +80,8 @@ fn response(parts: Vec<proto::Part>, finish_reason: i32) -> proto::GenerateConte
             finish_reason,
             index: None,
             finish_message: None,
+            safety_ratings: Vec::new(),
+            citation_metadata: None,
         }],
         prompt_feedback: None,
         usage_metadata: None,

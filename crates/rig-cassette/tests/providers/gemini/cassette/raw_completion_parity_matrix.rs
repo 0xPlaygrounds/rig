@@ -164,11 +164,8 @@ async fn rest_raw_try_into_matches_completion() {
     // `generateContent` document, reproduces the response it rode on.
     let typed = GenerateContentResponse::deserialize(&second.raw)
         .expect("captured raw is Gemini's own generateContent document");
-    assert_eq!(typed.model_version.as_deref(), second.model().as_deref());
-    assert_eq!(
-        Some(typed.response_id.as_str()),
-        second.response_id().as_deref()
-    );
+    assert_eq!(typed.model_version.as_deref(), second.model());
+    assert_eq!(Some(typed.response_id.as_str()), second.response_id());
     assert_eq!(
         typed
             .usage_metadata
@@ -226,7 +223,7 @@ async fn interactions_raw_try_into_matches_completion() {
     let typed = Interaction::deserialize(&second.raw)
         .expect("captured raw is the Interactions API's own document");
     assert_eq!(typed.model.as_deref(), second.model());
-    assert_eq!(Some(typed.id.as_str()), second.response_id().as_deref());
+    assert_eq!(Some(typed.id.as_str()), second.response_id());
     assert_eq!(
         typed
             .usage

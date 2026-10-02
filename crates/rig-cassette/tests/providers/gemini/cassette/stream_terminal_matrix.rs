@@ -328,14 +328,11 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
                 "the reason the turn actually ended on"
             );
             assert!(
-                terminal
-                    .response_id()
-                    .as_deref()
-                    .is_some_and(|id| !id.is_empty()),
+                terminal.response_id().is_some_and(|id| !id.is_empty()),
                 "the terminal should carry the responseId"
             );
             assert!(
-                terminal.model().as_deref().is_some_and(|m| !m.is_empty()),
+                terminal.model().is_some_and(|m| !m.is_empty()),
                 "the terminal should carry the model version"
             );
         },
@@ -772,8 +769,8 @@ mod unit {
     async fn later_metadata_wins_on_the_terminal_record() {
         let run = run(&[CODE_ROUND, INTERMEDIATE_TERMINAL, ANSWER, REAL_TERMINAL]).await;
         let terminal = run.response.as_ref().expect("one terminal");
-        assert_eq!(terminal.response_id().as_deref(), Some("resp-last"));
-        assert_eq!(terminal.model().as_deref(), Some("gemini-2.5-flash-002"));
+        assert_eq!(terminal.response_id(), Some("resp-last"));
+        assert_eq!(terminal.model(), Some("gemini-2.5-flash-002"));
         assert_eq!(terminal.usage.total_tokens, Some(50));
     }
 
