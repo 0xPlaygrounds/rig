@@ -40,3 +40,33 @@ fn a_stream_that_drops_a_block_disagrees() {
         ],
     );
 }
+
+#[test]
+fn rig_issued_call_ids_are_compared_by_position() {
+    let call = crate::message::ToolCall::new(
+        crate::message::CallId::from_wire(""),
+        crate::message::ToolFunction::new(
+            crate::message::ToolName::new("lookup").expect("a name"),
+            serde_json::json!({}),
+        ),
+    );
+    let whole = CompletionResponse::new(
+        vec![AssistantContent::ToolCall(call)],
+        Default::default(),
+        crate::message::Origin::new("test.api", "mock", ""),
+        serde_json::Value::Null,
+    );
+    assert_restated_agrees(
+        &MockScript::default(),
+        [MockFrame::Response(Box::new(whole))],
+        [
+            MockFrame::Event(MockStreamEvent::ToolCall {
+                id: String::new(),
+                name: "lookup".into(),
+                arguments: serde_json::json!({}),
+                call_id: None,
+            }),
+            MockFrame::Event(MockStreamEvent::FinalResponse(Finish::default())),
+        ],
+    );
+}

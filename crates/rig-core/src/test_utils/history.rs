@@ -52,7 +52,9 @@ pub fn decode<W: Wire<Op = Completion>>(
 
 /// Assert a reply decoded whole (`whole`) and the same reply restated as a
 /// stream (`streamed`) fold into the same assistant turn: the same blocks
-/// in the same order, the same provider items, origin and stop.
+/// in the same order, the same provider items, origin and stop. Each decode
+/// issues its own ids for calls the wire sent without one, so rig-issued ids
+/// are compared by position.
 ///
 /// # Panics
 ///
@@ -66,8 +68,8 @@ pub fn assert_restated_agrees<W: Wire<Op = Completion>>(
     let stream = decode(wire, Mode::Streaming, streamed);
     match (unary, stream) {
         (Ok(unary), Ok(stream)) => assert_eq!(
-            unary.message(),
-            stream.message(),
+            numbered(serde_json::json!(unary.message())),
+            numbered(serde_json::json!(stream.message())),
             "a whole reply and its restatement as a stream fold into the same turn"
         ),
         (unary, stream) => {
@@ -77,6 +79,29 @@ pub fn assert_restated_agrees<W: Wire<Op = Completion>>(
             );
         }
     }
+}
+
+/// `turn` with each rig-issued call id replaced by its position, and the
+/// fingerprints that cover those ids left out.
+fn numbered(mut turn: serde_json::Value) -> serde_json::Value {
+    fn walk(value: &mut serde_json::Value, next: &mut usize) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                fields.shift_remove("fingerprint");
+                if let Some(local) = fields.get_mut("local") {
+                    *local = serde_json::json!(*next);
+                    *next += 1;
+                }
+                fields.values_mut().for_each(|value| walk(value, next));
+            }
+            serde_json::Value::Array(values) => {
+                values.iter_mut().for_each(|value| walk(value, next));
+            }
+            _ => {}
+        }
+    }
+    walk(&mut turn, &mut 0);
+    turn
 }
 
 /// Assert `samples` exercise every one of the `count` variants `index`

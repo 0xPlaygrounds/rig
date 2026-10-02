@@ -90,27 +90,6 @@ fn scenarios(directory: &std::path::Path, root: &std::path::Path, found: &mut Ve
     }
 }
 
-/// `turn` with each rig-issued call id replaced by its position, and the
-/// fingerprints that cover those ids left out.
-fn numbered(mut turn: Value) -> Value {
-    fn walk(value: &mut Value, next: &mut usize) {
-        match value {
-            Value::Object(fields) => {
-                fields.shift_remove("fingerprint");
-                if let Some(local) = fields.get_mut("local") {
-                    *local = json!(*next);
-                    *next += 1;
-                }
-                fields.values_mut().for_each(|value| walk(value, next));
-            }
-            Value::Array(values) => values.iter_mut().for_each(|value| walk(value, next)),
-            _ => {}
-        }
-    }
-    walk(&mut turn, &mut 0);
-    turn
-}
-
 #[test]
 fn every_recorded_whole_reply_agrees_with_its_restatement() {
     let root = cassette_root().join("gemini");
@@ -133,25 +112,10 @@ fn every_recorded_whole_reply_agrees_with_its_restatement() {
             };
             let wire = GenerateContent::new(GeminiConfig::new("replay"), model);
             let whole = vec![WireFrame::Text(body.clone())];
-            let Some(unary) = decode(&wire, Mode::Unary, whole.clone())
-                .ok()
-                .filter(|_| status == 200)
-            else {
+            if status != 200 || decode(&wire, Mode::Unary, whole.clone()).is_err() {
                 continue;
-            };
-            if unary.tool_calls().any(|call| call.id.is_local()) {
-                // Each decode issues its own ids for id-less calls, and the
-                // shared harness compares them; compare with them numbered.
-                let streamed = decode(&wire, Mode::Streaming, restated(&reply))
-                    .unwrap_or_else(|error| panic!("{scenario}: the restatement decodes: {error}"));
-                assert_eq!(
-                    numbered(json!(unary.message())),
-                    numbered(json!(streamed.message())),
-                    "{scenario}"
-                );
-            } else {
-                assert_restated_agrees(&wire, whole, restated(&reply));
             }
+            assert_restated_agrees(&wire, whole, restated(&reply));
             restated_replies += 1;
         }
     }
