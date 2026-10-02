@@ -98,3 +98,16 @@ fn fingerprint_is_fnv1a_of_the_json_bytes() {
     assert_eq!(Fingerprint::of(&"a"), Fingerprint::of(&json!("a")));
     assert_ne!(Fingerprint::of(&"a"), Fingerprint::of(&"b"));
 }
+
+#[test]
+fn a_rig_issued_call_id_fingerprints_the_same_on_every_decode() {
+    let decoded = || {
+        AssistantContent::ToolCall(ToolCall::new(
+            CallId::from_wire(""),
+            ToolFunction::new(ToolName::new("lookup").expect("a name"), json!({})),
+        ))
+    };
+    let (first, second) = (decoded(), decoded());
+    assert_ne!(first, second, "each decode issues its own id");
+    assert_eq!(first.fingerprint(), second.fingerprint());
+}

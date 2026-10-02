@@ -208,6 +208,12 @@ impl LocalCallId {
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4())
     }
+
+    /// The id every rig-issued id is fingerprinted as, so a reply decoded
+    /// twice fingerprints the same.
+    pub(crate) fn placeholder() -> Self {
+        Self(uuid::Uuid::nil())
+    }
 }
 
 impl Default for LocalCallId {

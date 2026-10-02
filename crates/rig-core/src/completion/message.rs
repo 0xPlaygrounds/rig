@@ -68,7 +68,7 @@ impl AssistantMessage {
             &self
                 .content
                 .iter()
-                .map(AssistantContent::canonical)
+                .map(AssistantContent::fingerprinted)
                 .collect::<Vec<_>>(),
         )
     }
@@ -187,9 +187,23 @@ impl AssistantContent {
         block
     }
 
-    /// The fingerprint of [`Self::canonical`].
+    /// The fingerprint of [`Self::canonical`], with a rig-issued call id
+    /// counted as one placeholder: rig issues a fresh id each time it
+    /// decodes a call the provider sent without one.
     pub fn fingerprint(&self) -> Fingerprint {
-        Fingerprint::of(&self.canonical())
+        Fingerprint::of(&self.fingerprinted())
+    }
+
+    /// [`Self::canonical`] with a rig-issued call id replaced by the
+    /// placeholder.
+    fn fingerprinted(&self) -> Self {
+        let mut block = self.canonical();
+        if let Self::ToolCall(call) = &mut block
+            && call.id.is_local()
+        {
+            call.id = CallId::Local(LocalCallId::placeholder());
+        }
+        block
     }
 
     fn native_slot(&mut self) -> Option<&mut Option<Native>> {
