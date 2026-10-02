@@ -450,8 +450,30 @@ crate::matrix::case_matrix! {
     sequential_complex_tool_calls_nonstreaming: ("agent_tool_sessions/sequential_complex_tool_calls_nonstreaming", sequential_complex_tool_calls_nonstreaming_0);
     # [tokio :: test]
     parallel_tool_calls_single_turn_nonstreaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming", parallel_tool_calls_single_turn_nonstreaming_3);
-    # [tokio :: test]
-    parallel_tool_calls_single_turn_streaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_streaming", parallel_tool_calls_single_turn_streaming_4);
+}
+
+#[tokio::test]
+async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
+    with_xai_cassette_result(
+        "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
+        |client| async move {
+            let agent = rig::AgentBuilder::new(client.completion(SESSION_MODEL))
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tool(AlphaSignal)
+                .tool(BetaSignal)
+                .additional_params(json!({ "parallel_tool_calls": true, "store": false }))
+                .build();
+            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
+            let observation = collect_stream_observation(&mut stream).await;
+            assert_two_tool_roundtrip_contract(
+                &observation,
+                &[AlphaSignal::NAME, BetaSignal::NAME],
+                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
+            );
+            Ok(())
+        },
+    )
+    .await
 }
 
 #[tokio::test]

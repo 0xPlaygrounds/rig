@@ -149,6 +149,7 @@ async fn system_messages_as_input_items_mid_conversation() {
                 .map_wire(|wire| wire.with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble("You are a concise assistant.")
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
             let mut history = vec![
                 Message::user("Hello!"),

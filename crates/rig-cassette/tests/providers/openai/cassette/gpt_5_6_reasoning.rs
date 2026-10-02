@@ -220,7 +220,8 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                             "context": "all_turns",
                             "effort": "low",
                             "mode": "pro"
-                        }
+                        },
+                        "store": false
                     }));
                 // One request per turn: one call yields both views of it — the
                 // normalized response, and the provider's own wire response
@@ -330,7 +331,8 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                             "context": "all_turns",
                             "effort": "low",
                             "mode": "pro"
-                        }
+                        },
+                        "store": false
                     }));
                 // The terminal record under test is the Responses API's own
                 // streaming response, which rides on `CompletionResponse::raw`; the

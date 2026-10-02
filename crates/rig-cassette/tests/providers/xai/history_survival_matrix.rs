@@ -10,7 +10,7 @@ use super::support::with_xai_cassette;
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
 fn params() -> Option<serde_json::Value> {
-    None
+    Some(serde_json::json!({ "store": false }))
 }
 
 fn model(client: OpenAiModels, cell: Cell) -> rig::Model<rig::providers::openai::wire::OpenAiWire> {

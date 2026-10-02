@@ -107,7 +107,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let model = client.completion(xai::GROK_4);
             let request = CompletionRequest::new(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&StatusWordTool));
+                .tool(rig::tool::tool_definition(&StatusWordTool))
+                .additional_params(serde_json::json!({ "store": false }));
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -139,7 +140,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             )
             .preamble("Use the provided tool result and answer directly.")
             .message(assistant_message)
-            .message(tool_result_message);
+            .message(tool_result_message)
+            .additional_params(serde_json::json!({ "store": false }));
 
             let second_turn = collect_raw_stream_observation(
                 model

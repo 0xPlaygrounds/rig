@@ -310,7 +310,8 @@ async fn long_history_replay_nonstreaming() {
             // its call_id back, the way a caller-owned history would.
             let first_request = CompletionRequest::new("Look up the harbor label with the tool.")
                 .preamble(preamble.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal));
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .additional_params(serde_json::json!({ "store": false }));
             let first_response = model
                 .call(first_request)
                 .await
@@ -355,7 +356,8 @@ async fn long_history_replay_nonstreaming() {
                 vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             )))
             .message(Message::assistant("The harbor label is crimson-harbor."))
-            .tool(rig::tool::tool_definition(&AlphaSignal));
+            .tool(rig::tool::tool_definition(&AlphaSignal))
+            .additional_params(serde_json::json!({ "store": false }));
 
             let response = model
                 .call(request)
@@ -401,7 +403,8 @@ async fn reasoning_session_two_tool_calls_streaming() {
                 .max_tokens(6000)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(serde_json::json!({
-                    "reasoning": { "effort": "low" }
+                    "reasoning": { "effort": "low" },
+                    "store": false
                 }))
                 .build();
 

@@ -226,7 +226,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             rig_ecs::agent::DefaultMaxTurns(None),
                             rig_ecs::agent::AdditionalParams(Some(
-                                json!({ "parallel_tool_calls" : true }),
+                                json!({ "parallel_tool_calls" : true, "store": false }),
                             )),
                         ));
                         ecs.tool(AlphaSignal);

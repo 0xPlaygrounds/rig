@@ -14,7 +14,8 @@ async fn streaming() {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
             client.openai.completion("gpt-5.2"),
             Some(serde_json::json!({
-                "reasoning": { "effort": "medium" }
+                "reasoning": { "effort": "medium" },
+                "store": false
             })),
         ))
         .await;
@@ -28,7 +29,8 @@ async fn nonstreaming() {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
             client.openai.completion("gpt-5.2"),
             Some(serde_json::json!({
-                "reasoning": { "effort": "medium" }
+                "reasoning": { "effort": "medium" },
+                "store": false
             })),
         ))
         .await;

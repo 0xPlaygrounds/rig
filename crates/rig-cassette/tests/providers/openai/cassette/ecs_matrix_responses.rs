@@ -17,7 +17,7 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
         model: client.openai.completion(GPT_5_MINI),
         route: Some(client.openai.completion(GPT_5_NANO)),
         temperature: None,
-        additional_params: None,
+        additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
     }
 }
 
@@ -42,8 +42,6 @@ crate::matrix::native_matrix! {
     #[tokio::test]
     host_custom_at_outcome: ("corpus_breadth/custom_at_outcome", cells::HOST_CUSTOM_AT_OUTCOME, "openai_responses_host_custom_at_outcome");
     #[tokio::test]
-    memory_two_runs: ("corpus_breadth/memory_two_runs", cells::MEMORY_TWO_RUNS, "openai_responses_memory_two_runs");
-    #[tokio::test]
     output_tool_unary: ("corpus_output/tool_unary", cells::OUTPUT_TOOL_UNARY, "openai_responses_output_tool_unary");
     #[tokio::test]
     output_tool_streamed: ("corpus_breadth/output_tool_streamed", cells::OUTPUT_TOOL_STREAMED, "openai_responses_output_tool_streamed");
@@ -51,6 +49,22 @@ crate::matrix::native_matrix! {
     output_prompted_unary: ("corpus_output/prompted_unary", cells::OUTPUT_PROMPTED_UNARY, "openai_responses_output_prompted_unary");
     #[tokio::test]
     output_prompted_streamed: ("corpus_breadth/prompted_streamed", cells::OUTPUT_PROMPTED_STREAMED, "openai_responses_output_prompted_streamed");
+}
+
+/// The recording's own model and settings, storing no response.
+fn legacy_stateless(
+    client: &OpenAiCassette,
+) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
+    Wire {
+        additional_params: Some(cells::openai_responses_stateless),
+        ..legacy(client)
+    }
+}
+
+crate::matrix::native_matrix! {
+    wrapper: with_openai_cassette, wire: legacy_stateless, run: run_world;
+    #[tokio::test]
+    memory_two_runs: ("corpus_breadth/memory_two_runs", cells::MEMORY_TWO_RUNS, "openai_responses_memory_two_runs");
 }
 
 crate::matrix::native_matrix! {

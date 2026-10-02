@@ -30,7 +30,7 @@ fn task_wire(
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
         additional_params: Some(
-            || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks"}),
+            || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks", "store": false}),
         ),
         ..wire(client)
     }

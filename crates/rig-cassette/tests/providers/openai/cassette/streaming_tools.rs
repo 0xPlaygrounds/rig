@@ -162,7 +162,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let model = client.openai.completion(openai::GPT_4O);
             let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal));
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .additional_params(serde_json::json!({ "store": false }));
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -189,7 +190,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 )
                 .preamble("Use the provided tool result and answer directly.")
                 .message(assistant_message)
-                .message(tool_result_message);
+                .message(tool_result_message)
+                .additional_params(serde_json::json!({ "store": false }));
 
             let second_turn = collect_raw_stream_observation(
                 model

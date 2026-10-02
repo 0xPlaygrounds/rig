@@ -125,6 +125,7 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
             let hook = RetryOnce::default();
             let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .preamble("You are a terse assistant.")
+                .additional_params(serde_json::json!({ "store": false }))
                 .add_hook(hook.clone())
                 .build();
 

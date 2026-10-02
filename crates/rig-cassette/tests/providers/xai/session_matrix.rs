@@ -7,7 +7,7 @@ use rig_test_support::cassette_models::OpenAiModels;
 use crate::history_survival::sessions::{self, Cell};
 
 fn params() -> Option<serde_json::Value> {
-    Some(serde_json::json!({}))
+    Some(serde_json::json!({ "store": false }))
 }
 
 const CELL: Cell = Cell {

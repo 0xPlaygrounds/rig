@@ -54,7 +54,8 @@ async fn responses_keeps_documents_after_system_before_history() {
                         .message(Message::assistant("Acknowledged."))
                         .document(ordering_document())
                         .temperature(0.0)
-                        .max_tokens(32),
+                        .max_tokens(32)
+                        .additional_params(serde_json::json!({ "store": false })),
                 )
                 .await
                 .expect("OpenAI Responses document ordering request should succeed");

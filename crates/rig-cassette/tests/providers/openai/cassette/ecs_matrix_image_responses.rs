@@ -17,7 +17,7 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
         model: client.openai.completion(GPT_5_MINI),
         route: None,
         temperature: None,
-        additional_params: None,
+        additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
     }
 }
 
