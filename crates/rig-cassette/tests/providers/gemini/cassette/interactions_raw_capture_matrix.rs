@@ -106,8 +106,8 @@ async fn raw_roundtrips_interaction() {
             // One decoder folded the normalized response out of these very
             // bytes, so every field it kept must be the one the document
             // carries — `raw` is additive, never a divergent second view.
-            assert_eq!(typed.model, response.model());
-            assert_eq!(Some(typed.id.as_str()), response.response_id().as_deref());
+            assert_eq!(typed.model.as_deref(), response.model());
+            assert_eq!(Some(typed.id.as_str()), response.response_id());
             assert_eq!(
                 typed
                     .usage

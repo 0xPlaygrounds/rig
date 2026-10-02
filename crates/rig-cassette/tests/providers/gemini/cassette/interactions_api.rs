@@ -60,7 +60,7 @@ async fn basic_interaction_returns_id() {
                 "interactions api should return an interaction id"
             );
             assert_eq!(
-                response.response_id().as_deref(),
+                response.response_id(),
                 Some(document.id.as_str()),
                 "the continuation handle is what the normalized response names"
             );
@@ -93,7 +93,7 @@ async fn followup_with_previous_interaction_id() {
             // `previous_interaction_id` echoes back.
             let interaction_id = initial
                 .response_id()
-                .clone()
+                .map(str::to_owned)
                 .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
@@ -192,7 +192,7 @@ async fn tool_result_roundtrip() {
             // tool call — so this still costs one interaction.
             let interaction_id = initial
                 .response_id()
-                .clone()
+                .map(str::to_owned)
                 .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
@@ -274,7 +274,7 @@ async fn streaming_final_metadata_exposes_model_version() {
 
             assert_nonempty_response(&text);
             assert_eq!(
-                response.model().as_deref(),
+                response.model(),
                 Some("gemini-3-flash-preview"),
                 "expected Interactions stream final response to expose Interaction.model"
             );
@@ -452,4 +452,132 @@ async fn code_execution_usage_counts_the_tool_use_prompt_as_input_streamed() {
         },
     )
     .await;
+}
+
+/// Every recorded whole interaction of this family.
+const RECORDED_INTERACTIONS: &[&str] = &[
+    "interactions_api/basic_interaction_returns_id",
+    "interactions_api/code_execution_usage",
+    "interactions_api/followup_with_previous_interaction_id",
+    "interactions_api/google_search_tool_interaction",
+    "interactions_api/tool_result_roundtrip",
+    "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
+    "interactions_raw_capture_matrix/raw_roundtrips_interaction",
+];
+
+/// `document`, a whole interaction, restated as the events a stream of it
+/// carries: each step starts bare, its content arrives as deltas, and it
+/// stops.
+fn restated(document: &serde_json::Value) -> Vec<rig_core::wire::WireFrame> {
+    use serde_json::{Value, json};
+    let frame = |value: Value| rig_core::wire::WireFrame::Text(value.to_string());
+    let mut envelope = document.clone();
+    let steps = envelope
+        .as_object_mut()
+        .and_then(|document| document.shift_remove("steps"))
+        .unwrap_or_else(|| json!([]));
+    let mut frames = Vec::new();
+    for (index, step) in steps.as_array().into_iter().flatten().enumerate() {
+        let mut head = step.as_object().cloned().unwrap_or_default();
+        let deltas: Vec<Value> = match step["type"].as_str() {
+            Some("thought") => {
+                let summary = head.shift_remove("summary").unwrap_or_else(|| json!([]));
+                let signature = head.shift_remove("signature");
+                summary
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|content| json!({"type": "thought_summary", "content": content}))
+                    .chain(signature.map(
+                        |signature| json!({"type": "thought_signature", "signature": signature}),
+                    ))
+                    .collect()
+            }
+            Some("model_output") => head
+                .shift_remove("content")
+                .and_then(|content| content.as_array().cloned())
+                .unwrap_or_default(),
+            Some("function_call") => {
+                let arguments = head.insert("arguments".to_owned(), json!({}));
+                arguments
+                    .map(|arguments| {
+                        json!({"type": "arguments_delta", "arguments": arguments.to_string()})
+                    })
+                    .into_iter()
+                    .collect()
+            }
+            _ => {
+                head.retain(|key, _| key == "type");
+                vec![step.clone()]
+            }
+        };
+        frames.push(frame(
+            json!({"event_type": "step.start", "index": index, "step": head}),
+        ));
+        for delta in deltas {
+            frames.push(frame(
+                json!({"event_type": "step.delta", "index": index, "delta": delta}),
+            ));
+        }
+        frames.push(frame(json!({"event_type": "step.stop", "index": index})));
+    }
+    frames.push(frame(
+        json!({"event_type": "interaction.completed", "interaction": envelope}),
+    ));
+    frames
+}
+
+/// Each recorded interaction decodes to the same turn whole and restated
+/// as a stream, and the same model gets its steps back verbatim, hosted
+/// search and code execution included.
+#[test]
+fn recorded_interactions_agree_in_both_modes_and_replay_verbatim() {
+    use rig_core::wire::{Mode, Operation as _, Wire};
+
+    let wire = rig::providers::gemini::interactions_api::Interactions::new(
+        rig_core::providers::gemini::GeminiConfig::new("test-key"),
+        "gemini-3-flash-preview",
+    );
+    let mut turns = 0;
+    for scenario in RECORDED_INTERACTIONS {
+        for (_, document) in crate::cassettes::recorded_json_turns("gemini", scenario) {
+            turns += 1;
+            let whole = [rig_core::wire::WireFrame::Text(document.to_string())];
+            rig_core::test_utils::history::assert_restated_agrees(
+                &wire,
+                whole.clone(),
+                restated(&document),
+            );
+            let response = rig_core::test_utils::history::decode(&wire, Mode::Unary, whole)
+                .unwrap_or_else(|error| panic!("{scenario} decodes: {error}"));
+            let history = vec![
+                Message::user("again"),
+                response.message().expect("the reply is a turn"),
+            ];
+            let request = rig_core::operation::Completion::prepare(
+                CompletionRequest::from(history),
+                &wire.describe(),
+            )
+            .expect("the request is valid");
+            let encoded = wire.encode(request, Mode::Unary).expect("it encodes");
+            let rig_core::wire::Body::Bytes(body) = encoded.request.body() else {
+                panic!("the request has a body");
+            };
+            let body: serde_json::Value = serde_json::from_slice(&body[..]).expect("a JSON body");
+            let sent: Vec<_> = body["input"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .skip(1)
+                .filter(|step| step["type"] != "function_result")
+                .cloned()
+                .collect();
+            assert_eq!(
+                Some(&sent),
+                document["steps"].as_array(),
+                "{scenario}: the same model gets its steps back verbatim"
+            );
+        }
+    }
+    assert_eq!(turns, 9, "every recorded turn was checked");
 }

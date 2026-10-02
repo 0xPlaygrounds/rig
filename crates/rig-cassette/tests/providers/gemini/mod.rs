@@ -74,11 +74,8 @@ mod cassette {
     mod hook_stress_tools;
     mod image_generation;
     mod image_input_matrix;
-    #[cfg(any())]
     mod interactions_api;
-    #[cfg(any())]
     mod interactions_raw_capture_matrix;
-    #[cfg(any())]
     mod interactions_raw_stream_capture_matrix;
     mod lifecycle_matrix;
     mod models;
