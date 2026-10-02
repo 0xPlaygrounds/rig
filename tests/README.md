@@ -334,8 +334,9 @@ and is applied twice:
   another wire's committed reply through Rig's real decoder, continue it on
   the target wire, and assert no foreign reasoning state reached it.
 
-Reasoning records the service that issued it, and a request replays only that
-service's reasoning (Claude on Bedrock shares Anthropic's).
+An assistant turn records its origin: the wire format, provider and model
+that produced it. A request to that same model replays the turn's provider
+items verbatim, and any other request replays only its canonical fields.
 Further cell families exercise the same round trip: `stateful_chain_matrix`
 (OpenAI `previous_response_id` and file ids, Gemini `cachedContents` and
 Interactions), `session_matrix` (history persisted through serde, an ECS
