@@ -4,7 +4,12 @@
     "choice": [
       {
         "text": "Rust is a **systems programming language** designed for **speed, reliability, and memory safety** without using a garbage collector.[1][18] Memory safety matters because it helps prevent common bugs and security problems like crashes, memory leaks, and unsafe memory access, and Rust’s compiler checks these issues at compile time.[2][5][18]",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "Rust is a **systems programming language** designed for **speed, reliability, and memory safety** without using a garbage collector.[1][18] Memory safety matters because it helps prevent common bugs and security problems like crashes, memory leaks, and unsafe memory access, and Rust’s compiler checks these issues at compile time.[2][5][18]"
+          },
+          "fingerprint": 5921525936496455476
+        }
       }
     ],
     "usage": {
@@ -12,7 +17,6 @@
       "output_tokens": 74,
       "total_tokens": 101
     },
-    "message_id": null,
     "response_id": "b287424a-8143-42d6-9c38-2390a8c956f7",
     "finish_reason": "stop",
     "model": "sonar",
@@ -239,7 +243,12 @@
     "choice": [
       {
         "text": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]"
+          },
+          "fingerprint": 10260108212768679106
+        }
       }
     ],
     "usage": {
@@ -247,7 +256,6 @@
       "output_tokens": 51,
       "total_tokens": 75
     },
-    "message_id": null,
     "response_id": "fe890bf0-70c0-4b3c-80b4-3e6a33b6b207",
     "finish_reason": "stop",
     "model": "sonar",
@@ -451,7 +459,12 @@
     "choice": [
       {
         "text": "Got it — I’ll remember **amber-rig** for the next turn.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "Got it — I’ll remember **amber-rig** for the next turn."
+          },
+          "fingerprint": 7510822776869647683
+        }
       }
     ],
     "usage": {
@@ -459,7 +472,6 @@
       "output_tokens": 16,
       "total_tokens": 40
     },
-    "message_id": null,
     "response_id": "f52f0945-3e32-4531-a83a-da4955ff56ad",
     "finish_reason": "stop",
     "model": "sonar",
@@ -906,7 +918,12 @@
     "choice": [
       {
         "text": "You asked me to remember **amber-rig**.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "You asked me to remember **amber-rig**."
+          },
+          "fingerprint": 8876939445881169544
+        }
       }
     ],
     "usage": {
@@ -914,7 +931,6 @@
       "output_tokens": 11,
       "total_tokens": 61
     },
-    "message_id": null,
     "response_id": "2193c205-e93d-4739-b03a-ee1cec188ad3",
     "finish_reason": "stop",
     "model": "sonar",
@@ -1321,7 +1337,12 @@
     "choice": [
       {
         "text": "“glarb-glarb” means an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "“glarb-glarb” means an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+          },
+          "fingerprint": 3515379020946568592
+        }
       }
     ],
     "usage": {
@@ -1329,7 +1350,6 @@
       "output_tokens": 28,
       "total_tokens": 172
     },
-    "message_id": null,
     "response_id": "6ff914d2-ce7d-421e-9f33-8e67ae1dafdc",
     "finish_reason": "stop",
     "model": "sonar",
@@ -1526,7 +1546,12 @@
     "choice": [
       {
         "text": "**Memory safety** is a major Rust benefit because it helps prevent bugs like null pointers and use-after-free at compile time.[1][9]",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "**Memory safety** is a major Rust benefit because it helps prevent bugs like null pointers and use-after-free at compile time.[1][9]"
+          },
+          "fingerprint": 16558093186822626378
+        }
       }
     ],
     "usage": {
@@ -1534,7 +1559,6 @@
       "output_tokens": 31,
       "total_tokens": 45
     },
-    "message_id": null,
     "response_id": "293f7e2a-7fc7-49fb-8992-6653dd446207",
     "finish_reason": "stop",
     "model": "sonar",
@@ -1761,7 +1785,12 @@
     "choice": [
       {
         "text": "amber-rig",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "amber-rig"
+          },
+          "fingerprint": 11296374642081640483
+        }
       }
     ],
     "usage": {
@@ -1769,7 +1798,6 @@
       "output_tokens": 3,
       "total_tokens": 26
     },
-    "message_id": null,
     "response_id": "7dc0215a-acf7-438c-991f-b3b05ce5a816",
     "finish_reason": "stop",
     "model": "sonar",
@@ -2006,7 +2034,12 @@
     "choice": [
       {
         "text": "The code word in the surviving conversation history is **amber-rig**.[1]",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "The code word in the surviving conversation history is **amber-rig**.[1]"
+          },
+          "fingerprint": 2882043043183151678
+        }
       }
     ],
     "usage": {
@@ -2014,7 +2047,6 @@
       "output_tokens": 18,
       "total_tokens": 54
     },
-    "message_id": null,
     "response_id": "9772ef82-b17f-426c-b587-91260619a032",
     "finish_reason": "stop",
     "model": "sonar",
@@ -2441,7 +2473,12 @@
     "choice": [
       {
         "text": "tools dropped ok",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "tools dropped ok"
+          },
+          "fingerprint": 15460941395609624674
+        }
       }
     ],
     "usage": {
@@ -2449,7 +2486,6 @@
       "output_tokens": 3,
       "total_tokens": 18
     },
-    "message_id": null,
     "response_id": "ef84d7e2-c5c6-4b68-8de2-0368b1ad111f",
     "finish_reason": "stop",
     "model": "sonar",
@@ -2686,7 +2722,12 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "cache probe ready"
+          },
+          "fingerprint": 17931945363212184360
+        }
       }
     ],
     "usage": {
@@ -2694,7 +2735,6 @@
       "output_tokens": 3,
       "total_tokens": 4368
     },
-    "message_id": null,
     "response_id": "f77613ce-7de3-4036-99fd-1e35ccdbf7c2",
     "finish_reason": "stop",
     "model": "sonar",
@@ -2911,7 +2951,12 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "cache probe ready"
+          },
+          "fingerprint": 17931945363212184360
+        }
       }
     ],
     "usage": {
@@ -2919,7 +2964,6 @@
       "output_tokens": 3,
       "total_tokens": 4368
     },
-    "message_id": null,
     "response_id": "e4498227-f05e-44a6-869d-bc6a85bb8cad",
     "finish_reason": "stop",
     "model": "sonar",
@@ -3136,7 +3180,12 @@
     "choice": [
       {
         "text": "probe still ready",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "probe still ready"
+          },
+          "fingerprint": 11889464021292680932
+        }
       }
     ],
     "usage": {
@@ -3144,7 +3193,6 @@
       "output_tokens": 3,
       "total_tokens": 4387
     },
-    "message_id": null,
     "response_id": "bca0da56-fb05-42a5-bcba-04fffa378294",
     "finish_reason": "stop",
     "model": "sonar",
@@ -3361,7 +3409,12 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "cache probe ready"
+          },
+          "fingerprint": 17931945363212184360
+        }
       }
     ],
     "usage": {
@@ -3369,7 +3422,6 @@
       "output_tokens": 3,
       "total_tokens": 4368
     },
-    "message_id": null,
     "response_id": "5ea49730-acc5-46ce-a2d4-5d2a2cd6b511",
     "finish_reason": "stop",
     "model": "sonar",
@@ -4085,7 +4137,12 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "cache probe ready"
+          },
+          "fingerprint": 17931945363212184360
+        }
       }
     ],
     "usage": {
@@ -4093,7 +4150,6 @@
       "output_tokens": 3,
       "total_tokens": 4368
     },
-    "message_id": null,
     "response_id": "0f153be2-078c-489b-88de-3c36110b8f37",
     "finish_reason": "stop",
     "model": "sonar",
@@ -4809,7 +4865,12 @@
     "choice": [
       {
         "text": "probe still ready",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "probe still ready"
+          },
+          "fingerprint": 11889464021292680932
+        }
       }
     ],
     "usage": {
@@ -4817,7 +4878,6 @@
       "output_tokens": 3,
       "total_tokens": 4387
     },
-    "message_id": null,
     "response_id": "2a185eb1-289a-4c46-802a-9a5e6f496681",
     "finish_reason": "stop",
     "model": "sonar",
@@ -5533,7 +5593,12 @@
     "choice": [
       {
         "text": "pong",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "pong"
+          },
+          "fingerprint": 220707766100057057
+        }
       }
     ],
     "usage": {
@@ -5541,7 +5606,6 @@
       "output_tokens": 1,
       "total_tokens": 8
     },
-    "message_id": null,
     "response_id": "23a6ff32-d722-432c-a01a-53ee0d3fa1a7",
     "finish_reason": "stop",
     "model": "sonar",
@@ -5768,7 +5832,12 @@
     "choice": [
       {
         "text": "pong",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "pong"
+          },
+          "fingerprint": 220707766100057057
+        }
       }
     ],
     "usage": {
@@ -5776,7 +5845,6 @@
       "output_tokens": 1,
       "total_tokens": 8
     },
-    "message_id": null,
     "response_id": "509ad504-4442-4fd5-81d9-01cac15f332c",
     "finish_reason": "stop",
     "model": "sonar",
@@ -6003,7 +6071,12 @@
     "choice": [
       {
         "text": "pong",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "pong"
+          },
+          "fingerprint": 220707766100057057
+        }
       }
     ],
     "usage": {
@@ -6011,7 +6084,6 @@
       "output_tokens": 1,
       "total_tokens": 8
     },
-    "message_id": null,
     "response_id": "593b60b8-c73f-4ba1-a26d-64498322cfb4",
     "finish_reason": "stop",
     "model": "sonar",
@@ -6238,7 +6310,12 @@
     "choice": [
       {
         "text": "pong",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "pong"
+          },
+          "fingerprint": 220707766100057057
+        }
       }
     ],
     "usage": {
@@ -6246,7 +6323,6 @@
       "output_tokens": 1,
       "total_tokens": 8
     },
-    "message_id": null,
     "response_id": "ea63f2f9-52d6-4b17-a112-de770eeca3d4",
     "finish_reason": "stop",
     "model": "sonar",
@@ -6642,7 +6718,12 @@
     "choice": [
       {
         "text": "pong",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "pong"
+          },
+          "fingerprint": 220707766100057057
+        }
       }
     ],
     "usage": {
@@ -6650,7 +6731,6 @@
       "output_tokens": 1,
       "total_tokens": 8
     },
-    "message_id": null,
     "response_id": "84f60425-7bfb-4348-a8e7-b12cb366fa0c",
     "finish_reason": "stop",
     "model": "sonar",
@@ -7046,7 +7126,12 @@
     "choice": [
       {
         "text": "A **solar eclipse** happens when the Moon moves between Earth and",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "A **solar eclipse** happens when the Moon moves between Earth and"
+          },
+          "fingerprint": 391100454692598754
+        }
       }
     ],
     "usage": {
@@ -7054,7 +7139,6 @@
       "output_tokens": 14,
       "total_tokens": 38
     },
-    "message_id": null,
     "response_id": "9ac8bec3-aa74-4927-aab1-6f68a2794582",
     "finish_reason": "length",
     "model": "sonar",

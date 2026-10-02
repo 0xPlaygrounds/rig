@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_5df4dc2360ab411ca14d3fd6d1af55b3
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_XC4ZuVCKcZEiNsvEXc2zp6TE","type":"function"}]}}],"created":0,"id":"chatcmpl-ERDBGC9d4NWCKDwkmQlmbbVLvGgv6","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":154,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":128,"rejected_prediction_tokens":0},"prompt_tokens":184,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":338}}'
+    value: req_e9496b496e184a83b88106739092bfa9
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_3qlGo6x96ZgSK8acaUHh7jhk","type":"function"}]}}],"created":0,"id":"chatcmpl-EUPX0GxAK9IT1qJGfvtivkpynjIme","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":90,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":184,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":274}}'
 ---
 when:
   path: /v1/chat/completions
@@ -26,12 +26,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Use the add tool to add 17 and 25. If the tool reports an error, do not call it again: reply with the error message it gave.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_XC4ZuVCKcZEiNsvEXc2zp6TE","type":"function"}]},{"content":"the adder is broken","role":"tool","tool_call_id":"call_XC4ZuVCKcZEiNsvEXc2zp6TE"}],"model":"gpt-5-mini","tools":[{"function":{"description":"adds two integers","name":"add","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Use the add tool to add 17 and 25. If the tool reports an error, do not call it again: reply with the error message it gave.","role":"user"},{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_3qlGo6x96ZgSK8acaUHh7jhk","type":"function"}]},{"content":"the adder is broken","role":"tool","tool_call_id":"call_3qlGo6x96ZgSK8acaUHh7jhk"}],"model":"gpt-5-mini","tools":[{"function":{"description":"adds two integers","name":"add","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_4b975fd93152464b869057c53363e357
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"the adder is broken","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDBIO9L1E73CsUtdL9udmbkZiQ84","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":78,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":219,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":297}}'
+    value: req_361707d67e694da39b81d260de804d8f
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"the adder is broken","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUPX2e39C1whWi2HVNCIjlO830QqS","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":142,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":128,"rejected_prediction_tokens":0},"prompt_tokens":219,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":361}}'

@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_443abd1c887247c6ae877ee8ac89a394
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\":\"What is the capital of France?\"}","name":"lookup"},"id":"call_oxPuKrws4HbZt0NArT6NwaZB","type":"function"}]}}],"created":0,"id":"chatcmpl-ERDBMm4faMgzELtzojRhjGEVuSFBm","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":156,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":128,"rejected_prediction_tokens":0},"prompt_tokens":181,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":337}}'
+    value: req_dcddac0e3fba4c9e8e9a9b6300215e6b
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\":\"What is the capital of France?\"}","name":"lookup"},"id":"call_xNHt32qVtpyy8kXZQe29r1VP","type":"function"}]}}],"created":0,"id":"chatcmpl-EUPXDfOaiBbpLkGhBQKbRx6XbgE8c","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":156,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":128,"rejected_prediction_tokens":0},"prompt_tokens":181,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":337}}'
 ---
 when:
   path: /v1/chat/completions
@@ -33,8 +33,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_f96656d400f84f85a72af90c5dd3494f
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"Paris","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDBO53TG1YkST2Y9k19MoCuK7oXb","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":74,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":22,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":96}}'
+    value: req_a322a0bf3d784634b9c0c66739f3369e
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"Paris","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUPXFZPZAqLltD4ES6uaMAlYFz8N1","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":22,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":32}}'
 ---
 when:
   path: /v1/chat/completions
@@ -45,12 +45,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a research assistant. Use the lookup tool to answer.","type":"text"}],"role":"system"},{"content":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\":\"What is the capital of France?\"}","name":"lookup"},"id":"call_oxPuKrws4HbZt0NArT6NwaZB","type":"function"}]},{"content":"Paris","role":"tool","tool_call_id":"call_oxPuKrws4HbZt0NArT6NwaZB"}],"model":"gpt-5-mini","tools":[{"function":{"description":"Look a question up","name":"lookup","parameters":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a research assistant. Use the lookup tool to answer.","type":"text"}],"role":"system"},{"content":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","role":"user"},{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"q\":\"What is the capital of France?\"}","name":"lookup"},"id":"call_xNHt32qVtpyy8kXZQe29r1VP","type":"function"}]},{"content":"Paris","role":"tool","tool_call_id":"call_xNHt32qVtpyy8kXZQe29r1VP"}],"model":"gpt-5-mini","tools":[{"function":{"description":"Look a question up","name":"lookup","parameters":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_ed1a5c5519b444b8928b5dd080f3e2b8
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"Paris","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDBQjetQGdBYFsdGG4omovnLSlkM","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":4,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":214,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":218}}'
+    value: req_b30ba5b9d1df4edbb3b3b2aa5afb6d70
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"Paris","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUPXGqOYFPCZ9ZI4cIm0s4veus2X5","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":4,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":214,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":218}}'

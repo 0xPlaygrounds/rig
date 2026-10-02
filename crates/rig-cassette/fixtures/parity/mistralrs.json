@@ -4,19 +4,24 @@
     "choice": [
       {
         "reasoning": {
-          "id": null,
-          "issuer": "openai",
-          "content": [
-            {
-              "text": "\n\n",
-              "signature": null
-            }
-          ]
+          "text": "\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning_content": "\n\n"
+            },
+            "fingerprint": 10558749898389218540
+          }
         }
       },
       {
         "text": "\n\nA local OpenAI-compatible server should return token usage to help users manage costs, optimize model performance, and track resource consumption. Knowing token usage allows users to:\n\n- **Monitor expenses**: Track usage to stay within budget or predict future costs.\n- **Optimize prompts**: Adjust prompt length or complexity to reduce token counts.\n- **Improve efficiency**: Fine-tune models or workflows for better performance per token.\n- **Compliance**: Meet usage limits or reporting requirements for internal systems.\n\nReturning token usage also supports better user experience by providing transparency and enabling smarter usage patterns.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "\n\nA local OpenAI-compatible server should return token usage to help users manage costs, optimize model performance, and track resource consumption. Knowing token usage allows users to:\n\n- **Monitor expenses**: Track usage to stay within budget or predict future costs.\n- **Optimize prompts**: Adjust prompt length or complexity to reduce token counts.\n- **Improve efficiency**: Fine-tune models or workflows for better performance per token.\n- **Compliance**: Meet usage limits or reporting requirements for internal systems.\n\nReturning token usage also supports better user experience by providing transparency and enabling smarter usage patterns."
+          },
+          "fingerprint": 2739887824020597692
+        }
       }
     ],
     "usage": {
@@ -24,7 +29,6 @@
       "output_tokens": 119,
       "total_tokens": 161
     },
-    "message_id": null,
     "response_id": "1",
     "finish_reason": "stop",
     "model": "Qwen/Qwen3-4B",
@@ -66,19 +70,24 @@
     "choice": [
       {
         "reasoning": {
-          "id": null,
-          "issuer": "openai",
-          "content": [
-            {
-              "text": "\nOkay, the user is asking why token usage should be reported. They want a concise answer, just one sentence. Let me start by recalling what token usage is. Tokens are the basic units of text in models, used for processing. Reporting them is important for managing costs because each token consumed incurs a cost. If you don't track it, you might exceed budget limits or face unexpected charges. Also, it helps in optimizing model usage by understanding which parts of the input are using more tokens. Maybe mention cost efficiency and resource allocation. Need to make sure it's a single sentence without being too wordy. Let me combine these points: reporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits. That should cover it.\n",
-              "signature": null
-            }
-          ]
+          "text": "\nOkay, the user is asking why token usage should be reported. They want a concise answer, just one sentence. Let me start by recalling what token usage is. Tokens are the basic units of text in models, used for processing. Reporting them is important for managing costs because each token consumed incurs a cost. If you don't track it, you might exceed budget limits or face unexpected charges. Also, it helps in optimizing model usage by understanding which parts of the input are using more tokens. Maybe mention cost efficiency and resource allocation. Need to make sure it's a single sentence without being too wordy. Let me combine these points: reporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits. That should cover it.\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning_content": "\nOkay, the user is asking why token usage should be reported. They want a concise answer, just one sentence. Let me start by recalling what token usage is. Tokens are the basic units of text in models, used for processing. Reporting them is important for managing costs because each token consumed incurs a cost. If you don't track it, you might exceed budget limits or face unexpected charges. Also, it helps in optimizing model usage by understanding which parts of the input are using more tokens. Maybe mention cost efficiency and resource allocation. Need to make sure it's a single sentence without being too wordy. Let me combine these points: reporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits. That should cover it.\n"
+            },
+            "fingerprint": 2602738526954068060
+          }
         }
       },
       {
         "text": "\n\nReporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "\n\nReporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits."
+          },
+          "fingerprint": 17170896325559053090
+        }
       }
     ],
     "usage": {
@@ -86,7 +95,6 @@
       "output_tokens": 173,
       "total_tokens": 214
     },
-    "message_id": null,
     "response_id": "2",
     "finish_reason": "stop",
     "model": "Qwen/Qwen3-4B",
@@ -128,19 +136,24 @@
     "choice": [
       {
         "reasoning": {
-          "id": null,
-          "issuer": "openai",
-          "content": [
-            {
-              "text": "\nOkay, the user wants three short bullet points about token usage reporting. Let me start by recalling what token usage reporting is. It's about tracking how many tokens (like words or characters) are used in AI interactions. The user specified to be concise and include details for streaming visibility.\n\nFirst, I should mention the key aspects of token usage reporting. Maybe start with monitoring input and output tokens. That's fundamental. Then, the second point could be about optimizing costs, since token usage directly affects pricing. Third, maybe something about real-time insights for performance or efficiency. Let me check if those points are accurate and concise. Yes, each bullet is a short point with a detail. That should meet the user's request.\n",
-              "signature": null
-            }
-          ]
+          "text": "\nOkay, the user wants three short bullet points about token usage reporting. Let me start by recalling what token usage reporting is. It's about tracking how many tokens (like words or characters) are used in AI interactions. The user specified to be concise and include details for streaming visibility.\n\nFirst, I should mention the key aspects of token usage reporting. Maybe start with monitoring input and output tokens. That's fundamental. Then, the second point could be about optimizing costs, since token usage directly affects pricing. Third, maybe something about real-time insights for performance or efficiency. Let me check if those points are accurate and concise. Yes, each bullet is a short point with a detail. That should meet the user's request.\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning_content": "\nOkay, the user wants three short bullet points about token usage reporting. Let me start by recalling what token usage reporting is. It's about tracking how many tokens (like words or characters) are used in AI interactions. The user specified to be concise and include details for streaming visibility.\n\nFirst, I should mention the key aspects of token usage reporting. Maybe start with monitoring input and output tokens. That's fundamental. Then, the second point could be about optimizing costs, since token usage directly affects pricing. Third, maybe something about real-time insights for performance or efficiency. Let me check if those points are accurate and concise. Yes, each bullet is a short point with a detail. That should meet the user's request.\n"
+            },
+            "fingerprint": 8784784825714995762
+          }
         }
       },
       {
         "text": "\n\n- Tracks input/output token counts for model interactions.  \n- Highlights cost optimization by aligning usage with budget constraints.  \n- Provides real-time insights for tuning prompts or workflows.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "\n\n- Tracks input/output token counts for model interactions.  \n- Highlights cost optimization by aligning usage with budget constraints.  \n- Provides real-time insights for tuning prompts or workflows."
+          },
+          "fingerprint": 15476081788096061436
+        }
       }
     ],
     "usage": {
@@ -148,7 +161,6 @@
       "output_tokens": 185,
       "total_tokens": 226
     },
-    "message_id": null,
     "response_id": "6",
     "finish_reason": "stop",
     "model": "Qwen/Qwen3-4B",
@@ -180,30 +192,43 @@
     "choice": [
       {
         "reasoning": {
-          "id": null,
-          "issuer": "openai",
-          "content": [
-            {
-              "text": "\n\n",
-              "signature": null
-            }
-          ]
+          "text": "\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning_content": "\n\n"
+            },
+            "fingerprint": 10558749898389218540
+          }
         }
       },
       {
         "text": "\n\n<tool_call>\n{\"name\": \"report_usage\", \"arguments\": {\"reason\": \"cost_tracking\"}}\n</tool_call>",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "\n\n<tool_call>\n{\"name\": \"report_usage\", \"arguments\": {\"reason\": \"cost_tracking\"}}\n</tool_call>"
+          },
+          "fingerprint": 11359502088199726730
+        }
       },
       {
         "tool_call": {
           "id": "call-a12175c2-8979-4850-8618-8a12f5026dc4",
-          "item_id": null,
           "name": "report_usage",
           "arguments": {
             "reason": "cost_tracking"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"reason\":\"cost_tracking\"}",
+                "name": "report_usage"
+              },
+              "id": "call-a12175c2-8979-4850-8618-8a12f5026dc4",
+              "type": "function"
+            },
+            "fingerprint": 17029908846713474975
+          }
         }
       }
     ],
@@ -212,7 +237,6 @@
       "output_tokens": 24,
       "total_tokens": 183
     },
-    "message_id": null,
     "response_id": "7",
     "finish_reason": "tool_calls",
     "model": "Qwen/Qwen3-4B",
@@ -264,19 +288,24 @@
     "choice": [
       {
         "reasoning": {
-          "id": null,
-          "issuer": "openai",
-          "content": [
-            {
-              "text": "\n\n",
-              "signature": null
-            }
-          ]
+          "text": "\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning_content": "\n\n"
+            },
+            "fingerprint": 10558749898389218540
+          }
         }
       },
       {
         "text": "\n\nUsage accounting is a method of tracking and billing based on actual resource consumption by users or services.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "\n\nUsage accounting is a method of tracking and billing based on actual resource consumption by users or services."
+          },
+          "fingerprint": 8996916836382192210
+        }
       }
     ],
     "usage": {
@@ -284,7 +313,6 @@
       "output_tokens": 24,
       "total_tokens": 60
     },
-    "message_id": null,
     "response_id": "8",
     "finish_reason": "stop",
     "model": "Qwen/Qwen3-4B",

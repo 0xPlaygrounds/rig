@@ -4,7 +4,13 @@
     "choice": [
       {
         "text": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
+            "padding": "ab"
+          },
+          "fingerprint": 16745454607975641505
+        }
       }
     ],
     "usage": {
@@ -14,7 +20,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -126,15 +131,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "first_name": "Ada",
             "last_name": "Lovelace",
             "job": "mathematician"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 3599050531058674630
+          }
         }
       }
     ],
@@ -145,7 +158,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -249,15 +261,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 55,
             "name": "Bob Johnson",
             "profession": "retired teacher"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 10954679250147334216
+          }
         }
       }
     ],
@@ -268,7 +288,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -355,15 +374,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 55,
             "name": "Bob Johnson",
             "profession": "retired teacher"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": 9709271410861418767
+          }
         }
       }
     ],
@@ -374,7 +401,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -461,15 +487,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 30,
             "name": "John Doe",
             "profession": "software engineer"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":30,\"name\":\"John Doe\",\"profession\":\"software engineer\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 16153260419015349715
+          }
         }
       }
     ],
@@ -480,7 +514,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -567,7 +600,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "city": "Springfield",
@@ -575,8 +607,17 @@
             "street": "123 Main St",
             "zip_code": "62701"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"city\":\"Springfield\",\"state\":\"IL\",\"street\":\"123 Main St\",\"zip_code\":\"62701\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 18396974755299980481
+          }
         }
       }
     ],
@@ -587,7 +628,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -674,15 +714,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 45,
             "name": "Jane Smith",
             "profession": "data scientist"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":45,\"name\":\"Jane Smith\",\"profession\":\"data scientist\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 11043197271789592617
+          }
         }
       }
     ],
@@ -693,7 +741,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -780,15 +827,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 25,
             "name": "Alice",
             "profession": "developer"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 2642448250675498728
+          }
         }
       }
     ],
@@ -799,7 +854,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -886,7 +940,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "city": "Cambridge",
@@ -894,8 +947,17 @@
             "street": "456 Oak Avenue",
             "zip_code": "02139"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"city\":\"Cambridge\",\"state\":\"MA\",\"street\":\"456 Oak Avenue\",\"zip_code\":\"02139\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": 18053554476929678027
+          }
         }
       }
     ],
@@ -906,7 +968,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -993,7 +1054,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "topics": [
@@ -1002,8 +1062,17 @@
               "milk"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"topics\":[\"store\",\"buying\",\"milk\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 7426217684439603947
+          }
         }
       }
     ],
@@ -1014,7 +1083,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1101,7 +1169,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "topics": [
@@ -1112,8 +1179,17 @@
               "hate"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"topics\":[\"dog\",\"cat\",\"pets\",\"love\",\"hate\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": 13426955969152161594
+          }
         }
       }
     ],
@@ -1124,7 +1200,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1211,15 +1286,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_3",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "names": [
               "Putin"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"names\":[\"Putin\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_3",
+              "type": "function"
+            },
+            "fingerprint": 13772759418581287101
+          }
         }
       }
     ],
@@ -1230,7 +1313,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_3",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1317,13 +1399,21 @@
       {
         "tool_call": {
           "id": "call_REDACTED_4",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "names": []
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"names\":[]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_4",
+              "type": "function"
+            },
+            "fingerprint": 12299841034943373398
+          }
         }
       }
     ],
@@ -1334,7 +1424,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_4",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1421,14 +1510,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_5",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.9,
             "sentiment": 0.1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\":0.9,\"sentiment\":0.1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_5",
+              "type": "function"
+            },
+            "fingerprint": 12309877008023772024
+          }
         }
       }
     ],
@@ -1439,7 +1536,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_5",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1526,14 +1622,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_6",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.95,
             "sentiment": -1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\":0.95,\"sentiment\":-1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_6",
+              "type": "function"
+            },
+            "fingerprint": 10301886996291798087
+          }
         }
       }
     ],
@@ -1544,7 +1648,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_6",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1631,13 +1734,21 @@
       {
         "tool_call": {
           "id": "call_REDACTED_7",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "names": []
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"names\":[]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_7",
+              "type": "function"
+            },
+            "fingerprint": 1763133231349868429
+          }
         }
       }
     ],
@@ -1648,7 +1759,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-DoeiBTLftGwzzunFKGuKWkUYYSZQy",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1735,27 +1845,43 @@
       {
         "tool_call": {
           "id": "call_REDACTED_8",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.9,
             "sentiment": 1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\": 0.9, \"sentiment\": 1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_8",
+              "type": "function"
+            },
+            "fingerprint": 8200508725674960463
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_9",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.8,
             "sentiment": -1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\": 0.8, \"sentiment\": -1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_9",
+              "type": "function"
+            },
+            "fingerprint": 15998656342141896142
+          }
         }
       }
     ],
@@ -1766,7 +1892,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_7",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1861,15 +1986,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_10",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "topics": [
               "Putin"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"topics\":[\"Putin\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_10",
+              "type": "function"
+            },
+            "fingerprint": 14702186421697128871
+          }
         }
       }
     ],
@@ -1880,7 +2013,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_8",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1966,7 +2098,13 @@
     "choice": [
       {
         "text": "Rust is a systems programming language focused on safety, speed, and concurrency, offering memory safety without needing a garbage collector. Memory safety matters to prevent issues like data races, null pointer dereferencing, and buffer overflows, which can lead to unpredictable behavior, security vulnerabilities, or crashes.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "Rust is a systems programming language focused on safety, speed, and concurrency, offering memory safety without needing a garbage collector. Memory safety matters to prevent issues like data races, null pointer dereferencing, and buffer overflows, which can lead to unpredictable behavior, security vulnerabilities, or crashes.",
+            "padding": "abcdefghijklmnopqrstuvwxyz0123"
+          },
+          "fingerprint": 11547888514873356564
+        }
       }
     ],
     "usage": {
@@ -1976,7 +2114,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2088,21 +2225,37 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "read_file_head",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "read_file_head"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 12239064563605224523
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "read_file_tail",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "read_file_tail"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": 6590085557209625956
+          }
         }
       }
     ],
@@ -2113,7 +2266,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -2207,7 +2359,13 @@
     "choice": [
       {
         "text": "The last line of the file `test.txt` is: \"hello world\". However, I am unable to read the first line at this time.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "The last line of the file `test.txt` is: \"hello world\". However, I am unable to read the first line at this time.",
+            "padding": "abcdefghijklmnopqrstuvwxyz01"
+          },
+          "fingerprint": 15995950573574495622
+        }
       }
     ],
     "usage": {
@@ -2217,7 +2375,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-mini-2024-07-18",
@@ -2294,7 +2451,13 @@
     "choice": [
       {
         "text": "Alright, buckle up! Let’s start with some giggles:\n\nWhy don’t skeletons fight each other?\n\n**Because they don’t have the guts!** 🦴😂\n\n---\n\nDid you hear about the mathematician who’s afraid of negative numbers?\n\n**He’ll stop at nothing to avoid them.** ➖\n\n---\n\nWhat’s orange, sounds like a parrot, and makes no sense?\n\n**A carrot.** 🥕\n\n---\n\nAnd if none of these work, just remember: I’ve told a lot of jokes in my life... but never one in space.  \nBecause **it’s impossible to follow through when there’s no atmosphere.**\n\n---\n\nYour turn! What's your favorite type of joke? I'll hit you with the best one in my arsenal.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "Alright, buckle up! Let’s start with some giggles:\n\nWhy don’t skeletons fight each other?\n\n**Because they don’t have the guts!** 🦴😂\n\n---\n\nDid you hear about the mathematician who’s afraid of negative numbers?\n\n**He’ll stop at nothing to avoid them.** ➖\n\n---\n\nWhat’s orange, sounds like a parrot, and makes no sense?\n\n**A carrot.** 🥕\n\n---\n\nAnd if none of these work, just remember: I’ve told a lot of jokes in my life... but never one in space.  \nBecause **it’s impossible to follow through when there’s no atmosphere.**\n\n---\n\nYour turn! What's your favorite type of joke? I'll hit you with the best one in my arsenal.",
+            "padding": "abc"
+          },
+          "fingerprint": 2578437354157939645
+        }
       }
     ],
     "usage": {
@@ -2304,7 +2467,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2415,7 +2577,12 @@
     "choice": [
       {
         "text": "The next solar eclipse is an **annular solar eclipse** on **October 14, 2023**. It will be visible across parts of the **Western Hemisphere**, including the western United States, Central America, and South America.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "The next solar eclipse is an **annular solar eclipse** on **October 14, 2023**. It will be visible across parts of the **Western Hemisphere**, including the western United States, Central America, and South America."
+          },
+          "fingerprint": 14700050318735683947
+        }
       }
     ],
     "usage": {
@@ -2425,7 +2592,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2509,7 +2675,12 @@
     "choice": [
       {
         "text": "A solar eclipse occurs when the Moon passes between the Earth and the Sun, temporarily blocking all or part of the Sun's light from reaching the Earth. This alignment happens only during a new moon and can result in a total, partial, or annular eclipse, depending on the Moon's distance from Earth and the observer's location. The phenomenon is visible only from specific regions along the Moon's shadow path.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "A solar eclipse occurs when the Moon passes between the Earth and the Sun, temporarily blocking all or part of the Sun's light from reaching the Earth. This alignment happens only during a new moon and can result in a total, partial, or annular eclipse, depending on the Moon's distance from Earth and the observer's location. The phenomenon is visible only from specific regions along the Moon's shadow path."
+          },
+          "fingerprint": 10561821396610061644
+        }
       }
     ],
     "usage": {
@@ -2519,7 +2690,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2604,14 +2774,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "subtract",
           "arguments": {
             "x": 2,
             "y": 5
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"x\":2,\"y\":5}",
+                "name": "subtract"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 5514572691749289533
+          }
         }
       }
     ],
@@ -2622,7 +2800,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -2706,7 +2883,12 @@
     "choice": [
       {
         "text": "The result of 2 - 5 is -3.",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "The result of 2 - 5 is -3."
+          },
+          "fingerprint": 10612878147311186356
+        }
       }
     ],
     "usage": {
@@ -2716,7 +2898,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2801,11 +2982,19 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "lookup_harbor_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_harbor_label"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 2080574771313621503
+          }
         }
       }
     ],
@@ -2816,7 +3005,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -2900,7 +3088,12 @@
     "choice": [
       {
         "text": "The harbor label is \"crimson-harbor.\"",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "The harbor label is \"crimson-harbor.\""
+          },
+          "fingerprint": 1494773344342923880
+        }
       }
     ],
     "usage": {
@@ -2910,7 +3103,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2995,11 +3187,19 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "ping",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "ping"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 12672728700725927677
+          }
         }
       }
     ],
@@ -3010,7 +3210,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -3095,21 +3294,37 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "lookup_harbor_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_harbor_label"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 2080574771313621503
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "lookup_orchard_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_orchard_label"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": 78742795939620733
+          }
         }
       }
     ],
@@ -3120,7 +3335,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -3205,14 +3419,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "subtract",
           "arguments": {
             "x": 2,
             "y": 5
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"x\":2,\"y\":5}",
+                "name": "subtract"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 5514572691749289533
+          }
         }
       }
     ],
@@ -3223,7 +3445,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -3307,7 +3528,12 @@
     "choice": [
       {
         "text": "\\( 2 - 5 = -3 \\)",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "\\( 2 - 5 = -3 \\)"
+          },
+          "fingerprint": 6663675794596328027
+        }
       }
     ],
     "usage": {
@@ -3317,7 +3543,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3402,21 +3627,37 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "lookup_harbor_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_harbor_label"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 2080574771313621503
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "lookup_orchard_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_orchard_label"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": 78742795939620733
+          }
         }
       }
     ],
@@ -3427,7 +3668,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -3511,7 +3751,12 @@
     "choice": [
       {
         "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
+          },
+          "fingerprint": 8453353300682549933
+        }
       }
     ],
     "usage": {
@@ -3521,7 +3766,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3605,7 +3849,13 @@
     "choice": [
       {
         "text": "{\"city\":\"New York City\",\"current\":{\"description\":\"Mostly sunny\",\"humidity_pct\":60,\"temperature_f\":75.0}}",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "{\"city\":\"New York City\",\"current\":{\"description\":\"Mostly sunny\",\"humidity_pct\":60,\"temperature_f\":75.0}}",
+            "padding": "a"
+          },
+          "fingerprint": 3609776291163371522
+        }
       }
     ],
     "usage": {
@@ -3615,7 +3865,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3726,7 +3975,13 @@
     "choice": [
       {
         "text": "{\"city\":\"Los Angeles\",\"current\":{\"description\":\"Sunny\",\"humidity_pct\":40,\"temperature_f\":75.0}}",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "{\"city\":\"Los Angeles\",\"current\":{\"description\":\"Sunny\",\"humidity_pct\":40,\"temperature_f\":75.0}}",
+            "padding": "abcde"
+          },
+          "fingerprint": 14659051752444493815
+        }
       }
     ],
     "usage": {
@@ -3736,7 +3991,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3847,7 +4101,13 @@
     "choice": [
       {
         "text": "{\"city\":\"Chicago\",\"current\":{\"description\":\"Partly cloudy\",\"humidity_pct\":65,\"temperature_f\":55.0}}",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "{\"city\":\"Chicago\",\"current\":{\"description\":\"Partly cloudy\",\"humidity_pct\":65,\"temperature_f\":55.0}}",
+            "padding": "abcdefghijk"
+          },
+          "fingerprint": 15505535592732098242
+        }
       }
     ],
     "usage": {
@@ -3857,7 +4117,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_3",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3968,7 +4227,13 @@
     "choice": [
       {
         "text": "{\"category\":\"Technology Meetups\",\"summary\":\"A gathering for Rust programming enthusiasts to network and share knowledge.\",\"title\":\"Rust Enthusiasts Seattle Meetup\"}",
-        "additional_params": null
+        "native": {
+          "item": {
+            "content": "{\"category\":\"Technology Meetups\",\"summary\":\"A gathering for Rust programming enthusiasts to network and share knowledge.\",\"title\":\"Rust Enthusiasts Seattle Meetup\"}",
+            "padding": "abcde"
+          },
+          "fingerprint": 10297759485534717599
+        }
       }
     ],
     "usage": {
@@ -3978,7 +4243,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
