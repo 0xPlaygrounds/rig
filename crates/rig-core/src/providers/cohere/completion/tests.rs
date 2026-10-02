@@ -460,3 +460,33 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());
     }
 }
+
+/// Cohere rejects its own stream's empty `tool_plan` on replay: "invalid
+/// message provided at index N: must have non-empty content or tool calls"
+/// (HTTP 400, probed 2026-10-01). The plan is left out; everything else of
+/// the message goes back as it came.
+#[test]
+fn an_empty_tool_plan_is_left_out_of_a_replayed_message() {
+    let streamed = serde_json::json!({
+        "role": "assistant",
+        "content": [{"type": "text", "text": "done"}],
+        "citations": [],
+        "tool_calls": [],
+        "tool_plan": "",
+    });
+    let turn = message::AssistantMessage::new(vec![message::AssistantContent::text("done")])
+        .with_native(streamed);
+    let converted = Vec::<Message>::try_from(message::Message::Assistant(turn)).expect("converts");
+    let Some(Message::Native(sent)) = converted.first() else {
+        panic!("the provider's message: {converted:?}");
+    };
+    assert_eq!(
+        *sent,
+        serde_json::json!({
+            "role": "assistant",
+            "content": [{"type": "text", "text": "done"}],
+            "citations": [],
+            "tool_calls": [],
+        })
+    );
+}

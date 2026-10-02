@@ -364,7 +364,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 #[deny(clippy::wildcard_enum_match_arm)]
 fn assistant_message(turn: message::AssistantMessage) -> Result<Message, message::MessageError> {
     if let Some(item) = turn.native_item() {
-        return Ok(Message::Native(item.clone()));
+        return Ok(Message::Native(input_form(item.clone())));
     }
     let mut content = Vec::new();
     let mut tool_calls = Vec::new();
@@ -417,6 +417,20 @@ fn assistant_message(turn: message::AssistantMessage) -> Result<Message, message
         "tool_calls": tool_calls,
         "tool_plan": tool_plan,
     })))
+}
+
+/// Cohere's own message as it takes it back. Its stream opens every message
+/// with `"tool_plan": ""`, yet it answers an assistant message carrying an
+/// empty plan with a 400 ("invalid message provided at index N: must have
+/// non-empty content or tool calls", probed 2026-10-01), so an empty plan is
+/// left out.
+fn input_form(mut item: serde_json::Value) -> serde_json::Value {
+    if item.get("tool_plan").and_then(serde_json::Value::as_str) == Some("")
+        && let Some(fields) = item.as_object_mut()
+    {
+        fields.remove("tool_plan");
+    }
+    item
 }
 
 /// Cohere's `tool_choice` is a bare string; only `REQUIRED`/`NONE` are valid.

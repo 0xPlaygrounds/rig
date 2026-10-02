@@ -1395,3 +1395,38 @@ fn foreign_call_ids_are_normalized_the_way_pi_does() {
         "9k918q7jl"
     );
 }
+
+/// Groq streams gpt-oss messages with a `channel` and rejects it coming back:
+/// "'messages.2' : for 'role:assistant' the following must be
+/// satisfied[('messages.2' : property 'channel' is unsupported)]" (HTTP 400,
+/// recorded 2026-10-01). The rest of the message replays as it came.
+#[test]
+fn groq_replays_its_streamed_message_without_the_channel() {
+    use crate::message::{Message, Reasoning};
+
+    let turn = crate::message::AssistantMessage::new(vec![
+        AssistantContent::Reasoning(Reasoning::new("plan")),
+        AssistantContent::text("done"),
+    ])
+    .with_native(serde_json::json!({
+        "role": "assistant",
+        "channel": "analysis",
+        "reasoning": "plan",
+        "content": "done",
+    }));
+    let mut request = prompt("and then?");
+    request.chat_history = vec![
+        Message::user("go"),
+        Message::Assistant(turn),
+        Message::user("and then?"),
+    ];
+    let encoded = OpenAIConfig::new("k")
+        .with_dialect(&GROQ)
+        .chat("openai/gpt-oss-20b")
+        .encode(request, Mode::Unary)
+        .expect("encodes");
+    assert_eq!(
+        json_body(&encoded.request)["messages"][1],
+        serde_json::json!({"role": "assistant", "reasoning": "plan", "content": "done"})
+    );
+}

@@ -239,12 +239,12 @@ impl Chat {
                     unary::sanitize_plain_text_history(messages, Some(("\n", false)), true, false);
                 }
             }
+            BodyRewrite::GroqCompoundTools => finalize_groq(map),
             BodyRewrite::DeepSeek => finalize_deepseek(map),
             BodyRewrite::Mistral => finalize_mistral(map)?,
             BodyRewrite::OpenRouter => finalize_openrouter(map, self.prompt_caching),
             BodyRewrite::None
             | BodyRewrite::HuggingFaceRouter
-            | BodyRewrite::GroqCompoundTools
             | BodyRewrite::LlamaCpp
             | BodyRewrite::Moonshot => {}
         }
@@ -371,6 +371,25 @@ fn steer_moonshot_tool_choice(request: &mut unary::CompletionRequest) -> Result<
         });
     }
     Ok(())
+}
+
+/// Groq's streamed gpt-oss messages carry a `channel`, which it answers with
+/// a 400 when the message comes back ("'messages.2' : for 'role:assistant'
+/// the following must be satisfied[('messages.2' : property 'channel' is
+/// unsupported)]", recorded 2026-10-01), so the field is left out.
+fn finalize_groq(map: &mut serde_json::Map<String, serde_json::Value>) {
+    for message in map
+        .get_mut("messages")
+        .and_then(as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(message) = message.as_object_mut()
+            && message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+        {
+            message.remove("channel");
+        }
+    }
 }
 
 /// DeepSeek takes message `content` as a plain string, echoes tool calls back
