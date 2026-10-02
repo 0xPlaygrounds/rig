@@ -155,7 +155,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
                 },
-                "fingerprint": 7886758139541543310
+                "fingerprint": 2932437381983616610
               }
             }
           ],
@@ -178,7 +178,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 15135277674259541656
+            "fingerprint": 1888820172643035752
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -240,7 +240,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
                 },
-                "fingerprint": 7886758139541543310
+                "fingerprint": 2932437381983616610
               }
             }
           }
@@ -315,7 +315,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
                     },
-                    "fingerprint": 7886758139541543310
+                    "fingerprint": 2932437381983616610
                   }
                 }
               ],
@@ -333,7 +333,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 15135277674259541656
+                "fingerprint": 1888820172643035752
               }
             },
             {

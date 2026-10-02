@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -167,7 +167,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9Ex7jcnnHBwYb5z+f3s5DUz4wt/tp5cOgDD9IqyTu82gKagFpFH0TjfFt+mHk2qCIY7YRB6jBDJ61vgskLv7vm03vSAJB+vfK4ITrsbV55qEsTH1toBvWxabVKNZ9RNgJNEuhXtD1LJFV+Jrfpm8qG7BWFLcwt4Lx2tozFvlyqtax/r6Ah66TJoMnj2cKYQFpFH0TlcOZq1jSWvxGopGbf29rGGWDVz0FtQUmfG/wFXuRBbL4c/MniEDqRmVC2yOILqp/7qEddxCPf6ZSigp32baXG3oDvzPu6tmE/h4kcwDhibNEjGZVNHofNywLyg0="
                 },
-                "fingerprint": 14136243110914108910
+                "fingerprint": 13779263715897958994
               }
             }
           ],
@@ -190,7 +190,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 2656405552044470914
+            "fingerprint": 7154377908696540638
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -258,7 +258,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9Ex7jcnnHBwYb5z+f3s5DUz4wt/tp5cOgDD9IqyTu82gKagFpFH0TjfFt+mHk2qCIY7YRB6jBDJ61vgskLv7vm03vSAJB+vfK4ITrsbV55qEsTH1toBvWxabVKNZ9RNgJNEuhXtD1LJFV+Jrfpm8qG7BWFLcwt4Lx2tozFvlyqtax/r6Ah66TJoMnj2cKYQFpFH0TlcOZq1jSWvxGopGbf29rGGWDVz0FtQUmfG/wFXuRBbL4c/MniEDqRmVC2yOILqp/7qEddxCPf6ZSigp32baXG3oDvzPu6tmE/h4kcwDhibNEjGZVNHofNywLyg0="
                 },
-                "fingerprint": 14136243110914108910
+                "fingerprint": 13779263715897958994
               }
             }
           }
@@ -314,7 +314,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9Ex7jcnnHBwYb5z+f3s5DUz4wt/tp5cOgDD9IqyTu82gKagFpFH0TjfFt+mHk2qCIY7YRB6jBDJ61vgskLv7vm03vSAJB+vfK4ITrsbV55qEsTH1toBvWxabVKNZ9RNgJNEuhXtD1LJFV+Jrfpm8qG7BWFLcwt4Lx2tozFvlyqtax/r6Ah66TJoMnj2cKYQFpFH0TlcOZq1jSWvxGopGbf29rGGWDVz0FtQUmfG/wFXuRBbL4c/MniEDqRmVC2yOILqp/7qEddxCPf6ZSigp32baXG3oDvzPu6tmE/h4kcwDhibNEjGZVNHofNywLyg0="
                     },
-                    "fingerprint": 14136243110914108910
+                    "fingerprint": 13779263715897958994
                   }
                 }
               ]

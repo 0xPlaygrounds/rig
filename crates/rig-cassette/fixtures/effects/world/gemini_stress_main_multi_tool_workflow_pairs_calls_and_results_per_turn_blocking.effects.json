@@ -214,7 +214,7 @@
                   },
                   "thoughtSignature": "CtECAWkUfRNjHbBSkzuQsfH1+0Oit465ow4hT6KfiF+ixc5Qd2BODRD2VQKRZUFJWHEUTGssFTzn7FHN5+F6jCQJutPpHRPchqw74AOTs4dvAZIUyEjPQGE6nfZhDpErlhpHyii24JckbWAGFcxiaYQvUdiGntsdfvVTsgHw0CzcxT15z4bKTpOzO3CWnnJtja2W+jLx0ZtN/D/qWgdiqVyYzmO42EjRMG5+LWwkeMYQlbigAICAlaaJKES9z0IcAFwEPx9FT2MBnRAbIiQmesAnTVTailMclnWxpi496oskjbuEL9CRJTCnnspYzoiW9QOtlhTPlKT7ObRhPLm08e5g2hW9VPYnB4xPRlMNqvPcZwa0DbQZv4mFY/9R6SgORN8TPv9HnXRihDbP6dOMhMKPSbxbSCn00igK4l8ou6AzJo6t53sc3td756vDFMFvBYuOWA=="
                 },
-                "fingerprint": 14209873335129131590
+                "fingerprint": 7336478770864751515
               }
             },
             {
@@ -239,7 +239,7 @@
                     "name": "subtract"
                   }
                 },
-                "fingerprint": 4797416821577478632
+                "fingerprint": 3193544571215810331
               }
             }
           ],
@@ -262,7 +262,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 12631468288890910189
+            "fingerprint": 599660953345155855
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -415,7 +415,7 @@
                       },
                       "thoughtSignature": "CtECAWkUfRNjHbBSkzuQsfH1+0Oit465ow4hT6KfiF+ixc5Qd2BODRD2VQKRZUFJWHEUTGssFTzn7FHN5+F6jCQJutPpHRPchqw74AOTs4dvAZIUyEjPQGE6nfZhDpErlhpHyii24JckbWAGFcxiaYQvUdiGntsdfvVTsgHw0CzcxT15z4bKTpOzO3CWnnJtja2W+jLx0ZtN/D/qWgdiqVyYzmO42EjRMG5+LWwkeMYQlbigAICAlaaJKES9z0IcAFwEPx9FT2MBnRAbIiQmesAnTVTailMclnWxpi496oskjbuEL9CRJTCnnspYzoiW9QOtlhTPlKT7ObRhPLm08e5g2hW9VPYnB4xPRlMNqvPcZwa0DbQZv4mFY/9R6SgORN8TPv9HnXRihDbP6dOMhMKPSbxbSCn00igK4l8ou6AzJo6t53sc3td756vDFMFvBYuOWA=="
                     },
-                    "fingerprint": 14209873335129131590
+                    "fingerprint": 7336478770864751515
                   }
                 },
                 {
@@ -440,7 +440,7 @@
                         "name": "subtract"
                       }
                     },
-                    "fingerprint": 4797416821577478632
+                    "fingerprint": 3193544571215810331
                   }
                 }
               ],
@@ -458,7 +458,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 12631468288890910189
+                "fingerprint": 599660953345155855
               }
             },
             {

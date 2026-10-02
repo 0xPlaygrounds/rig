@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,25 +10,17 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 14,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -36,7 +28,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -44,11 +36,19 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -191,7 +191,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                 },
-                "fingerprint": 14921912773195282197
+                "fingerprint": 12427117401689880914
               }
             }
           ],
@@ -214,7 +214,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 2250833300388834451
+            "fingerprint": 11607256545427736854
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -282,7 +282,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                 },
-                "fingerprint": 14921912773195282197
+                "fingerprint": 12427117401689880914
               }
             }
           }
@@ -363,7 +363,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                     },
-                    "fingerprint": 14921912773195282197
+                    "fingerprint": 12427117401689880914
                   }
                 }
               ],
@@ -381,7 +381,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2250833300388834451
+                "fingerprint": 11607256545427736854
               }
             },
             {

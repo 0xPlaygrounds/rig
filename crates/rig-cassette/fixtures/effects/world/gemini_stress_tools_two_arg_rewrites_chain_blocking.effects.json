@@ -159,7 +159,7 @@
                   },
                   "thoughtSignature": "CrcBAWkUfROdMpbcYuGVYITyb4TGI1g6zA8E/Y10RsuH6n4U2cVc5dKrqxHUZJ1S9ZRycgUEjkAxBw5TX9fqNgTNPbenPI9yKk3hRRWjumDzCOexH82QvGzWRx9s/mRRwET89ERGtez2enz6OsnohmD5Xsp4BN1n9Mz1AgYwzLQ5x7O2TDQf7p8hugaGQ2ZRTj45mLuI1Cz7D2SJZQWzXvFNUEqQ18MPVm7NPQ6ZO3sdoBmPDGRlwQHR"
                 },
-                "fingerprint": 14083908719296505398
+                "fingerprint": 8037648653500649826
               }
             }
           ],
@@ -182,7 +182,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 3766646973673913046
+            "fingerprint": 5029686238096261526
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -301,7 +301,7 @@
                       },
                       "thoughtSignature": "CrcBAWkUfROdMpbcYuGVYITyb4TGI1g6zA8E/Y10RsuH6n4U2cVc5dKrqxHUZJ1S9ZRycgUEjkAxBw5TX9fqNgTNPbenPI9yKk3hRRWjumDzCOexH82QvGzWRx9s/mRRwET89ERGtez2enz6OsnohmD5Xsp4BN1n9Mz1AgYwzLQ5x7O2TDQf7p8hugaGQ2ZRTj45mLuI1Cz7D2SJZQWzXvFNUEqQ18MPVm7NPQ6ZO3sdoBmPDGRlwQHR"
                     },
-                    "fingerprint": 14083908719296505398
+                    "fingerprint": 8037648653500649826
                   }
                 }
               ],
@@ -319,7 +319,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 3766646973673913046
+                "fingerprint": 5029686238096261526
               }
             },
             {

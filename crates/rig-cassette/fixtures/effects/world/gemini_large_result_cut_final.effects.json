@@ -128,7 +128,7 @@
                     "name": "checkpoint_large"
                   }
                 },
-                "fingerprint": 3216789100422958539
+                "fingerprint": 16323594753492957356
               }
             }
           ],
@@ -150,7 +150,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 15797770077947060465
+            "fingerprint": 1786012205779404684
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -257,7 +257,7 @@
                         "name": "checkpoint_large"
                       }
                     },
-                    "fingerprint": 3216789100422958539
+                    "fingerprint": 16323594753492957356
                   }
                 }
               ],
@@ -275,7 +275,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 15797770077947060465
+                "fingerprint": 1786012205779404684
               }
             },
             {

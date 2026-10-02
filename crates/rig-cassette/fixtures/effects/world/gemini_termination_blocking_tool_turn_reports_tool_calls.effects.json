@@ -164,7 +164,7 @@
                     "name": "add"
                   }
                 },
-                "fingerprint": 5061965269346983824
+                "fingerprint": 7888621069192584831
               }
             }
           ],
@@ -186,7 +186,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 10729023090410159940
+            "fingerprint": 12543701785984805829
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -302,7 +302,7 @@
                         "name": "add"
                       }
                     },
-                    "fingerprint": 5061965269346983824
+                    "fingerprint": 7888621069192584831
                   }
                 }
               ],
@@ -320,7 +320,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 10729023090410159940
+                "fingerprint": 12543701785984805829
               }
             },
             {

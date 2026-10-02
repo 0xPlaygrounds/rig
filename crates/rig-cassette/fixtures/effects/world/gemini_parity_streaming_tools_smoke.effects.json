@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -232,7 +232,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E74awR/QXs2cn6Z/1dYMTEohq7nlnZF7U+f4mAWjhQsKXAFpFH0TytYGMSmCubHOiBtKGzgxPFnTkC/AOOHOmyO8ifV3HvCUl1YNm6YQp/38iE5FNRVtxDZyGRKyBDvK5VZpmihG8HXaydXDD+uU3v0VJCYVBSUEg33qqpRXCtoBAWkUfRPUg8KhaFskjRw1Y53IRT9UeQg0K+vigUPh/dr07LCluezvOP1iSF6oG6JxfA47xRibK/Ha0lV9o735qw1gCokLL60ymB01FaCg5nt4zN11dWhLw7UNuZ4HitkXiAf5d0eNIBWL6IsKIFIxPsmOdjGnMwTzsdMAvnd7/4fifOr8N5+tvqRH3mBugzfw5LQba1SBsar3C1WOTLFmfuvrs7osyq15u8yhMAKwcmEQlYmWPW7jbIhG16gQZdN3bHwVWrUlBsWCmIN+2gHD8D5Mb1nunOVRR6s="
                 },
-                "fingerprint": 12735224773841227663
+                "fingerprint": 1789257366682875336
               }
             }
           ],
@@ -255,7 +255,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 6677772565349246167
+            "fingerprint": 2615356658629703702
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -323,7 +323,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E74awR/QXs2cn6Z/1dYMTEohq7nlnZF7U+f4mAWjhQsKXAFpFH0TytYGMSmCubHOiBtKGzgxPFnTkC/AOOHOmyO8ifV3HvCUl1YNm6YQp/38iE5FNRVtxDZyGRKyBDvK5VZpmihG8HXaydXDD+uU3v0VJCYVBSUEg33qqpRXCtoBAWkUfRPUg8KhaFskjRw1Y53IRT9UeQg0K+vigUPh/dr07LCluezvOP1iSF6oG6JxfA47xRibK/Ha0lV9o735qw1gCokLL60ymB01FaCg5nt4zN11dWhLw7UNuZ4HitkXiAf5d0eNIBWL6IsKIFIxPsmOdjGnMwTzsdMAvnd7/4fifOr8N5+tvqRH3mBugzfw5LQba1SBsar3C1WOTLFmfuvrs7osyq15u8yhMAKwcmEQlYmWPW7jbIhG16gQZdN3bHwVWrUlBsWCmIN+2gHD8D5Mb1nunOVRR6s="
                 },
-                "fingerprint": 12735224773841227663
+                "fingerprint": 1789257366682875336
               }
             }
           }
@@ -404,7 +404,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E74awR/QXs2cn6Z/1dYMTEohq7nlnZF7U+f4mAWjhQsKXAFpFH0TytYGMSmCubHOiBtKGzgxPFnTkC/AOOHOmyO8ifV3HvCUl1YNm6YQp/38iE5FNRVtxDZyGRKyBDvK5VZpmihG8HXaydXDD+uU3v0VJCYVBSUEg33qqpRXCtoBAWkUfRPUg8KhaFskjRw1Y53IRT9UeQg0K+vigUPh/dr07LCluezvOP1iSF6oG6JxfA47xRibK/Ha0lV9o735qw1gCokLL60ymB01FaCg5nt4zN11dWhLw7UNuZ4HitkXiAf5d0eNIBWL6IsKIFIxPsmOdjGnMwTzsdMAvnd7/4fifOr8N5+tvqRH3mBugzfw5LQba1SBsar3C1WOTLFmfuvrs7osyq15u8yhMAKwcmEQlYmWPW7jbIhG16gQZdN3bHwVWrUlBsWCmIN+2gHD8D5Mb1nunOVRR6s="
                     },
-                    "fingerprint": 12735224773841227663
+                    "fingerprint": 1789257366682875336
                   }
                 }
               ],
@@ -422,7 +422,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 6677772565349246167
+                "fingerprint": 2615356658629703702
               }
             },
             {

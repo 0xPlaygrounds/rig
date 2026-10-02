@@ -133,7 +133,7 @@
                     "name": "checkpoint_batch"
                   }
                 },
-                "fingerprint": 654837866204046902
+                "fingerprint": 2180359541050242385
               }
             },
             {
@@ -156,7 +156,7 @@
                     "name": "checkpoint_batch"
                   }
                 },
-                "fingerprint": 18179653436780760349
+                "fingerprint": 8058014479380521376
               }
             },
             {
@@ -179,7 +179,7 @@
                     "name": "checkpoint_batch"
                   }
                 },
-                "fingerprint": 15529035314243001813
+                "fingerprint": 4856236667745328051
               }
             }
           ],
@@ -201,7 +201,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 1275476782086866538
+            "fingerprint": 1798525904533652630
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -384,7 +384,7 @@
                         "name": "checkpoint_batch"
                       }
                     },
-                    "fingerprint": 654837866204046902
+                    "fingerprint": 2180359541050242385
                   }
                 },
                 {
@@ -407,7 +407,7 @@
                         "name": "checkpoint_batch"
                       }
                     },
-                    "fingerprint": 18179653436780760349
+                    "fingerprint": 8058014479380521376
                   }
                 },
                 {
@@ -430,7 +430,7 @@
                         "name": "checkpoint_batch"
                       }
                     },
-                    "fingerprint": 15529035314243001813
+                    "fingerprint": 4856236667745328051
                   }
                 }
               ],
@@ -448,7 +448,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 1275476782086866538
+                "fingerprint": 1798525904533652630
               }
             },
             {

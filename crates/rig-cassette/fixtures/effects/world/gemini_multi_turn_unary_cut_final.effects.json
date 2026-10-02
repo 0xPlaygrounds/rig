@@ -188,7 +188,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 4783761318408586019
+                "fingerprint": 11772777517712070112
               }
             }
           ],
@@ -210,7 +210,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 9609301393816395389
+            "fingerprint": 7881641562479983032
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -327,7 +327,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 4783761318408586019
+                    "fingerprint": 11772777517712070112
                   }
                 }
               ],
@@ -345,7 +345,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 9609301393816395389
+                "fingerprint": 7881641562479983032
               }
             },
             {
@@ -422,7 +422,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 15253101120061098754
+                "fingerprint": 16014442144962211214
               }
             }
           ],
@@ -444,7 +444,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 15749668105767392490
+            "fingerprint": 16098967198441797526
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -561,7 +561,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 4783761318408586019
+                    "fingerprint": 11772777517712070112
                   }
                 }
               ],
@@ -579,7 +579,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 9609301393816395389
+                "fingerprint": 7881641562479983032
               }
             },
             {
@@ -627,7 +627,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 15253101120061098754
+                    "fingerprint": 16014442144962211214
                   }
                 }
               ],
@@ -645,7 +645,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 15749668105767392490
+                "fingerprint": 16098967198441797526
               }
             },
             {
@@ -722,7 +722,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 9755625732910556852
+                "fingerprint": 164872387406711921
               }
             }
           ],
@@ -744,7 +744,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 7363485076470069214
+            "fingerprint": 5773939526375000273
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -861,7 +861,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 4783761318408586019
+                    "fingerprint": 11772777517712070112
                   }
                 }
               ],
@@ -879,7 +879,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 9609301393816395389
+                "fingerprint": 7881641562479983032
               }
             },
             {
@@ -927,7 +927,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 15253101120061098754
+                    "fingerprint": 16014442144962211214
                   }
                 }
               ],
@@ -945,7 +945,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 15749668105767392490
+                "fingerprint": 16098967198441797526
               }
             },
             {
@@ -993,7 +993,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 9755625732910556852
+                    "fingerprint": 164872387406711921
                   }
                 }
               ],
@@ -1011,7 +1011,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 7363485076470069214
+                "fingerprint": 5773939526375000273
               }
             },
             {
@@ -1088,7 +1088,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 12882792756058971622
+                "fingerprint": 2930198417959924772
               }
             }
           ],
@@ -1110,7 +1110,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 5751445180746579722
+            "fingerprint": 102847372996847864
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1227,7 +1227,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 4783761318408586019
+                    "fingerprint": 11772777517712070112
                   }
                 }
               ],
@@ -1245,7 +1245,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 9609301393816395389
+                "fingerprint": 7881641562479983032
               }
             },
             {
@@ -1293,7 +1293,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 15253101120061098754
+                    "fingerprint": 16014442144962211214
                   }
                 }
               ],
@@ -1311,7 +1311,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 15749668105767392490
+                "fingerprint": 16098967198441797526
               }
             },
             {
@@ -1359,7 +1359,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 9755625732910556852
+                    "fingerprint": 164872387406711921
                   }
                 }
               ],
@@ -1377,7 +1377,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 7363485076470069214
+                "fingerprint": 5773939526375000273
               }
             },
             {
@@ -1425,7 +1425,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 12882792756058971622
+                    "fingerprint": 2930198417959924772
                   }
                 }
               ],
@@ -1443,7 +1443,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 5751445180746579722
+                "fingerprint": 102847372996847864
               }
             },
             {
