@@ -84,21 +84,11 @@ fn custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool() {
 
 #[test]
 fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
-    use rig_core::message::{Reasoning, ReasoningContent};
+    use rig_core::message::Reasoning;
     use rig_ecs::agent::{MessageParts, Utterance};
 
-    let reasoning = AssistantContent::Reasoning(
-        Reasoning {
-            id: Some("reasoning-id".into()),
-            content: vec![
-                ReasoningContent::Text {
-                    text: "private reasoning".into(),
-                    signature: Some("signature".into()),
-                },
-                ReasoningContent::Encrypted("encrypted".into()),
-            ],
-        }
-        .sealed("test"),
+    let reasoning = AssistantContent::Reasoning(Reasoning::new("private reasoning")).with_native(
+        serde_json::json!({"id": "reasoning-id", "signature": "signature", "encrypted_content": "encrypted"}),
     );
     let mut app = app();
     let (agent, _) = scripted_agent(
@@ -125,9 +115,9 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
             match rig_ecs::agent::content::parts::read_message(app.world(), entity)
                 .expect("valid assistant graph")
             {
-                MessageParts::Assistant { content, .. } if parent.parent() == run => {
-                    Some(content.clone())
-                }
+                MessageParts::Assistant(rig_core::message::AssistantMessage {
+                    content, ..
+                }) if parent.parent() == run => Some(content.clone()),
                 _ => None,
             }
         })

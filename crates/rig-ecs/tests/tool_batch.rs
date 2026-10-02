@@ -84,7 +84,7 @@ fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(Strin
                         result
                             .call
                             .provider()
-                            .map(|provider| provider.call_id.as_str())
+                            .map(|provider| provider.as_str())
                             .expect("explicit provider test ID")
                             .to_owned(),
                         result
@@ -110,7 +110,7 @@ fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(Strin
                     | UserContent::Document(_) => None,
                 })
                 .collect::<Vec<_>>(),
-            Message::System { .. } | Message::Assistant { .. } => Vec::new(),
+            Message::System { .. } | Message::Assistant(_) => Vec::new(),
         })
         .collect()
 }
@@ -728,7 +728,9 @@ fn a_system_repairs_an_invalid_call_to_a_granted_tool() {
     let log = app.world().resource::<EffectLogResource>().log();
     assert!(matches!(&log.records[1].kind, EffectKind::ToolCall { name, .. } if name == "add"));
     let requests = requests.lock().unwrap();
-    let Message::Assistant { content, .. } = &requests[1].chat_history[2] else {
+    let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) =
+        &requests[1].chat_history[2]
+    else {
         panic!("the assistant turn");
     };
     assert!(
@@ -818,7 +820,9 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
             .chat_history
             .iter()
             .filter_map(|message| match message {
-                Message::Assistant { content, .. } => Some(content),
+                Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                    Some(content)
+                }
                 _ => None,
             })
             .flatten()

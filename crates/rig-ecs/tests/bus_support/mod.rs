@@ -153,7 +153,7 @@ impl Serve for MockModel {
                 Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                     vec![AssistantContent::text(&self.text)],
                     Usage::default(),
-                    "mock",
+                    rig_core::message::Origin::new("test.api", "mock", ""),
                     serde_json::json!({ "provider": "mock" }),
                 ))))
             }
@@ -296,6 +296,7 @@ pub fn text_of(outcome: &Result<Outcome, ErrorReport>) -> String {
                 AssistantContent::Text(text) => Some(text.text.clone()),
                 AssistantContent::Reasoning(_)
                 | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_)
                 | AssistantContent::ToolCall(_) => None,
             })
             .collect(),
@@ -387,7 +388,7 @@ pub fn done(provider: &str) -> Relay {
     Ok(Relayed::Done(Box::new(CompletionResponse::new(
         Vec::new(),
         Usage::default(),
-        provider,
+        rig_core::message::Origin::new("test.api", provider, ""),
         serde_json::json!({}),
     ))))
 }

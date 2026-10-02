@@ -14,7 +14,15 @@ crate::reflect::opaque_reflect! {
     /// Reflected shared transport value `message::ToolCall`.
     struct ToolCallPartReflect(message::ToolCall): PartialEq;
     /// Reflected shared transport value `message::Reasoning`.
-    struct ReasoningPartReflect(message::Sealed<message::Reasoning>): PartialEq;
+    struct ReasoningPartReflect(message::Reasoning): PartialEq;
+    /// Reflected shared transport value `message::Opaque`.
+    struct OpaquePartReflect(message::Opaque): PartialEq;
+    /// Reflected shared transport value `Option<message::Native>`.
+    struct NativeReflect(Option<message::Native>): PartialEq;
+    /// Reflected shared transport value `Option<message::Origin>`.
+    struct OriginReflect(Option<message::Origin>): PartialEq;
+    /// Reflected shared transport value `Option<message::StopReason>`.
+    struct StopReflect(Option<message::StopReason>): PartialEq;
     /// Reflected shared transport value `serde_json::Value`.
     struct JsonPartReflect(serde_json::Value): PartialEq;
     /// Reflected shared transport value `Option<message::ImageMediaType>`.
@@ -25,8 +33,8 @@ crate::reflect::opaque_reflect! {
     struct VideoMediaReflect(Option<message::VideoMediaType>): PartialEq;
     /// Reflected shared transport value `Option<message::DocumentMediaType>`.
     struct DocumentMediaReflect(Option<message::DocumentMediaType>): PartialEq;
-    /// Reflected shared transport value `Option<message::AdditionalParams>`.
-    struct PartParamsReflect(Option<message::AdditionalParams>): PartialEq;
+    /// Reflected shared transport value `Option<serde_json::Value>`.
+    struct PartParamsReflect(Option<serde_json::Value>): PartialEq;
     /// Reflected shared transport value `Option<message::ImageDetail>`.
     struct ImageDetailReflect(Option<message::ImageDetail>): PartialEq;
 }

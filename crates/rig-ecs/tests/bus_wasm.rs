@@ -73,7 +73,7 @@ impl Serve for BrowserModel {
                 let response = CompletionResponse::new(
                     vec![AssistantContent::text("hello from the browser")],
                     Usage::default(),
-                    "browser",
+                    rig_core::message::Origin::new("test.api", "browser", ""),
                     serde_json::json!({ "provider": "browser" }),
                 );
                 Reply::Outcome(Ok(Outcome::Completion(response)))

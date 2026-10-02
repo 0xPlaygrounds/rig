@@ -72,7 +72,7 @@ impl Serve for Capturing {
                 let response = CompletionResponse::new(
                     vec![AssistantContent::text(&self.answer)],
                     Usage::default(),
-                    "capturing",
+                    rig_core::message::Origin::new("test.api", "capturing", ""),
                     serde_json::json!({ "provider": "capturing" }),
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
@@ -185,7 +185,10 @@ pub fn texts(request: &CompletionRequest) -> Vec<String> {
                     })
                     .collect::<String>()
             ),
-            rig_core::message::Message::Assistant { content, .. } => format!(
+            rig_core::message::Message::Assistant(rig_core::message::AssistantMessage {
+                content,
+                ..
+            }) => format!(
                 "assistant:{}",
                 content
                     .iter()
@@ -193,7 +196,8 @@ pub fn texts(request: &CompletionRequest) -> Vec<String> {
                         AssistantContent::Text(text) => Some(text.text.clone()),
                         AssistantContent::ToolCall(_)
                         | AssistantContent::Reasoning(_)
-                        | AssistantContent::Image(_) => None,
+                        | AssistantContent::Image(_)
+                        | AssistantContent::Opaque(_) => None,
                     })
                     .collect::<String>()
             ),
@@ -278,7 +282,7 @@ impl Serve for Scripted {
                 let response = CompletionResponse::new(
                     choice,
                     Usage::default(),
-                    "scripted",
+                    rig_core::message::Origin::new("test.api", "scripted", ""),
                     serde_json::json!({}),
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))

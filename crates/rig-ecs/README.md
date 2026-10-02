@@ -92,7 +92,7 @@ The request the model sees is derived, never authored: a run entity, utterances 
 |---|---|
 | Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
-| Utterance | `Utterance`, `Role`, `MessageId` for assistants; `ChildOf` the run, with ordered content children |
+| Utterance | `Utterance`, `Role`, `AssistantHead` for assistants; `ChildOf` the run, with ordered content children |
 | Content part | `ContentPart`; `ChildOf` an utterance or a `ContentPart::ToolResult` entity; optionally `ToolResultStatus` on a tool result |
 | Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a `RunPhase` (`LoadingMemory`, `Assembling`, `AwaitingModel`, `ResolvingTools`) or an ending (`Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope`, a `Name` |
 | Turn | `Turn`, `ChildOf` the run; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |

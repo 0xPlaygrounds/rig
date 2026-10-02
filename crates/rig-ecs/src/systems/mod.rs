@@ -23,15 +23,14 @@ use crate::agent::content::{
 };
 use bevy_reflect::Reflect;
 
-use crate::agent::content::parts::{EditTarget, RequestPartEdit};
+use crate::agent::content::parts::{AssistantHead, EditTarget, RequestPartEdit};
 use bevy_ecs::{
     prelude::*,
     query::{QueryData, QueryFilter},
 };
 use rig_core::{
     completion::message::{
-        AssistantContent, ToolChoice, ToolResultContent, UserContent, canonical_streamed_choice,
-        turn_delivered_no_answer,
+        AssistantContent, ToolChoice, ToolResultContent, UserContent, turn_delivered_no_answer,
     },
     effect::{EffectKind, FamilyDescriptor, Outcome},
     error::ErrorKind,
@@ -276,8 +275,8 @@ pub struct GrantedTool {
 /// [`RigSet::Materialise`] pass; removed when the turn finishes processing.
 #[derive(Component, Debug, Clone)]
 pub struct TurnRead {
-    /// The provider's message id, when the answer carried one.
-    pub message_id: Option<String>,
+    /// The turn's origin, stop and provider message.
+    pub head: AssistantHead,
     /// The turn's parts as read.
     pub content: Vec<AssistantContent>,
     /// The tools the turn may call, in advertisement order.
@@ -293,7 +292,8 @@ impl TurnRead {
             AssistantContent::ToolCall(call) => Some(call),
             AssistantContent::Text(_)
             | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_) => None,
+            | AssistantContent::Image(_)
+            | AssistantContent::Opaque(_) => None,
         })
     }
 }
@@ -1594,7 +1594,7 @@ pub fn fold_turn(
 }
 
 /// Update turn outputs from streamed text or final outcomes. Changed outputs
-/// signal progress; completed streamed responses use canonical content order.
+/// signal progress; a completed response's content keeps the provider's order.
 pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outputs, With<Turn>>) {
     for EffectViewItem {
         turn_of,
@@ -1610,14 +1610,8 @@ pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outp
         }
         match outcome {
             Some(EffectOutcome(Ok(Outcome::Completion(response)))) => {
-                // Wire arrival order is not conversation order; commit reasoning,
-                // text, and calls in the canonical sequence.
-                outputs.content = if streamed.is_some() {
-                    canonical_streamed_choice(response.choice.clone())
-                } else {
-                    response.choice.clone()
-                };
-                outputs.message_id = response.message_id.clone();
+                outputs.content = response.choice.clone();
+                outputs.head = AssistantHead::of(&response.head());
                 outputs.done = true;
             }
             Some(EffectOutcome(Ok(_))) | Some(EffectOutcome(Err(_))) => {
@@ -1867,7 +1861,8 @@ pub fn land_batch(
                 AssistantContent::ToolCall(_)
                 | AssistantContent::Text(_)
                 | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => None,
+                | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_) => None,
             })
         });
         match output_call {
@@ -2031,7 +2026,8 @@ fn edited_content(
                     AssistantContent::ToolCall(tool_call) => tool_call.id != call.id,
                     AssistantContent::Text(_)
                     | AssistantContent::Reasoning(_)
-                    | AssistantContent::Image(_) => true,
+                    | AssistantContent::Image(_)
+                    | AssistantContent::Opaque(_) => true,
                 });
             }
             Resolution::Fail | Resolution::Retry { .. } | Resolution::Skip { .. } => {}
@@ -2051,7 +2047,7 @@ fn fail_unknown_call(
     call: InvalidCall,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
-    if let Ok(assistant) = MessageParts::assistant(outs.message_id.clone(), call.prefix.clone()) {
+    if let Ok(assistant) = MessageParts::assistant(outs.head.message(call.prefix.clone())) {
         spawn_deferred(commands, assets, run, assistant)?;
     }
     commands
@@ -2084,13 +2080,13 @@ fn abandon_turn(
         call.prefix.clone()
     };
     let diagnostic_id = &call.id;
-    let assistant = MessageParts::assistant(outs.message_id.clone(), content.clone())?;
+    let assistant = MessageParts::assistant(outs.head.message(content.clone()))?;
     spawn_deferred(commands, assets, run, assistant)?;
     let results = MessageParts::user(invalid_call_feedback(&content, diagnostic_id, feedback))
         .map_err(|_| ContentError::Shape)?;
     let skipped = match &results {
         MessageParts::User { content } => vec![ToolResultStatus::Skipped; content.len()],
-        MessageParts::Assistant { .. } => Vec::new(),
+        MessageParts::Assistant(_) => Vec::new(),
     };
     spawn_deferred_with(commands, assets, run, results, skipped)?;
     let mut run_commands = commands.entity(run);
@@ -2319,7 +2315,7 @@ pub fn read_turn(
         let granted = granted_tools(turn, &children, &adverts, &bound, access);
         let allowed = access.and_then(|access| access.allowed.as_ref());
         let read = TurnRead {
-            message_id: response.message_id.clone(),
+            head: AssistantHead::of(&response.head()),
             content: outs.content.clone(),
             granted,
             assistant: None,
@@ -2387,7 +2383,7 @@ fn say_assistant(
         }
         return Ok(());
     }
-    let assistant = MessageParts::assistant(read.message_id.clone(), read.content.clone())?;
+    let assistant = MessageParts::assistant(read.head.message(read.content.clone()))?;
     if let Some(Retry { feedback }) = retry {
         commands.entity(turn).remove::<(Retry, TurnRead)>();
         if read.calls().next().is_some() {
@@ -2651,7 +2647,7 @@ pub fn materialise_answer(
             .cloned()
             .collect();
         final_content.push(AssistantContent::text(output.clone()));
-        let restated = MessageParts::assistant(read.message_id.clone(), final_content);
+        let restated = MessageParts::assistant(read.head.message(final_content));
         match restated
             .and_then(|restated| replace_deferred(&mut commands, &mut assets, assistant, restated))
         {

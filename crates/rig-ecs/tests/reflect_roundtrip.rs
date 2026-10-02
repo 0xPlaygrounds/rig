@@ -211,12 +211,9 @@ fn populated() -> bevy_app::App {
                 UserContent::Document(Document::default()),
             ],
         },
-        MessageParts::Assistant {
-            id: Some("message".into()),
-            content: vec![AssistantContent::Reasoning(
-                Reasoning::new("thought").sealed("test"),
-            )],
-        },
+        MessageParts::Assistant(rig_core::message::AssistantMessage::new(vec![
+            AssistantContent::Reasoning(Reasoning::new("thought")),
+        ])),
     ] {
         let entity = app.world_mut().spawn(Utterance).id();
         rig_ecs::agent::content::parts::write_message(app.world_mut(), entity, parts)

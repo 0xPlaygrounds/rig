@@ -380,7 +380,7 @@ fn a_typed_key_dispatches_across_ticks() {
             .expect("answered")
             .typed::<family::Completion>()
             .expect("a completion");
-        assert_eq!(response.provider, "mock");
+        assert_eq!(response.provider(), "mock");
     }
 }
 

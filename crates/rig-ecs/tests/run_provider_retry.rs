@@ -78,7 +78,7 @@ impl Serve for Flaky {
             Some(Ok(choice)) => Ok(Outcome::Completion(CompletionResponse::new(
                 choice,
                 Usage::default(),
-                "flaky",
+                rig_core::message::Origin::new("test.api", "flaky", ""),
                 serde_json::json!({}),
             ))),
             Some(Err(report)) => Err(report),
@@ -483,7 +483,7 @@ impl Serve for Truncating {
         Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
             done(),
             Usage::default(),
-            "whole",
+            rig_core::message::Origin::new("test.api", "whole", ""),
             serde_json::json!({}),
         ))))
     }

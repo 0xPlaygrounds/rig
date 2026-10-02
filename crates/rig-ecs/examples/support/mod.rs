@@ -67,7 +67,7 @@ impl Serve for Scripted {
                 let response = CompletionResponse::new(
                     self.next(),
                     Usage::default(),
-                    "scripted",
+                    rig_core::message::Origin::new("example.api", "scripted", ""),
                     serde_json::json!({}),
                 );
                 Reply::Outcome(Ok(Outcome::Completion(response)))
@@ -94,7 +94,9 @@ impl Serve for Scripted {
                                     return;
                                 }
                             }
-                            AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
+                            AssistantContent::Reasoning(_)
+                            | AssistantContent::Image(_)
+                            | AssistantContent::Opaque(_) => {}
                         }
                     }
                     writer.raw(serde_json::json!({ "provider": "scripted" }));

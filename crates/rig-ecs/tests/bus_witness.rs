@@ -1201,7 +1201,7 @@ fn answer_open(
                             "served by a system",
                         )],
                         rig_core::completion::Usage::default(),
-                        "open",
+                        rig_core::message::Origin::new("test.api", "open", ""),
                         serde_json::json!({}),
                     ),
                 ))));

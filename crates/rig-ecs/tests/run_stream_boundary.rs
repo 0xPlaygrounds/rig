@@ -48,7 +48,7 @@ impl Serve for FinishingName {
                     total_tokens: Some(3),
                     ..ProviderUsage::default()
                 },
-                "boundary",
+                rig_core::message::Origin::new("test.api", "boundary", ""),
                 serde_json::json!({}),
             ))));
         };
@@ -185,7 +185,9 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
             match rig_ecs::agent::content::parts::read_message(app.world(), entity)
                 .expect("valid history graph")
             {
-                MessageParts::Assistant { content, .. } => content
+                MessageParts::Assistant(rig_core::message::AssistantMessage {
+                    content, ..
+                }) => content
                     .iter()
                     .filter_map(|part| match part {
                         AssistantContent::ToolCall(call) => Some(call.clone()),
@@ -285,7 +287,9 @@ fn early_repair_survives_the_calls_completion() {
             match rig_ecs::agent::content::parts::read_message(app.world(), entity)
                 .expect("valid history graph")
             {
-                MessageParts::Assistant { content, .. } => content
+                MessageParts::Assistant(rig_core::message::AssistantMessage {
+                    content, ..
+                }) => content
                     .iter()
                     .filter_map(|part| match part {
                         AssistantContent::ToolCall(call) => Some(call.clone()),
