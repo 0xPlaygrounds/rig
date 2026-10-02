@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.43.0...rig-postgres-v0.44.0) - 2026-10-02
+
+### Fixed
+
+- *(postgres)* [**breaking**] bind like/similar_to/between values and stop renumbering $ inside spliced SQL ([#2698](https://github.com/0xPlaygrounds/rig/pull/2698)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(vector_store)* [**breaking**] named VectorStoreIndex search results ([#2688](https://github.com/0xPlaygrounds/rig/pull/2688)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vector_store)* [**breaking**] tighten the VectorSearchRequest surface ([#2683](https://github.com/0xPlaygrounds/rig/pull/2683)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vector-stores)* [**breaking**] drop forwarding layers in vector-store crates ([#2662](https://github.com/0xPlaygrounds/rig/pull/2662)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.42.0...rig-postgres-v0.43.0) - 2026-09-30
 
 ### Added

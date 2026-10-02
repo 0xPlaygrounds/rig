@@ -12,7 +12,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 # This crate holds a `reqwest::Client` directly rather than an `H: HttpClientExt`,
 # so the TLS backend is its own `rustls`/`native-tls` feature's choice. Without one
 # of them, `reqwest` has no TLS backend and every HTTPS call to the Cloudflare API
@@ -25,7 +25,7 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 

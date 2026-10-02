@@ -16,7 +16,7 @@ futures = { workspace = true }
 google-cloud-aiplatform-v1 = { workspace = true }
 google-cloud-auth = { workspace = true }
 google-cloud-gax = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -24,11 +24,11 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
 anyhow = { workspace = true }
 http = { workspace = true }
 rig-agent.workspace = true
-rig-ecs = { path = "../rig-ecs", version = "0.43.0", default-features = false }
+rig-ecs = { path = "../rig-ecs", version = "0.44.0", default-features = false }
 bevy_app = { workspace = true }
 schemars = { workspace = true }
 tracing-subscriber = { workspace = true }
