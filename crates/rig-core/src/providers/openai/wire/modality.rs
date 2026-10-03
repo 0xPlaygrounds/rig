@@ -293,6 +293,64 @@ impl OpenAIConfig {
     }
 }
 
+/// The width contract of Mistral's embedding models.
+///
+/// `mistral-embed` is fixed at 1024 and reads no width field: Mistral
+/// answers any other value with an error rather than truncating, so a
+/// request naming one is refused before it is built. Codestral Embed is
+/// configurable up to 3072 and takes its width as `output_dimension`.
+///
+/// The dated aliases are listed beside their rolling names because a caller
+/// pinning `mistral-embed-2312` gets the same model, and a model absent from
+/// this table reports `ndims() == 0`.
+pub(super) const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
+    ModelWidth {
+        model: crate::providers::mistral::embedding::MISTRAL_EMBED,
+        default: Some(1_024),
+        accepted: AcceptedWidths::Fixed,
+    },
+    ModelWidth {
+        model: "mistral-embed-2312",
+        default: Some(1_024),
+        accepted: AcceptedWidths::Fixed,
+    },
+    ModelWidth {
+        model: crate::providers::mistral::embedding::CODESTRAL_EMBED,
+        // Configurable with no documented native width, so a handle that
+        // names none reports 0 rather than inventing one.
+        default: None,
+        accepted: AcceptedWidths::Range {
+            // Mistral documents only a ceiling. The floor is rig's own
+            // "unknown" sentinel, which never reaches the wire.
+            min: 0,
+            max: 3_072,
+            requirement: "to be at most 3072 for Codestral Embed",
+        },
+    },
+    ModelWidth {
+        model: "codestral-embed-2505",
+        default: None,
+        accepted: AcceptedWidths::Range {
+            min: 0,
+            max: 3_072,
+            requirement: "to be at most 3072 for Codestral Embed",
+        },
+    },
+];
+
+/// Doubleword embedding widths: 32 through 4096, defaulting to 4096.
+/// Validate both bounds locally because out-of-range requests can be clamped or
+/// inconsistently rejected by the service.
+pub(super) const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
+    model: crate::providers::doubleword::QWEN3_EMBEDDING_8B,
+    default: Some(4_096),
+    accepted: AcceptedWidths::Range {
+        min: 32,
+        max: 4_096,
+        requirement: "to be between 32 and 4096",
+    },
+}];
+
 /// Encode an authenticated JSON POST with whole-response framing.
 fn json_post(
     provider: &OpenAIConfig,

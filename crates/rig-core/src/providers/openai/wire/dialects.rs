@@ -8,9 +8,9 @@
 use crate::completion::FinishReason;
 
 use super::{
-    AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
-    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing,
-    SpeechBody, SystemInstructionsPlacement, TranscriptionBody,
+    Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks, ImageBody,
+    OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing, SpeechBody,
+    SystemInstructionsPlacement, TranscriptionBody,
 };
 
 /// Azure reads its API version from the environment because every Azure
@@ -249,51 +249,6 @@ pub const LLAMACPP: Dialect = Dialect {
     ..Dialect::gateway("llamacpp", "http://localhost:8080/v1", "LLAMACPP_API_KEY")
 };
 
-/// The width contract of Mistral's embedding models.
-///
-/// `mistral-embed` is fixed at 1024 and reads no width field: Mistral
-/// answers any other value with an error rather than truncating, so a
-/// request naming one is refused before it is built. Codestral Embed is
-/// configurable up to 3072 and takes its width as `output_dimension`.
-///
-/// The dated aliases are listed beside their rolling names because a caller
-/// pinning `mistral-embed-2312` gets the same model, and a model absent from
-/// this table reports `ndims() == 0`.
-const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
-    ModelWidth {
-        model: crate::providers::mistral::embedding::MISTRAL_EMBED,
-        default: Some(1_024),
-        accepted: AcceptedWidths::Fixed,
-    },
-    ModelWidth {
-        model: "mistral-embed-2312",
-        default: Some(1_024),
-        accepted: AcceptedWidths::Fixed,
-    },
-    ModelWidth {
-        model: crate::providers::mistral::embedding::CODESTRAL_EMBED,
-        // Configurable with no documented native width, so a handle that
-        // names none reports 0 rather than inventing one.
-        default: None,
-        accepted: AcceptedWidths::Range {
-            // Mistral documents only a ceiling. The floor is rig's own
-            // "unknown" sentinel, which never reaches the wire.
-            min: 0,
-            max: 3_072,
-            requirement: "to be at most 3072 for Codestral Embed",
-        },
-    },
-    ModelWidth {
-        model: "codestral-embed-2505",
-        default: None,
-        accepted: AcceptedWidths::Range {
-            min: 0,
-            max: 3_072,
-            requirement: "to be at most 3072 for Codestral Embed",
-        },
-    },
-];
-
 /// Mistral.
 pub const MISTRAL: Dialect = Dialect {
     request_id_header: Some("mistral-correlation-id"),
@@ -312,7 +267,7 @@ pub const MISTRAL: Dialect = Dialect {
             supports_user: false,
             // Codestral Embed takes its width as `output_dimension`.
             dimensions: DimensionsField::OutputDimension,
-            widths: MISTRAL_EMBEDDING_WIDTHS,
+            widths: super::modality::MISTRAL_EMBEDDING_WIDTHS,
             ..EmbeddingQuirks::openai()
         },
         ..Quirks::openai()
@@ -366,19 +321,6 @@ pub const VENICE: Dialect = Dialect {
     ..Dialect::gateway("venice", "https://api.venice.ai/api/v1", "VENICE_API_KEY")
 };
 
-/// Doubleword embedding widths: 32 through 4096, defaulting to 4096.
-/// Validate both bounds locally because out-of-range requests can be clamped or
-/// inconsistently rejected by the service.
-const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
-    model: crate::providers::doubleword::QWEN3_EMBEDDING_8B,
-    default: Some(4_096),
-    accepted: AcceptedWidths::Range {
-        min: 32,
-        max: 4_096,
-        requirement: "to be between 32 and 4096",
-    },
-}];
-
 /// Doubleword.
 pub const DOUBLEWORD: Dialect = Dialect {
     base_url_env: Some("DOUBLEWORD_BASE_URL"),
@@ -387,7 +329,7 @@ pub const DOUBLEWORD: Dialect = Dialect {
             requires_usage: false,
             supports_encoding_format: false,
             supports_user: false,
-            widths: DOUBLEWORD_EMBEDDING_WIDTHS,
+            widths: super::modality::DOUBLEWORD_EMBEDDING_WIDTHS,
             // Doubleword refuses a zero width itself, and stating it here
             // keeps the refusal ahead of a request that cannot succeed.
             refuse_zero_width: Some("to be greater than zero"),
