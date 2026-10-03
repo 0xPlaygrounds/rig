@@ -1384,3 +1384,39 @@ fn a_model_without_mid_conversation_system_gets_one_leading_system_message() {
             == 2
     );
 }
+
+#[test]
+fn a_call_renamed_for_a_reused_id_keeps_its_item_where_the_item_holds_its_id() {
+    let call_with_item =
+        || call("functions.f:0").with_native(json!({"id": "functions.f:0", "x": 1}));
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call_with_item()]),
+        Message::User {
+            content: vec![result("functions.f:0", "one")],
+        },
+        turn(Some(same()), vec![call_with_item()]),
+        Message::User {
+            content: vec![result("functions.f:0", "two")],
+        },
+    ];
+    let renamed = |target: &dyn ReplayTarget| {
+        let adapted = adapt(&history, target);
+        let AssistantContent::ToolCall(call) = &assistant(&adapted[3]).content[0] else {
+            panic!("a call");
+        };
+        assert_ne!(call.id.wire(), "functions.f:0");
+        AssistantContent::ToolCall(call.clone())
+            .native_item()
+            .cloned()
+    };
+    assert_eq!(
+        renamed(&Slotted),
+        Some(json!({"id": "functions.f:0", "x": 1}))
+    );
+    assert_eq!(
+        renamed(&TARGET),
+        None,
+        "without a slot the item would name the old id"
+    );
+}

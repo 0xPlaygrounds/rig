@@ -655,8 +655,20 @@ fn assistant(
                 match block.clone() {
                     AssistantContent::ToolCall(mut call) => {
                         let wanted = call.id.wire().into_owned();
+                        let item = AssistantContent::ToolCall(call.clone())
+                            .native_item()
+                            .cloned()
+                            .filter(|_| target.call_id_slot().is_some());
                         call.id = ids.claim(&call.id, wanted);
-                        AssistantContent::ToolCall(call)
+                        let block = AssistantContent::ToolCall(call);
+                        // A rename is rig's, not an edit: replay spells the
+                        // new id into the item's slot, so the item stays.
+                        match item {
+                            Some(item) if block.native_item().is_none() => {
+                                block.canonical().with_native(item)
+                            }
+                            _ => block,
+                        }
                     }
                     // The capability holds for the model's own turns too: an
                     // image it made but does not read back is left out.
