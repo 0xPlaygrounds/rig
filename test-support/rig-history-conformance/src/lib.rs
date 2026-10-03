@@ -36,6 +36,9 @@ use rig_core::wire::{Mode, Operation, Wire};
 pub use rig_core::test_utils::history_conformance::{decode, partial};
 
 mod generated;
+pub mod replies;
+
+pub use generated::Rng;
 
 /// Every completion wire and dialect that must run the suite, by the name
 /// its `history_conformance_suite!` invocation gives.
@@ -154,6 +157,15 @@ pub const ROWS: &[(&str, &str)] = &[
     (
         "h17_generated_histories",
         "round 4: fuzz F1 (duplicate ids), F2 (fingerprint number form), role alternation",
+    ),
+    (
+        "h18_generated_stream_equals_whole",
+        "round 6: fuzz R6-A (terminal-only Responses items reordered), R6-B (index-less \
+         id-less Chat calls merged)",
+    ),
+    (
+        "h19_generated_cuts",
+        "round 6: fuzz (e) (a cut stream never replays as a success), #2647 cut paths",
     ),
 ];
 
@@ -574,6 +586,30 @@ pub trait HistoryFixture {
         false
     }
 
+    /// `tool` as the provider's own JSON, for `additional_params.tools`, or
+    /// `None` when the wire takes no raw tools there; H17 then declares
+    /// them as usual.
+    fn raw_tool(&self, tool: &rig_core::completion::ToolDefinition) -> Option<Value> {
+        let _ = tool;
+        None
+    }
+
+    /// A generated reply for rows H18 and H19, drawn from `rng`, or `None`
+    /// when the wire has no reply generator (the mock).
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        let _ = rng;
+        None
+    }
+
+    /// `spec` as this wire's frames, whole and streamed.
+    fn reply_frames(
+        &self,
+        spec: &replies::Spec,
+    ) -> Option<replies::Frames<<Self::Wire as Wire>::Frame>> {
+        let _ = spec;
+        None
+    }
+
     /// Whether the provider combines consecutive messages of one role
     /// itself (Anthropic documents it), so H17 checks neither alternation
     /// nor adjacent user messages.
@@ -608,9 +644,37 @@ pub fn sent<F: HistoryFixture>(
     history: Vec<Message>,
     mode: Mode,
 ) -> Result<Value, String> {
+    sent_as(fixture, model, history, mode, generated::Tools::Declared)
+}
+
+/// [`sent`], with the request's tools declared as `tools` says.
+fn sent_as<F: HistoryFixture>(
+    fixture: &F,
+    model: &str,
+    history: Vec<Message>,
+    mode: Mode,
+    tools: generated::Tools,
+) -> Result<Value, String> {
     let wire = fixture.wire(model);
     let mut request = CompletionRequest::new("next");
-    request.tools = tools_of(&history);
+    match tools {
+        generated::Tools::Declared => request.tools = tools_of(&history),
+        generated::Tools::ChoiceNone => {
+            request.tools = tools_of(&history);
+            request.tool_choice = Some(rig_core::message::ToolChoice::None);
+        }
+        generated::Tools::Raw => {
+            let declared = tools_of(&history);
+            let raw: Option<Vec<Value>> =
+                declared.iter().map(|tool| fixture.raw_tool(tool)).collect();
+            match raw {
+                Some(raw) if !raw.is_empty() => {
+                    request.additional_params = Some(serde_json::json!({ "tools": raw }));
+                }
+                _ => request.tools = declared,
+            }
+        }
+    }
     request.chat_history = history;
     request.chat_history.push(Message::user("next"));
     let prepared = Completion::prepare(request, &wire.describe()).map_err(|e| e.to_string())?;
@@ -2042,8 +2106,8 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
         .into_iter()
         .filter_map(|shape| turn_of(fixture, shape, Mode::Unary))
         .collect();
-    let problems = |history: &[Message], mode: Mode| -> Vec<String> {
-        let body = match sent(fixture, fixture.model(), history.to_vec(), mode) {
+    let problems = |history: &[Message], mode: Mode, tools: generated::Tools| -> Vec<String> {
+        let body = match sent_as(fixture, fixture.model(), history.to_vec(), mode, tools) {
             Ok(body) => body,
             Err(error) => return vec![format!("it does not encode: {error}")],
         };
@@ -2058,17 +2122,18 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
     for case in 0..cases {
         let mut rng = generated::Rng::new(0x5eed_0000 + case);
         let history = generated::history(&mut rng, &own);
+        let tools = generated::tools(&mut rng);
         for mode in MODES {
-            let found = problems(&history, mode);
+            let found = problems(&history, mode, tools);
             if !found.is_empty() {
                 let small = generated::shrink(history.clone(), |history| {
-                    !problems(history, mode).is_empty()
+                    !problems(history, mode, tools).is_empty()
                 });
                 panic!(
-                    "case {case} in {mode:?}: {found:?}\nhistory: {}\nshrunk: {}\nproblems there: {:?}",
+                    "case {case} in {mode:?} with tools {tools:?}: {found:?}\nhistory: {}\nshrunk: {}\nproblems there: {:?}",
                     generated::render(&history),
                     generated::render(&small),
-                    problems(&small, mode)
+                    problems(&small, mode, tools)
                 );
             }
         }
@@ -2087,6 +2152,71 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
                 fixture.replayed(&loaded).len(),
                 expected.len(),
                 "a store that rewrites numbers keeps every provider item current"
+            );
+        }
+    }
+}
+
+/// H18: on generated replies ([`HistoryFixture::reply_spec`]), the stream
+/// folds to the turn and stop its whole form folds to, and neither mode
+/// fails or panics alone.
+pub fn h18_generated_stream_equals_whole<F: HistoryFixture>(fixture: &F) {
+    let wire = fixture.wire(fixture.model());
+    generated_replies(fixture, |spec| {
+        fixture
+            .reply_frames(spec)
+            .and_then(|frames| replies::disagreement(&wire, frames))
+            .into_iter()
+            .collect()
+    });
+}
+
+/// H19: on generated replies, a stream cut after any frame before the
+/// provider's end folds to a failed turn, which never replays, and no cut
+/// panics.
+pub fn h19_generated_cuts<F: HistoryFixture>(fixture: &F) {
+    let wire = fixture.wire(fixture.model());
+    generated_replies(fixture, |spec| {
+        if fixture.reply_frames(spec).is_none() {
+            return Vec::new();
+        }
+        replies::cut_problems(&wire, || {
+            fixture
+                .reply_frames(spec)
+                .map(|frames| frames.streamed)
+                .unwrap_or_default()
+        })
+    });
+}
+
+/// Run `problems` over the fixture's generated replies, shrinking and
+/// reporting the first spec that has any.
+fn generated_replies<F: HistoryFixture>(
+    fixture: &F,
+    problems: impl Fn(&replies::Spec) -> Vec<String>,
+) {
+    let cases: u64 = std::env::var("RIG_HISTORY_CASES")
+        .ok()
+        .and_then(|cases| cases.parse().ok())
+        .unwrap_or(256);
+    for case in 0..cases {
+        let mut rng = Rng::new(0x5eed_d0e5 + case);
+        let Some(mut spec) = fixture.reply_spec(&mut rng) else {
+            return;
+        };
+        spec.seed = rng.next();
+        let found = problems(&spec);
+        if !found.is_empty() {
+            let small = replies::shrink(spec.clone(), |spec| !problems(spec).is_empty());
+            panic!(
+                "case {case}: {found:?}\nspec: {} finish {} seed {}\nshrunk: {} finish {} seed {}\nproblems there: {:?}",
+                Value::Array(spec.blocks.clone()),
+                spec.finish,
+                spec.seed,
+                Value::Array(small.blocks.clone()),
+                small.finish,
+                small.seed,
+                problems(&small)
             );
         }
     }
@@ -2126,6 +2256,8 @@ macro_rules! history_conformance_suite {
             h15_item_round_trip,
             h16_call_identity,
             h17_generated_histories,
+            h18_generated_stream_equals_whole,
+            h19_generated_cuts,
         }
 
         #[test]
@@ -2148,6 +2280,8 @@ macro_rules! history_conformance_suite {
                 "h15_item_round_trip",
                 "h16_call_identity",
                 "h17_generated_histories",
+                "h18_generated_stream_equals_whole",
+                "h19_generated_cuts",
             ];
             let rows: Vec<&str> = $crate::ROWS.iter().map(|(row, _)| *row).collect();
             assert_eq!(emitted.as_slice(), rows.as_slice());

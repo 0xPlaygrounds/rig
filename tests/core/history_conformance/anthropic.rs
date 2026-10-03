@@ -9,7 +9,7 @@ use rig_core::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET
 use rig_core::providers::anthropic::{ANTHROPIC, AnthropicConfig, Dialect, Messages};
 use rig_core::wire::{Mode, Wire, WireFrame};
 use rig_history_conformance::{
-    Ablation, CallShape, Ending, HistoryFixture, Shape, decode, http_body,
+    Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, decode, http_body, replies,
 };
 use serde_json::{Value, json};
 
@@ -161,6 +161,25 @@ impl HistoryFixture for MessagesHistory {
             static_prefix_cache_ttl: None,
             strict_tools: false,
         }
+    }
+
+    fn raw_tool(&self, tool: &rig_core::completion::ToolDefinition) -> Option<Value> {
+        Some(serde_json::json!({
+            "name": tool.name.as_str(), "description": tool.description,
+            "input_schema": tool.parameters,
+        }))
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::anthropic_spec(rng, self.hosted, self.signature))
+    }
+
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<WireFrame>> {
+        let (whole, streamed) = replies::anthropic_build(self.model, spec);
+        Some(replies::Frames {
+            whole: replies::texts(whole),
+            streamed: replies::texts(streamed),
+        })
     }
 
     fn model(&self) -> &'static str {

@@ -8,7 +8,9 @@ use rig_core::message::AssistantContent;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::interactions_api::Interactions;
 use rig_core::wire::{Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{
+    Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, http_body, replies,
+};
 use serde_json::{Value, json};
 
 pub struct InteractionsHistory;
@@ -165,6 +167,18 @@ impl HistoryFixture for InteractionsHistory {
 
     fn wire(&self, model: &str) -> Interactions {
         Interactions::new(GeminiConfig::new("test-key"), model)
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::interactions_spec(rng))
+    }
+
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<WireFrame>> {
+        let (whole, streamed) = replies::interactions_build(self.model(), spec);
+        Some(replies::Frames {
+            whole: replies::values(whole),
+            streamed: replies::values(streamed),
+        })
     }
 
     fn model(&self) -> &'static str {

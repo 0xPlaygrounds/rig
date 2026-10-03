@@ -31,7 +31,7 @@ use rig_core::driver::Model;
 use rig_core::error::EncodeError;
 use rig_core::message::AssistantContent;
 use rig_core::wire::{Mode, Operation, Wire};
-use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, replies};
 use serde_json::{Value, json};
 
 /// One canned HTTP exchange: the reply it gives, and the request it got.
@@ -354,6 +354,18 @@ impl HistoryFixture for BedrockHistory {
 
     fn wire(&self, model: &str) -> Converse {
         Converse::new(model)
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::converse_spec(rng, self.signature))
+    }
+
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<ConverseFrame>> {
+        let (whole, events) = replies::converse_build(spec);
+        Some(replies::Frames {
+            whole: unary_frames(whole),
+            streamed: streamed_frames(events),
+        })
     }
 
     fn model(&self) -> &'static str {

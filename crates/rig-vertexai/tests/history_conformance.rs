@@ -9,7 +9,7 @@ use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, AssistantMessage};
 use rig_core::wire::{Mode, Wire};
-use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, replies};
 use rig_vertexai::completion::GenerateContent;
 use serde_json::{Value, json};
 
@@ -66,6 +66,29 @@ impl HistoryFixture for VertexHistory {
 
     fn wire(&self, model: &str) -> GenerateContent {
         GenerateContent::new(model)
+    }
+
+    fn raw_tool(&self, tool: &rig_core::completion::ToolDefinition) -> Option<Value> {
+        Some(serde_json::json!({"functionDeclarations": [{
+            "name": tool.name.as_str(), "description": tool.description,
+            "parametersJsonSchema": tool.parameters,
+        }]}))
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::gemini_spec(rng, true))
+    }
+
+    fn reply_frames(
+        &self,
+        spec: &replies::Spec,
+    ) -> Option<replies::Frames<GenerateContentResponse>> {
+        // Vertex re-emits its unary reply when streamed: one frame, no cut.
+        let (whole, _) = replies::gemini_build(MODEL, spec, false);
+        Some(replies::Frames {
+            whole: whole.clone().into_iter().map(frame).collect(),
+            streamed: whole.into_iter().map(frame).collect(),
+        })
     }
 
     fn model(&self) -> &'static str {

@@ -9,7 +9,7 @@ use rig_core::message::{AssistantContent, AssistantMessage};
 use rig_core::providers::openai::wire::{Chat, DEEPSEEK, Dialect, MISTRAL, OpenAIConfig};
 use rig_core::wire::{Mode, Wire, WireFrame};
 use rig_history_conformance::{
-    Ablation, CallShape, Ending, HistoryFixture, Shape, decode, http_body,
+    Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, decode, http_body, replies,
 };
 use serde_json::{Map, Value, json};
 
@@ -80,6 +80,14 @@ impl ChatHistory {
         })
     }
 
+    /// The field the dialect streams reasoning under, if its rich reply has one.
+    fn reasoning_key(&self) -> Option<&'static str> {
+        let rich = (self.rich)();
+        ["reasoning_content", "reasoning"]
+            .into_iter()
+            .find(|key| rich.get(*key).is_some_and(Value::is_string))
+    }
+
     fn chunk(&self, delta: Value, finish: Option<&str>) -> WireFrame {
         WireFrame::Text(
             json!({
@@ -131,6 +139,24 @@ impl HistoryFixture for ChatHistory {
 
     fn wire(&self, model: &str) -> Chat {
         OpenAIConfig::with_key(self.dialect, "key").chat(model)
+    }
+
+    fn raw_tool(&self, tool: &rig_core::completion::ToolDefinition) -> Option<Value> {
+        Some(serde_json::json!({"type": "function", "function": {
+            "name": tool.name.as_str(), "description": tool.description, "parameters": tool.parameters,
+        }}))
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::chat_spec(rng, self.reasoning_key()))
+    }
+
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<WireFrame>> {
+        let (whole, streamed) = replies::chat_build(self.model, self.reasoning_key(), spec);
+        Some(replies::Frames {
+            whole: replies::texts(whole),
+            streamed: replies::texts(streamed),
+        })
     }
 
     fn model(&self) -> &'static str {

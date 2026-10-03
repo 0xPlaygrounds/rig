@@ -8,7 +8,9 @@ use rig_core::message::AssistantContent;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::wire::{Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{
+    Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, http_body, replies,
+};
 use serde_json::{Value, json};
 
 /// Every `finishReason` Gemini and Vertex AI document that ends a turn as a
@@ -149,6 +151,25 @@ impl HistoryFixture for GeminiRestHistory {
 
     fn wire(&self, model: &str) -> GenerateContent {
         GenerateContent::new(GeminiConfig::new("test-key"), model)
+    }
+
+    fn raw_tool(&self, tool: &rig_core::completion::ToolDefinition) -> Option<Value> {
+        Some(serde_json::json!({"functionDeclarations": [{
+            "name": tool.name.as_str(), "description": tool.description,
+            "parametersJsonSchema": tool.parameters,
+        }]}))
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::gemini_spec(rng, true))
+    }
+
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<WireFrame>> {
+        let (whole, streamed) = replies::gemini_build(self.model(), spec, true);
+        Some(replies::Frames {
+            whole: replies::values(whole),
+            streamed: replies::values(streamed),
+        })
     }
 
     fn model(&self) -> &'static str {

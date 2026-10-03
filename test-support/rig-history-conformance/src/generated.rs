@@ -12,47 +12,165 @@ use rig_core::message::{
     ToolFunction, ToolName, ToolResultContent, UserContent,
 };
 
-/// A seeded xorshift64* generator.
-pub(crate) struct Rng(u64);
+/// A seeded xorshift64* generator, shared by the generated histories (H17)
+/// and the generated replies (H18, H19).
+#[derive(Clone, Debug)]
+pub struct Rng(u64);
 
 impl Rng {
-    pub(crate) fn new(seed: u64) -> Self {
+    /// A generator from `seed`.
+    pub fn new(seed: u64) -> Self {
         Self(seed.max(1))
     }
 
-    fn next(&mut self) -> u64 {
+    /// The next draw.
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> u64 {
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
         self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
     }
 
-    fn below(&mut self, bound: usize) -> usize {
+    /// A draw in `0..bound` (0 when `bound` is 0).
+    pub fn below(&mut self, bound: usize) -> usize {
         usize::try_from(self.next() % u64::try_from(bound.max(1)).unwrap_or(1)).unwrap_or(0)
     }
 
-    fn chance(&mut self, percent: usize) -> bool {
+    /// True `percent` times in a hundred.
+    pub fn chance(&mut self, percent: usize) -> bool {
         self.below(100) < percent
+    }
+
+    /// One of `items`, which must not be empty.
+    pub fn pick<T: Clone>(&mut self, items: &[T]) -> T {
+        items[self.below(items.len())].clone()
+    }
+
+    /// A draw in `low..=high`.
+    pub fn range(&mut self, low: usize, high: usize) -> usize {
+        low + self.below(high.saturating_sub(low) + 1)
+    }
+
+    /// `text` split into one to three pieces at char boundaries.
+    pub fn split(&mut self, text: &str) -> Vec<String> {
+        let chars: Vec<char> = text.chars().collect();
+        if chars.len() < 2 || self.chance(30) {
+            return vec![text.to_owned()];
+        }
+        let mut cuts = vec![self.range(1, chars.len() - 1)];
+        if chars.len() > 2 && self.chance(40) {
+            cuts.push(self.range(1, chars.len() - 1));
+        }
+        cuts.sort_unstable();
+        cuts.dedup();
+        let mut pieces = Vec::new();
+        let mut at = 0;
+        for cut in cuts {
+            pieces.push(chars[at..cut].iter().collect());
+            at = cut;
+        }
+        pieces.push(chars[at..].iter().collect());
+        pieces
     }
 }
 
-const IDS: [&str; 4] = ["call_a", "call_b", "dup", "call_c"];
+/// Call ids, including ones the wires must normalize: odd characters, an
+/// id longer than any wire takes, Kimi's per-conversation form, a repeat,
+/// and an empty one rig issues its own id for.
+const IDS: [&str; 8] = [
+    "call_a",
+    "call_b",
+    "dup",
+    "call_c",
+    "call a/b:c|d",
+    "functions.f:0",
+    "id_0123456789012345678901234567890123456789012345678901234567890123456789",
+    "",
+];
+const TOOLS: [&str; 3] = ["lookup", "weather", "search_v2"];
 const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+const PDF: &str = "JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSPj4Kc3RyZWFtCmVuZHN0cmVhbQplbmRvYmoKdHJhaWxlcgo8PC9Sb290IDEgMCBSPj4KJSVFT0YK";
 
 fn tool(name: &str) -> ToolName {
     ToolName::new(name).unwrap_or_else(|_| panic!("`{name}` is a tool name"))
 }
 
+/// How a generated request declares its tools.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Tools {
+    /// In `request.tools`, one definition per tool the history names.
+    Declared,
+    /// Only in `additional_params.tools`, as a provider's own JSON.
+    Raw,
+    /// Declared, with `ToolChoice::None`.
+    ChoiceNone,
+}
+
+/// The tools of a generated request.
+pub(crate) fn tools(rng: &mut Rng) -> Tools {
+    match rng.below(20) {
+        0 | 1 => Tools::Raw,
+        2 => Tools::ChoiceNone,
+        _ => Tools::Declared,
+    }
+}
+
 fn user(rng: &mut Rng) -> Message {
+    use rig_core::message::{
+        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageMediaType,
+        Video, VideoMediaType,
+    };
     let mut content = vec![UserContent::text(format!("question {}", rng.below(100)))];
     if rng.chance(20) {
         content.push(UserContent::Image(Image {
-            data: rig_core::message::DocumentSourceKind::base64(PNG),
-            media_type: Some(rig_core::message::ImageMediaType::PNG),
+            data: DocumentSourceKind::base64(PNG),
+            media_type: Some(ImageMediaType::PNG),
             ..Image::default()
         }));
     }
+    if rng.chance(10) {
+        content.push(UserContent::Document(Document {
+            data: DocumentSourceKind::string("the hours are 9 to 5"),
+            media_type: Some(DocumentMediaType::TXT),
+            additional_params: None,
+        }));
+    }
+    if rng.chance(8) {
+        content.push(UserContent::Document(Document {
+            data: DocumentSourceKind::base64(PDF),
+            media_type: Some(DocumentMediaType::PDF),
+            additional_params: None,
+        }));
+    }
+    if rng.chance(5) {
+        content.push(UserContent::Audio(Audio {
+            data: DocumentSourceKind::base64("UklGRgAAAABXQVZF"),
+            media_type: Some(AudioMediaType::WAV),
+        }));
+    }
+    if rng.chance(5) {
+        content.push(UserContent::Video(Video {
+            data: DocumentSourceKind::url("https://example.invalid/clip.mp4"),
+            media_type: Some(VideoMediaType::MP4),
+            additional_params: None,
+        }));
+    }
     Message::User { content }
+}
+
+/// A blank text, or blank reasoning, sometimes holding an item.
+fn blank(rng: &mut Rng) -> AssistantContent {
+    let block = if rng.chance(50) {
+        AssistantContent::text(rng.pick(&["", " ", "\n"]))
+    } else {
+        AssistantContent::reasoning("")
+    };
+    if rng.chance(30) {
+        block.with_native(serde_json::json!({"type": "x_rig_item", "id": "item_blank"}))
+    } else {
+        block
+    }
 }
 
 fn other_turn(rng: &mut Rng) -> AssistantMessage {
@@ -60,28 +178,77 @@ fn other_turn(rng: &mut Rng) -> AssistantMessage {
     if rng.chance(40) {
         content.push(AssistantContent::reasoning("thinking it over"));
     }
+    if rng.chance(10) {
+        content.push(blank(rng));
+    }
     if rng.chance(70) {
         content.push(AssistantContent::text("an answer"));
     }
     for _ in 0..rng.below(3) {
         let id = IDS[rng.below(IDS.len())];
+        let name = TOOLS[rng.below(TOOLS.len())];
         content.push(AssistantContent::ToolCall(ToolCall::new(
             CallId::from_wire(id),
-            ToolFunction::new(tool("lookup"), serde_json::json!({"q": rng.below(9)})),
+            ToolFunction::new(tool(name), serde_json::json!({"q": rng.below(9)})),
         )));
+    }
+    if rng.chance(5) {
+        content.push(AssistantContent::Opaque(rig_core::message::Opaque {
+            item: serde_json::json!({"type": "computer_call", "id": "cu_1"}),
+            replay: false,
+        }));
     }
     if content.is_empty() {
         content.push(AssistantContent::text("ok"));
     }
-    let failed = rng.chance(10);
+    let stop = match rng.below(20) {
+        0 | 1 => StopReason::Error("refused".to_owned()),
+        2 => StopReason::Aborted("the caller stopped reading".to_owned()),
+        3 => StopReason::Length,
+        4 => StopReason::Stop,
+        _ => StopReason::ToolUse,
+    };
     AssistantMessage {
         content,
         origin: Some(Origin::new("other.api", "other", "other-model")),
-        stop: Some(if failed {
-            StopReason::Error("refused".to_owned())
+        stop: Some(stop),
+    }
+}
+
+/// `turn`, one of the model's own, edited as a hook or repair edits one:
+/// a text rewritten, a call's arguments changed, or reasoning reworded, so
+/// that block's item is stale.
+fn edited(rng: &mut Rng, turn: &AssistantMessage) -> AssistantMessage {
+    let mut turn = turn.clone();
+    let at = rng.below(turn.content.len());
+    if let Some(block) = turn.content.get_mut(at) {
+        match block {
+            AssistantContent::Text(text) => text.text.push_str(" (edited)"),
+            AssistantContent::Reasoning(reasoning) => reasoning.text.push_str(" (edited)"),
+            AssistantContent::ToolCall(call) => {
+                call.function = ToolFunction::new(
+                    call.function.name.clone(),
+                    serde_json::json!({"q": "edited"}),
+                );
+            }
+            AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
+        }
+    }
+    turn
+}
+
+/// `turn` cut short: its first blocks, stopped by the output budget or
+/// aborted, as a reply mid-history that never finished.
+fn cut(rng: &mut Rng, turn: &AssistantMessage) -> AssistantMessage {
+    let keep = 1 + rng.below(turn.content.len().max(1));
+    AssistantMessage {
+        content: turn.content.iter().take(keep).cloned().collect(),
+        stop: Some(if rng.chance(50) {
+            StopReason::Length
         } else {
-            StopReason::ToolUse
+            StopReason::Aborted("the run stopped".to_owned())
         }),
+        ..turn.clone()
     }
 }
 
@@ -89,9 +256,29 @@ fn results(rng: &mut Rng, turn: &AssistantMessage) -> Vec<UserContent> {
     let mut parts = Vec::new();
     for call in turn.tool_calls() {
         if rng.chance(80) {
-            parts.push(UserContent::ToolResult(
-                call.result(vec![ToolResultContent::text("done")]),
-            ));
+            let content = match rng.below(10) {
+                0 => vec![
+                    ToolResultContent::text("see the chart"),
+                    ToolResultContent::image_base64(
+                        PNG,
+                        Some(rig_core::message::ImageMediaType::PNG),
+                        None,
+                    ),
+                ],
+                1 => vec![ToolResultContent::json(
+                    serde_json::json!({"ok": true, "n": 2}),
+                )],
+                2 => vec![
+                    ToolResultContent::text("first"),
+                    ToolResultContent::text("second"),
+                ],
+                3 => Vec::new(),
+                _ => vec![ToolResultContent::text("done")],
+            };
+            parts.push(UserContent::ToolResult(rig_core::message::ToolResult {
+                is_error: rng.chance(10),
+                ..call.result(content)
+            }));
         }
         if rng.chance(10) {
             parts.push(UserContent::ToolResult(
@@ -110,12 +297,26 @@ fn results(rng: &mut Rng, turn: &AssistantMessage) -> Vec<UserContent> {
     parts
 }
 
-/// A history of up to a few rounds: user turns, assistant turns from the
-/// fixture's own replies (`own`) or another model, results answering random
-/// subsets of their calls, and system messages in random places. It ends
-/// with a user message.
+/// A history of up to a few rounds: user turns with media and documents,
+/// assistant turns from the fixture's own replies (`own`, sometimes edited,
+/// cut short or reduced to their reasoning) or another model, results
+/// answering random subsets of their calls, and system messages at the
+/// start and in random places. It may start with an assistant turn, and
+/// it ends with a user message.
 pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
-    let mut history = vec![user(rng)];
+    let mut history = Vec::new();
+    if rng.chance(20) {
+        history.push(Message::system("be brief"));
+    }
+    if rng.chance(10) {
+        let turn = other_turn(rng);
+        let answer = results(rng, &turn);
+        history.push(Message::Assistant(turn));
+        if !answer.is_empty() {
+            history.push(Message::User { content: answer });
+        }
+    }
+    history.push(user(rng));
     for _ in 0..1 + rng.below(3) {
         if rng.chance(15) {
             history.push(Message::system("steer"));
@@ -140,6 +341,8 @@ pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
                     ..turn.clone()
                 }
             }
+            Some(turn) if rng.chance(15) => edited(rng, turn),
+            Some(turn) if rng.chance(10) => cut(rng, turn),
             Some(turn) if rng.chance(50) => turn.clone(),
             _ => other_turn(rng),
         };
@@ -360,6 +563,9 @@ pub(crate) fn render(history: &[Message]) -> String {
                         UserContent::ToolResult(result) =>
                             format!("result({})", result.call.wire()),
                         UserContent::Image(_) => "image".to_owned(),
+                        UserContent::Document(_) => "document".to_owned(),
+                        UserContent::Audio(_) => "audio".to_owned(),
+                        UserContent::Video(_) => "video".to_owned(),
                         _ => "text".to_owned(),
                     })
                     .collect::<Vec<_>>()

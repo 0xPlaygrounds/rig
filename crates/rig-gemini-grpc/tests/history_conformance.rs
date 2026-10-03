@@ -12,7 +12,7 @@ use rig_core::wire::{Mode, Wire};
 use rig_gemini_grpc::completion::GenerateContent;
 use rig_gemini_grpc::proto::{self, GenerateContentResponse};
 use rig_gemini_grpc::rest::{from_rest, to_rest};
-use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, replies};
 use serde_json::{Value, json};
 
 struct GrpcHistory;
@@ -96,6 +96,28 @@ impl HistoryFixture for GrpcHistory {
 
     fn wire(&self, model: &str) -> GenerateContent {
         GenerateContent::new(model)
+    }
+
+    fn raw_tool(&self, tool: &rig_core::completion::ToolDefinition) -> Option<Value> {
+        Some(serde_json::json!({"functionDeclarations": [{
+            "name": tool.name.as_str(), "description": tool.description,
+            "parametersJsonSchema": tool.parameters,
+        }]}))
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::gemini_spec(rng, true))
+    }
+
+    fn reply_frames(
+        &self,
+        spec: &replies::Spec,
+    ) -> Option<replies::Frames<GenerateContentResponse>> {
+        let (whole, streamed) = replies::gemini_build(MODEL, spec, true);
+        Some(replies::Frames {
+            whole: whole.into_iter().map(frame).collect(),
+            streamed: streamed.into_iter().map(frame).collect(),
+        })
     }
 
     fn model(&self) -> &'static str {

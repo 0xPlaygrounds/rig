@@ -14,7 +14,7 @@ use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::{CallId, Reasoning, ToolCall, ToolFunction, ToolName};
 use rig_core::wire::{Mode, Wire};
-use rig_history_conformance::{Ending, HistoryFixture, Shape};
+use rig_history_conformance::{Ending, HistoryFixture, Rng, Shape, replies};
 use serde_json::Value;
 
 struct CandleHistory;
@@ -49,6 +49,33 @@ impl HistoryFixture for CandleHistory {
             model: model.to_owned(),
             protocol: ConversationProtocol::Qwen3,
         }
+    }
+
+    /// Text events split in the stream; reasoning events arrive whole, as
+    /// Candle's contract states.
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        let mut blocks = Vec::new();
+        for _ in 0..rng.range(0, 4) {
+            let kind = rng.pick(&["reasoning", "text", "call"]);
+            blocks.push(serde_json::json!({
+                "kind": kind,
+                "text": replies::maybe_blank(rng),
+                "args": replies::args(rng),
+            }));
+        }
+        let finish = rng.pick(&["eos", "max_tokens"]).to_owned();
+        Some(replies::Spec {
+            blocks,
+            finish,
+            seed: 0,
+        })
+    }
+
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<CandleFrame>> {
+        Some(replies::Frames {
+            whole: candle_events(spec, false),
+            streamed: candle_events(spec, true),
+        })
     }
 
     fn model(&self) -> &'static str {
@@ -131,4 +158,37 @@ impl HistoryFixture for CandleHistory {
 rig_history_conformance::history_conformance_suite! {
     wire: "candle",
     fixture: CandleHistory,
+}
+
+/// `spec`'s events, text split into pieces when `split`.
+fn candle_events(spec: &replies::Spec, split: bool) -> Vec<CandleFrame> {
+    let mut rng = Rng::new(spec.seed);
+    let mut events = Vec::new();
+    for (k, block) in spec.blocks.iter().enumerate() {
+        let text = block["text"].as_str().unwrap_or_default().to_owned();
+        match block["kind"].as_str() {
+            Some("reasoning") => events.push(GenerationEvent::Reasoning(Reasoning::new(&text))),
+            Some("text") => {
+                let pieces = if split { rng.split(&text) } else { vec![text] };
+                events.extend(pieces.into_iter().map(GenerationEvent::Text));
+            }
+            _ => events.push(GenerationEvent::ToolCall(ToolCall::new(
+                CallId::from_wire(format!("call_{k}")),
+                ToolFunction::parse(
+                    ToolName::new("lookup").expect("a tool name"),
+                    &block["args"].to_string(),
+                ),
+            ))),
+        }
+    }
+    let reason = if spec.finish == "eos" {
+        CandleFinishReason::Eos
+    } else {
+        CandleFinishReason::MaxTokens
+    };
+    events
+        .into_iter()
+        .map(CandleFrame::Event)
+        .chain([finish(reason)])
+        .collect()
 }

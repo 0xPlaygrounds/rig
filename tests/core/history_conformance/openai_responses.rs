@@ -10,7 +10,9 @@ use rig_core::operation::Completion;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::wire::{Encoded, Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{
+    Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, http_body, replies,
+};
 use serde_json::{Value, json};
 
 /// One Responses wire or dialect: how to build it for a model, and the
@@ -277,6 +279,25 @@ where
 
     fn model(&self) -> &'static str {
         self.model
+    }
+
+    fn raw_tool(&self, tool: &rig_core::completion::ToolDefinition) -> Option<Value> {
+        Some(serde_json::json!({
+            "type": "function", "name": tool.name.as_str(),
+            "description": tool.description, "parameters": tool.parameters,
+        }))
+    }
+
+    fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
+        Some(replies::responses_spec(rng))
+    }
+
+    fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<WireFrame>> {
+        let (whole, streamed) = replies::responses_build(spec);
+        Some(replies::Frames {
+            whole: replies::texts(whole),
+            streamed: replies::texts(streamed),
+        })
     }
 
     fn other_model(&self) -> &'static str {
