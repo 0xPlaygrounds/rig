@@ -3670,3 +3670,34 @@ fn an_edited_call_keeps_its_caller() {
             "caller": {"type": "code_execution_20250825", "tool_id": "srvtoolu_1"}})
     );
 }
+
+/// Text the adapter merges into a user message ahead of its tool results
+/// is sent after them: Anthropic requires results first.
+#[test]
+fn tool_results_lead_a_merged_user_message() {
+    let call = message::AssistantContent::tool_call(
+        "toolu_1",
+        message::ToolName::new("add").expect("tool name"),
+        json!({"x": 1}),
+    );
+    let body = prepared_body(vec![
+        message::Message::user("add"),
+        message::Message::Assistant(message::AssistantMessage::new(vec![call])),
+        message::Message::user("also this"),
+        message::Message::User {
+            content: vec![
+                message::UserContent::text("and this"),
+                message::UserContent::tool_result(
+                    message::CallId::from_wire("toolu_1"),
+                    message::ToolName::new("add").expect("tool name"),
+                    vec![message::ToolResultContent::text("2")],
+                ),
+            ],
+        },
+    ]);
+    let content = &body["messages"][2]["content"];
+    assert_eq!(content[0]["type"], json!("tool_result"), "{body:#}");
+    assert_eq!(content[0]["tool_use_id"], json!("toolu_1"));
+    assert_eq!(content[1]["text"], json!("also this"));
+    assert_eq!(content[2]["text"], json!("and this"));
+}
