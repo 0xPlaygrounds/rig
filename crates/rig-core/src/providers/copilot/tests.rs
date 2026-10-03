@@ -1,4 +1,5 @@
-use super::{CopilotIntent, base_url_from_token, default_headers};
+use super::auth::base_url_from_token;
+use super::{CopilotIntent, default_headers};
 
 /// The envelope declares the conversation intent, and the default is the
 /// chat panel. Both routes stamp this same header set.

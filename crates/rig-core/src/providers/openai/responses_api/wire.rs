@@ -138,25 +138,6 @@ impl Responses {
     pub fn with_system_instructions_as_messages(self) -> Self {
         self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
     }
-
-    /// The Responses request body this wire sends.
-    pub(crate) fn responses_request(
-        &self,
-        request: completion::CompletionRequest,
-        streaming: bool,
-    ) -> Result<Value, EncodeError> {
-        super::body(self, request, streaming)
-    }
-}
-
-/// Merge a gateway's own instructions ahead of the caller's preamble,
-/// without repeating them when the preamble already carries them.
-pub(crate) fn merge_instructions(instructions: &str, existing: Option<&str>) -> String {
-    match existing.map(str::trim).filter(|value| !value.is_empty()) {
-        Some(existing) if existing.contains(instructions) => existing.to_owned(),
-        Some(existing) => format!("{instructions}\n\n{existing}"),
-        None => instructions.to_owned(),
-    }
 }
 
 impl Wire for Responses {
@@ -294,17 +275,8 @@ impl crate::completion::ReplayTarget for Responses {
         _model: &str,
         _source: Option<&crate::message::Origin>,
     ) -> String {
-        let sanitized: String = id
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .take(64)
-            .collect();
+        let legal = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+        let sanitized: String = id.replace(|c| !legal(c), "_").chars().take(64).collect();
         sanitized.trim_end_matches('_').to_owned()
     }
 }

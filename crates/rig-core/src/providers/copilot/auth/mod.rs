@@ -21,6 +21,58 @@ pub fn default_token_dir() -> Option<PathBuf> {
     crate::providers::internal::auth::config_dir().map(|dir| dir.join("github_copilot"))
 }
 
+/// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment.
+///
+/// The endpoint is parsed from a credential string, not from explicit caller
+/// configuration. For that reason, token-derived routing is limited to GitHub
+/// Copilot service hosts and HTTPS. Callers that need a custom non-GitHub host
+/// can still opt in explicitly with [`CopilotConfig::with_base_url`](super::CopilotConfig::with_base_url).
+pub(crate) fn base_url_from_token(token: &str) -> Option<String> {
+    let proxy_ep = token
+        .split(';')
+        .find_map(|part| part.trim().strip_prefix("proxy-ep="))?
+        .trim();
+
+    normalize_copilot_proxy_endpoint(proxy_ep)
+}
+
+fn normalize_copilot_proxy_endpoint(proxy_ep: &str) -> Option<String> {
+    if proxy_ep.is_empty() {
+        return None;
+    }
+
+    let candidate = if proxy_ep.starts_with("http://") || proxy_ep.starts_with("https://") {
+        proxy_ep.to_string()
+    } else {
+        format!("https://{proxy_ep}")
+    };
+
+    let mut url = url::Url::parse(&candidate).ok()?;
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+        return None;
+    }
+    if url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
+        return None;
+    }
+
+    let host = url.host_str()?.to_ascii_lowercase();
+    if !is_allowed_token_derived_copilot_host(&host) {
+        return None;
+    }
+
+    let api_host = host
+        .strip_prefix("proxy.")
+        .map(|suffix| format!("api.{suffix}"))
+        .unwrap_or(host);
+    url.set_host(Some(&api_host)).ok()?;
+
+    Some(url.to_string().trim_end_matches('/').to_string())
+}
+
+fn is_allowed_token_derived_copilot_host(host: &str) -> bool {
+    host == "githubcopilot.com" || host.ends_with(".githubcopilot.com")
+}
+
 #[derive(Clone)]
 pub enum AuthSource {
     ApiKey(String),

@@ -23,48 +23,31 @@ use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 
+/// The item events this decoder reads, after their `response.` prefix.
+const ITEM_EVENTS: &str = "output_item.added output_item.done content_part.added content_part.done \
+    output_text.delta output_text.done refusal.delta refusal.done function_call_arguments.delta \
+    function_call_arguments.done custom_tool_call_input.delta custom_tool_call_input.done \
+    reasoning_summary_part.added reasoning_summary_part.done reasoning_summary_text.delta \
+    reasoning_summary_text.done reasoning_text.delta reasoning_text.done";
+
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
 /// any other type passes through as unknown.
 fn is_known_responses_event_type(kind: &str) -> bool {
     kind == "error"
         || is_lifecycle_event(kind)
-        || matches!(
-            kind.strip_prefix("response."),
-            Some(
-                "output_item.added"
-                    | "output_item.done"
-                    | "content_part.added"
-                    | "content_part.done"
-                    | "output_text.delta"
-                    | "output_text.done"
-                    | "refusal.delta"
-                    | "refusal.done"
-                    | "function_call_arguments.delta"
-                    | "function_call_arguments.done"
-                    | "custom_tool_call_input.delta"
-                    | "custom_tool_call_input.done"
-                    | "reasoning_summary_part.added"
-                    | "reasoning_summary_part.done"
-                    | "reasoning_summary_text.delta"
-                    | "reasoning_summary_text.done"
-                    | "reasoning_text.delta"
-                    | "reasoning_text.done"
-            )
-        )
+        || kind
+            .strip_prefix("response.")
+            .is_some_and(|event| ITEM_EVENTS.split_whitespace().any(|known| known == event))
 }
 
 /// Whether `kind` is a response lifecycle event, which carries the response
 /// object under `response`.
 pub(crate) fn is_lifecycle_event(kind: &str) -> bool {
-    matches!(
-        kind,
-        "response.created"
-            | "response.queued"
-            | "response.in_progress"
-            | "response.completed"
-            | "response.failed"
-            | "response.incomplete"
-    )
+    kind.strip_prefix("response.").is_some_and(|event| {
+        "created queued in_progress completed failed incomplete"
+            .split(' ')
+            .any(|known| known == event)
+    })
 }
 
 /// A classified Responses payload.
@@ -165,14 +148,6 @@ impl Kind {
     }
 }
 
-/// The field a text delta arrived in.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Field {
-    Message,
-    Summary,
-    Reasoning,
-}
-
 /// One output item of the reply, as the decoder saw it.
 struct Slot {
     /// The writer index its block opened at.
@@ -185,7 +160,7 @@ struct Slot {
     /// extended it: a new part of reasoning starts a paragraph, and a second
     /// field restating the same reasoning is not appended.
     text: String,
-    field: Option<Field>,
+    field: Option<&'static str>,
     part: u64,
     /// A call's streamed argument text, or a custom call's input.
     arguments: String,
@@ -243,15 +218,10 @@ fn text_of(item: &Value) -> String {
     };
     match Kind::of(item) {
         Kind::Message => texts("content").concat(),
-        Kind::Reasoning => {
-            let summary = texts("summary");
-            if summary.is_empty() {
-                texts("content")
-            } else {
-                summary
-            }
-            .join("\n\n")
-        }
+        Kind::Reasoning => Some(texts("summary"))
+            .filter(|summary| !summary.is_empty())
+            .unwrap_or_else(|| texts("content"))
+            .join("\n\n"),
         Kind::Call | Kind::Opaque => String::new(),
     }
 }
@@ -274,13 +244,14 @@ fn stating(mut item: Value, kind: Kind, text: &str) -> Value {
 
 /// The provider's own words for a failed or cancelled response.
 fn provider_message(response: &Value, fallback: &str) -> String {
-    let code = response.at("/error/code").and_then(Value::as_str);
-    let message = response.at("/error/message").and_then(Value::as_str);
-    match (code, message) {
-        (Some(code), Some(message)) => format!("{code}: {message}"),
-        (None, Some(message)) => message.to_owned(),
-        (Some(code), None) => code.to_owned(),
-        (None, None) => fallback.to_owned(),
+    let parts: Vec<&str> = ["/error/code", "/error/message"]
+        .iter()
+        .filter_map(|pointer| response.at(pointer).and_then(Value::as_str))
+        .collect();
+    if parts.is_empty() {
+        fallback.to_owned()
+    } else {
+        parts.join(": ")
     }
 }
 
@@ -435,11 +406,7 @@ impl ResponsesDecoder {
                 out.open(at, Block::Opaque { replay }, item.clone())?;
             }
         }
-        let arguments = if custom {
-            item.str("input")
-        } else {
-            item.str("arguments")
-        };
+        let arguments = item.str(if custom { "input" } else { "arguments" });
         self.slots.push(Slot {
             at,
             kind,
@@ -482,14 +449,15 @@ impl ResponsesDecoder {
         complete: bool,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        for at in std::mem::take(&mut self.held) {
-            if complete {
-                out.finish(at)?;
-            } else {
-                out.close(at)?;
-            }
-        }
-        Ok(())
+        std::mem::take(&mut self.held)
+            .into_iter()
+            .try_for_each(|at| {
+                if complete {
+                    out.finish(at)
+                } else {
+                    out.close(at)
+                }
+            })
     }
 
     /// Append a text delta of `field` to the item `frame` addresses,
@@ -497,18 +465,18 @@ impl ResponsesDecoder {
     fn text(
         &mut self,
         frame: &Value,
-        field: Field,
-        part: u64,
+        field: &'static str,
+        part: &str,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         let delta = frame.str("delta").unwrap_or_default();
         if delta.is_empty() {
             return Ok(());
         }
-        let kind = if field == Field::Message {
-            Kind::Message
-        } else {
-            Kind::Reasoning
+        let part = frame.u64(part).unwrap_or(0);
+        let kind = match field {
+            "message" => Kind::Message,
+            _ => Kind::Reasoning,
         };
         let known = self.addressed(frame, kind)?.and_then(|at| {
             let slot = self.slots.get(at)?;
@@ -531,7 +499,7 @@ impl ResponsesDecoder {
         if streamed.field.is_some_and(|known| known != field) {
             return Ok(());
         }
-        if streamed.part != part && field != Field::Message && !streamed.text.is_empty() {
+        if streamed.part != part && kind != Kind::Message && !streamed.text.is_empty() {
             streamed.text.push_str("\n\n");
             out.push(streamed.at, "\n\n")?;
         }
@@ -620,7 +588,6 @@ impl ResponsesDecoder {
         frame: Value,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        let number = |key| frame.u64(key).unwrap_or(0);
         match kind {
             "response.output_item.added" | "response.output_item.done" => {
                 let Some(item) = frame.get("item").filter(|item| item.is_object()) else {
@@ -655,14 +622,12 @@ impl ResponsesDecoder {
             }
             // A refusal is the assistant's message for that turn.
             "response.output_text.delta" | "response.refusal.delta" => {
-                self.text(&frame, Field::Message, number("content_index"), out)
+                self.text(&frame, "message", "content_index", out)
             }
             "response.reasoning_summary_text.delta" => {
-                self.text(&frame, Field::Summary, number("summary_index"), out)
+                self.text(&frame, "summary", "summary_index", out)
             }
-            "response.reasoning_text.delta" => {
-                self.text(&frame, Field::Reasoning, number("content_index"), out)
-            }
+            "response.reasoning_text.delta" => self.text(&frame, "reasoning", "content_index", out),
             "response.function_call_arguments.delta" | "response.custom_tool_call_input.delta" => {
                 self.arguments(&frame)
             }

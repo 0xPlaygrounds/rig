@@ -75,7 +75,7 @@ pub const DIALECT: Dialect = Dialect {
 };
 
 static HOOKS: DialectHooks = DialectHooks {
-    default_endpoint: Some(super::base_url_from_token),
+    default_endpoint: Some(super::auth::base_url_from_token),
     model_route: Some(|model| {
         if routes_through_responses(model) {
             Route::Responses
@@ -141,7 +141,11 @@ impl CopilotConfig {
     /// Derive a permitted endpoint from `proxy-ep=` when present, otherwise use
     /// the default. Explicit base-URL settings override token-derived routing.
     pub fn new(api_key: impl Into<Secret>) -> Self {
-        credential_of(&OpenAIConfig::with_key(&DIALECT, api_key))
+        let provider = OpenAIConfig::with_key(&DIALECT, api_key);
+        Self {
+            api_key: provider.api_key,
+            base_url: provider.base_url,
+        }
     }
 
     /// Configure Copilot from an exchanged auth context.
@@ -180,11 +184,6 @@ impl CopilotConfig {
 
     /// The completion wire for `model`, on whichever route answers it.
     pub(crate) fn completion(&self, model: impl Into<String>) -> CopilotWire {
-        self.wire_for(model)
-    }
-
-    /// Shared construction for the inherent and trait completion entry points.
-    fn wire_for(&self, model: impl Into<String>) -> CopilotWire {
         CopilotWire {
             wire: self.openai().completion(model),
             intent: CopilotIntent::default(),
@@ -292,15 +291,6 @@ impl CopilotWire {
             self.wire = OpenAiWire::Chat(wire.with_tool_result_array_content());
         }
         self
-    }
-}
-
-/// The Copilot credential behind the shared configuration
-/// [`Copilot::new`] resolves its endpoint through.
-fn credential_of(provider: &OpenAIConfig) -> CopilotConfig {
-    CopilotConfig {
-        api_key: provider.api_key.clone(),
-        base_url: provider.base_url.clone(),
     }
 }
 

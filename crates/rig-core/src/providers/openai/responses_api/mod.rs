@@ -227,27 +227,24 @@ fn input(
                             let call_id = spelled(&call.id);
                             let name = call.function.name.as_str();
                             let kind = identity.get("type").and_then(Value::as_str);
-                            if kind == Some("custom_tool_call")
+                            let arguments = call.function.arguments_value().to_string();
+                            let (kind, key, payload, prefix) = if kind == Some("custom_tool_call")
                                 || (kind.is_none() && custom.tools.contains(name))
                             {
                                 custom.calls.insert(call_id.clone());
-                                let input = match call.function.arguments.get("input") {
-                                    Some(Value::String(input)) => input.clone(),
-                                    _ => call.function.arguments_value().to_string(),
-                                };
-                                let mut item = json!({"type": "custom_tool_call", "call_id": call_id, "name": name, "input": input});
-                                if let Some(id) = id("ctc_") {
-                                    set(&mut item, "id", json!(id));
-                                }
-                                item
+                                let input =
+                                    call.function.arguments.get("input").and_then(Value::as_str);
+                                let input = input.map_or(arguments, str::to_owned);
+                                ("custom_tool_call", "input", input, "ctc_")
                             } else {
-                                let arguments = call.function.arguments_value().to_string();
-                                let mut item = json!({"type": "function_call", "call_id": call_id, "name": name, "arguments": arguments});
-                                if let Some(id) = id("fc_") {
-                                    set(&mut item, "id", json!(id));
-                                }
-                                item
+                                ("function_call", "arguments", arguments, "fc_")
+                            };
+                            let mut item = json!({"type": kind, "call_id": call_id, "name": name});
+                            set(&mut item, key, Value::String(payload));
+                            if let Some(id) = id(prefix) {
+                                set(&mut item, "id", json!(id));
                             }
+                            item
                         }
                         // An edited reasoning block keeps its item's id and
                         // ciphertext, so the items after it stay paired.
@@ -304,167 +301,170 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
 /// from stored state.
 fn include_ciphertext(body: &mut Value) {
     const CIPHERTEXT: &str = "reasoning.encrypted_content";
-    if !body["include"].is_array() {
-        set(body, "include", json!([]));
-    }
-    if let Some(include) = body["include"].as_array_mut()
-        && !include.iter().any(|item| item == CIPHERTEXT)
-    {
+    let mut include = body.arr("include").to_vec();
+    if !include.iter().any(|item| item == CIPHERTEXT) {
         include.push(json!(CIPHERTEXT));
     }
+    set(body, "include", Value::Array(include));
 }
 
-/// The request body `wire` sends for `request`.
-fn body(
-    wire: &wire::Responses,
-    mut request: completion::CompletionRequest,
-    streaming: bool,
-) -> Result<Value, EncodeError> {
-    let model = request.model.take().unwrap_or_else(|| wire.model.clone());
-    let mut params = match request.additional_params.take() {
-        None | Some(Value::Null) => Map::new(),
-        Some(Value::Object(params)) => params,
-        Some(_) => {
-            return Err(EncodeError::request(
-                "Invalid OpenAI Responses additional_params payload: not an object",
-            ));
-        }
-    };
-    params.shift_remove("stream");
-    let mut tools: Vec<ResponsesToolDefinition> = request
-        .tools
-        .into_iter()
-        .map(ResponsesToolDefinition::from)
-        .collect();
-    if let Some(extra) = params.shift_remove("tools") {
-        tools.extend(
-            serde_json::from_value::<Vec<ResponsesToolDefinition>>(extra).map_err(|err| {
-                EncodeError::request(format!(
-                    "Invalid OpenAI Responses tools payload in additional_params: {err}"
-                ))
-            })?,
-        );
-    }
-    tools.extend(wire.tools.iter().cloned());
-    if wire.strict_tools {
-        tools = tools
+impl wire::Responses {
+    /// The Responses request body this wire sends.
+    pub(crate) fn responses_request(
+        &self,
+        mut request: completion::CompletionRequest,
+        streaming: bool,
+    ) -> Result<Value, EncodeError> {
+        let model = request.model.take().unwrap_or_else(|| self.model.clone());
+        let mut params = match request.additional_params.take() {
+            None | Some(Value::Null) => Map::new(),
+            Some(Value::Object(params)) => params,
+            Some(_) => {
+                return Err(EncodeError::request(
+                    "Invalid OpenAI Responses additional_params payload: not an object",
+                ));
+            }
+        };
+        params.shift_remove("stream");
+        let mut tools: Vec<ResponsesToolDefinition> = request
+            .tools
             .into_iter()
-            .map(ResponsesToolDefinition::with_strict)
+            .map(ResponsesToolDefinition::from)
             .collect();
-    }
-    let mut custom = Custom {
-        tools: tools
-            .iter()
-            .filter(|tool| tool.kind == "custom")
-            .map(|tool| tool.name.clone())
-            .collect(),
-        calls: Default::default(),
-    };
-    let mut input = input(&request.chat_history, wire, &model, &mut custom)?;
-
-    let system = |item: &Value| {
-        (item.str("role") == Some("system")).then(|| {
-            item.at("/content/0/text")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned()
-        })
-    };
-    let before = input.len();
-    let mut lifted = Vec::new();
-    match wire.system_instructions {
-        // The leading run of system messages, unless it is the whole
-        // request, which then keeps them in `input` so it is not empty.
-        SystemInstructionsPlacement::Instructions => {
-            let leading = input
+        if let Some(extra) = params.shift_remove("tools") {
+            tools.extend(
+                serde_json::from_value::<Vec<ResponsesToolDefinition>>(extra).map_err(|err| {
+                    EncodeError::request(format!(
+                        "Invalid OpenAI Responses tools payload in additional_params: {err}"
+                    ))
+                })?,
+            );
+        }
+        tools.extend(self.tools.iter().cloned());
+        if self.strict_tools {
+            tools = tools
+                .into_iter()
+                .map(ResponsesToolDefinition::with_strict)
+                .collect();
+        }
+        let mut custom = Custom {
+            tools: tools
                 .iter()
-                .take_while(|item| system(item).is_some())
-                .count();
-            if leading < input.len() {
-                lifted.extend(input.drain(..leading).filter_map(|item| system(&item)));
-            }
-        }
-        SystemInstructionsPlacement::AllInstructions => input.retain(|item| match system(item) {
-            Some(text) => {
-                lifted.push(text);
-                false
-            }
-            None => true,
-        }),
-        SystemInstructionsPlacement::InputSystemMessages => {}
-    }
-    if input.is_empty() {
-        return Err(EncodeError::request(if input.len() < before {
-            "OpenAI Responses request input must contain at least one non-system item \
-             (system messages were lifted into the top-level `instructions` field)"
-        } else {
-            "OpenAI Responses request input must contain at least one item"
-        }));
-    }
-    let lifted: Vec<&str> = lifted
-        .iter()
-        .map(|text| text.trim())
-        .filter(|text| !text.is_empty())
-        .collect();
-    let instructions = match (&wire.provider.instructions, lifted.is_empty()) {
-        (Some(gateway), _) => Some(wire::merge_instructions(
-            gateway,
-            Some(&lifted.join("\n\n")),
-        )),
-        (None, false) => Some(lifted.join("\n\n")),
-        (None, true) => None,
-    };
+                .filter(|tool| tool.kind == "custom")
+                .map(|tool| tool.name.clone())
+                .collect(),
+            calls: Default::default(),
+        };
+        let mut input = input(&request.chat_history, self, &model, &mut custom)?;
 
-    let mut body = json!({"model": model, "input": input});
-    let fields = [
-        ("instructions", instructions.map(Value::from)),
-        ("max_output_tokens", request.max_tokens.map(Value::from)),
-        ("temperature", request.temperature.map(Value::from)),
-        (
-            "tool_choice",
-            request.tool_choice.map(tool_choice).transpose()?,
-        ),
-        ("tools", (!tools.is_empty()).then(|| json!(tools))),
-        ("stream", streaming.then_some(Value::Bool(true))),
-    ];
-    for (key, value) in fields {
-        if let Some(value) = value {
-            set(&mut body, key, value);
+        let system = |item: &Value| {
+            (item.str("role") == Some("system")).then(|| {
+                item.at("/content/0/text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            })
+        };
+        let before = input.len();
+        let mut lifted = Vec::new();
+        match self.system_instructions {
+            // The leading run of system messages, unless it is the whole
+            // request, which then keeps them in `input` so it is not empty.
+            SystemInstructionsPlacement::Instructions => {
+                let leading = input
+                    .iter()
+                    .take_while(|item| system(item).is_some())
+                    .count();
+                if leading < input.len() {
+                    lifted.extend(input.drain(..leading).filter_map(|item| system(&item)));
+                }
+            }
+            SystemInstructionsPlacement::AllInstructions => {
+                input.retain(|item| match system(item) {
+                    Some(text) => {
+                        lifted.push(text);
+                        false
+                    }
+                    None => true,
+                })
+            }
+            SystemInstructionsPlacement::InputSystemMessages => {}
         }
-    }
-    for (key, value) in params {
-        if !value.is_null() && body.get(&key).is_none() {
-            set(&mut body, &key, value);
+        if input.is_empty() {
+            return Err(EncodeError::request(if input.len() < before {
+                "OpenAI Responses request input must contain at least one non-system item \
+             (system messages were lifted into the top-level `instructions` field)"
+            } else {
+                "OpenAI Responses request input must contain at least one item"
+            }));
         }
-    }
-    if body.get("text").is_none()
-        && let Some(schema) = request.output_schema
-    {
-        let (name, schema) = super::structured_output_schema(schema);
-        set(
-            &mut body,
-            "text",
-            json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}}),
-        );
-    }
-    let codex = wire.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
-    if codex {
-        // The codex gateway takes the turn and the tools; sampling, storage,
-        // metadata and structured output are not its to accept, and
-        // `store: false` is the one value it wants stated.
-        const UNACCEPTED: &str = "temperature max_output_tokens background metadata parallel_tool_calls service_tier text top_p user";
-        if let Some(fields) = body.as_object_mut() {
-            UNACCEPTED.split(' ').for_each(|key| {
-                fields.shift_remove(key);
-            });
+        let lifted: Vec<&str> = lifted
+            .iter()
+            .map(|text| text.trim())
+            .filter(|text| !text.is_empty())
+            .collect();
+        let lifted = lifted.join("\n\n");
+        // A gateway's own instructions go ahead of the caller's, once.
+        let instructions = match &self.provider.instructions {
+            Some(gateway) if lifted.is_empty() => Some(gateway.clone()),
+            Some(gateway) if !lifted.contains(gateway.as_str()) => {
+                Some(format!("{gateway}\n\n{lifted}"))
+            }
+            _ => (!lifted.is_empty()).then_some(lifted),
+        };
+
+        let mut body = json!({"model": model, "input": input});
+        let fields = [
+            ("instructions", instructions.map(Value::from)),
+            ("max_output_tokens", request.max_tokens.map(Value::from)),
+            ("temperature", request.temperature.map(Value::from)),
+            (
+                "tool_choice",
+                request.tool_choice.map(tool_choice).transpose()?,
+            ),
+            ("tools", (!tools.is_empty()).then(|| json!(tools))),
+            ("stream", streaming.then_some(Value::Bool(true))),
+        ];
+        for (key, value) in fields {
+            if let Some(value) = value {
+                set(&mut body, key, value);
+            }
         }
-        set(&mut body, "store", json!(false));
+        for (key, value) in params {
+            if !value.is_null() && body.get(&key).is_none() {
+                set(&mut body, &key, value);
+            }
+        }
+        if body.get("text").is_none()
+            && let Some(schema) = request.output_schema
+        {
+            let (name, schema) = super::structured_output_schema(schema);
+            set(
+                &mut body,
+                "text",
+                json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}}),
+            );
+        }
+        let codex =
+            self.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
+        if codex {
+            // The codex gateway takes the turn and the tools; sampling, storage,
+            // metadata and structured output are not its to accept, and
+            // `store: false` is the one value it wants stated.
+            const UNACCEPTED: &str = "temperature max_output_tokens background metadata parallel_tool_calls service_tier text top_p user";
+            if let Some(fields) = body.as_object_mut() {
+                UNACCEPTED.split(' ').for_each(|key| {
+                    fields.shift_remove(key);
+                });
+            }
+            set(&mut body, "store", json!(false));
+        }
+        // Reasoning replays without stored state only with its ciphertext.
+        if codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)) {
+            include_ciphertext(&mut body);
+        }
+        Ok(body)
     }
-    // Reasoning replays without stored state only with its ciphertext.
-    if codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)) {
-        include_ciphertext(&mut body);
-    }
-    Ok(body)
 }
 
 /// A function or hosted tool available to a Responses request.
