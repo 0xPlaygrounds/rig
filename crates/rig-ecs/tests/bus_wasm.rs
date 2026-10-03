@@ -359,6 +359,10 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
         assert!(matches!(
             stream.as_mut().poll_next(&mut cx),
+            std::task::Poll::Ready(Some(Ok(Relayed::Origin(_))))
+        ));
+        assert!(matches!(
+            stream.as_mut().poll_next(&mut cx),
             std::task::Poll::Ready(Some(Ok(Relayed::Done(_))))
         ));
         assert!(stream.as_mut().poll_next(&mut cx).is_pending());
