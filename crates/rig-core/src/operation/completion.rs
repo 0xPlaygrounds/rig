@@ -1069,8 +1069,8 @@ impl<'id> Out<'id, Completion> {
         fold.push_item(items, index, fragment)
     }
 
-    /// Edit the item at `index` in place, for a delta [`Self::merge`] does
-    /// not model or the whole item a provider restates when it finishes.
+    /// Edit the item at `index` in place: apply a delta with [`merge`], or
+    /// replace the whole item a provider restates when it finishes.
     /// Until the reply ends, an index whose block already closed edits that
     /// block's item: the terminal backfill of a field the provider states
     /// only at its end.
