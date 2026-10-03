@@ -47,6 +47,15 @@ fn sent(model: &str, history: Vec<Message>) -> Value {
     sent_on(&Converse::new(model), history)
 }
 
+/// The body `history` sends to `model` in a request that declares a tool,
+/// so its `toolConfig` can carry a hosted tool's use and result.
+fn sent_with_tools(model: &str, history: Vec<Message>) -> Value {
+    let mut request = CompletionRequest::new("next");
+    request.tools = vec![tool("lookup")];
+    request.chat_history = history;
+    encoded(&Converse::new(model), request, Mode::Unary)
+}
+
 fn call(id: &str, tool: &str, arguments: Value) -> ToolCall {
     ToolCall::new(
         CallId::from_wire(id),
@@ -590,7 +599,7 @@ fn a_stored_item_goes_back_with_whole_numbers() {
         json!({ "documentIndex": 0, "start": 2.5, "end": [24, 7] })
     );
     let [used, result] = hosted();
-    let body = sent(
+    let body = sent_with_tools(
         NOVA,
         vec![
             Message::user("q"),
@@ -627,8 +636,16 @@ fn a_hosted_use_replays_only_with_its_result() {
             origin: Some(origin.clone()),
             stop: Some(StopReason::Stop),
         };
-        let body = sent(NOVA, vec![Message::user("q"), Message::Assistant(turn)]);
+        let history = vec![Message::user("q"), Message::Assistant(turn)];
+        let body = sent_with_tools(NOVA, history.clone());
         let blocks = body["messages"][1]["content"].as_array().expect("content");
         assert_eq!(blocks.len(), sent_items + 1, "{body}");
+        // A request with no tools has no toolConfig to carry the pair.
+        let body = sent(NOVA, history);
+        assert_eq!(
+            body["messages"][1]["content"],
+            json!([{"text": "done"}]),
+            "{body}"
+        );
     }
 }

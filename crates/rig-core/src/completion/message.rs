@@ -66,36 +66,6 @@ impl AssistantMessage {
     }
 }
 
-/// Shared error text for an invalid empty response choice.
-/// Provider decoders must exempt legal empty outcomes, including recognized
-/// output truncation, before calling [`require_non_empty_response`].
-pub const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
-
-/// Returns `items` unchanged unless the list is empty, then calls `error` once.
-/// Does not inspect individual items: empty text can carry replay signatures.
-/// Request conversions that discard content must validate the converted list
-/// when their wire requires at least one block.
-pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<Vec<T>, E> {
-    if items.is_empty() {
-        return Err(error());
-    }
-    Ok(items)
-}
-
-/// Returns a response error using [`EMPTY_RESPONSE_ERROR`] for an empty list.
-/// Callers must handle provider-legal empty outcomes before invoking this guard.
-pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, ProviderError> {
-    require_non_empty(items, || {
-        ProviderError::Response(EMPTY_RESPONSE_ERROR.to_owned())
-    })
-}
-
-/// Returns `None` for an empty list or `Some(items)` otherwise.
-/// Individual items are not inspected.
-pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
-    if items.is_empty() { None } else { Some(items) }
-}
-
 /// Returns whether the choice contains no nonempty text, tool call, or image.
 /// Reasoning and provider-only items are not an answer, even when retained
 /// in history.

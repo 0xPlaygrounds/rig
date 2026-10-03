@@ -154,7 +154,7 @@ impl ReplayTarget for Interactions {
         _model: &str,
         _: Option<&crate::message::Origin>,
     ) -> String {
-        normalize_tool_call_id(id)
+        crate::providers::gemini::completion::legal_call_id(id)
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {
@@ -191,18 +191,6 @@ fn encodes(media: Media<'_>) -> bool {
             (Some(_), data) => matches!(data, Source::String(_)),
         },
     }
-}
-
-/// A foreign call id as this wire accepts it: `[a-zA-Z0-9_-]`, at most 64
-/// characters.
-fn normalize_tool_call_id(id: &str) -> String {
-    id.chars()
-        .map(|c| match c {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' => c,
-            _ => '_',
-        })
-        .take(64)
-        .collect()
 }
 
 /// Read an existing interaction resource or resume its event stream.
@@ -315,7 +303,7 @@ impl ReplayTarget for InteractionResume {
         _model: &str,
         _: Option<&crate::message::Origin>,
     ) -> String {
-        normalize_tool_call_id(id)
+        crate::providers::gemini::completion::legal_call_id(id)
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {

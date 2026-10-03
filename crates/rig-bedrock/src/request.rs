@@ -9,7 +9,7 @@ use base64::Engine as _;
 use base64::alphabet::STANDARD;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 use base64::prelude::BASE64_STANDARD;
-use rig_core::completion::{CompletionRequest, Message, Replay};
+use rig_core::completion::{CompletionRequest, Message, Replay, ReplayTarget};
 use rig_core::error::EncodeError;
 use rig_core::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, MimeType, ToolChoice,
@@ -63,6 +63,9 @@ pub(crate) fn body(
         system.push(json!({ "cachePoint": { "type": "default" } }));
     }
     let ids = WireIds::for_target(history, wire, model);
+    // Converse takes a hosted tool's use and result only beside a
+    // `toolConfig`.
+    let hosted = tool_config(&request).is_some();
     let mut messages: Vec<Value> = Vec::new();
     for message in history {
         let mut content = Vec::new();
@@ -82,7 +85,7 @@ pub(crate) fn body(
             }
             Message::Assistant(turn) => {
                 for block in &turn.content {
-                    content.extend(assistant(block, wire, family, &ids)?);
+                    content.extend(assistant(block, wire, family, &ids, hosted)?);
                 }
                 "assistant"
             }
@@ -190,15 +193,19 @@ fn tool_config(request: &CompletionRequest) -> Option<Value> {
 }
 
 /// The Converse block for one assistant block, or `None` when there is
-/// nothing to send.
+/// nothing to send. A hosted tool's use or result goes only when the
+/// request carries a `toolConfig` (`hosted`).
 fn assistant(
     block: &AssistantContent,
     wire: &Converse,
     family: Family,
     ids: &WireIds,
+    hosted: bool,
 ) -> Result<Option<Value>, EncodeError> {
     if let AssistantContent::Opaque(opaque) = block {
-        return Ok(opaque.replay.then(|| whole_numbers(opaque.item.clone())));
+        let sendable =
+            opaque.replay && (hosted || ReplayTarget::hosted_pair(wire, &opaque.item).is_none());
+        return Ok(sendable.then(|| whole_numbers(opaque.item.clone())));
     }
     if let Replay::Item(item) = block.replay(wire, ids) {
         return Ok(Some(whole_numbers(item.into_owned())));
@@ -206,7 +213,7 @@ fn assistant(
     Ok(match block {
         AssistantContent::Text(text) => Some(json!({ "text": text.text })),
         AssistantContent::ToolCall(call) => Some(json!({ "toolUse": {
-            "toolUseId": ids.of(&call.id).map_or_else(|| call.id.wire(), Into::into),
+            "toolUseId": ids.spell(&call.id),
             "name": call.function.name.as_str(),
             "input": call.function.arguments,
         } })),
@@ -274,7 +281,7 @@ fn user(content: &UserContent, family: Family, ids: &WireIds) -> Result<Vec<Valu
             // documents the field for Nova and Claude only.
             let failed = result.is_error && family != Family::Other;
             let block = present(json!({
-                "toolUseId": ids.of(&result.call).map_or_else(|| result.call.wire(), Into::into),
+                "toolUseId": ids.spell(&result.call),
                 "content": parts,
                 "status": failed.then_some("error"),
             }));

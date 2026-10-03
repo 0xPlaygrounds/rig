@@ -550,30 +550,18 @@ impl<T> WireEvent<T> {
     }
 }
 
-/// Where a decoder writes one reply. The `'id` brand ties it, and every
-/// part handle it hands out, to that one reply: a handle cannot be used
-/// with another reply's writer or kept past its own.
+/// Where a decoder writes one reply. The `'id` brand ties it to that one
+/// reply: a writer cannot be kept past the decode step that received it.
 ///
 /// ```compile_fail
 /// use rig_core::operation::Completion;
 /// use rig_core::wire::Out;
 ///
-/// // A text part opened on one reply cannot grow on another.
-/// fn cross<'a, 'b>(a: &mut Out<'a, Completion>, b: &mut Out<'b, Completion>) {
-///     let part = a.text();
-///     b.push_text(&part, "x");
-/// }
-/// ```
+/// // A writer cannot be stashed to write into the reply later.
+/// struct Stash(Option<Out<'static, Completion>>);
 ///
-/// ```compile_fail
-/// use rig_core::operation::{Completion, TextPart};
-/// use rig_core::wire::Out;
-///
-/// // A handle cannot outlive its reply to be used on a later one.
-/// struct Stash(Option<TextPart<'static>>);
-///
-/// fn keep<'id>(stash: &mut Stash, out: &mut Out<'id, Completion>) {
-///     stash.0 = Some(out.text());
+/// fn keep<'id>(stash: &mut Stash, out: Out<'id, Completion>) {
+///     stash.0 = Some(out);
 /// }
 /// ```
 pub struct Out<'id, Op: Operation> {

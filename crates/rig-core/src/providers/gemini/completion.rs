@@ -363,6 +363,11 @@ pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
     if !requires_tool_call_id(model) {
         return id.to_owned();
     }
+    legal_call_id(id)
+}
+
+/// `id` in the alphabet and length Gemini's call ids take.
+pub(crate) fn legal_call_id(id: &str) -> String {
     id.chars()
         .map(|c| match c {
             'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' => c,

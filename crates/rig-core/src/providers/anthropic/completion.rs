@@ -118,9 +118,18 @@ pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
     listed(model).is_some_and(|[_, rejects, _]| rejects)
 }
 
-/// Whether `model` binds its thinking blocks to the request's context.
-pub(crate) fn binds_context(model: &str) -> bool {
-    listed(model).is_some_and(|[_, _, binds]| binds)
+/// Whether the Claude `model` binds its thinking blocks to the request's
+/// tools and system prompt, however the serving API spells it: Anthropic's
+/// `claude-opus-5-5`, OpenRouter's `anthropic/claude-opus-5.5`, or Bedrock's
+/// `us.anthropic.claude-opus-5-5-v1:0`. Every wire that serves Claude reads
+/// this one table.
+pub fn binds_context(model: &str) -> bool {
+    let model = model
+        .rsplit_once("anthropic.")
+        .map_or(model, |(_, rest)| rest);
+    let model = model.strip_prefix("anthropic/").unwrap_or(model);
+    let model = model.split_once("-v1:").map_or(model, |(id, _)| id);
+    listed(&model.replace('.', "-")).is_some_and(|[_, _, binds]| binds)
 }
 
 /// The Messages request body for `request`, already prepared, on `wire`.
@@ -271,12 +280,6 @@ fn message_json(
     Ok((!content.is_empty()).then(|| json!({ "role": role, "content": content })))
 }
 
-/// The wire spelling of `call`.
-fn spelled(ids: &WireIds, call: &message::CallId) -> String {
-    ids.of(call)
-        .map_or_else(|| call.wire().into_owned(), str::to_owned)
-}
-
 /// One user block on the wire. `None` for blank text, which Anthropic
 /// rejects (pi's rule).
 fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeError> {
@@ -298,7 +301,7 @@ fn user_part(part: &UserContent, ids: &WireIds) -> Result<Option<Value>, EncodeE
             }
             Value::Object(object([
                 ("type", Some(json!("tool_result"))),
-                ("tool_use_id", Some(json!(spelled(ids, &result.call)))),
+                ("tool_use_id", Some(json!(ids.spell(&result.call)))),
                 ("content", Some(Value::Array(content))),
                 ("is_error", result.is_error.then_some(Value::Bool(true))),
             ]))
@@ -361,7 +364,7 @@ fn assistant_part(block: &AssistantContent, target: &Messages, ids: &WireIds) ->
         AssistantContent::ToolCall(call) => {
             let mut part = object([
                 ("type", Some(json!("tool_use"))),
-                ("id", Some(json!(spelled(ids, &call.id)))),
+                ("id", Some(json!(ids.spell(&call.id)))),
                 ("name", Some(json!(call.function.name.as_str()))),
                 (
                     "input",

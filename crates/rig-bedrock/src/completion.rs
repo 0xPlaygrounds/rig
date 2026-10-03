@@ -303,6 +303,13 @@ impl ReplayTarget for Converse {
         }
     }
 
+    /// Claude binds its thinking to the request's tools and system prompt
+    /// on Converse as on Anthropic's own API.
+    fn binds_context(&self, model: &str) -> bool {
+        self.family(model) == Family::Claude
+            && rig_core::providers::anthropic::completion::binds_context(model)
+    }
+
     /// Converse rejects a conversation that does not start with a user
     /// message.
     fn starts_with_user(&self) -> bool {

@@ -147,9 +147,7 @@ fn tool_message(result: &ToolResult, ids: &WireIds, array: bool) -> Result<Value
         let texts: Vec<&str> = parts.iter().filter_map(|part| part.str("text")).collect();
         Value::String(texts.join("\n"))
     };
-    let id = ids
-        .of(&result.call)
-        .map_or_else(|| result.call.wire().into_owned(), str::to_owned);
+    let id = ids.spell(&result.call);
     Ok(json!({"role": "tool", "tool_call_id": id, "content": content}))
 }
 
@@ -679,9 +677,7 @@ fn call_item(call: &ToolCall, replay: Replay<'_>, ids: &WireIds, custom: &[Strin
             declared
         }
     };
-    let id = ids
-        .of(&call.id)
-        .map_or_else(|| call.id.wire().into_owned(), str::to_owned);
+    let id = ids.spell(&call.id);
     item.insert("id".to_owned(), Value::String(id));
     let (slot, key, value) = if custom {
         let input = match call.function.arguments.get("input") {
@@ -1157,34 +1153,18 @@ impl crate::completion::ReplayTarget for Chat {
     /// `anthropic/claude-opus-5.5`.
     fn binds_context(&self, model: &str) -> bool {
         self.provider.dialect.quirks.rewrite == BodyRewrite::OpenRouter
-            && model.strip_prefix("anthropic/").is_some_and(|model| {
-                crate::providers::anthropic::completion::binds_context(&model.replace('.', "-"))
-            })
+            && model.starts_with("anthropic/")
+            && crate::providers::anthropic::completion::binds_context(model)
     }
 }
-
-/// OpenAI's Chat models that read no images.
-const OPENAI_TEXT_ONLY: [&str; 10] = [
-    models::GPT_4,
-    models::GPT_4_0613,
-    models::GPT_4_32K,
-    models::GPT_4_32K_0613,
-    models::GPT_4_0125_PREVIEW,
-    models::GPT_4_1106_PREVIEW,
-    models::GPT_4_TURBO_PREVIEW,
-    models::O1_MINI,
-    models::O1_PREVIEW,
-    models::O3_MINI,
-];
 
 /// Whether `model` reads user images from `vendor`, a dialect's name or the
 /// vendor an OpenRouter model id starts with, by the provider's documented
 /// model rules. A model the rules do not name reads them. DeepSeek's API
 /// takes text content only (it answers an image part with a 400) and
 /// Mira's gateway takes text; Groq reads images on its Llama 4 models;
-/// Mistral's Codestral and Devstral are text models; OpenAI's are GPT-3.5
-/// and [`OPENAI_TEXT_ONLY`] with their dated snapshots; Z.AI, Moonshot,
-/// MiniMax and MiMo apply the rules their Messages wires share.
+/// Mistral's Codestral and Devstral are text models; OpenAI, xAI, Z.AI,
+/// Moonshot, MiniMax and MiMo apply the rules their other wires share.
 fn vendor_reads_images(vendor: &str, model: &str) -> bool {
     use crate::providers::{minimax, moonshot, xiaomimimo, zai};
     match vendor {
@@ -1193,9 +1173,8 @@ fn vendor_reads_images(vendor: &str, model: &str) -> bool {
         "mistral" | "mistralai" => {
             !(model.starts_with("codestral") || model.starts_with("devstral"))
         }
-        "openai" | "azure.openai" => {
-            !(model.starts_with("gpt-3.5") || OPENAI_TEXT_ONLY.iter().any(|id| is_model(model, id)))
-        }
+        "openai" | "azure.openai" => crate::providers::openai::reads_images(model),
+        "xai" | "x-ai" => crate::providers::xai::reads_images(model),
         "cohere" => crate::providers::cohere::reads_images(model),
         "zai" | "z-ai" => zai::reads_images(model),
         "moonshot" | "moonshotai" => moonshot::reads_images(model),

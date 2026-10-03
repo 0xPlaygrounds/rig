@@ -137,10 +137,6 @@ fn input(
     stateless: bool,
 ) -> Result<Vec<Value>, EncodeError> {
     let ids = WireIds::for_target(history, target, model);
-    let spelled = |call: &message::CallId| {
-        ids.of(call)
-            .map_or_else(|| call.wire().into_owned(), str::to_owned)
-    };
     let mut items = Vec::new();
     for (position, message) in history.iter().enumerate() {
         match message {
@@ -158,7 +154,7 @@ fn input(
                         // A function output has no error field: a failed
                         // result says so in its text.
                         UserContent::ToolResult(result) => {
-                            let call_id = spelled(&result.call);
+                            let call_id = ids.spell(&result.call);
                             let output = result_output(&result.content)?;
                             items.push(
                                 if custom.calls.get(&call_id).copied().unwrap_or_else(|| {
@@ -255,7 +251,7 @@ fn input(
                             continue;
                         }
                         AssistantContent::ToolCall(call) => {
-                            let call_id = spelled(&call.id);
+                            let call_id = ids.spell(&call.id);
                             let name = call.function.name.as_str();
                             let kind = identity.get("type").and_then(Value::as_str);
                             let arguments = call.function.arguments_value().to_string();

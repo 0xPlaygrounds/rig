@@ -81,6 +81,13 @@ impl WireIds {
     pub fn of(&self, call: &CallId) -> Option<&str> {
         self.by_call.get(call).map(String::as_str)
     }
+
+    /// The wire spelling of `call`: [`Self::of`], or the id as it stands for
+    /// one outside the history the spellings were made for.
+    pub fn spell(&self, call: &CallId) -> String {
+        self.of(call)
+            .map_or_else(|| call.wire().into_owned(), str::to_owned)
+    }
 }
 
 #[cfg(test)]

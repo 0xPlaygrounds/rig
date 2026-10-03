@@ -279,25 +279,13 @@ impl crate::completion::ReplayTarget for Responses {
 /// Whether `model` reads images, by its vendor's documented text-only
 /// models. An unknown model reads them.
 fn reads_images(contract: ResponsesContract, model: &str) -> bool {
-    let model = model.to_ascii_lowercase();
     let model = model.rsplit('/').next().unwrap_or_default();
-    let text_only = match contract {
-        ResponsesContract::Xai => {
-            (model.starts_with("grok-2") && !model.contains("vision"))
-                || model.starts_with("grok-3")
-                || model.starts_with("grok-code")
-        }
+    match contract {
+        ResponsesContract::Xai => crate::providers::xai::reads_images(model),
         ResponsesContract::OpenAi | ResponsesContract::Codex => {
-            matches!(model, "gpt-4" | "gpt-4-0613" | "gpt-4-0314")
-                || model.starts_with("gpt-4-32k")
-                || model.starts_with("gpt-3.5")
-                || model.starts_with("o1-mini")
-                || model.starts_with("o1-preview")
-                || model.starts_with("o3-mini")
-                || model.starts_with("gpt-5.3-codex-spark")
+            crate::providers::openai::reads_images(model)
         }
-    };
-    !text_only
+    }
 }
 
 /// The facts a Responses payload carries before normalization discards

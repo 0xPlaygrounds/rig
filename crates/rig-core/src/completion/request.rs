@@ -615,8 +615,8 @@ impl CompletionRequest {
     ///
     /// Every wire rejects an empty turn, so this turns a remote 400 into a
     /// local error. It checks the request direction only: a provider may
-    /// return empty assistant content, and each wire judges its own replies
-    /// with [`crate::message::require_non_empty`]. `System` content is a
+    /// return empty assistant content, which the reply keeps and the
+    /// runtime judges. `System` content is a
     /// `String` and is not checked. A tool result holding one empty text
     /// block is not empty.
     ///
