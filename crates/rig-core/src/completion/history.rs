@@ -230,6 +230,13 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         let _ = item;
         None
     }
+
+    /// Whether the wire rejects a conversation whose first message after
+    /// the system prompt is not a user message. [`adapt`] then drops the
+    /// assistant turns before the first user message, with their results.
+    fn starts_with_user(&self) -> bool {
+        false
+    }
 }
 
 /// Which side of a hosted-tool pair an opaque item is.
@@ -367,6 +374,7 @@ pub(crate) fn context_of(
     let mut tools: Vec<_> = request.tools.iter().collect();
     tools.sort_by(|left, right| left.name.cmp(&right.name));
     let raw = raw_tools(request);
+    // The leading system messages as `adapt` sends them: blank ones go.
     let system: Vec<&str> = request
         .chat_history
         .iter()
@@ -374,6 +382,7 @@ pub(crate) fn context_of(
             Message::System { content } => Some(content.as_str()),
             Message::User { .. } | Message::Assistant(_) => None,
         })
+        .filter(|content| !content.trim().is_empty())
         .collect();
     let mut fields = vec![serde_json::json!("context"), serde_json::json!(tools)];
     fields.push(serde_json::json!(system));
@@ -457,6 +466,15 @@ pub(crate) fn adapt_for(
                 };
                 let emptied = adapted.content.is_empty() && !turn.content.is_empty();
                 shaped.push((!emptied).then_some(Message::Assistant(adapted)));
+            }
+        }
+    }
+    if target.starts_with_user() && !stored {
+        for message in &mut shaped {
+            match message {
+                Some(Message::User { .. }) => break,
+                Some(Message::Assistant(_)) => *message = None,
+                Some(Message::System { .. }) | None => {}
             }
         }
     }
@@ -628,7 +646,7 @@ fn assistant(
                 }
                 block => block,
             };
-            kept(&block).then_some(block)
+            (!block.is_blank()).then_some(block)
         })
         .collect();
     let content = if same {
@@ -645,8 +663,8 @@ fn assistant(
 
 /// A same-model turn's kept blocks (`None` where `adapt` dropped one), with
 /// every block whose partner is gone dropped too: an item that needs the one
-/// after it ([`ReplayTarget::needs_next`]) when that one is dropped or only
-/// rebuilt, and a hosted use or result whose other half is missing
+/// after it ([`ReplayTarget::needs_next`]), edited or not, when that one is
+/// dropped or only rebuilt, and a hosted use or result whose other half is missing
 /// ([`ReplayTarget::hosted_pair`]).
 fn paired(
     mut content: Vec<Option<AssistantContent>>,
@@ -674,7 +692,13 @@ fn paired(
             .and_then(Option::as_ref)
             .and_then(|block| match block {
                 AssistantContent::Opaque(opaque) if opaque.replay => Some(&opaque.item),
-                block => block.native_item(),
+                // An edited block rebuilt under its item's identity needs its
+                // partner as much as the item itself.
+                block => block.native_item().or_else(|| {
+                    block
+                        .stale_item()
+                        .filter(|item| !target.identity(item).is_empty())
+                }),
             })
             .is_some_and(|item| target.needs_next(item));
         // The partner must go back as the item the provider issued: its item,
@@ -700,22 +724,6 @@ fn paired(
         }
     }
     content.into_iter().flatten().collect()
-}
-
-/// Whether a block has anything to send: blank text survives only with a
-/// provider item that is still current, empty reasoning with any provider
-/// item (its identity pairs it with what follows, pi replays it whatever
-/// its text), and an opaque item only when it replays.
-fn kept(block: &AssistantContent) -> bool {
-    let current = block.native_item().is_some();
-    match block {
-        AssistantContent::Text(text) => !text.text.trim().is_empty() || current,
-        AssistantContent::Reasoning(reasoning) => {
-            !reasoning.text.trim().is_empty() || reasoning.native.is_some()
-        }
-        AssistantContent::Opaque(opaque) => opaque.replay,
-        AssistantContent::ToolCall(_) | AssistantContent::Image(_) => true,
-    }
 }
 
 /// The target a user message is shaped for.

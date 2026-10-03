@@ -169,6 +169,20 @@ impl AssistantContent {
         block
     }
 
+    /// Whether the block has nothing to send, so replay drops it: blank text
+    /// or reasoning without a provider item that is still current (with
+    /// one, its identity pairs it with what follows, and pi replays it
+    /// whatever its text), and an opaque item that does not replay.
+    pub fn is_blank(&self) -> bool {
+        match self {
+            Self::Text(Text { text, .. }) | Self::Reasoning(Reasoning { text, .. }) => {
+                text.trim().is_empty() && self.native_item().is_none()
+            }
+            Self::Opaque(opaque) => !opaque.replay,
+            Self::ToolCall(_) | Self::Image(_) => false,
+        }
+    }
+
     /// The fingerprint of the block's canonical fields, through a fixed,
     /// versioned projection rather than the block's serde layout, so a field
     /// added to a canonical type never stales stored items. A rig-issued

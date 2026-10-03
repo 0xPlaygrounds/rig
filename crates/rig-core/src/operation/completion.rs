@@ -854,6 +854,11 @@ impl Turn {
         if let Some(first) = self.open.values().map(|draft| draft.part.index()).min() {
             cut.cut_at(first);
         }
+        // So may an item that closed but whose end the consumer has not yet
+        // taken, such as reasoning that closes with the call after it.
+        if let Some(first) = self.choice.iter().position(Option::is_none) {
+            cut.cut_at(first);
+        }
         let parts = self
             .choice
             .iter()
@@ -1194,10 +1199,12 @@ impl<'id> Out<'id, Completion> {
     /// call at its first fragment. Its id and name may arrive in any
     /// fragment; the call becomes visible when it closes. Calls are told
     /// apart by `index` when the wire gives one. A new id under an index
-    /// starts a new call only once the held call's arguments are a complete
-    /// object, since some providers send a fresh id with every chunk. Without
+    /// starts a new call once the held call's arguments are a complete
+    /// object or when it names a tool: some providers send a fresh id, and
+    /// no name, with every chunk of one call. Without
     /// an index (`None`, or the wire's `null`), a fragment with an unseen id
-    /// opens a call and any other continues the latest one.
+    /// opens a call, and one with no id continues the latest call while its
+    /// arguments are incomplete.
     pub fn fragment(
         &mut self,
         index: Option<usize>,
@@ -1210,16 +1217,27 @@ impl<'id> Out<'id, Completion> {
         let new_id = fragment.id.filter(|id| stated(id));
         let index = match index {
             Some(index) => {
-                let other = turn.open.get(&index).is_some_and(|draft| {
-                    matches!(&draft.body, Body::Call { id: Some(id), arguments, .. }
-                        if new_id.is_some_and(|new| id.wire() != new) && arguments.complete())
+                let names = fragment.name.is_some_and(|name| !name.is_empty());
+                let held = turn.open.get(&index).and_then(|draft| match &draft.body {
+                    Body::Call {
+                        id: Some(id),
+                        arguments,
+                        ..
+                    } if new_id.is_some_and(|new| id.wire() != new) => Some(arguments.complete()),
+                    _ => None,
                 });
-                if other {
+                if let Some(complete) = held.filter(|complete| *complete || names) {
+                    // Another call took over the index: the one it held ends.
                     let moved = turn.fresh_index();
                     if let Some(draft) = turn.open.remove(&index) {
                         turn.open.insert(moved, draft);
                     }
-                    turn.close_item(items, moved, Closing::Complete)?;
+                    let closing = if complete {
+                        Closing::Complete
+                    } else {
+                        Closing::Incomplete
+                    };
+                    turn.close_item(items, moved, closing)?;
                 }
                 index
             }
@@ -1232,9 +1250,14 @@ impl<'id> Out<'id, Completion> {
                             _ => None,
                         })
                 });
+                let continues = |last: &usize| {
+                    turn.open.get(last).is_some_and(|draft| {
+                        matches!(&draft.body, Body::Call { arguments, .. } if !arguments.complete())
+                    })
+                };
                 match (owner, new_id, turn.last_call) {
                     (Some(index), _, _) => index,
-                    (None, None, Some(last)) if turn.open.contains_key(&last) => last,
+                    (None, None, Some(last)) if continues(&last) => last,
                     _ => turn.fresh_index(),
                 }
             }

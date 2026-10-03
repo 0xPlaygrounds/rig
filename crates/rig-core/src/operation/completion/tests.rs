@@ -471,3 +471,67 @@ fn index_less_fragments_with_new_ids_are_new_calls() {
         ]
     );
 }
+
+#[test]
+fn a_new_id_under_an_index_continues_a_call_whose_arguments_are_incomplete() {
+    // GLM sends a fresh id, and no name, with every later chunk of one call.
+    let decoded = write(|out| {
+        for (id, name, arguments) in [("x1", "lookup", r#"{"q":"#), ("x2", "", r#""x"}"#)] {
+            out.fragment(
+                Some(0),
+                CallFragment {
+                    id: Some(id),
+                    name: Some(name),
+                    arguments: Some(arguments),
+                },
+            )?;
+        }
+        Ok(())
+    });
+    let calls: Vec<Value> = response(decoded)
+        .tool_calls()
+        .map(|call| call.function.arguments_value())
+        .collect();
+    assert_eq!(calls, [json!({"q": "x"})]);
+}
+
+#[test]
+fn index_less_id_less_fragments_open_a_call_once_the_last_is_whole() {
+    let decoded = write(|out| {
+        for arguments in [r#"{"q":"a"}"#, r#"{"q":"#, r#""b"}"#] {
+            out.fragment(
+                None,
+                CallFragment {
+                    id: None,
+                    name: Some("weather"),
+                    arguments: Some(arguments),
+                },
+            )?;
+        }
+        Ok(())
+    });
+    let calls: Vec<Value> = response(decoded)
+        .tool_calls()
+        .map(|call| call.function.arguments_value())
+        .collect();
+    assert_eq!(calls, [json!({"q": "a"}), json!({"q": "b"})]);
+}
+
+#[test]
+fn an_empty_or_null_id_names_no_call() {
+    for stated in ["", "null"] {
+        let decoded = write(|out| {
+            out.fragment(
+                Some(0),
+                CallFragment {
+                    id: Some(stated),
+                    name: Some("lookup"),
+                    arguments: Some("{}"),
+                },
+            )
+        });
+        let response = response(decoded);
+        let call = response.tool_calls().next().expect("a call");
+        assert!(call.id.provider().is_none(), "{:?}", call.id);
+    }
+}

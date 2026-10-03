@@ -1236,3 +1236,66 @@ fn a_turn_made_under_other_tools_replays_as_another_models() {
         vec![AssistantContent::text("plan")]
     );
 }
+
+#[derive(Debug)]
+struct UserFirst;
+
+impl ReplayTarget for UserFirst {
+    fn api(&self) -> Api {
+        TARGET.api()
+    }
+
+    fn provider(&self) -> &str {
+        TARGET.provider()
+    }
+
+    fn model(&self) -> &str {
+        TARGET.model()
+    }
+
+    fn accepts(&self, model: &str) -> Accepts {
+        TARGET.accepts(model)
+    }
+
+    fn starts_with_user(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_user_first_wire_drops_the_turns_before_the_first_user_message() {
+    // A memory window that cut a conversation after a user message.
+    let history = vec![
+        Message::system("be brief"),
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![result("c1", "done"), UserContent::text("next")],
+        },
+        turn(Some(same()), vec![AssistantContent::text("ok")]),
+    ];
+    assert_eq!(
+        adapt(&history, &UserFirst),
+        vec![
+            Message::system("be brief"),
+            Message::user("next"),
+            turn(Some(same()), vec![AssistantContent::text("ok")]),
+        ]
+    );
+    assert_eq!(
+        adapt(&history, &TARGET).len(),
+        4,
+        "other wires keep a leading turn"
+    );
+}
+
+#[test]
+fn a_blank_leading_system_message_leaves_the_context_unchanged() {
+    let request = |history: Vec<Message>| crate::completion::CompletionRequest {
+        chat_history: history,
+        ..crate::completion::CompletionRequest::new("q")
+    };
+    assert_eq!(
+        context_of(&request(vec![Message::user("q")])),
+        context_of(&request(vec![Message::system(" "), Message::user("q")]))
+    );
+}

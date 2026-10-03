@@ -72,8 +72,11 @@ pub struct PartialStreamedTurn {
 impl PartialStreamedTurn {
     /// The assistant message representing this partial turn, in arrival
     /// order: each validated call as validated, `current_tool_call` in its
-    /// own place, and any other call left out. `None` when the turn has
-    /// produced no representable content.
+    /// own place, and any other call left out. A call keeps a provider item
+    /// only where the partial reply kept it, and one the partial does not
+    /// hold keeps none, so a call never replays without an item the reply
+    /// left unfinished. `None` when the turn has produced no representable
+    /// content.
     pub fn assistant_message(&self, current_tool_call: Option<ToolCall>) -> Option<Message> {
         let mut calls: Vec<ToolCall> = self
             .pending_tool_calls
@@ -87,13 +90,17 @@ impl PartialStreamedTurn {
             .filter_map(|part| match part {
                 AssistantContent::ToolCall(call) => {
                     let at = calls.iter().position(|kept| kept.id == call.id)?;
-                    Some(AssistantContent::ToolCall(calls.remove(at)))
+                    let mut kept = calls.remove(at);
+                    kept.native.clone_from(&call.native);
+                    Some(AssistantContent::ToolCall(kept))
                 }
-                AssistantContent::Text(text) if text.text.is_empty() => None,
-                part => Some(part.clone()),
+                part => (!part.is_blank()).then(|| part.clone()),
             })
             .collect();
-        content.extend(calls.into_iter().map(AssistantContent::ToolCall));
+        content.extend(calls.into_iter().map(|mut call| {
+            call.native = None;
+            AssistantContent::ToolCall(call)
+        }));
         if content.is_empty() {
             return None;
         }

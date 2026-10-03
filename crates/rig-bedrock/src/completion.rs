@@ -303,6 +303,12 @@ impl ReplayTarget for Converse {
         }
     }
 
+    /// Converse rejects a conversation that does not start with a user
+    /// message.
+    fn starts_with_user(&self) -> bool {
+        true
+    }
+
     /// Converse carries images in its four formats, documents in a format it
     /// lists, and inline data, which must be valid base64. Only Nova reads S3
     /// objects and video. Converse rejects a document's text source and
