@@ -945,3 +945,74 @@ fn an_edited_block_rebuilds_keeping_its_identity() {
         Replay::Rebuild
     );
 }
+
+#[test]
+fn calls_sharing_an_id_in_one_turn_become_distinct_and_keep_their_results() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call("dup"), call("dup")]),
+        Message::User {
+            content: vec![result("dup", "first"), result("dup", "second")],
+        },
+    ];
+    let adapted = adapt(&history, &TARGET);
+    let turn = assistant(&adapted[1]);
+    let ids: Vec<String> = turn
+        .tool_calls()
+        .map(|call| call.id.wire().into_owned())
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(ids[0], ids[1], "{ids:?}");
+    let Message::User { content } = &adapted[2] else {
+        panic!("the results: {adapted:?}");
+    };
+    let answered: Vec<(String, Option<&str>)> = content
+        .iter()
+        .filter_map(|part| match part {
+            UserContent::ToolResult(result) => Some((
+                result.call.wire().into_owned(),
+                result.content.first().and_then(ToolResultContent::as_text),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        answered,
+        [
+            (ids[0].clone(), Some("first")),
+            (ids[1].clone(), Some("second")),
+        ]
+    );
+}
+
+#[test]
+fn an_id_reused_by_a_later_turn_is_made_distinct() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(other()), vec![call("call_0")]),
+        Message::User {
+            content: vec![result("call_0", "one")],
+        },
+        turn(Some(other()), vec![call("call_0")]),
+        Message::User {
+            content: vec![result("call_0", "two")],
+        },
+    ];
+    let adapted = adapt(&history, &TARGET);
+    let first = assistant(&adapted[1])
+        .tool_calls()
+        .next()
+        .map(|call| call.id.clone());
+    let second = assistant(&adapted[3])
+        .tool_calls()
+        .next()
+        .map(|call| call.id.clone());
+    assert_ne!(first, second);
+    let Message::User { content } = &adapted[4] else {
+        panic!("the second results: {adapted:?}");
+    };
+    assert!(matches!(
+        content.first(),
+        Some(UserContent::ToolResult(result)) if Some(&result.call) == second.as_ref()
+    ));
+}

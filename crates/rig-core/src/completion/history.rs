@@ -352,7 +352,7 @@ pub(crate) fn adapt_for_model(
                     model,
                     accepts,
                 };
-                shaped.extend(user(content, &ids, &form).into_iter().map(Some));
+                shaped.extend(user(content, &mut ids, &form).into_iter().map(Some));
             }
             Message::Assistant(turn) => {
                 let adapted = assistant(turn, target, &same, accepts, &mut ids);
@@ -385,31 +385,65 @@ pub(crate) fn adapt_for_model(
     merge_users(answer_calls(shaped, stored))
 }
 
-/// Call ids renamed for the target: each source id's new id, and the ids
-/// taken, so two calls never share one.
+/// Call ids as the target sends them. Every provider id in the adapted
+/// history is distinct: a repeated one, in one turn or across turns, takes a
+/// counter. The renames of the latest turn map its results, in call order,
+/// so two calls that shared an id are answered by the results that followed
+/// them in turn.
 #[derive(Default)]
 struct Renamed {
-    to: HashMap<CallId, CallId>,
-    taken: HashMap<String, CallId>,
+    /// For the latest turn: each source id's ids, in call order.
+    to: HashMap<CallId, std::collections::VecDeque<CallId>>,
+    taken: HashSet<String>,
 }
 
 impl Renamed {
-    /// The id `call` takes: `normalized`, or, when another call took it, the
-    /// same id with its tail replaced by a counter until it is free. A
-    /// counter of lowercase alphanumerics keeps the id's length and is legal
-    /// on every wire.
-    fn claim(&mut self, call: &CallId, normalized: String) -> String {
-        if let Some(id) = self.to.get(call) {
-            return id.wire().into_owned();
-        }
-        let mut id = normalized.clone();
-        let mut attempt: u64 = 1;
-        while self.taken.get(&id).is_some_and(|owner| owner != call) {
-            id = with_counter(&normalized, attempt);
-            attempt += 1;
-        }
-        self.taken.insert(id.clone(), call.clone());
+    /// A new turn begins: its results answer only its own calls.
+    fn turn(&mut self) {
+        self.to.clear();
+    }
+
+    /// The id the call `source` takes, wanting `wanted`: `wanted`, or, when
+    /// an earlier call took it, the same id with its tail replaced by a
+    /// counter until it is free. A counter of lowercase alphanumerics keeps
+    /// the id's length and is legal on every wire. An id rig issued stays
+    /// as it is: [`WireIds`] spells it.
+    ///
+    /// [`WireIds`]: crate::providers::internal::wire_ids::WireIds
+    fn claim(&mut self, source: &CallId, wanted: String) -> CallId {
+        let id = match source {
+            CallId::Local(_) => source.clone(),
+            CallId::Provider(_) => {
+                let mut id = wanted.clone();
+                let mut attempt: u64 = 1;
+                while self.taken.contains(&id) {
+                    id = with_counter(&wanted, attempt);
+                    attempt += 1;
+                }
+                self.taken.insert(id.clone());
+                if id == source.wire() {
+                    source.clone()
+                } else {
+                    CallId::from_wire(id)
+                }
+            }
+        };
+        self.to
+            .entry(source.clone())
+            .or_default()
+            .push_back(id.clone());
         id
+    }
+
+    /// The id a result for `source` answers: the next call of the latest
+    /// turn that had it, the last one once each was answered.
+    fn answer(&mut self, source: &CallId) -> Option<CallId> {
+        let ids = self.to.get_mut(source)?;
+        if ids.len() > 1 {
+            ids.pop_front()
+        } else {
+            ids.front().cloned()
+        }
     }
 }
 
@@ -438,12 +472,24 @@ fn assistant(
         .origin
         .as_ref()
         .is_some_and(|origin| origin.same_model(api, provider, model));
+    // A failed turn is skipped, so it claims no ids a later turn may use.
+    if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
+        return turn.clone();
+    }
+    ids.turn();
     let content = turn
         .content
         .iter()
         .filter_map(|block| {
             let block = if same {
-                block.clone()
+                match block.clone() {
+                    AssistantContent::ToolCall(mut call) => {
+                        let wanted = call.id.wire().into_owned();
+                        call.id = ids.claim(&call.id, wanted);
+                        AssistantContent::ToolCall(call)
+                    }
+                    block => block,
+                }
             } else {
                 match block.canonical() {
                     AssistantContent::Reasoning(reasoning) => {
@@ -457,15 +503,12 @@ fn assistant(
                         AssistantContent::Text(Text::new(ASSISTANT_IMAGE_OMITTED))
                     }
                     AssistantContent::ToolCall(mut call) => {
-                        let wire = call.id.wire();
-                        let normalized =
-                            target.normalize_tool_call_id(&wire, model, turn.origin.as_ref());
-                        let claimed = ids.claim(&call.id, normalized);
-                        if claimed != wire {
-                            let id = CallId::from_wire(claimed);
-                            ids.to.insert(call.id.clone(), id.clone());
-                            call.id = id;
-                        }
+                        let normalized = target.normalize_tool_call_id(
+                            &call.id.wire(),
+                            model,
+                            turn.origin.as_ref(),
+                        );
+                        call.id = ids.claim(&call.id, normalized);
                         AssistantContent::ToolCall(call)
                     }
                     block => block,
@@ -530,7 +573,7 @@ impl Form<'_> {
 
 /// The user message `content` shaped for `form`: one message, or two when
 /// tool-result images move to a message of their own.
-fn user(content: &[UserContent], ids: &Renamed, form: &Form<'_>) -> Vec<Message> {
+fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Message> {
     let mut shaped: Vec<UserContent> = Vec::with_capacity(content.len());
     let mut attached = Vec::new();
     for part in content {
@@ -586,8 +629,8 @@ fn user(content: &[UserContent], ids: &Renamed, form: &Form<'_>) -> Vec<Message>
             }
             UserContent::ToolResult(result) => {
                 let mut result = result.clone();
-                if let Some(id) = ids.to.get(&result.call) {
-                    result.call = id.clone();
+                if let Some(id) = ids.answer(&result.call) {
+                    result.call = id;
                 }
                 result.content = result_images(result.content, form, &mut attached);
                 if form.accepts.tools {
