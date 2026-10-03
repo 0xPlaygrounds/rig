@@ -91,15 +91,6 @@
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-ERDDGdPbMkXozOjelsz2WuSYiiU1P"
           },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "The dominant non-background color is bright red.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 14585632120862735230
-          },
           "provider_request_id": "req_6b363ef12d164b2284904a90f1322833",
           "finish_reason": "stop",
           "raw": {

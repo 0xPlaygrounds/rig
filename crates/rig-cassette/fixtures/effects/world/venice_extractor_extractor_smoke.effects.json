@@ -106,7 +106,7 @@
                 "item": {
                   "reasoning_content": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n"
                 },
-                "fingerprint": 12185173093965566600
+                "fingerprint": "e4bc5d1e62741af5"
               }
             },
             {
@@ -131,7 +131,7 @@
                   "id": "chatcmpl-tool-9ead3cc0c2dad76d",
                   "type": "function"
                 },
-                "fingerprint": 2379902610786575726
+                "fingerprint": "5819df31705b7c6b"
               }
             }
           ],
@@ -148,28 +148,6 @@
             "model": "qwen3-5-9b",
             "response_model": "qwen3-5-9b",
             "response_id": "chatcmpl-c7758c0e2f3976dd2dc1ab417887d0c3"
-          },
-          "native": {
-            "item": {
-              "annotations": null,
-              "audio": null,
-              "content": "",
-              "function_call": null,
-              "reasoning_content": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n",
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
-                    "name": "submit"
-                  },
-                  "id": "chatcmpl-tool-9ead3cc0c2dad76d",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14622509780176226107
           },
           "finish_reason": "tool_calls",
           "raw": {

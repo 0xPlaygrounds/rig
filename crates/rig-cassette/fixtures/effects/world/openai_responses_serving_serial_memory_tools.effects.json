@@ -191,7 +191,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -215,7 +215,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5601435971756598447
+                "fingerprint": "56c2027841049d26"
               }
             }
           ],
@@ -421,7 +421,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -445,7 +445,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5601435971756598447
+                    "fingerprint": "56c2027841049d26"
                   }
                 }
               ],
@@ -533,7 +533,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -710,7 +710,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -734,7 +734,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5601435971756598447
+                    "fingerprint": "56c2027841049d26"
                   }
                 }
               ],
@@ -786,7 +786,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 10728865193441065857
+                    "fingerprint": "23f07d1922e80d53"
                   }
                 }
               ],

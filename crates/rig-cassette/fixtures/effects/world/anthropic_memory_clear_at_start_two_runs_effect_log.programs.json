@@ -215,7 +215,7 @@
                     "text": "ready",
                     "type": "text"
                   },
-                  "fingerprint": 12598636203455125710
+                  "fingerprint": "0cd5e8fd3135ad2a"
                 }
               }
             ],
@@ -227,8 +227,7 @@
                 "response_model": "claude-sonnet-4-6",
                 "response_id": "msg_011CfLcbFV77Tjj13MFeNrDM"
               },
-              "stop": "stop",
-              "native": null
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -256,7 +255,7 @@
                       "text": "ready",
                       "type": "text"
                     },
-                    "fingerprint": 12598636203455125710
+                    "fingerprint": "0cd5e8fd3135ad2a"
                   }
                 }
               ],
@@ -322,8 +321,7 @@
               "response_model": "claude-sonnet-4-6",
               "response_id": "msg_011CfLcbFV77Tjj13MFeNrDM"
             },
-            "stop": "stop",
-            "native": null
+            "stop": "stop"
           }
         },
         {
@@ -336,7 +334,7 @@
                   "text": "ready",
                   "type": "text"
                 },
-                "fingerprint": 12598636203455125710
+                "fingerprint": "0cd5e8fd3135ad2a"
               }
             }
           }

@@ -126,7 +126,7 @@
                   "id": "call_G2HvYiDiohTO1ZyMzm5zVoR1",
                   "type": "function"
                 },
-                "fingerprint": 2504022096667108387
+                "fingerprint": "988f2ad379267d1c"
               }
             }
           ],
@@ -143,24 +143,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe11iTzDcrGGGNaUhQPDj5xiMC0u"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"q\":\"What is the capital of France?\"}",
-                    "name": "lookup"
-                  },
-                  "id": "call_G2HvYiDiohTO1ZyMzm5zVoR1",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7891626414377007521
           },
           "provider_request_id": "req_d7de2256c5594e0a8de9a2cb523befb3",
           "finish_reason": "tool_calls",
@@ -235,7 +217,7 @@
                   "id": "call_G2HvYiDiohTO1ZyMzm5zVoR1",
                   "type": "function"
                 },
-                "fingerprint": 2504022096667108387
+                "fingerprint": "988f2ad379267d1c"
               }
             }
           }
@@ -327,15 +309,6 @@
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe12mE1faQhydPIQPpliAS3TX2pz"
           },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "Paris",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 10907891467078341492
-          },
           "provider_request_id": "req_21ad325e66484761bc7819fa55bb759d",
           "finish_reason": "stop",
           "raw": {
@@ -422,7 +395,7 @@
                       "id": "call_G2HvYiDiohTO1ZyMzm5zVoR1",
                       "type": "function"
                     },
-                    "fingerprint": 2504022096667108387
+                    "fingerprint": "988f2ad379267d1c"
                   }
                 }
               ],
@@ -433,25 +406,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe11iTzDcrGGGNaUhQPDj5xiMC0u"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"q\":\"What is the capital of France?\"}",
-                        "name": "lookup"
-                      },
-                      "id": "call_G2HvYiDiohTO1ZyMzm5zVoR1",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7891626414377007521
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -525,14 +480,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe13kqBxS7yvTNp2SNammsrQkGRq"
-          },
-          "native": {
-            "item": {
-              "content": "Paris",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 10907891467078341492
           },
           "provider_request_id": "req_b3d47500e34a4baba03db8487f1cc3fa",
           "finish_reason": "stop",

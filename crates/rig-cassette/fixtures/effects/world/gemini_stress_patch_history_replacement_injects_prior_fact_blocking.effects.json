@@ -89,7 +89,7 @@
                 "item": {
                   "text": "The passphrase is OMEGA-7."
                 },
-                "fingerprint": 12940681761221212969
+                "fingerprint": "d9014fdbcb0647eb"
               }
             }
           ],
@@ -105,13 +105,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "MBDAauXVCeGO6dkPuv-DsAE"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 3387169230693765915
           },
           "finish_reason": "stop",
           "raw": {

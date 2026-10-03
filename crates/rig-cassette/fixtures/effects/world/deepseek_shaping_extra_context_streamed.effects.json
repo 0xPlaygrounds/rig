@@ -200,13 +200,6 @@
             "response_model": "deepseek-flash",
             "response_id": "62692a1e-c4be-4b75-960c-541315e1fbf0"
           },
-          "native": {
-            "item": {
-              "content": "A glarb-glarb is an ancient farming tool from planet Jiro.",
-              "role": "assistant"
-            },
-            "fingerprint": 11177280835969388096
-          },
           "finish_reason": "stop",
           "raw": {
             "usage": {

@@ -106,7 +106,7 @@
                 "item": {
                   "reasoning_content": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace."
                 },
-                "fingerprint": 368475463730783697
+                "fingerprint": "0ebec9d03fe677e2"
               }
             },
             {
@@ -131,7 +131,7 @@
                   "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381",
                   "type": "function"
                 },
-                "fingerprint": 1417657237032380838
+                "fingerprint": "3e55e54e4ea49c9f"
               }
             }
           ],
@@ -148,24 +148,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "c555e587-01bd-4b21-b545-020000c68065"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17423597761825338420
           },
           "finish_reason": "tool_calls",
           "raw": {

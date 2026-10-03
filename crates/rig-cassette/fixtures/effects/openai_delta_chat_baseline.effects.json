@@ -134,7 +134,7 @@
                   "id": "call_w1R8MnviufcZUPgYvdoA4l1l",
                   "type": "function"
                 },
-                "fingerprint": 15318633902217124660
+                "fingerprint": "2f28d850a01b8bfd"
               }
             }
           ],
@@ -151,24 +151,6 @@
             "model": "gpt-4o",
             "response_model": "gpt-4o-2024-08-06",
             "response_id": "chatcmpl-EUdzasXCBTe5laaFz3zyCy5elKMpa"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\":17,\"y\":25}",
-                    "name": "add"
-                  },
-                  "id": "call_w1R8MnviufcZUPgYvdoA4l1l",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16961966523405932276
           },
           "provider_request_id": "req_de472e470b5a441d972885411e5f6258",
           "finish_reason": "tool_calls",
@@ -244,7 +226,7 @@
                   "id": "call_w1R8MnviufcZUPgYvdoA4l1l",
                   "type": "function"
                 },
-                "fingerprint": 15318633902217124660
+                "fingerprint": "2f28d850a01b8bfd"
               }
             }
           }
@@ -326,7 +308,7 @@
                       "id": "call_w1R8MnviufcZUPgYvdoA4l1l",
                       "type": "function"
                     },
-                    "fingerprint": 15318633902217124660
+                    "fingerprint": "2f28d850a01b8bfd"
                   }
                 }
               ],
@@ -337,25 +319,7 @@
                 "response_model": "gpt-4o-2024-08-06",
                 "response_id": "chatcmpl-EUdzasXCBTe5laaFz3zyCy5elKMpa"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_w1R8MnviufcZUPgYvdoA4l1l",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16961966523405932276
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -430,14 +394,6 @@
             "model": "gpt-4o",
             "response_model": "gpt-4o-2024-08-06",
             "response_id": "chatcmpl-EUdzbPcyP99eNksFXJNfuWu8sdUJS"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "provider_request_id": "req_66cc644f1f9540e8a379bf2acf081678",
           "finish_reason": "stop",

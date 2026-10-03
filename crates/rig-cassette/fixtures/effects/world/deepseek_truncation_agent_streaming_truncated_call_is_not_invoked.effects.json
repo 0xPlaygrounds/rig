@@ -150,23 +150,6 @@
             "response_model": "deepseek-flash",
             "response_id": "08dba19e-2206-4021-8a5f-be6656109fdd"
           },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"summary\": \"Log this incident: the nightly build broke",
-                    "name": "file_report"
-                  },
-                  "id": "call_00_zhVumCcpAyz5qF3Ao56J6596",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9918491264771688012
-          },
           "finish_reason": "length",
           "raw": {
             "usage": {

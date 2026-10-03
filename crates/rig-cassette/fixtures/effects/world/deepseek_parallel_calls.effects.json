@@ -344,7 +344,7 @@
                   "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
                   "type": "function"
                 },
-                "fingerprint": 537174500431841297
+                "fingerprint": "94e3756dd4a86554"
               }
             },
             {
@@ -367,7 +367,7 @@
                   "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
                   "type": "function"
                 },
-                "fingerprint": 4843619772114192682
+                "fingerprint": "33c18df66c5d08bb"
               }
             },
             {
@@ -390,7 +390,7 @@
                   "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
                   "type": "function"
                 },
-                "fingerprint": 5157041677980676370
+                "fingerprint": "dc088d0749040b4d"
               }
             },
             {
@@ -413,7 +413,7 @@
                   "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
                   "type": "function"
                 },
-                "fingerprint": 8257647647704540403
+                "fingerprint": "463a181ae34eb5ca"
               }
             }
           ],
@@ -429,47 +429,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "70607a47-4012-4858-a57d-92e315a494ad"
-          },
-          "native": {
-            "item": {
-              "content": "I'll start by reading the four files in parallel.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"tests/basic.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/lib.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/calendar.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"docs/DESIGN.md\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 572211954751611138
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -699,7 +658,7 @@
                       "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
                       "type": "function"
                     },
-                    "fingerprint": 537174500431841297
+                    "fingerprint": "94e3756dd4a86554"
                   }
                 },
                 {
@@ -722,7 +681,7 @@
                       "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
                       "type": "function"
                     },
-                    "fingerprint": 4843619772114192682
+                    "fingerprint": "33c18df66c5d08bb"
                   }
                 },
                 {
@@ -745,7 +704,7 @@
                       "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
                       "type": "function"
                     },
-                    "fingerprint": 5157041677980676370
+                    "fingerprint": "dc088d0749040b4d"
                   }
                 },
                 {
@@ -768,7 +727,7 @@
                       "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
                       "type": "function"
                     },
-                    "fingerprint": 8257647647704540403
+                    "fingerprint": "463a181ae34eb5ca"
                   }
                 }
               ],
@@ -779,48 +738,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "70607a47-4012-4858-a57d-92e315a494ad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the four files in parallel.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 572211954751611138
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -975,7 +893,7 @@
                   "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
                   "type": "function"
                 },
-                "fingerprint": 9882547390248544540
+                "fingerprint": "35e25d08006586b5"
               }
             }
           ],
@@ -991,23 +909,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "ab4821bd-77a2-4f55-b1b6-e795e0fcd224"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "run_tests"
-                  },
-                  "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9353688501446850648
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1127,7 +1028,7 @@
                       "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
                       "type": "function"
                     },
-                    "fingerprint": 537174500431841297
+                    "fingerprint": "94e3756dd4a86554"
                   }
                 },
                 {
@@ -1150,7 +1051,7 @@
                       "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
                       "type": "function"
                     },
-                    "fingerprint": 4843619772114192682
+                    "fingerprint": "33c18df66c5d08bb"
                   }
                 },
                 {
@@ -1173,7 +1074,7 @@
                       "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
                       "type": "function"
                     },
-                    "fingerprint": 5157041677980676370
+                    "fingerprint": "dc088d0749040b4d"
                   }
                 },
                 {
@@ -1196,7 +1097,7 @@
                       "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
                       "type": "function"
                     },
-                    "fingerprint": 8257647647704540403
+                    "fingerprint": "463a181ae34eb5ca"
                   }
                 }
               ],
@@ -1207,48 +1108,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "70607a47-4012-4858-a57d-92e315a494ad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the four files in parallel.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 572211954751611138
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1329,7 +1189,7 @@
                       "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
                       "type": "function"
                     },
-                    "fingerprint": 9882547390248544540
+                    "fingerprint": "35e25d08006586b5"
                   }
                 }
               ],
@@ -1340,24 +1200,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "ab4821bd-77a2-4f55-b1b6-e795e0fcd224"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 9353688501446850648
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1479,7 +1322,7 @@
                   "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
                   "type": "function"
                 },
-                "fingerprint": 15675774632503407938
+                "fingerprint": "09446b074a307379"
               }
             }
           ],
@@ -1495,23 +1338,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "f6a8353d-08d0-47c9-831e-2d5790d57787"
-          },
-          "native": {
-            "item": {
-              "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                    "name": "write_file"
-                  },
-                  "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7749351365037682398
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1631,7 +1457,7 @@
                       "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
                       "type": "function"
                     },
-                    "fingerprint": 537174500431841297
+                    "fingerprint": "94e3756dd4a86554"
                   }
                 },
                 {
@@ -1654,7 +1480,7 @@
                       "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
                       "type": "function"
                     },
-                    "fingerprint": 4843619772114192682
+                    "fingerprint": "33c18df66c5d08bb"
                   }
                 },
                 {
@@ -1677,7 +1503,7 @@
                       "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
                       "type": "function"
                     },
-                    "fingerprint": 5157041677980676370
+                    "fingerprint": "dc088d0749040b4d"
                   }
                 },
                 {
@@ -1700,7 +1526,7 @@
                       "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
                       "type": "function"
                     },
-                    "fingerprint": 8257647647704540403
+                    "fingerprint": "463a181ae34eb5ca"
                   }
                 }
               ],
@@ -1711,48 +1537,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "70607a47-4012-4858-a57d-92e315a494ad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the four files in parallel.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 572211954751611138
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1833,7 +1618,7 @@
                       "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
                       "type": "function"
                     },
-                    "fingerprint": 9882547390248544540
+                    "fingerprint": "35e25d08006586b5"
                   }
                 }
               ],
@@ -1844,24 +1629,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "ab4821bd-77a2-4f55-b1b6-e795e0fcd224"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 9353688501446850648
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1909,7 +1677,7 @@
                       "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
                       "type": "function"
                     },
-                    "fingerprint": 15675774632503407938
+                    "fingerprint": "09446b074a307379"
                   }
                 }
               ],
@@ -1920,24 +1688,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f6a8353d-08d0-47c9-831e-2d5790d57787"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7749351365037682398
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2052,7 +1803,7 @@
                   "id": "call_00_l685dQlKlYRrowkirKBK3296",
                   "type": "function"
                 },
-                "fingerprint": 1066292487192217653
+                "fingerprint": "3307d8330994e8be"
               }
             }
           ],
@@ -2068,23 +1819,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "c8e384ed-eee1-4b99-a5e2-2c7a8c01ba30"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "run_tests"
-                  },
-                  "id": "call_00_l685dQlKlYRrowkirKBK3296",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 11251378938024201599
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2204,7 +1938,7 @@
                       "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
                       "type": "function"
                     },
-                    "fingerprint": 537174500431841297
+                    "fingerprint": "94e3756dd4a86554"
                   }
                 },
                 {
@@ -2227,7 +1961,7 @@
                       "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
                       "type": "function"
                     },
-                    "fingerprint": 4843619772114192682
+                    "fingerprint": "33c18df66c5d08bb"
                   }
                 },
                 {
@@ -2250,7 +1984,7 @@
                       "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
                       "type": "function"
                     },
-                    "fingerprint": 5157041677980676370
+                    "fingerprint": "dc088d0749040b4d"
                   }
                 },
                 {
@@ -2273,7 +2007,7 @@
                       "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
                       "type": "function"
                     },
-                    "fingerprint": 8257647647704540403
+                    "fingerprint": "463a181ae34eb5ca"
                   }
                 }
               ],
@@ -2284,48 +2018,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "70607a47-4012-4858-a57d-92e315a494ad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the four files in parallel.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 572211954751611138
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2406,7 +2099,7 @@
                       "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
                       "type": "function"
                     },
-                    "fingerprint": 9882547390248544540
+                    "fingerprint": "35e25d08006586b5"
                   }
                 }
               ],
@@ -2417,24 +2110,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "ab4821bd-77a2-4f55-b1b6-e795e0fcd224"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 9353688501446850648
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2482,7 +2158,7 @@
                       "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
                       "type": "function"
                     },
-                    "fingerprint": 15675774632503407938
+                    "fingerprint": "09446b074a307379"
                   }
                 }
               ],
@@ -2493,24 +2169,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f6a8353d-08d0-47c9-831e-2d5790d57787"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7749351365037682398
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2551,7 +2210,7 @@
                       "id": "call_00_l685dQlKlYRrowkirKBK3296",
                       "type": "function"
                     },
-                    "fingerprint": 1066292487192217653
+                    "fingerprint": "3307d8330994e8be"
                   }
                 }
               ],
@@ -2562,24 +2221,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "c8e384ed-eee1-4b99-a5e2-2c7a8c01ba30"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_l685dQlKlYRrowkirKBK3296",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11251378938024201599
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2701,7 +2343,7 @@
                   "id": "call_00_lwWXmvxL4ngRxGOkVTho8141",
                   "type": "function"
                 },
-                "fingerprint": 881891985213976773
+                "fingerprint": "8786fd8427da2496"
               }
             }
           ],
@@ -2717,23 +2359,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "245e82e0-914b-41c6-bc4f-685a1aab6a32"
-          },
-          "native": {
-            "item": {
-              "content": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
-                    "name": "write_file"
-                  },
-                  "id": "call_00_lwWXmvxL4ngRxGOkVTho8141",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16396882757252809457
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2853,7 +2478,7 @@
                       "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
                       "type": "function"
                     },
-                    "fingerprint": 537174500431841297
+                    "fingerprint": "94e3756dd4a86554"
                   }
                 },
                 {
@@ -2876,7 +2501,7 @@
                       "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
                       "type": "function"
                     },
-                    "fingerprint": 4843619772114192682
+                    "fingerprint": "33c18df66c5d08bb"
                   }
                 },
                 {
@@ -2899,7 +2524,7 @@
                       "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
                       "type": "function"
                     },
-                    "fingerprint": 5157041677980676370
+                    "fingerprint": "dc088d0749040b4d"
                   }
                 },
                 {
@@ -2922,7 +2547,7 @@
                       "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
                       "type": "function"
                     },
-                    "fingerprint": 8257647647704540403
+                    "fingerprint": "463a181ae34eb5ca"
                   }
                 }
               ],
@@ -2933,48 +2558,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "70607a47-4012-4858-a57d-92e315a494ad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the four files in parallel.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 572211954751611138
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3055,7 +2639,7 @@
                       "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
                       "type": "function"
                     },
-                    "fingerprint": 9882547390248544540
+                    "fingerprint": "35e25d08006586b5"
                   }
                 }
               ],
@@ -3066,24 +2650,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "ab4821bd-77a2-4f55-b1b6-e795e0fcd224"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 9353688501446850648
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3131,7 +2698,7 @@
                       "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
                       "type": "function"
                     },
-                    "fingerprint": 15675774632503407938
+                    "fingerprint": "09446b074a307379"
                   }
                 }
               ],
@@ -3142,24 +2709,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f6a8353d-08d0-47c9-831e-2d5790d57787"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7749351365037682398
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3200,7 +2750,7 @@
                       "id": "call_00_l685dQlKlYRrowkirKBK3296",
                       "type": "function"
                     },
-                    "fingerprint": 1066292487192217653
+                    "fingerprint": "3307d8330994e8be"
                   }
                 }
               ],
@@ -3211,24 +2761,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "c8e384ed-eee1-4b99-a5e2-2c7a8c01ba30"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_l685dQlKlYRrowkirKBK3296",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11251378938024201599
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3276,7 +2809,7 @@
                       "id": "call_00_lwWXmvxL4ngRxGOkVTho8141",
                       "type": "function"
                     },
-                    "fingerprint": 881891985213976773
+                    "fingerprint": "8786fd8427da2496"
                   }
                 }
               ],
@@ -3287,24 +2820,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "245e82e0-914b-41c6-bc4f-685a1aab6a32"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_lwWXmvxL4ngRxGOkVTho8141",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16396882757252809457
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3419,7 +2935,7 @@
                   "id": "call_00_Iew2TPTkVws5cOWemyS08282",
                   "type": "function"
                 },
-                "fingerprint": 830949811237259939
+                "fingerprint": "15cddb59d87e7594"
               }
             }
           ],
@@ -3435,23 +2951,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "aa343ae8-458d-42a7-86fa-19502e055192"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "run_tests"
-                  },
-                  "id": "call_00_Iew2TPTkVws5cOWemyS08282",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 5247769286358878637
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -3571,7 +3070,7 @@
                       "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
                       "type": "function"
                     },
-                    "fingerprint": 537174500431841297
+                    "fingerprint": "94e3756dd4a86554"
                   }
                 },
                 {
@@ -3594,7 +3093,7 @@
                       "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
                       "type": "function"
                     },
-                    "fingerprint": 4843619772114192682
+                    "fingerprint": "33c18df66c5d08bb"
                   }
                 },
                 {
@@ -3617,7 +3116,7 @@
                       "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
                       "type": "function"
                     },
-                    "fingerprint": 5157041677980676370
+                    "fingerprint": "dc088d0749040b4d"
                   }
                 },
                 {
@@ -3640,7 +3139,7 @@
                       "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
                       "type": "function"
                     },
-                    "fingerprint": 8257647647704540403
+                    "fingerprint": "463a181ae34eb5ca"
                   }
                 }
               ],
@@ -3651,48 +3150,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "70607a47-4012-4858-a57d-92e315a494ad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the four files in parallel.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_UaeMdyuugQZDKqsdm6QO6957",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_01_mDPEcHTt8sapmprDt3Ps4338",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_02_dPBYkCgrZMFgCpxypgXR7064",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_03_71j6Wey2xPsK6aI7tcEd4416",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 572211954751611138
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3773,7 +3231,7 @@
                       "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
                       "type": "function"
                     },
-                    "fingerprint": 9882547390248544540
+                    "fingerprint": "35e25d08006586b5"
                   }
                 }
               ],
@@ -3784,24 +3242,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "ab4821bd-77a2-4f55-b1b6-e795e0fcd224"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_QQMJXby1Hjn1maFmFSSl8172",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 9353688501446850648
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3849,7 +3290,7 @@
                       "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
                       "type": "function"
                     },
-                    "fingerprint": 15675774632503407938
+                    "fingerprint": "09446b074a307379"
                   }
                 }
               ],
@@ -3860,24 +3301,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f6a8353d-08d0-47c9-831e-2d5790d57787"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_R7OrVXp9XrfbIbpwGhxs2640",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7749351365037682398
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3918,7 +3342,7 @@
                       "id": "call_00_l685dQlKlYRrowkirKBK3296",
                       "type": "function"
                     },
-                    "fingerprint": 1066292487192217653
+                    "fingerprint": "3307d8330994e8be"
                   }
                 }
               ],
@@ -3929,24 +3353,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "c8e384ed-eee1-4b99-a5e2-2c7a8c01ba30"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_l685dQlKlYRrowkirKBK3296",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11251378938024201599
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3994,7 +3401,7 @@
                       "id": "call_00_lwWXmvxL4ngRxGOkVTho8141",
                       "type": "function"
                     },
-                    "fingerprint": 881891985213976773
+                    "fingerprint": "8786fd8427da2496"
                   }
                 }
               ],
@@ -4005,24 +3412,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "245e82e0-914b-41c6-bc4f-685a1aab6a32"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion now points at `days_in_week` in src/calendar.rs.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_lwWXmvxL4ngRxGOkVTho8141",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16396882757252809457
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4063,7 +3453,7 @@
                       "id": "call_00_Iew2TPTkVws5cOWemyS08282",
                       "type": "function"
                     },
-                    "fingerprint": 830949811237259939
+                    "fingerprint": "15cddb59d87e7594"
                   }
                 }
               ],
@@ -4074,24 +3464,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "aa343ae8-458d-42a7-86fa-19502e055192"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_Iew2TPTkVws5cOWemyS08282",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 5247769286358878637
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4205,13 +3578,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "544916fb-3ef3-40d2-b0fa-cf1c4c41baaa"
-          },
-          "native": {
-            "item": {
-              "content": "done",
-              "role": "assistant"
-            },
-            "fingerprint": 13317791222948023665
           },
           "finish_reason": "stop",
           "raw": {

@@ -245,7 +245,7 @@
                     "summary": [],
                     "type": "reasoning"
                   },
-                  "fingerprint": 337210683625289162
+                  "fingerprint": "82b6ea64ef91009f"
                 }
               },
               {
@@ -266,7 +266,7 @@
                     "status": "completed",
                     "type": "message"
                   },
-                  "fingerprint": 12598636203455125710
+                  "fingerprint": "0cd5e8fd3135ad2a"
                 }
               }
             ],
@@ -278,8 +278,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "resp_0f76a0622df63705016abf4a97700087d0a26a8188aa96c20d"
               },
-              "stop": "stop",
-              "native": null
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -310,7 +309,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -331,7 +330,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 12598636203455125710
+                    "fingerprint": "0cd5e8fd3135ad2a"
                   }
                 }
               ],
@@ -471,8 +470,7 @@
               "response_model": "gpt-5-mini-2025-08-07",
               "response_id": "resp_0f76a0622df63705016abf4a97700087d0a26a8188aa96c20d"
             },
-            "stop": "stop",
-            "native": null
+            "stop": "stop"
           }
         },
         {
@@ -488,7 +486,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             }
           }
@@ -513,7 +511,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 12598636203455125710
+                "fingerprint": "0cd5e8fd3135ad2a"
               }
             }
           }

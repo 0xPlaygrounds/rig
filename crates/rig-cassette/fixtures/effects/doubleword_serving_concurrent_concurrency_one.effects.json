@@ -133,7 +133,7 @@
                   "id": "call_79a6be62c249464abace1e7b",
                   "type": "function"
                 },
-                "fingerprint": 7531414457640894654
+                "fingerprint": "5ab93928101bbcfb"
               }
             },
             {
@@ -154,7 +154,7 @@
                   "id": "call_ed248fec7135497b80b0290b",
                   "type": "function"
                 },
-                "fingerprint": 7209939607193478856
+                "fingerprint": "efa02b74aef102f9"
               }
             }
           ],
@@ -171,31 +171,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976446-PsHDGz9HJfo9ksAHINoX"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_79a6be62c249464abace1e7b",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_ed248fec7135497b80b0290b",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3117224412426505257
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -325,7 +300,7 @@
                       "id": "call_79a6be62c249464abace1e7b",
                       "type": "function"
                     },
-                    "fingerprint": 7531414457640894654
+                    "fingerprint": "5ab93928101bbcfb"
                   }
                 },
                 {
@@ -346,7 +321,7 @@
                       "id": "call_ed248fec7135497b80b0290b",
                       "type": "function"
                     },
-                    "fingerprint": 7209939607193478856
+                    "fingerprint": "efa02b74aef102f9"
                   }
                 }
               ],
@@ -357,32 +332,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790976446-PsHDGz9HJfo9ksAHINoX"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_79a6be62c249464abace1e7b",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_ed248fec7135497b80b0290b",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3117224412426505257
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -469,13 +419,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976452-glxGDQZ17XWdDRxrVayw"
-          },
-          "native": {
-            "item": {
-              "content": "The signals are crimson-harbor and silver-orchard.",
-              "role": "assistant"
-            },
-            "fingerprint": 4267563868192018001
           },
           "finish_reason": "stop",
           "raw": {

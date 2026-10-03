@@ -109,13 +109,6 @@
             "response_model": "deepseek-flash",
             "response_id": "0672350d-5850-4968-b207-27deadc135a0"
           },
-          "native": {
-            "item": {
-              "content": "ready",
-              "role": "assistant"
-            },
-            "fingerprint": 5329546866666182096
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -182,14 +175,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "0672350d-5850-4968-b207-27deadc135a0"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             }
           ]
         }

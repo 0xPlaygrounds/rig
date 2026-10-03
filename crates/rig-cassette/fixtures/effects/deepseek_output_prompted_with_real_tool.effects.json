@@ -134,7 +134,7 @@
                   "id": "call_00_CJTNHTi4r4nxDcV04oxp1779",
                   "type": "function"
                 },
-                "fingerprint": 5092439086530742755
+                "fingerprint": "4e03af2fa7cd48a6"
               }
             }
           ],
@@ -150,23 +150,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "5486148d-992e-411c-9de6-60e6d689591d"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_CJTNHTi4r4nxDcV04oxp1779",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17792284792763084359
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -281,7 +264,7 @@
                       "id": "call_00_CJTNHTi4r4nxDcV04oxp1779",
                       "type": "function"
                     },
-                    "fingerprint": 5092439086530742755
+                    "fingerprint": "4e03af2fa7cd48a6"
                   }
                 }
               ],
@@ -292,24 +275,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "5486148d-992e-411c-9de6-60e6d689591d"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_CJTNHTi4r4nxDcV04oxp1779",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 17792284792763084359
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -383,13 +349,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "42a54952-6ee1-4f8e-bb44-4cd982f77c1a"
-          },
-          "native": {
-            "item": {
-              "content": "{\"title\":\"Rust Meetup in Seattle\",\"category\":\"meetup\",\"summary\":\"A Rust meetup in Seattle; the sum of 17 and 25 is 42.\"}",
-              "role": "assistant"
-            },
-            "fingerprint": 6773235897028762658
           },
           "finish_reason": "stop",
           "raw": {

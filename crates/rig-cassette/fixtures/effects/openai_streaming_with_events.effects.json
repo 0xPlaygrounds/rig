@@ -181,7 +181,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 580071837262307548
+                "fingerprint": "5dd17383bb6f729f"
               }
             }
           ],
@@ -342,7 +342,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -350,7 +350,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"x\":2,\"y\":5}"
           }
         },
@@ -358,7 +358,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -380,7 +380,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 580071837262307548
+                "fingerprint": "5dd17383bb6f729f"
               }
             }
           }
@@ -462,7 +462,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 580071837262307548
+                    "fingerprint": "5dd17383bb6f729f"
                   }
                 }
               ],
@@ -569,7 +569,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 6983192443972837536
+                "fingerprint": "4716af56a76dd426"
               }
             }
           ],
@@ -891,7 +891,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 6983192443972837536
+                "fingerprint": "4716af56a76dd426"
               }
             }
           }

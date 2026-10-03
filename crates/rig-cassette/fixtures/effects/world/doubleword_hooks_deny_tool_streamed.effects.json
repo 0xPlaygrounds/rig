@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,10 +10,18 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 14,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -21,19 +29,11 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 18,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 18,
+        "batch": 16,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -175,7 +175,7 @@
                   "id": "chatcmpl-tool-97daf595eda859ca",
                   "type": "function"
                 },
-                "fingerprint": 6340921738002225557
+                "fingerprint": "093c4344e65b4870"
               }
             }
           ],
@@ -192,23 +192,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976097-a5NrV6x5ElO9CFl5gDPh"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "chatcmpl-tool-97daf595eda859ca",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9446899781698587233
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -288,7 +271,7 @@
                   "id": "chatcmpl-tool-97daf595eda859ca",
                   "type": "function"
                 },
-                "fingerprint": 6340921738002225557
+                "fingerprint": "093c4344e65b4870"
               }
             }
           }
@@ -347,7 +330,7 @@
                       "id": "chatcmpl-tool-97daf595eda859ca",
                       "type": "function"
                     },
-                    "fingerprint": 6340921738002225557
+                    "fingerprint": "093c4344e65b4870"
                   }
                 }
               ],
@@ -358,24 +341,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790976097-a5NrV6x5ElO9CFl5gDPh"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "chatcmpl-tool-97daf595eda859ca",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 9446899781698587233
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -453,13 +419,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976098-VFi4hkkDagSdQU6w4RJe"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

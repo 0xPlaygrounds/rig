@@ -155,7 +155,7 @@
                 "item": {
                   "reasoning_content": "The user wants me to add 17 and 25 using the add tool, then reply with just the number.\n\nLet me call the add tool."
                 },
-                "fingerprint": 2503877823174262639
+                "fingerprint": "06909046eade4320"
               }
             },
             {
@@ -179,7 +179,7 @@
                   "id": "call_00_NiAqXMkc8HGLcoBimpeu7311",
                   "type": "function"
                 },
-                "fingerprint": 16621899038381949784
+                "fingerprint": "82787d7a21ffaa55"
               }
             }
           ],
@@ -196,24 +196,6 @@
             "model": "deepseek-reasoner",
             "response_model": "deepseek-flash",
             "response_id": "c4b82b21-d823-48a5-90ec-056dba85244a"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "The user wants me to add 17 and 25 using the add tool, then reply with just the number.\n\nLet me call the add tool.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_NiAqXMkc8HGLcoBimpeu7311",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7754521430256146152
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -320,7 +302,7 @@
                     "item": {
                       "reasoning_content": "The user wants me to add 17 and 25 using the add tool, then reply with just the number.\n\nLet me call the add tool."
                     },
-                    "fingerprint": 2503877823174262639
+                    "fingerprint": "06909046eade4320"
                   }
                 },
                 {
@@ -344,7 +326,7 @@
                       "id": "call_00_NiAqXMkc8HGLcoBimpeu7311",
                       "type": "function"
                     },
-                    "fingerprint": 16621899038381949784
+                    "fingerprint": "82787d7a21ffaa55"
                   }
                 }
               ],
@@ -355,25 +337,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "c4b82b21-d823-48a5-90ec-056dba85244a"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, then reply with just the number.\n\nLet me call the add tool.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_NiAqXMkc8HGLcoBimpeu7311",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7754521430256146152
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -447,13 +411,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "b89bdd45-09ca-4e99-8d1b-be69e456372f"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

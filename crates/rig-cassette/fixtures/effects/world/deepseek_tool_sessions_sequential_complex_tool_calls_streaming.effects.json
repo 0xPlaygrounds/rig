@@ -50,14 +50,6 @@
         }
       },
       {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 15,
         "id": 0,
         "kind": {
@@ -82,14 +74,6 @@
         }
       },
       {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 19,
         "id": 0,
         "kind": {
@@ -99,6 +83,14 @@
       },
       {
         "batch": 20,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -130,7 +122,15 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -138,21 +138,21 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 30,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 137,
+        "batch": 141,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -160,21 +160,21 @@
         }
       },
       {
-        "batch": 137,
+        "batch": 141,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 138,
+        "batch": 143,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 175,
+        "batch": 184,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -182,21 +182,21 @@
         }
       },
       {
-        "batch": 176,
+        "batch": 184,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 178,
+        "batch": 186,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 206,
+        "batch": 217,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -204,133 +204,261 @@
         }
       },
       {
-        "batch": 206,
+        "batch": 217,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 207,
+        "batch": 218,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 212,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 213,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 214,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 215,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 216,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 217,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 218,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 219,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 10
-        }
-      },
-      {
-        "batch": 220,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 221,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 222,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 223,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 224,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 225,
         "id": 8,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 226,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 225,
+        "batch": 227,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 228,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 229,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 231,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 232,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 233,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 234,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 235,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 236,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 237,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 239,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 240,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 241,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 242,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 243,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 245,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 246,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 247,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 248,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 249,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 250,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 251,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 253,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 254,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 255,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 256,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 257,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 259,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 259,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -653,7 +781,7 @@
                   "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                   "type": "function"
                 },
-                "fingerprint": 5946998173222652938
+                "fingerprint": "add0aebe09799f37"
               }
             }
           ],
@@ -669,23 +797,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
-          },
-          "native": {
-            "item": {
-              "content": "I'll run the tools in the specified order, one at a time.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "ping_empty"
-                  },
-                  "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 4494048398533376774
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -889,7 +1000,7 @@
                   "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                   "type": "function"
                 },
-                "fingerprint": 5946998173222652938
+                "fingerprint": "add0aebe09799f37"
               }
             }
           }
@@ -974,7 +1085,7 @@
                       "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 5946998173222652938
+                    "fingerprint": "add0aebe09799f37"
                   }
                 }
               ],
@@ -985,24 +1096,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the tools in the specified order, one at a time.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4494048398533376774
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1178,7 +1272,7 @@
                   "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                   "type": "function"
                 },
-                "fingerprint": 153311108019625719
+                "fingerprint": "d677bdeb47137ff6"
               }
             }
           ],
@@ -1194,23 +1288,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                    "name": "inspect_manifest"
-                  },
-                  "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 8193432206182970675
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1292,7 +1369,7 @@
                   "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                   "type": "function"
                 },
-                "fingerprint": 153311108019625719
+                "fingerprint": "d677bdeb47137ff6"
               }
             }
           }
@@ -1377,7 +1454,7 @@
                       "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 5946998173222652938
+                    "fingerprint": "add0aebe09799f37"
                   }
                 }
               ],
@@ -1388,24 +1465,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the tools in the specified order, one at a time.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4494048398533376774
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1463,7 +1523,7 @@
                       "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     },
-                    "fingerprint": 153311108019625719
+                    "fingerprint": "d677bdeb47137ff6"
                   }
                 }
               ],
@@ -1474,24 +1534,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8193432206182970675
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1658,7 +1701,7 @@
                   "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                   "type": "function"
                 },
-                "fingerprint": 8787863703086106165
+                "fingerprint": "7faf1a1e320f724a"
               }
             }
           ],
@@ -1674,23 +1717,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "9df45c98-f093-4e9a-8cc6-43d2c07ea826"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
-                    "name": "join_labels"
-                  },
-                  "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12558146949133273117
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1763,7 +1789,7 @@
                   "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                   "type": "function"
                 },
-                "fingerprint": 8787863703086106165
+                "fingerprint": "7faf1a1e320f724a"
               }
             }
           }
@@ -1848,7 +1874,7 @@
                       "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 5946998173222652938
+                    "fingerprint": "add0aebe09799f37"
                   }
                 }
               ],
@@ -1859,24 +1885,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the tools in the specified order, one at a time.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4494048398533376774
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1934,7 +1943,7 @@
                       "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     },
-                    "fingerprint": 153311108019625719
+                    "fingerprint": "d677bdeb47137ff6"
                   }
                 }
               ],
@@ -1945,24 +1954,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8193432206182970675
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2011,7 +2003,7 @@
                       "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                       "type": "function"
                     },
-                    "fingerprint": 8787863703086106165
+                    "fingerprint": "7faf1a1e320f724a"
                   }
                 }
               ],
@@ -2022,24 +2014,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "9df45c98-f093-4e9a-8cc6-43d2c07ea826"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
-                        "name": "join_labels"
-                      },
-                      "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12558146949133273117
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2200,7 +2175,7 @@
                   "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                   "type": "function"
                 },
-                "fingerprint": 8145992053334528830
+                "fingerprint": "87c1770d927e6b3f"
               }
             }
           ],
@@ -2216,23 +2191,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "cd7d09de-660d-44fd-aba9-074955968d31"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                    "name": "escape_echo"
-                  },
-                  "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 11133009865895960996
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2299,7 +2257,7 @@
                   "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                   "type": "function"
                 },
-                "fingerprint": 8145992053334528830
+                "fingerprint": "87c1770d927e6b3f"
               }
             }
           }
@@ -2384,7 +2342,7 @@
                       "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 5946998173222652938
+                    "fingerprint": "add0aebe09799f37"
                   }
                 }
               ],
@@ -2395,24 +2353,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the tools in the specified order, one at a time.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4494048398533376774
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2470,7 +2411,7 @@
                       "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     },
-                    "fingerprint": 153311108019625719
+                    "fingerprint": "d677bdeb47137ff6"
                   }
                 }
               ],
@@ -2481,24 +2422,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8193432206182970675
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2547,7 +2471,7 @@
                       "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                       "type": "function"
                     },
-                    "fingerprint": 8787863703086106165
+                    "fingerprint": "7faf1a1e320f724a"
                   }
                 }
               ],
@@ -2558,24 +2482,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "9df45c98-f093-4e9a-8cc6-43d2c07ea826"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
-                        "name": "join_labels"
-                      },
-                      "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12558146949133273117
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2618,7 +2525,7 @@
                       "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                       "type": "function"
                     },
-                    "fingerprint": 8145992053334528830
+                    "fingerprint": "87c1770d927e6b3f"
                   }
                 }
               ],
@@ -2629,24 +2536,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "cd7d09de-660d-44fd-aba9-074955968d31"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                        "name": "escape_echo"
-                      },
-                      "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11133009865895960996
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2804,13 +2694,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "eeb5f758-9c67-4c2f-b34c-9c510d9cf544"
-          },
-          "native": {
-            "item": {
-              "content": "All four checks passed in order: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
-              "role": "assistant"
-            },
-            "fingerprint": 17782398507626914763
           },
           "finish_reason": "stop",
           "raw": {

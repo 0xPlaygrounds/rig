@@ -124,7 +124,7 @@
                 "item": {
                   "reasoning_content": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
                 },
-                "fingerprint": 1005054208318757749
+                "fingerprint": "114dd0b4b99e912e"
               }
             },
             {
@@ -149,7 +149,7 @@
                   "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g",
                   "type": "function"
                 },
-                "fingerprint": 5203003481727742687
+                "fingerprint": "76bd3f8f157042f8"
               }
             }
           ],
@@ -165,24 +165,6 @@
             "model": "Qwen3-1.7B-Q4_K_M",
             "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "response_id": "chatcmpl-hjd00WrddjmO75vOoEk6MNFCMlWvPaJM"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
-                    "name": "submit"
-                  },
-                  "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12945617477327374815
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -312,7 +294,7 @@
                 "item": {
                   "reasoning_content": "Okay, let's see. The user provided an address: \"456 Oak Avenue, Cambridge, MA 02139\". I need to extract the street, city, state, and zip code.\n\nFirst, the street is \"456 Oak Avenue\". Then the city is \"Cambridge\". The state is \"MA\" because that's the two-letter abbreviation for Massachusetts. The zip code is \"02139\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All of these are here. No missing fields. So I can call the submit function with these values.\n"
                 },
-                "fingerprint": 1960589653821028931
+                "fingerprint": "75808fffab90c384"
               }
             },
             {
@@ -338,7 +320,7 @@
                   "id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns",
                   "type": "function"
                 },
-                "fingerprint": 1892054524239256403
+                "fingerprint": "d0216001d8e1214c"
               }
             }
           ],
@@ -354,24 +336,6 @@
             "model": "Qwen3-1.7B-Q4_K_M",
             "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "response_id": "chatcmpl-6RqvLx1P4enciq5xPKS3diTB1ABQhdnV"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "Okay, let's see. The user provided an address: \"456 Oak Avenue, Cambridge, MA 02139\". I need to extract the street, city, state, and zip code.\n\nFirst, the street is \"456 Oak Avenue\". Then the city is \"Cambridge\". The state is \"MA\" because that's the two-letter abbreviation for Massachusetts. The zip code is \"02139\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All of these are here. No missing fields. So I can call the submit function with these values.\n",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"street\": \"456 Oak Avenue\", \"city\": \"Cambridge\", \"state\": \"MA\", \"zip_code\": \"02139\"}",
-                    "name": "submit"
-                  },
-                  "id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 11828251699789605501
           },
           "finish_reason": "tool_calls",
           "raw": {

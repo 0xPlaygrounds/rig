@@ -94,7 +94,7 @@
                 "item": {
                   "text": "cedar"
                 },
-                "fingerprint": 9699097597918212434
+                "fingerprint": "39a8eae90b6905be"
               }
             }
           ],
@@ -109,13 +109,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "qHizaqv4Ldv_qtsPvqG5mA0"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 10831170027988163448
           },
           "finish_reason": "stop",
           "raw": {
@@ -166,7 +159,7 @@
                 "item": {
                   "text": "cedar"
                 },
-                "fingerprint": 9699097597918212434
+                "fingerprint": "39a8eae90b6905be"
               }
             }
           }

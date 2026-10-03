@@ -206,7 +206,7 @@
                   },
                   "thoughtSignature": "CugBAWkUfRN59zZpJ8czu6BqosdIJIVZeF1aaLld1grBYsKrs/J8/36ywxzz9ZPMgrgOUbPb3dkMZOnfci3JX1/nOVBnyC87Gbfw3TeE5HQ0EYSR6A0L5/DieiFFNzxtS4bwNTqgB5nmwgHvVt0FL/6Gr8i4xrQ9HnES+4qRBBhtxP/+x4sxYd12nJAk6zJrTUJrEfGFh+dkGOJN4DdEPYs6BA1tfG5jEmjejsui4pefvVwdnalFH/Pn6HJsYdf9dJAM4uWehokaRN2JhGCIp0i4WW0+XTSVghpCn68288CqNf2HlvJOAZL7xg=="
                 },
-                "fingerprint": 11256730490019568519
+                "fingerprint": "24eb2f726ba0c58b"
               }
             },
             {
@@ -231,7 +231,7 @@
                     "name": "subtract"
                   }
                 },
-                "fingerprint": 8664485386300771222
+                "fingerprint": "934f06706b3684fc"
               }
             }
           ],
@@ -247,14 +247,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "dhDAapneNcysz7IPur_wkAg"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 11575068604407010408
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -382,7 +374,7 @@
                       },
                       "thoughtSignature": "CugBAWkUfRN59zZpJ8czu6BqosdIJIVZeF1aaLld1grBYsKrs/J8/36ywxzz9ZPMgrgOUbPb3dkMZOnfci3JX1/nOVBnyC87Gbfw3TeE5HQ0EYSR6A0L5/DieiFFNzxtS4bwNTqgB5nmwgHvVt0FL/6Gr8i4xrQ9HnES+4qRBBhtxP/+x4sxYd12nJAk6zJrTUJrEfGFh+dkGOJN4DdEPYs6BA1tfG5jEmjejsui4pefvVwdnalFH/Pn6HJsYdf9dJAM4uWehokaRN2JhGCIp0i4WW0+XTSVghpCn68288CqNf2HlvJOAZL7xg=="
                     },
-                    "fingerprint": 11256730490019568519
+                    "fingerprint": "24eb2f726ba0c58b"
                   }
                 },
                 {
@@ -407,7 +399,7 @@
                         "name": "subtract"
                       }
                     },
-                    "fingerprint": 8664485386300771222
+                    "fingerprint": "934f06706b3684fc"
                   }
                 }
               ],
@@ -418,15 +410,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "dhDAapneNcysz7IPur_wkAg"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 11575068604407010408
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -526,7 +510,7 @@
                   "text": "14 + 6 = 20. The subtract tool is offline, so I cannot compute 40 - 9.",
                   "thoughtSignature": "CsECAWkUfRMDrRBWGCcvzjWLhq2+jLtX0lwADeTnFWUEzDKEpaGCmj+i+cGYqC7HMc/CV6m3Mj5AF6hw5chVc5Lki0PtUFfHz0mdscjW0aQY/bbTp3Vw6Uhbdppwj4XappPzF3gsJ50ewDsLkU9KdI9uRfHDZK/lSgQ14Dz2dP04VRIKhILzHSWCU+LEh222/YK9l+skv26bEAXdK6qtnOhSzi5nK3NJq4rf80YLoo+Hv1f2AmjT5o9DliLiAvelE6f4/5BMG9bB5VNj1ZbH99+DdX99J4YcCJekuM+DAFjI1Wd3HOPwds4/TVNI02+ergVlyfCInVOunPDM8qYDcHUzugjzCWpmjKXRBzdU7UD1xdKDGJUH04i3UwmajccFb9dmqcVZC9C3pYk0QSyqbcu3rMYQQJ2j14VF44m3w4NcRkIj"
                 },
-                "fingerprint": 13592256154773126853
+                "fingerprint": "5b94d8d92047fedf"
               }
             }
           ],
@@ -542,13 +526,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "dxDAapqtM-_mz7IPusSH4Ac"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 14420181740899416307
           },
           "finish_reason": "stop",
           "raw": {

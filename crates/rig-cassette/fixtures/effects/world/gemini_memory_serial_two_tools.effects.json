@@ -46,7 +46,7 @@
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,7 +54,7 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 23,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -62,14 +62,14 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 23,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 31,
+        "batch": 24,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -235,7 +235,7 @@
                   },
                   "thoughtSignature": "EpIECo8EAWkUfRPXFZAd7yP1IRcw8N9Ck0rowHP/9VWWWyP/E35fXAd9DrF7n09O01Vo1CtMVrrCghGW0++GkmOt+XUfuHzxd+ZygvM7K7gZA4m+b2BgLallKezfelarH93CmurUKhk1KcuVdue5Pwn21v/rgvcW5l594GilOFfLjPti2Vs1HBD4iuKd1rvtb8wfYPAPKF0RB8KyXSDN37JMLJkS3vXaq0sXdG725Lr4k//5T6Wmh/ss5287WaC6XvULQhB0lFN7rH79tl7HSkZMhggsDH8cOXJXp5chiTFoV3Ojs7dxLPXzptjtjqmKggNb8reqw/dHpbwYLaxGisNh3TA5G3DSaTY1nfY8p4Jvpyb7hSGDch/cCtTTr0HSVOWNn636a4aZWRScfoponZhiRYbO6zhaGzeEaR/2TjK8f3ffBOWOzkWbS7dHVGD3DWmjn9zx8AanaMAjvtyG3EkADvYK7coZ3JxnUXN3bhAONuVQ+lKMsYgvFdDmJRXBnWxXbyUiNAMhJca2KohKYDQvrmZu+H40CKN4/MuvcZ8iHCj1wq3xWl2DkBQIrjqCO3x4QGH+IcahQy0GBaGOiQE/ZeJbOMq51EJZWf8mI7zPpsDisV4OhblIKvC3f6miSlG/61+bo6Vfzr/0u8B8N/6/yDXHV8M3V9tXmh2V1yn2OZLlPdicoUZ/ls6qTrX8K3062Rs="
                 },
-                "fingerprint": 14685909144805361481
+                "fingerprint": "bdaa3b42339c1f4a"
               }
             },
             {
@@ -255,7 +255,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 8189018532893778807
+                "fingerprint": "1000aedeb6b977fe"
               }
             }
           ],
@@ -271,13 +271,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "MCy_as3xO56i6dkPyqr9uAw"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 12050178592082321077
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -340,7 +333,7 @@
                   },
                   "thoughtSignature": "EpIECo8EAWkUfRPXFZAd7yP1IRcw8N9Ck0rowHP/9VWWWyP/E35fXAd9DrF7n09O01Vo1CtMVrrCghGW0++GkmOt+XUfuHzxd+ZygvM7K7gZA4m+b2BgLallKezfelarH93CmurUKhk1KcuVdue5Pwn21v/rgvcW5l594GilOFfLjPti2Vs1HBD4iuKd1rvtb8wfYPAPKF0RB8KyXSDN37JMLJkS3vXaq0sXdG725Lr4k//5T6Wmh/ss5287WaC6XvULQhB0lFN7rH79tl7HSkZMhggsDH8cOXJXp5chiTFoV3Ojs7dxLPXzptjtjqmKggNb8reqw/dHpbwYLaxGisNh3TA5G3DSaTY1nfY8p4Jvpyb7hSGDch/cCtTTr0HSVOWNn636a4aZWRScfoponZhiRYbO6zhaGzeEaR/2TjK8f3ffBOWOzkWbS7dHVGD3DWmjn9zx8AanaMAjvtyG3EkADvYK7coZ3JxnUXN3bhAONuVQ+lKMsYgvFdDmJRXBnWxXbyUiNAMhJca2KohKYDQvrmZu+H40CKN4/MuvcZ8iHCj1wq3xWl2DkBQIrjqCO3x4QGH+IcahQy0GBaGOiQE/ZeJbOMq51EJZWf8mI7zPpsDisV4OhblIKvC3f6miSlG/61+bo6Vfzr/0u8B8N/6/yDXHV8M3V9tXmh2V1yn2OZLlPdicoUZ/ls6qTrX8K3062Rs="
                 },
-                "fingerprint": 14685909144805361481
+                "fingerprint": "bdaa3b42339c1f4a"
               }
             }
           }
@@ -383,7 +376,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 8189018532893778807
+                "fingerprint": "1000aedeb6b977fe"
               }
             }
           }
@@ -489,7 +482,7 @@
                       },
                       "thoughtSignature": "EpIECo8EAWkUfRPXFZAd7yP1IRcw8N9Ck0rowHP/9VWWWyP/E35fXAd9DrF7n09O01Vo1CtMVrrCghGW0++GkmOt+XUfuHzxd+ZygvM7K7gZA4m+b2BgLallKezfelarH93CmurUKhk1KcuVdue5Pwn21v/rgvcW5l594GilOFfLjPti2Vs1HBD4iuKd1rvtb8wfYPAPKF0RB8KyXSDN37JMLJkS3vXaq0sXdG725Lr4k//5T6Wmh/ss5287WaC6XvULQhB0lFN7rH79tl7HSkZMhggsDH8cOXJXp5chiTFoV3Ojs7dxLPXzptjtjqmKggNb8reqw/dHpbwYLaxGisNh3TA5G3DSaTY1nfY8p4Jvpyb7hSGDch/cCtTTr0HSVOWNn636a4aZWRScfoponZhiRYbO6zhaGzeEaR/2TjK8f3ffBOWOzkWbS7dHVGD3DWmjn9zx8AanaMAjvtyG3EkADvYK7coZ3JxnUXN3bhAONuVQ+lKMsYgvFdDmJRXBnWxXbyUiNAMhJca2KohKYDQvrmZu+H40CKN4/MuvcZ8iHCj1wq3xWl2DkBQIrjqCO3x4QGH+IcahQy0GBaGOiQE/ZeJbOMq51EJZWf8mI7zPpsDisV4OhblIKvC3f6miSlG/61+bo6Vfzr/0u8B8N/6/yDXHV8M3V9tXmh2V1yn2OZLlPdicoUZ/ls6qTrX8K3062Rs="
                     },
-                    "fingerprint": 14685909144805361481
+                    "fingerprint": "bdaa3b42339c1f4a"
                   }
                 },
                 {
@@ -509,7 +502,7 @@
                         "name": "lookup_orchard_label"
                       }
                     },
-                    "fingerprint": 8189018532893778807
+                    "fingerprint": "1000aedeb6b977fe"
                   }
                 }
               ],
@@ -520,14 +513,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "MCy_as3xO56i6dkPyqr9uAw"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 12050178592082321077
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -602,7 +588,7 @@
                   "text": "The markers are crimson-harbor and silver-orchard.",
                   "thoughtSignature": "ErMCCrACAWkUfRMVEMvXpRYav40+tfXJuVI9CImSUpP4kJ9sXlMt3yfhpqN7El4Vo641p/bv1giRStWz4Td9wj7r1dIJL2kc8n8zaTkCSAIPrvAV+gFSj/xETan0EO9GWVmDV25SAVBApOqRcARiQrcTZUqxoQV+cZen+4MUD9zATd2fW3GFTUUK+ifupgjZD0Ead5KqoXcwxjn5x8xArj/cxNGtNpIkNNLXJkvzyCaCwhssNz4ygovUUkYPSf0Y6dpYVMn65e+S3U8Hahnk3mFFT2ywRPaXVVIXSP1NWKrLei37gVWQgTQG9QWktWuMm0/5J6RssYkVElwddBhVNBNsgrQtjyjkZUU7DmH6aGYJK6RS9WZozpoZzMKZvq0EaTo17upef0ZC9rP4iV1LrBINc5hPHQ=="
                 },
-                "fingerprint": 7317008463842021489
+                "fingerprint": "c507577782bcc823"
               }
             }
           ],
@@ -618,13 +604,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "MSy_apvfO73kqtsP05W72AQ"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 6549961962841853667
           },
           "finish_reason": "stop",
           "raw": {
@@ -677,7 +656,7 @@
                   "text": "The markers are crimson-harbor and silver-orchard.",
                   "thoughtSignature": "ErMCCrACAWkUfRMVEMvXpRYav40+tfXJuVI9CImSUpP4kJ9sXlMt3yfhpqN7El4Vo641p/bv1giRStWz4Td9wj7r1dIJL2kc8n8zaTkCSAIPrvAV+gFSj/xETan0EO9GWVmDV25SAVBApOqRcARiQrcTZUqxoQV+cZen+4MUD9zATd2fW3GFTUUK+ifupgjZD0Ead5KqoXcwxjn5x8xArj/cxNGtNpIkNNLXJkvzyCaCwhssNz4ygovUUkYPSf0Y6dpYVMn65e+S3U8Hahnk3mFFT2ywRPaXVVIXSP1NWKrLei37gVWQgTQG9QWktWuMm0/5J6RssYkVElwddBhVNBNsgrQtjyjkZUU7DmH6aGYJK6RS9WZozpoZzMKZvq0EaTo17upef0ZC9rP4iV1LrBINc5hPHQ=="
                 },
-                "fingerprint": 7317008463842021489
+                "fingerprint": "c507577782bcc823"
               }
             }
           }
@@ -730,7 +709,7 @@
                       },
                       "thoughtSignature": "EpIECo8EAWkUfRPXFZAd7yP1IRcw8N9Ck0rowHP/9VWWWyP/E35fXAd9DrF7n09O01Vo1CtMVrrCghGW0++GkmOt+XUfuHzxd+ZygvM7K7gZA4m+b2BgLallKezfelarH93CmurUKhk1KcuVdue5Pwn21v/rgvcW5l594GilOFfLjPti2Vs1HBD4iuKd1rvtb8wfYPAPKF0RB8KyXSDN37JMLJkS3vXaq0sXdG725Lr4k//5T6Wmh/ss5287WaC6XvULQhB0lFN7rH79tl7HSkZMhggsDH8cOXJXp5chiTFoV3Ojs7dxLPXzptjtjqmKggNb8reqw/dHpbwYLaxGisNh3TA5G3DSaTY1nfY8p4Jvpyb7hSGDch/cCtTTr0HSVOWNn636a4aZWRScfoponZhiRYbO6zhaGzeEaR/2TjK8f3ffBOWOzkWbS7dHVGD3DWmjn9zx8AanaMAjvtyG3EkADvYK7coZ3JxnUXN3bhAONuVQ+lKMsYgvFdDmJRXBnWxXbyUiNAMhJca2KohKYDQvrmZu+H40CKN4/MuvcZ8iHCj1wq3xWl2DkBQIrjqCO3x4QGH+IcahQy0GBaGOiQE/ZeJbOMq51EJZWf8mI7zPpsDisV4OhblIKvC3f6miSlG/61+bo6Vfzr/0u8B8N/6/yDXHV8M3V9tXmh2V1yn2OZLlPdicoUZ/ls6qTrX8K3062Rs="
                     },
-                    "fingerprint": 14685909144805361481
+                    "fingerprint": "bdaa3b42339c1f4a"
                   }
                 },
                 {
@@ -750,7 +729,7 @@
                         "name": "lookup_orchard_label"
                       }
                     },
-                    "fingerprint": 8189018532893778807
+                    "fingerprint": "1000aedeb6b977fe"
                   }
                 }
               ],
@@ -761,14 +740,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "MCy_as3xO56i6dkPyqr9uAw"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 12050178592082321077
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -812,7 +784,7 @@
                       "text": "The markers are crimson-harbor and silver-orchard.",
                       "thoughtSignature": "ErMCCrACAWkUfRMVEMvXpRYav40+tfXJuVI9CImSUpP4kJ9sXlMt3yfhpqN7El4Vo641p/bv1giRStWz4Td9wj7r1dIJL2kc8n8zaTkCSAIPrvAV+gFSj/xETan0EO9GWVmDV25SAVBApOqRcARiQrcTZUqxoQV+cZen+4MUD9zATd2fW3GFTUUK+ifupgjZD0Ead5KqoXcwxjn5x8xArj/cxNGtNpIkNNLXJkvzyCaCwhssNz4ygovUUkYPSf0Y6dpYVMn65e+S3U8Hahnk3mFFT2ywRPaXVVIXSP1NWKrLei37gVWQgTQG9QWktWuMm0/5J6RssYkVElwddBhVNBNsgrQtjyjkZUU7DmH6aGYJK6RS9WZozpoZzMKZvq0EaTo17upef0ZC9rP4iV1LrBINc5hPHQ=="
                     },
-                    "fingerprint": 7317008463842021489
+                    "fingerprint": "c507577782bcc823"
                   }
                 }
               ],
@@ -823,14 +795,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "MSy_apvfO73kqtsP05W72AQ"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 6549961962841853667
-              }
+              "stop": "stop"
             }
           ]
         }

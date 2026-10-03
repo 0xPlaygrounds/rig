@@ -209,7 +209,7 @@
                   },
                   "thoughtSignature": "EpMECpAEAWkUfRMyzTYDxQUlfaVTH/a3iqgZUL855AAKHAOYDiUkT/qGbiDaIPcXnDdXYlQak1dxrqW6QZHLPe2iIctvWTLyRBXjR1ZCPsXB6mzUv3O5pgzqxl7kgVuwgG+mNLGj3uTxqAujtzoZZNePAuJQBQOm+/SQprDE80Rp8owopUEG8rkQL4B3pLf94ZtNBpqDJZMEDYQ1PcsqS8HTaAc/zgnMn1IgIbXtrHCTtKpqk788Ghw856TSESVOwQ8XQGbt0fZq8aXANWVDl9iNtbFVLlDnYZz0RyMk7RxBqSynbq6kBgPX8k7jnXOT9HDYhGZ4hPRpST0Vf9EMC/y7TpJxVDzEbAiUYpGLKpk4EAaJbIbm7JgYHg9HSRBEC0O+ZQ75S0x5zaRRTxWohKFqoQrl6+WHHFQckUj7AgluFILnLd7/1a2Xo+Pvmma3hnuhnmSQYc41bumTC83gCrdW3Ilq3C2uFzBHkbz8oEjOxRRKTm/AIc0SnLUR9OzeSHrNPJzxLb0XUSIk9aA16w7vEp3nniZPkXDaMXM7l6QlvmabPYCNQ5QXL6I4gOvJfoOCgH/4HF3KxDELyK5J2Wa2l7yOkC6/LBWcGZ26cizphYffjWhn7VqZ6Jn6KMj1/zBU18lVbs2xZSGqpf++eJpBxli3ossK1R5SCKZdDH3V5MpjjcwiEhn2fafGq8OR3WfVB/tA"
                 },
-                "fingerprint": 10313038336887971817
+                "fingerprint": "803ee0e09aa764a2"
               }
             },
             {
@@ -229,7 +229,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 10695865824864011880
+                "fingerprint": "7bf05556357094b9"
               }
             }
           ],
@@ -245,13 +245,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "Tiy_auffF57yqtsP8IDnoAk"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 16639704450526662804
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -369,7 +362,7 @@
                       },
                       "thoughtSignature": "EpMECpAEAWkUfRMyzTYDxQUlfaVTH/a3iqgZUL855AAKHAOYDiUkT/qGbiDaIPcXnDdXYlQak1dxrqW6QZHLPe2iIctvWTLyRBXjR1ZCPsXB6mzUv3O5pgzqxl7kgVuwgG+mNLGj3uTxqAujtzoZZNePAuJQBQOm+/SQprDE80Rp8owopUEG8rkQL4B3pLf94ZtNBpqDJZMEDYQ1PcsqS8HTaAc/zgnMn1IgIbXtrHCTtKpqk788Ghw856TSESVOwQ8XQGbt0fZq8aXANWVDl9iNtbFVLlDnYZz0RyMk7RxBqSynbq6kBgPX8k7jnXOT9HDYhGZ4hPRpST0Vf9EMC/y7TpJxVDzEbAiUYpGLKpk4EAaJbIbm7JgYHg9HSRBEC0O+ZQ75S0x5zaRRTxWohKFqoQrl6+WHHFQckUj7AgluFILnLd7/1a2Xo+Pvmma3hnuhnmSQYc41bumTC83gCrdW3Ilq3C2uFzBHkbz8oEjOxRRKTm/AIc0SnLUR9OzeSHrNPJzxLb0XUSIk9aA16w7vEp3nniZPkXDaMXM7l6QlvmabPYCNQ5QXL6I4gOvJfoOCgH/4HF3KxDELyK5J2Wa2l7yOkC6/LBWcGZ26cizphYffjWhn7VqZ6Jn6KMj1/zBU18lVbs2xZSGqpf++eJpBxli3ossK1R5SCKZdDH3V5MpjjcwiEhn2fafGq8OR3WfVB/tA"
                     },
-                    "fingerprint": 10313038336887971817
+                    "fingerprint": "803ee0e09aa764a2"
                   }
                 },
                 {
@@ -389,7 +382,7 @@
                         "name": "lookup_orchard_label"
                       }
                     },
-                    "fingerprint": 10695865824864011880
+                    "fingerprint": "7bf05556357094b9"
                   }
                 }
               ],
@@ -400,14 +393,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "Tiy_auffF57yqtsP8IDnoAk"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 16639704450526662804
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -481,7 +467,7 @@
                 "item": {
                   "text": "The signals are crimson-harbor and silver-orchard."
                 },
-                "fingerprint": 13140296511795826339
+                "fingerprint": "223c0acf16ebdc71"
               }
             }
           ],
@@ -496,13 +482,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "Tyy_arr-IezlqtsP3_qvoAk"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 4267563868192018001
           },
           "finish_reason": "stop",
           "raw": {

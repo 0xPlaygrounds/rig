@@ -110,7 +110,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2627772175494845933
+                "fingerprint": "94e6584fdb2d2fa6"
               }
             }
           ],
@@ -249,7 +249,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -257,7 +257,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a beginner or an expert, this meetup is a great opportunity to learn and share knowledge about Rust.\"}"
           }
         },
@@ -265,7 +265,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -288,7 +288,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2627772175494845933
+                "fingerprint": "94e6584fdb2d2fa6"
               }
             }
           }

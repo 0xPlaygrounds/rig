@@ -131,7 +131,7 @@
                   },
                   "thoughtSignature": "Ev8DCvwDAWkUfRPbksQ1AoB/8f33iLJkMtoa3rFuik7qwEzXbasM8iBokXr2TAbg9ALZAJ17zbw7J/l5i5k6vTJ6JhpzwhcJkRG45LA1KqcZYlai/ViKqijHCHUJLWuAyJfzZx4O8fOgJARkzMUs1P8zR9JbBcL2XQf6e2IbRstRyrc99FZydBFAC4z9aFg7s+WegXM9nsuAQ1d8opSPYn007wXngDTEDjgTF0roQX8uA50jT75ovyzhmfKioKboSkpPdWjpVnCfjML26QgJFNQv/dExJ/7REaShku/RcO2MM/ohPHpnCzqmgnI+q7uQiPt6opu66TYza9ILgnyx1VH6aTTKDsmVhz/PL/ViwrAippqX8fqNnI9iaq/AdnDXcS/cU3yCe9/KCrLgJhWa6hA7ZtX55R4Cdojt+piU4rSW8AWNsCyMWsrRSuoLf8yadc1I371fdExZ427WDVYX+NWpE4yMQYlGFoWNAjexmm2qAditU2UsOk1IPNrgZO7TNTzrlRayyFLiAnLIaIC74p/ygFbJJc1LYlexI3pYukfWltT0ErcnwUnFuKk2CCTwXUbLTQPfA8AY8RcRjCbo9dFdFr6rBaojWxitRyKbRCZ+W1FHWwwdTQHXIZ5TPV6SGEOVqC5XwXaNJqxUZ2QDkf53N7pQtnn3h5FbTaMikJ/sXA=="
                 },
-                "fingerprint": 10038774565326064543
+                "fingerprint": "17afd0b5e3102aa0"
               }
             },
             {
@@ -151,7 +151,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 14641201082644843772
+                "fingerprint": "26801f6ce4b90935"
               }
             }
           ],
@@ -167,13 +167,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "USy_avTsLI2ymtkPt6eikAw"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 729296524882952818
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -288,7 +281,7 @@
                       },
                       "thoughtSignature": "Ev8DCvwDAWkUfRPbksQ1AoB/8f33iLJkMtoa3rFuik7qwEzXbasM8iBokXr2TAbg9ALZAJ17zbw7J/l5i5k6vTJ6JhpzwhcJkRG45LA1KqcZYlai/ViKqijHCHUJLWuAyJfzZx4O8fOgJARkzMUs1P8zR9JbBcL2XQf6e2IbRstRyrc99FZydBFAC4z9aFg7s+WegXM9nsuAQ1d8opSPYn007wXngDTEDjgTF0roQX8uA50jT75ovyzhmfKioKboSkpPdWjpVnCfjML26QgJFNQv/dExJ/7REaShku/RcO2MM/ohPHpnCzqmgnI+q7uQiPt6opu66TYza9ILgnyx1VH6aTTKDsmVhz/PL/ViwrAippqX8fqNnI9iaq/AdnDXcS/cU3yCe9/KCrLgJhWa6hA7ZtX55R4Cdojt+piU4rSW8AWNsCyMWsrRSuoLf8yadc1I371fdExZ427WDVYX+NWpE4yMQYlGFoWNAjexmm2qAditU2UsOk1IPNrgZO7TNTzrlRayyFLiAnLIaIC74p/ygFbJJc1LYlexI3pYukfWltT0ErcnwUnFuKk2CCTwXUbLTQPfA8AY8RcRjCbo9dFdFr6rBaojWxitRyKbRCZ+W1FHWwwdTQHXIZ5TPV6SGEOVqC5XwXaNJqxUZ2QDkf53N7pQtnn3h5FbTaMikJ/sXA=="
                     },
-                    "fingerprint": 10038774565326064543
+                    "fingerprint": "17afd0b5e3102aa0"
                   }
                 },
                 {
@@ -308,7 +301,7 @@
                         "name": "lookup_orchard_label"
                       }
                     },
-                    "fingerprint": 14641201082644843772
+                    "fingerprint": "26801f6ce4b90935"
                   }
                 }
               ],
@@ -319,14 +312,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "USy_avTsLI2ymtkPt6eikAw"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 729296524882952818
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -401,7 +387,7 @@
                   "text": "The markers found are crimson-harbor and silver-orchard.",
                   "thoughtSignature": "EskCCsYCAWkUfRNkP0xRlcarZTYNyPdSmtn54Ba+JCAxqJspL6h6jueaZ9UdZLXtSfIlvwvMdRXqqgQgC76NtkkaiVHhK5F/R1rP9pClMYF3be0k/HPw9SvHchEL6GwrB2d+I03Ia7BJCDUP5KETzJhijRdgdHJUZb8zjGuquGERRk5rvK/bcG72/TFMV0eol9wgqKAcjHssIXjkpQNosR6BtPeX1JELAl6XBnQZXFK6HRoRam7xKAbgwP0Zlw5hjnk2L5v+uHlMm2YRJMnMk24CoASC+/iFnkSF9Z9CSueXZ23KQXTELaxbGzBfptlebzhZLAlNJfpaSKsd9nynsjBl9ow3DnljORMqVSpQNO3zSVoTo1JiVJBO8c/TzDporJt+sN1v64rzdppPYVnj21brOEXar0vF4VQqNsZ7EQurOX86N8llajij/Hc="
                 },
-                "fingerprint": 4965089592633624741
+                "fingerprint": "abb60fbcf391b257"
               }
             }
           ],
@@ -417,13 +403,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "Uiy_aviyOO6nqtsP27_PmAY"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 6654173017621426643
           },
           "finish_reason": "stop",
           "raw": {

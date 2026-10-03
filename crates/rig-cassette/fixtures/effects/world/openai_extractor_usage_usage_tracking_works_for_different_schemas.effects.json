@@ -141,7 +141,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9391495797633679532
+                "fingerprint": "8032d5b783d88253"
               }
             }
           ],
@@ -385,7 +385,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17021394133041548425
+                "fingerprint": "ac14167c1f2480a6"
               }
             }
           ],

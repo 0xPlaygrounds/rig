@@ -92,14 +92,6 @@
             "response_model": "gpt-4o-2024-11-20",
             "response_id": "chatcmpl-REDACTED_1"
           },
-          "native": {
-            "item": {
-              "content": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
-              "padding": "ab",
-              "role": "assistant"
-            },
-            "fingerprint": 3985562942421695019
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

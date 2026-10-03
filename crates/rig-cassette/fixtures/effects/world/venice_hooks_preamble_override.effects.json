@@ -90,15 +90,6 @@
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RF3qVUP0rHULoAF19njUKfJJ"
           },
-          "native": {
-            "item": {
-              "content": "Rust is a systems programming language focused on safety, speed, and concurrency, and memory safety matters to prevent bugs, crashes, and security vulnerabilities.",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 10298035082695528998
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

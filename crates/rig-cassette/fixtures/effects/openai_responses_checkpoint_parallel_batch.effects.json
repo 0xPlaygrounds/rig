@@ -133,7 +133,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2671565402294423011
+                "fingerprint": "ebc7c2ec66e95a9e"
               }
             },
             {
@@ -156,7 +156,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17491144958214162051
+                "fingerprint": "e4e4740804c46d06"
               }
             },
             {
@@ -179,7 +179,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 122461497484788697
+                "fingerprint": "a1244e7eb3e56dbc"
               }
             }
           ],
@@ -456,7 +456,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2671565402294423011
+                    "fingerprint": "ebc7c2ec66e95a9e"
                   }
                 },
                 {
@@ -479,7 +479,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17491144958214162051
+                    "fingerprint": "e4e4740804c46d06"
                   }
                 },
                 {
@@ -502,7 +502,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 122461497484788697
+                    "fingerprint": "a1244e7eb3e56dbc"
                   }
                 }
               ],
@@ -615,7 +615,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 6033222713521759663
+                "fingerprint": "2e3d3d4a66aba08f"
               }
             }
           ],

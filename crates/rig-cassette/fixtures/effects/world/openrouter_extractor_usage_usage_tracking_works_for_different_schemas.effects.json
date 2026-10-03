@@ -141,7 +141,7 @@
                   "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
                   "type": "function"
                 },
-                "fingerprint": 1614758669980730737
+                "fingerprint": "4e5507c6c8eb26de"
               }
             }
           ],
@@ -159,25 +159,6 @@
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
             "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14548093134548544811
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -337,7 +318,7 @@
                   "id": "call_2DkWoYjzwskyOhv0JSVZ5Duq",
                   "type": "function"
                 },
-                "fingerprint": 13663654279018170391
+                "fingerprint": "762ed161b9e723a0"
               }
             }
           ],
@@ -355,25 +336,6 @@
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
             "response_id": "gen-1790152496-bDq4BtlBlbybJOIViV7S"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_2DkWoYjzwskyOhv0JSVZ5Duq",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 6454218958734547609
           },
           "finish_reason": "tool_calls",
           "raw": {

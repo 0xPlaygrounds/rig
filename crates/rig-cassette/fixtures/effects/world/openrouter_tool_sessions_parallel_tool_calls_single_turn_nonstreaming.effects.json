@@ -161,7 +161,7 @@
                   "id": "call_xgCAOfgeY4hXUz0s9pRm3Gls",
                   "type": "function"
                 },
-                "fingerprint": 17851309748996490499
+                "fingerprint": "f711d673cc7da868"
               }
             },
             {
@@ -182,7 +182,7 @@
                   "id": "call_AgvyIELWwkpeRU7lGuvT8c6U",
                   "type": "function"
                 },
-                "fingerprint": 5063209411268139351
+                "fingerprint": "b87fc175016d6426"
               }
             }
           ],
@@ -200,33 +200,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790978342-tFM9O83oxTlaYWsghRTg"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_xgCAOfgeY4hXUz0s9pRm3Gls",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_AgvyIELWwkpeRU7lGuvT8c6U",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1035269210237789107
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -392,7 +365,7 @@
                       "id": "call_xgCAOfgeY4hXUz0s9pRm3Gls",
                       "type": "function"
                     },
-                    "fingerprint": 17851309748996490499
+                    "fingerprint": "f711d673cc7da868"
                   }
                 },
                 {
@@ -413,7 +386,7 @@
                       "id": "call_AgvyIELWwkpeRU7lGuvT8c6U",
                       "type": "function"
                     },
-                    "fingerprint": 5063209411268139351
+                    "fingerprint": "b87fc175016d6426"
                   }
                 }
               ],
@@ -424,34 +397,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978342-tFM9O83oxTlaYWsghRTg"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "reasoning": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_xgCAOfgeY4hXUz0s9pRm3Gls",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_AgvyIELWwkpeRU7lGuvT8c6U",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 1035269210237789107
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -537,15 +483,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790978343-JGW4w894YfZ117CVMbYC"
-          },
-          "native": {
-            "item": {
-              "content": "The alpha signal marker is \"crimson-harbor,\" and the beta signal marker is \"silver-orchard.\"",
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 16963546079788091241
           },
           "finish_reason": "stop",
           "raw": {

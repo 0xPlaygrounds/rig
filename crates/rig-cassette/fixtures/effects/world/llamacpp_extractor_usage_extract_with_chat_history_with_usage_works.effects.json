@@ -121,7 +121,7 @@
                 "item": {
                   "reasoning_content": "Okay, let's see. The user provided an address: 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because that's the abbreviation for Illinois. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function requires street, city, state, and zip_code. All of these are here. No need for any additional information. Just make sure the values are correctly formatted as strings. Alright, that's all.\n"
                 },
-                "fingerprint": 10207782365307243634
+                "fingerprint": "2e34fbe885ba5b57"
               }
             },
             {
@@ -147,7 +147,7 @@
                   "id": "m8H4wCwtxi8fkIjEp0lZtnq6SALWQ0J8",
                   "type": "function"
                 },
-                "fingerprint": 17714338738507212723
+                "fingerprint": "48a8d5e2b43818b0"
               }
             }
           ],
@@ -163,24 +163,6 @@
             "model": "Qwen3-1.7B-Q4_K_M",
             "response_model": "models/Qwen3-1.7B-Q4_K_M.gguf",
             "response_id": "chatcmpl-QZUOc0aRv6zcz9mshtvHX3tjEVeEKY9F"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "Okay, let's see. The user provided an address: 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because that's the abbreviation for Illinois. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function requires street, city, state, and zip_code. All of these are here. No need for any additional information. Just make sure the values are correctly formatted as strings. Alright, that's all.\n",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
-                    "name": "submit"
-                  },
-                  "id": "m8H4wCwtxi8fkIjEp0lZtnq6SALWQ0J8",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12241890884688303222
           },
           "finish_reason": "tool_calls",
           "raw": {

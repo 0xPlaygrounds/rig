@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 11,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -134,7 +134,7 @@
                   "id": "call_mDz7jl8TNNqaP4YCalxCx5US",
                   "type": "function"
                 },
-                "fingerprint": 17839825370546668308
+                "fingerprint": "f9d4ae33dd2e132b"
               }
             }
           ],
@@ -151,24 +151,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-ERDB1WL3qI8CIkjwkc6ou6UCoQOKF"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "ping"
-                  },
-                  "id": "call_mDz7jl8TNNqaP4YCalxCx5US",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 6637771986587634952
           },
           "provider_request_id": "req_0ed2ed96466948fbbc3f50d2f7eaa3f5",
           "finish_reason": "tool_calls",
@@ -241,7 +223,7 @@
                   "id": "call_mDz7jl8TNNqaP4YCalxCx5US",
                   "type": "function"
                 },
-                "fingerprint": 17839825370546668308
+                "fingerprint": "f9d4ae33dd2e132b"
               }
             }
           }

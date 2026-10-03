@@ -134,7 +134,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 18235884860990484229
+                "fingerprint": "12df7f5c7f0213bc"
               }
             }
           ],
@@ -276,7 +276,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 18235884860990484229
+                    "fingerprint": "12df7f5c7f0213bc"
                   }
                 }
               ],
@@ -351,7 +351,7 @@
                   "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
                   "type": "text"
                 },
-                "fingerprint": 2496423871877992919
+                "fingerprint": "0403ecaff038be47"
               }
             }
           ],

@@ -142,7 +142,7 @@
                   "id": "call_00_U6KrCz0mfPyFbO7G32uy1070",
                   "type": "function"
                 },
-                "fingerprint": 11542714486308220076
+                "fingerprint": "833043fe74c001fd"
               }
             }
           ],
@@ -158,23 +158,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "6c7f5eab-25a2-4382-8950-ee7027147f7f"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_U6KrCz0mfPyFbO7G32uy1070",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9250672929463737782
           },
           "finish_reason": "tool_calls",
           "raw": {

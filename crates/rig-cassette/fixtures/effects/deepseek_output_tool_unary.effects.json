@@ -110,7 +110,7 @@
                   "id": "call_00_HQuMoEyEzAHIim3UaTzI1490",
                   "type": "function"
                 },
-                "fingerprint": 17400915730027122303
+                "fingerprint": "d4dbc3e4bd7ba394"
               }
             }
           ],
@@ -126,23 +126,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "6a5a63b3-bdc0-4a9b-814c-cc063ff4690c"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Meetup\", \"summary\": \"A local gathering for Rust developers in Seattle to share projects, discuss the language, and network with the community.\"}",
-                    "name": "final_result"
-                  },
-                  "id": "call_00_HQuMoEyEzAHIim3UaTzI1490",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 10816832006169493825
           },
           "finish_reason": "tool_calls",
           "raw": {

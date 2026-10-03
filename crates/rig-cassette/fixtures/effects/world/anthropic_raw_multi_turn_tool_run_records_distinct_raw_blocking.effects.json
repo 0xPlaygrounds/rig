@@ -161,7 +161,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 10910269213048917655
+                "fingerprint": "5c1be83e651df60a"
               }
             }
           ],
@@ -297,7 +297,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 10910269213048917655
+                    "fingerprint": "5c1be83e651df60a"
                   }
                 }
               ],
@@ -373,7 +373,7 @@
                   "text": "The result is **5**. \n\n2 + 3 = 5",
                   "type": "text"
                 },
-                "fingerprint": 12318172620343077738
+                "fingerprint": "4adc25575a7f64d4"
               }
             }
           ],

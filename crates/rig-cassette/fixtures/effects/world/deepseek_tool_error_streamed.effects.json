@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
         "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -22,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -38,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -66,7 +58,39 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 15,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,17 +98,25 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 33,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -92,7 +124,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -100,7 +132,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -140,7 +172,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -156,7 +188,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -164,7 +196,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -172,7 +204,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -189,6 +221,14 @@
         "kind": {
           "delivery": "stream",
           "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -216,7 +256,39 @@
         }
       },
       {
-        "batch": 50,
+        "batch": 52,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 58,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 58,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -357,7 +429,7 @@
                   "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
                   "type": "function"
                 },
-                "fingerprint": 2839048030873354006
+                "fingerprint": "7d0aa761f421198b"
               }
             }
           ],
@@ -373,23 +445,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "8bc102c6-295f-44db-9989-beb05afb5cfb"
-          },
-          "native": {
-            "item": {
-              "content": "I'll add 17 and 25 for you.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15298546566392190849
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -564,7 +619,7 @@
                   "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
                   "type": "function"
                 },
-                "fingerprint": 2839048030873354006
+                "fingerprint": "7d0aa761f421198b"
               }
             }
           }
@@ -660,7 +715,7 @@
                       "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
                       "type": "function"
                     },
-                    "fingerprint": 2839048030873354006
+                    "fingerprint": "7d0aa761f421198b"
                   }
                 }
               ],
@@ -671,24 +726,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "8bc102c6-295f-44db-9989-beb05afb5cfb"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll add 17 and 25 for you.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15298546566392190849
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -761,13 +799,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "f6637bd8-2626-4e42-9842-cef1117f2234"
-          },
-          "native": {
-            "item": {
-              "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I did not call it again.",
-              "role": "assistant"
-            },
-            "fingerprint": 2942593932798122705
           },
           "finish_reason": "stop",
           "raw": {

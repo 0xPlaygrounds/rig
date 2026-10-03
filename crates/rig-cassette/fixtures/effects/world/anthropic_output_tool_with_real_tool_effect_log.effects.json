@@ -167,7 +167,7 @@
                   "text": "I'll start by adding 17 and 25 using the add tool!",
                   "type": "text"
                 },
-                "fingerprint": 3577733087959972326
+                "fingerprint": "a7502ff3afa3c35c"
               }
             },
             {
@@ -195,7 +195,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 7177299149985303404
+                "fingerprint": "868b097098a70f35"
               }
             }
           ],
@@ -318,7 +318,7 @@
                       "text": "I'll start by adding 17 and 25 using the add tool!",
                       "type": "text"
                     },
-                    "fingerprint": 3577733087959972326
+                    "fingerprint": "a7502ff3afa3c35c"
                   }
                 },
                 {
@@ -346,7 +346,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7177299149985303404
+                    "fingerprint": "868b097098a70f35"
                   }
                 }
               ],
@@ -445,7 +445,7 @@
                   "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
                   "type": "text"
                 },
-                "fingerprint": 13807577012360692716
+                "fingerprint": "825688b45691ded4"
               }
             },
             {
@@ -475,7 +475,7 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": 574690453393571992
+                "fingerprint": "0e03bc9753afe5f9"
               }
             }
           ],

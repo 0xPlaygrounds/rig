@@ -109,13 +109,6 @@
             "response_model": "deepseek-flash",
             "response_id": "70235505-c8af-4e5a-a2dc-8ac64eaf5d96"
           },
-          "native": {
-            "item": {
-              "content": "Ada.",
-              "role": "assistant"
-            },
-            "fingerprint": 12427621104539078559
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

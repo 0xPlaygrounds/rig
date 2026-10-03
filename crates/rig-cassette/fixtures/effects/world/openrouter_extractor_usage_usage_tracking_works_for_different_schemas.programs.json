@@ -255,7 +255,7 @@
                     "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
                     "type": "function"
                   },
-                  "fingerprint": 1614758669980730737
+                  "fingerprint": "4e5507c6c8eb26de"
                 }
               }
             ],
@@ -267,26 +267,7 @@
                 "response_model": "openai/gpt-4o-mini",
                 "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "reasoning": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14548093134548544811
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -328,7 +309,7 @@
                       "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
                       "type": "function"
                     },
-                    "fingerprint": 1614758669980730737
+                    "fingerprint": "4e5507c6c8eb26de"
                   }
                 }
               ],
@@ -346,25 +327,6 @@
                 "model": "openai/gpt-4o-mini",
                 "response_model": "openai/gpt-4o-mini",
                 "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo"
-              },
-              "native": {
-                "item": {
-                  "content": null,
-                  "reasoning": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14548093134548544811
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -442,26 +404,7 @@
               "response_model": "openai/gpt-4o-mini",
               "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": null,
-                "reasoning": null,
-                "refusal": null,
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
-                      "name": "submit"
-                    },
-                    "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 14548093134548544811
-            }
+            "stop": "tool_use"
           }
         },
         {

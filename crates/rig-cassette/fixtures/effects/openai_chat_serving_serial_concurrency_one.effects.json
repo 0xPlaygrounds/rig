@@ -131,7 +131,7 @@
                   "id": "call_PwGNjChsCofGe2thL1Nhcav5",
                   "type": "function"
                 },
-                "fingerprint": 6956184070481195331
+                "fingerprint": "8a6d5d0511edac84"
               }
             },
             {
@@ -152,7 +152,7 @@
                   "id": "call_IZVdbKFQFhW1d3ykky6FxTvK",
                   "type": "function"
                 },
-                "fingerprint": 11188764914893528359
+                "fingerprint": "7f5f05f29f844256"
               }
             }
           ],
@@ -169,31 +169,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeBHvUGnt7w79HlSdvBzeYuVH9v7"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_PwGNjChsCofGe2thL1Nhcav5",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_IZVdbKFQFhW1d3ykky6FxTvK",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 10854758457419595983
           },
           "provider_request_id": "req_9dbdf7e84fd142e1ab08f9250a71c02d",
           "finish_reason": "tool_calls",
@@ -318,7 +293,7 @@
                       "id": "call_PwGNjChsCofGe2thL1Nhcav5",
                       "type": "function"
                     },
-                    "fingerprint": 6956184070481195331
+                    "fingerprint": "8a6d5d0511edac84"
                   }
                 },
                 {
@@ -339,7 +314,7 @@
                       "id": "call_IZVdbKFQFhW1d3ykky6FxTvK",
                       "type": "function"
                     },
-                    "fingerprint": 11188764914893528359
+                    "fingerprint": "7f5f05f29f844256"
                   }
                 }
               ],
@@ -350,32 +325,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUeBHvUGnt7w79HlSdvBzeYuVH9v7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_PwGNjChsCofGe2thL1Nhcav5",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_IZVdbKFQFhW1d3ykky6FxTvK",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 10854758457419595983
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -460,14 +410,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeBKXISKvuxfqUOpBAMVrakKNu89"
-          },
-          "native": {
-            "item": {
-              "content": "The labels are crimson-harbor and silver-orchard.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8695463699350161601
           },
           "provider_request_id": "req_5c02f626815042c0ab32b815df5816c8",
           "finish_reason": "stop",

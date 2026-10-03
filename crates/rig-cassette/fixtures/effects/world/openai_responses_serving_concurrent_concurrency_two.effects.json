@@ -332,7 +332,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -353,7 +353,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6772475884450384269
+                "fingerprint": "dd58224c1da90cf6"
               }
             },
             {
@@ -374,7 +374,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10504896773972670238
+                "fingerprint": "1b26ab5b72afac07"
               }
             }
           ],
@@ -610,7 +610,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -631,7 +631,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6772475884450384269
+                    "fingerprint": "dd58224c1da90cf6"
                   }
                 },
                 {
@@ -652,7 +652,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10504896773972670238
+                    "fingerprint": "1b26ab5b72afac07"
                   }
                 }
               ],
@@ -743,7 +743,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -764,7 +764,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 12834049148526240865
+                "fingerprint": "29227b3f746f4cd5"
               }
             }
           ],

@@ -112,14 +112,6 @@
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_ffb5e405-2e19-4ab5-b438-1b8cdb9ba792"
           },
-          "native": {
-            "item": {
-              "content": "Ada",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 4857962483737284025
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

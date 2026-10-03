@@ -136,7 +136,7 @@
                   "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
                   "type": "function"
                 },
-                "fingerprint": 2238979730509959234
+                "fingerprint": "8621eadc8475b11f"
               }
             }
           ],
@@ -152,23 +152,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "4d0e3452-79f8-4c85-98f2-ff8b33800bdb"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12012308839284063352
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -236,7 +219,7 @@
                   "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
                   "type": "function"
                 },
-                "fingerprint": 2238979730509959234
+                "fingerprint": "8621eadc8475b11f"
               }
             }
           }

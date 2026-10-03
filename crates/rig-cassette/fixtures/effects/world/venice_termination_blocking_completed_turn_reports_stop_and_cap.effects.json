@@ -90,15 +90,6 @@
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RwkB7umwebRfcb5B30XbAcI0"
           },
-          "native": {
-            "item": {
-              "content": "cedar",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 10831170027988163448
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

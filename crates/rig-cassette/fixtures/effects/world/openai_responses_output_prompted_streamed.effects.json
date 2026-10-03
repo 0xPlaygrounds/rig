@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -38,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -46,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -78,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -102,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -110,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -134,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -142,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -154,7 +146,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 37,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -162,15 +154,7 @@
         }
       },
       {
-        "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 36,
+        "batch": 42,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -259,7 +243,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 2568299989301717908
+                "fingerprint": "669baafdec3f0f5c"
               }
             }
           ],
@@ -612,7 +596,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 2568299989301717908
+                "fingerprint": "669baafdec3f0f5c"
               }
             }
           }

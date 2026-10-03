@@ -140,7 +140,7 @@
                 "item": {
                   "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
                 },
-                "fingerprint": 17276837367185840182
+                "fingerprint": "414ad3e68027e003"
               }
             },
             {
@@ -163,7 +163,7 @@
                   "id": "chatcmpl-tool-8d95ed1e01be342d",
                   "type": "function"
                 },
-                "fingerprint": 1511091381078494837
+                "fingerprint": "132cd7aa767a0b3e"
               }
             },
             {
@@ -186,7 +186,7 @@
                   "id": "chatcmpl-tool-92a5008c99227363",
                   "type": "function"
                 },
-                "fingerprint": 1560686633817382657
+                "fingerprint": "5a00d080a63da050"
               }
             }
           ],
@@ -203,36 +203,6 @@
             "model": "qwen3-5-9b",
             "response_model": "qwen3-5-9b",
             "response_id": "chatcmpl-80d75644796e2221d5536606a7360afb-r1"
-          },
-          "native": {
-            "item": {
-              "annotations": null,
-              "audio": null,
-              "content": "",
-              "function_call": null,
-              "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"topic\": \"prefix\"}",
-                    "name": "lookup_cache_policy"
-                  },
-                  "id": "chatcmpl-tool-8d95ed1e01be342d",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"topic\": \"breakpoint\"}",
-                    "name": "lookup_cache_policy"
-                  },
-                  "id": "chatcmpl-tool-92a5008c99227363",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17381909575962909046
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -400,7 +370,7 @@
                     "item": {
                       "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
                     },
-                    "fingerprint": 17276837367185840182
+                    "fingerprint": "414ad3e68027e003"
                   }
                 },
                 {
@@ -423,7 +393,7 @@
                       "id": "chatcmpl-tool-8d95ed1e01be342d",
                       "type": "function"
                     },
-                    "fingerprint": 1511091381078494837
+                    "fingerprint": "132cd7aa767a0b3e"
                   }
                 },
                 {
@@ -446,7 +416,7 @@
                       "id": "chatcmpl-tool-92a5008c99227363",
                       "type": "function"
                     },
-                    "fingerprint": 1560686633817382657
+                    "fingerprint": "5a00d080a63da050"
                   }
                 }
               ],
@@ -457,37 +427,7 @@
                 "response_model": "qwen3-5-9b",
                 "response_id": "chatcmpl-80d75644796e2221d5536606a7360afb-r1"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": null,
-                  "audio": null,
-                  "content": "",
-                  "function_call": null,
-                  "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"prefix\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "chatcmpl-tool-8d95ed1e01be342d",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"breakpoint\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "chatcmpl-tool-92a5008c99227363",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 17381909575962909046
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -559,7 +499,7 @@
                 "item": {
                   "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n"
                 },
-                "fingerprint": 4648668325960021899
+                "fingerprint": "33be9b9d64575c3c"
               }
             },
             {
@@ -580,18 +520,6 @@
             "model": "qwen3-5-9b",
             "response_model": "qwen3-5-9b",
             "response_id": "chatcmpl-4fbc2f1c721a9eb931a3cbc0b9e8c0c4"
-          },
-          "native": {
-            "item": {
-              "annotations": null,
-              "audio": null,
-              "content": "\n\ncache probe ready",
-              "function_call": null,
-              "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 13313814166961848942
           },
           "finish_reason": "stop",
           "raw": {

@@ -133,7 +133,7 @@
                   "id": "chatcmpl-tool-bf9287fc95d6f0a9",
                   "type": "function"
                 },
-                "fingerprint": 9913058350248158257
+                "fingerprint": "ce2a027db51ba720"
               }
             },
             {
@@ -154,7 +154,7 @@
                   "id": "chatcmpl-tool-911aaf86629020a3",
                   "type": "function"
                 },
-                "fingerprint": 10439868609097110847
+                "fingerprint": "64d3f6d969d8207e"
               }
             }
           ],
@@ -171,31 +171,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790975961-LH4yiVsXwmkCnIKfRkiW"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "chatcmpl-tool-bf9287fc95d6f0a9",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "chatcmpl-tool-911aaf86629020a3",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 5390546049847783657
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -272,7 +247,7 @@
                   "id": "chatcmpl-tool-bf9287fc95d6f0a9",
                   "type": "function"
                 },
-                "fingerprint": 9913058350248158257
+                "fingerprint": "ce2a027db51ba720"
               }
             }
           }
@@ -316,7 +291,7 @@
                   "id": "chatcmpl-tool-911aaf86629020a3",
                   "type": "function"
                 },
-                "fingerprint": 10439868609097110847
+                "fingerprint": "64d3f6d969d8207e"
               }
             }
           }
@@ -427,7 +402,7 @@
                       "id": "chatcmpl-tool-bf9287fc95d6f0a9",
                       "type": "function"
                     },
-                    "fingerprint": 9913058350248158257
+                    "fingerprint": "ce2a027db51ba720"
                   }
                 },
                 {
@@ -448,7 +423,7 @@
                       "id": "chatcmpl-tool-911aaf86629020a3",
                       "type": "function"
                     },
-                    "fingerprint": 10439868609097110847
+                    "fingerprint": "64d3f6d969d8207e"
                   }
                 }
               ],
@@ -459,32 +434,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790975961-LH4yiVsXwmkCnIKfRkiW"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "chatcmpl-tool-bf9287fc95d6f0a9",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "chatcmpl-tool-911aaf86629020a3",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 5390546049847783657
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -572,13 +522,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790975963-GRVx1YOGQBSoUFdYZEJa"
-          },
-          "native": {
-            "item": {
-              "content": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\".",
-              "role": "assistant"
-            },
-            "fingerprint": 2839419217759744355
           },
           "finish_reason": "stop",
           "raw": {

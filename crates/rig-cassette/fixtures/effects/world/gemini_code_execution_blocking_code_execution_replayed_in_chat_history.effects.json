@@ -119,7 +119,7 @@
                 "item": {
                   "text": "The number is 169."
                 },
-                "fingerprint": 14867055607564542871
+                "fingerprint": "dfe9d28b3160b005"
               }
             }
           ],
@@ -136,13 +136,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 13425564892417382995
           },
           "finish_reason": "stop",
           "raw": {
@@ -251,7 +244,7 @@
                     "item": {
                       "text": "The number is 169."
                     },
-                    "fingerprint": 14867055607564542871
+                    "fingerprint": "dfe9d28b3160b005"
                   }
                 }
               ],
@@ -262,14 +255,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 13425564892417382995
-              }
+              "stop": "stop"
             },
             {
               "role": "user",
@@ -328,7 +314,7 @@
                 "item": {
                   "text": "The result of doubling 169 is 338."
                 },
-                "fingerprint": 4525800143724332576
+                "fingerprint": "4e84c4a9311fa26a"
               }
             }
           ],
@@ -345,13 +331,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "cVa_avqMCL2gqtsP3N3AqQ0"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 5920580305851013607
           },
           "finish_reason": "stop",
           "raw": {

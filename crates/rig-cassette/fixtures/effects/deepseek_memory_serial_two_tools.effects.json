@@ -162,7 +162,7 @@
                   "id": "call_00_axlLh2CaDFtqljBnGe0i5362",
                   "type": "function"
                 },
-                "fingerprint": 2353829310120662279
+                "fingerprint": "a70fca1e95b557ee"
               }
             },
             {
@@ -183,7 +183,7 @@
                   "id": "call_01_RzNWI9U3EEEdC9L17s6M1324",
                   "type": "function"
                 },
-                "fingerprint": 13262242615424306722
+                "fingerprint": "f6a050d9e576000b"
               }
             }
           ],
@@ -199,31 +199,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "1ac851ed-538d-468d-a3ef-ec6a98f35c76"
-          },
-          "native": {
-            "item": {
-              "content": "I'll call both tools now.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_00_axlLh2CaDFtqljBnGe0i5362",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_01_RzNWI9U3EEEdC9L17s6M1324",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 13012642488760808690
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -363,7 +338,7 @@
                   "id": "call_00_axlLh2CaDFtqljBnGe0i5362",
                   "type": "function"
                 },
-                "fingerprint": 2353829310120662279
+                "fingerprint": "a70fca1e95b557ee"
               }
             }
           }
@@ -407,7 +382,7 @@
                   "id": "call_01_RzNWI9U3EEEdC9L17s6M1324",
                   "type": "function"
                 },
-                "fingerprint": 13262242615424306722
+                "fingerprint": "f6a050d9e576000b"
               }
             }
           }
@@ -514,7 +489,7 @@
                       "id": "call_00_axlLh2CaDFtqljBnGe0i5362",
                       "type": "function"
                     },
-                    "fingerprint": 2353829310120662279
+                    "fingerprint": "a70fca1e95b557ee"
                   }
                 },
                 {
@@ -535,7 +510,7 @@
                       "id": "call_01_RzNWI9U3EEEdC9L17s6M1324",
                       "type": "function"
                     },
-                    "fingerprint": 13262242615424306722
+                    "fingerprint": "f6a050d9e576000b"
                   }
                 }
               ],
@@ -546,32 +521,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "1ac851ed-538d-468d-a3ef-ec6a98f35c76"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll call both tools now.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_00_axlLh2CaDFtqljBnGe0i5362",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_01_RzNWI9U3EEEdC9L17s6M1324",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13012642488760808690
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -655,13 +605,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "43fdb0ed-3c0a-485e-85f5-a605020bca7f"
-          },
-          "native": {
-            "item": {
-              "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\".",
-              "role": "assistant"
-            },
-            "fingerprint": 10510909259236832316
           },
           "finish_reason": "stop",
           "raw": {
@@ -941,7 +884,7 @@
                       "id": "call_00_axlLh2CaDFtqljBnGe0i5362",
                       "type": "function"
                     },
-                    "fingerprint": 2353829310120662279
+                    "fingerprint": "a70fca1e95b557ee"
                   }
                 },
                 {
@@ -962,7 +905,7 @@
                       "id": "call_01_RzNWI9U3EEEdC9L17s6M1324",
                       "type": "function"
                     },
-                    "fingerprint": 13262242615424306722
+                    "fingerprint": "f6a050d9e576000b"
                   }
                 }
               ],
@@ -973,32 +916,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "1ac851ed-538d-468d-a3ef-ec6a98f35c76"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll call both tools now.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_00_axlLh2CaDFtqljBnGe0i5362",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_01_RzNWI9U3EEEdC9L17s6M1324",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13012642488760808690
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1046,14 +964,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "43fdb0ed-3c0a-485e-85f5-a605020bca7f"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\".",
-                  "role": "assistant"
-                },
-                "fingerprint": 10510909259236832316
-              }
+              "stop": "stop"
             }
           ]
         }

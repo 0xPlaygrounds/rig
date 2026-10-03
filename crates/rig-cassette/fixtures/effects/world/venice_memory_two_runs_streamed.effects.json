@@ -192,14 +192,6 @@
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
           },
-          "native": {
-            "item": {
-              "content": "ready",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 5329546866666182096
-          },
           "finish_reason": "stop",
           "raw": {
             "usage": {
@@ -292,15 +284,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "reasoning_content": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             }
           ]
         }
@@ -353,15 +337,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "reasoning_content": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             }
           ]
         }
@@ -405,15 +381,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "reasoning_content": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             },
             {
               "role": "user",
@@ -455,14 +423,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-Ra3oX0YiBAw4OjMc8vAu55RG"
-          },
-          "native": {
-            "item": {
-              "content": "again",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 16476637925928325713
           },
           "finish_reason": "stop",
           "raw": {
@@ -556,15 +516,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-Ra3oX0YiBAw4OjMc8vAu55RG"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "again",
-                  "reasoning_content": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 16476637925928325713
-              }
+              "stop": "stop"
             }
           ]
         }

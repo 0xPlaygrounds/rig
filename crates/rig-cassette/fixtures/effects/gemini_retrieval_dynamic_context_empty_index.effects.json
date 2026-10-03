@@ -105,7 +105,7 @@
                 "item": {
                   "text": "A \"glarb-glarb\" is not a recognized term or concept."
                 },
-                "fingerprint": 1415932451144022576
+                "fingerprint": "252baf8ff55310fa"
               }
             }
           ],
@@ -121,13 +121,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "oXizaum2Ad-JmtkPlbOD2A8"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 12863469073238205348
           },
           "finish_reason": "stop",
           "raw": {

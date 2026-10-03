@@ -125,7 +125,7 @@
                 "item": {
                   "reasoning_content": "The user provided an address: 123 Main St in Springfield, IL 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701"
                 },
-                "fingerprint": 1413400913808674785
+                "fingerprint": "740081f5a03c6802"
               }
             },
             {
@@ -151,7 +151,7 @@
                   "id": "call_00_YWCPy8c7hIz4usYbqCNS4588",
                   "type": "function"
                 },
-                "fingerprint": 2429816738651874856
+                "fingerprint": "09d62bd3dddd7109"
               }
             }
           ],
@@ -168,24 +168,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "cd1d2d15-1906-4618-9f70-2b0444601316"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "The user provided an address: 123 Main St in Springfield, IL 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_00_YWCPy8c7hIz4usYbqCNS4588",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3382500130044328772
           },
           "finish_reason": "tool_calls",
           "raw": {

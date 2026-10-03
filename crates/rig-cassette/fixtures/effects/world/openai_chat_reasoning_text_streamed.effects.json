@@ -574,14 +574,6 @@
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy"
           },
-          "native": {
-            "item": {
-              "content": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 13521024665608440642
-          },
           "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
           "finish_reason": "stop",
           "raw": {

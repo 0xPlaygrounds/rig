@@ -158,7 +158,7 @@
                   "id": "call_GhsLCBxCpQ6YkL8FYRBeaH9z",
                   "type": "function"
                 },
-                "fingerprint": 8506790483255803262
+                "fingerprint": "2d4c6a476abcdceb"
               }
             },
             {
@@ -179,7 +179,7 @@
                   "id": "call_KEoUFuTNV1oTQ4N7oKBDnlsh",
                   "type": "function"
                 },
-                "fingerprint": 12048360683863584088
+                "fingerprint": "947d8aba22682e99"
               }
             }
           ],
@@ -196,31 +196,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe8706lgfVdsE9MJf4znXC68LfHi"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_GhsLCBxCpQ6YkL8FYRBeaH9z",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_KEoUFuTNV1oTQ4N7oKBDnlsh",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15966457265451410633
           },
           "provider_request_id": "req_579aa36201174f4c9ad4dbc46313ad58",
           "finish_reason": "tool_calls",
@@ -293,7 +268,7 @@
                   "id": "call_GhsLCBxCpQ6YkL8FYRBeaH9z",
                   "type": "function"
                 },
-                "fingerprint": 8506790483255803262
+                "fingerprint": "2d4c6a476abcdceb"
               }
             }
           }
@@ -337,7 +312,7 @@
                   "id": "call_KEoUFuTNV1oTQ4N7oKBDnlsh",
                   "type": "function"
                 },
-                "fingerprint": 12048360683863584088
+                "fingerprint": "947d8aba22682e99"
               }
             }
           }
@@ -440,7 +415,7 @@
                       "id": "call_GhsLCBxCpQ6YkL8FYRBeaH9z",
                       "type": "function"
                     },
-                    "fingerprint": 8506790483255803262
+                    "fingerprint": "2d4c6a476abcdceb"
                   }
                 },
                 {
@@ -461,7 +436,7 @@
                       "id": "call_KEoUFuTNV1oTQ4N7oKBDnlsh",
                       "type": "function"
                     },
-                    "fingerprint": 12048360683863584088
+                    "fingerprint": "947d8aba22682e99"
                   }
                 }
               ],
@@ -472,32 +447,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe8706lgfVdsE9MJf4znXC68LfHi"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_GhsLCBxCpQ6YkL8FYRBeaH9z",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_KEoUFuTNV1oTQ4N7oKBDnlsh",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15966457265451410633
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -582,14 +532,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe8BfHpLwzZu749zHxBMmFUDPZMa"
-          },
-          "native": {
-            "item": {
-              "content": "The labels are crimson-harbor and silver-orchard.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8695463699350161601
           },
           "provider_request_id": "req_5532b4ff4ab644909a5ec286ce504b99",
           "finish_reason": "stop",
@@ -793,7 +735,7 @@
                       "id": "call_GhsLCBxCpQ6YkL8FYRBeaH9z",
                       "type": "function"
                     },
-                    "fingerprint": 8506790483255803262
+                    "fingerprint": "2d4c6a476abcdceb"
                   }
                 },
                 {
@@ -814,7 +756,7 @@
                       "id": "call_KEoUFuTNV1oTQ4N7oKBDnlsh",
                       "type": "function"
                     },
-                    "fingerprint": 12048360683863584088
+                    "fingerprint": "947d8aba22682e99"
                   }
                 }
               ],
@@ -825,32 +767,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe8706lgfVdsE9MJf4znXC68LfHi"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_GhsLCBxCpQ6YkL8FYRBeaH9z",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_KEoUFuTNV1oTQ4N7oKBDnlsh",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15966457265451410633
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -898,15 +815,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe8BfHpLwzZu749zHxBMmFUDPZMa"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "The labels are crimson-harbor and silver-orchard.",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 8695463699350161601
-              }
+              "stop": "stop"
             }
           ]
         }

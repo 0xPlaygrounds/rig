@@ -131,7 +131,7 @@
                   "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
                   "type": "function"
                 },
-                "fingerprint": 13532546996938323527
+                "fingerprint": "2b2bb850eb7a517c"
               }
             },
             {
@@ -152,7 +152,7 @@
                   "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
                   "type": "function"
                 },
-                "fingerprint": 7766667932665038092
+                "fingerprint": "f7857689c5cc190d"
               }
             }
           ],
@@ -169,31 +169,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeALPHlIg4IZyCA0LRfjXOKL4SY7"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12234542493650700598
           },
           "provider_request_id": "req_a7dcf1cae04640288761973bc3816c18",
           "finish_reason": "tool_calls",
@@ -266,7 +241,7 @@
                   "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
                   "type": "function"
                 },
-                "fingerprint": 13532546996938323527
+                "fingerprint": "2b2bb850eb7a517c"
               }
             }
           }
@@ -310,7 +285,7 @@
                   "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
                   "type": "function"
                 },
-                "fingerprint": 7766667932665038092
+                "fingerprint": "f7857689c5cc190d"
               }
             }
           }
@@ -413,7 +388,7 @@
                       "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
                       "type": "function"
                     },
-                    "fingerprint": 13532546996938323527
+                    "fingerprint": "2b2bb850eb7a517c"
                   }
                 },
                 {
@@ -434,7 +409,7 @@
                       "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
                       "type": "function"
                     },
-                    "fingerprint": 7766667932665038092
+                    "fingerprint": "f7857689c5cc190d"
                   }
                 }
               ],
@@ -445,32 +420,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUeALPHlIg4IZyCA0LRfjXOKL4SY7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12234542493650700598
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -555,14 +505,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeAO69Z9DPMSd8Ggd1rHn9HpyFaI"
-          },
-          "native": {
-            "item": {
-              "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 13876475795802914263
           },
           "provider_request_id": "req_76c216d3c45a4290832ed30509f53b40",
           "finish_reason": "stop",

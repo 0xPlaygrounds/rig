@@ -128,7 +128,7 @@
                   "id": "call_REDACTED_1",
                   "type": "function"
                 },
-                "fingerprint": 2287921980047520621
+                "fingerprint": "c00135dd3c435ac8"
               }
             }
           ],
@@ -145,23 +145,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-REDACTED_1"
-          },
-          "native": {
-            "item": {
-              "padding": "abcdefghijklmn",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"age\":30,\"name\":\"John Doe\",\"profession\":\"software engineer\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_REDACTED_1",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 6467858471246728401
           },
           "finish_reason": "tool_calls",
           "raw": {

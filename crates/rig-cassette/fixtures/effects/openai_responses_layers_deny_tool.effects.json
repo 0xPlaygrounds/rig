@@ -130,7 +130,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -154,7 +154,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6593392776652370852
+                "fingerprint": "6948616e28d62455"
               }
             }
           ],
@@ -334,7 +334,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -358,7 +358,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6593392776652370852
+                    "fingerprint": "6948616e28d62455"
                   }
                 }
               ],
@@ -440,7 +440,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -461,7 +461,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],

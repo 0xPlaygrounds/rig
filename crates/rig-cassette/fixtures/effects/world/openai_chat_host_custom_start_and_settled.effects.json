@@ -136,15 +136,6 @@
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-ERDBu5BzXzEksACesxCsOoNIRdryh"
           },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "ready",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 5329546866666182096
-          },
           "provider_request_id": "req_73caac0acf694db587ec9fa25ede44ee",
           "finish_reason": "stop",
           "raw": {

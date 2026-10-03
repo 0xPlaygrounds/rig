@@ -24,19 +24,11 @@
         }
       },
       {
-        "batch": 31,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 32,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -56,27 +48,11 @@
         }
       },
       {
-        "batch": 35,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 36,
         "id": 2,
         "kind": {
           "delivery": "stream",
           "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -89,14 +65,6 @@
       },
       {
         "batch": 40,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 41,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -128,14 +96,6 @@
         }
       },
       {
-        "batch": 45,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 46,
         "id": 2,
         "kind": {
@@ -144,7 +104,15 @@
         }
       },
       {
-        "batch": 48,
+        "batch": 47,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -160,7 +128,47 @@
         }
       },
       {
-        "batch": 50,
+        "batch": 51,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 59,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -301,7 +309,7 @@
                   "id": "call_T9Gd7pDLFohnTZtWKyrgJ7iZ",
                   "type": "function"
                 },
-                "fingerprint": 10619576808925677758
+                "fingerprint": "db93ca5136874b63"
               }
             }
           ],
@@ -318,24 +326,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-EUeKRN21LzZ9HSiZSbG0uwOsTvOqM"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\":2,\"y\":3}",
-                    "name": "add"
-                  },
-                  "id": "call_T9Gd7pDLFohnTZtWKyrgJ7iZ",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15516804593884124602
           },
           "provider_request_id": "req_52ecca214f8c42efa6ecefc8fb7437af",
           "finish_reason": "tool_calls",
@@ -411,7 +401,7 @@
                   "id": "call_T9Gd7pDLFohnTZtWKyrgJ7iZ",
                   "type": "function"
                 },
-                "fingerprint": 10619576808925677758
+                "fingerprint": "db93ca5136874b63"
               }
             }
           }
@@ -495,7 +485,7 @@
                       "id": "call_T9Gd7pDLFohnTZtWKyrgJ7iZ",
                       "type": "function"
                     },
-                    "fingerprint": 10619576808925677758
+                    "fingerprint": "db93ca5136874b63"
                   }
                 }
               ],
@@ -506,25 +496,7 @@
                 "response_model": "gpt-4o-mini-2024-07-18",
                 "response_id": "chatcmpl-EUeKRN21LzZ9HSiZSbG0uwOsTvOqM"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":2,\"y\":3}",
-                        "name": "add"
-                      },
-                      "id": "call_T9Gd7pDLFohnTZtWKyrgJ7iZ",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15516804593884124602
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -599,14 +571,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-EUeKSeUhoetsICkyWX8N2UkM8oc8t"
-          },
-          "native": {
-            "item": {
-              "content": "The result of \\( 2 + 3 \\) is \\( 5 \\).",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 16411486541545941755
           },
           "provider_request_id": "req_c9caa4ed2f4549c0978f6d5db104a01f",
           "finish_reason": "stop",

@@ -144,7 +144,7 @@
                   "text": "I'll start by adding 17 and 25 using the add tool!",
                   "type": "text"
                 },
-                "fingerprint": 3577733087959972326
+                "fingerprint": "a7502ff3afa3c35c"
               }
             },
             {
@@ -172,7 +172,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 4081710394723936622
+                "fingerprint": "ed10f2948d1ea38f"
               }
             }
           ],
@@ -295,7 +295,7 @@
                       "text": "I'll start by adding 17 and 25 using the add tool!",
                       "type": "text"
                     },
-                    "fingerprint": 3577733087959972326
+                    "fingerprint": "a7502ff3afa3c35c"
                   }
                 },
                 {
@@ -323,7 +323,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4081710394723936622
+                    "fingerprint": "ed10f2948d1ea38f"
                   }
                 }
               ],
@@ -399,7 +399,7 @@
                   "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected at this exciting gathering of Rust enthusiasts.\"}",
                   "type": "text"
                 },
-                "fingerprint": 4494048383827584450
+                "fingerprint": "51067910d8a46c2e"
               }
             }
           ],

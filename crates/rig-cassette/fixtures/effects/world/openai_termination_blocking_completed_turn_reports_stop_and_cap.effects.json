@@ -92,15 +92,6 @@
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-ERDE2dAEnxmuVL0MT2TkouPgWZG91"
           },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "cedar",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 10831170027988163448
-          },
           "provider_request_id": "req_4812a7970a154cce98a27faf3215800c",
           "finish_reason": "stop",
           "raw": {

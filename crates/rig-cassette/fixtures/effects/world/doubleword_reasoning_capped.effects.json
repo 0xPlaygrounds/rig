@@ -90,7 +90,7 @@
                     }
                   ]
                 },
-                "fingerprint": 2685599256985917388
+                "fingerprint": "b41220b6367b2c71"
               }
             }
           ],
@@ -107,22 +107,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_d29bda03-c489-4c62-95e5-6ee0b9b8e1c2"
-          },
-          "native": {
-            "item": {
-              "reasoning_details": [
-                {
-                  "format": "unknown",
-                  "index": 0,
-                  "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
-                  "type": "reasoning.text"
-                }
-              ],
-              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 964408412300737314
           },
           "finish_reason": "length",
           "raw": {

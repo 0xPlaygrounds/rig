@@ -152,7 +152,7 @@
                   "text": "I'll calculate the sum right away!",
                   "type": "text"
                 },
-                "fingerprint": 8607239451623559848
+                "fingerprint": "e36af2289caed876"
               }
             },
             {
@@ -180,7 +180,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 1425119207544031811
+                "fingerprint": "1c0606440bd1b52e"
               }
             }
           ],
@@ -311,7 +311,7 @@
                       "text": "I'll calculate the sum right away!",
                       "type": "text"
                     },
-                    "fingerprint": 8607239451623559848
+                    "fingerprint": "e36af2289caed876"
                   }
                 },
                 {
@@ -339,7 +339,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1425119207544031811
+                    "fingerprint": "1c0606440bd1b52e"
                   }
                 }
               ],
@@ -415,7 +415,7 @@
                   "text": "The dominant color is **red**, and 17 + 25 = **42**!",
                   "type": "text"
                 },
-                "fingerprint": 7090099008111985553
+                "fingerprint": "7a2fc68dbfaa7b9b"
               }
             }
           ],

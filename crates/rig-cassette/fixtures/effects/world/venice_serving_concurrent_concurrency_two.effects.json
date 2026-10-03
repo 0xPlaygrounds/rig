@@ -321,7 +321,7 @@
                   "id": "P8XHXdVdE",
                   "type": "function"
                 },
-                "fingerprint": 16522094368729915419
+                "fingerprint": "6b4cba7337a860cc"
               }
             },
             {
@@ -342,7 +342,7 @@
                   "id": "j6Z473svc",
                   "type": "function"
                 },
-                "fingerprint": 5902762070139741179
+                "fingerprint": "d8fe1df0c20eafba"
               }
             }
           ],
@@ -357,32 +357,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RLDZCJxDLRgQKLBWhqdFWUDr"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "P8XHXdVdE",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "j6Z473svc",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 11496857209372272627
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -501,7 +475,7 @@
                       "id": "P8XHXdVdE",
                       "type": "function"
                     },
-                    "fingerprint": 16522094368729915419
+                    "fingerprint": "6b4cba7337a860cc"
                   }
                 },
                 {
@@ -522,7 +496,7 @@
                       "id": "j6Z473svc",
                       "type": "function"
                     },
-                    "fingerprint": 5902762070139741179
+                    "fingerprint": "d8fe1df0c20eafba"
                   }
                 }
               ],
@@ -533,33 +507,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RLDZCJxDLRgQKLBWhqdFWUDr"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "P8XHXdVdE",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "j6Z473svc",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11496857209372272627
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -642,14 +590,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RsgeOJCWaGJ2JUVJne0aKGhc"
-          },
-          "native": {
-            "item": {
-              "content": "The current signals are crimson-harbor and silver-orchard.",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 9436805893853109908
           },
           "finish_reason": "stop",
           "raw": {

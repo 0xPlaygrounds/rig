@@ -229,14 +229,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "9339165b-c249-4716-bffe-66cf7cac835d"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -273,13 +266,6 @@
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
                 "response_id": "9339165b-c249-4716-bffe-66cf7cac835d"
-              },
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
               },
               "finish_reason": "stop",
               "raw": {
@@ -328,14 +314,7 @@
               "response_model": "deepseek-flash",
               "response_id": "9339165b-c249-4716-bffe-66cf7cac835d"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "content": "ready",
-                "role": "assistant"
-              },
-              "fingerprint": 5329546866666182096
-            }
+            "stop": "stop"
           }
         },
         {

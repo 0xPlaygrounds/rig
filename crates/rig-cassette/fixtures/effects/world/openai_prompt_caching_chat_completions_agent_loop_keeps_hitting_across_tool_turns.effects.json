@@ -153,7 +153,7 @@
                   "id": "call_VWMnchzT30GyqFtoZwtiIMMZ",
                   "type": "function"
                 },
-                "fingerprint": 17698750390462294987
+                "fingerprint": "866340c69b4b40f8"
               }
             },
             {
@@ -176,7 +176,7 @@
                   "id": "call_lq2gccPcOJIXfV9ytCh0Khjr",
                   "type": "function"
                 },
-                "fingerprint": 16127162827115725260
+                "fingerprint": "2d03a6a365d9d0f1"
               }
             }
           ],
@@ -193,33 +193,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-EUeK2KjY6aRwgh36T5TWGLMS2mkpJ"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"topic\": \"prefix\"}",
-                    "name": "lookup_cache_policy"
-                  },
-                  "id": "call_VWMnchzT30GyqFtoZwtiIMMZ",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"topic\": \"breakpoint\"}",
-                    "name": "lookup_cache_policy"
-                  },
-                  "id": "call_lq2gccPcOJIXfV9ytCh0Khjr",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14979983951216142200
           },
           "provider_request_id": "req_a66e6a5187154c45ad1c2b24876107a8",
           "finish_reason": "tool_calls",
@@ -376,7 +349,7 @@
                       "id": "call_VWMnchzT30GyqFtoZwtiIMMZ",
                       "type": "function"
                     },
-                    "fingerprint": 17698750390462294987
+                    "fingerprint": "866340c69b4b40f8"
                   }
                 },
                 {
@@ -399,7 +372,7 @@
                       "id": "call_lq2gccPcOJIXfV9ytCh0Khjr",
                       "type": "function"
                     },
-                    "fingerprint": 16127162827115725260
+                    "fingerprint": "2d03a6a365d9d0f1"
                   }
                 }
               ],
@@ -410,34 +383,7 @@
                 "response_model": "gpt-4o-mini-2024-07-18",
                 "response_id": "chatcmpl-EUeK2KjY6aRwgh36T5TWGLMS2mkpJ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"prefix\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "call_VWMnchzT30GyqFtoZwtiIMMZ",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"topic\": \"breakpoint\"}",
-                        "name": "lookup_cache_policy"
-                      },
-                      "id": "call_lq2gccPcOJIXfV9ytCh0Khjr",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14979983951216142200
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -520,15 +466,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-EUeK3ws28pYPx5porioGHupPYQzmk"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "cache probe ready",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 11031540353312373956
           },
           "provider_request_id": "req_21b1fe06989941f1a46598767ab16265",
           "finish_reason": "stop",

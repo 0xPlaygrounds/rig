@@ -111,7 +111,7 @@
                 "item": {
                   "reasoning_content": "Okay, let's see. The user provided a sentence: \"John Doe is a 30 year old software engineer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly John Doe. The age is 30, so that's straightforward. The profession is software engineer. The submit function requires name, age, and profession. All three are present in the text. The age is given as 30, which is an integer. The profession is a string. So I should map these directly. There's no ambiguity here. I need to make sure the age is in uint8 format, which 30 is. The name is a string, and the profession is also a string. So the JSON should have those three fields with the respective values. No other fields are needed. I'll call the submit function with these values.\n"
                 },
-                "fingerprint": 11111122433473788552
+                "fingerprint": "627abfa04e366845"
               }
             },
             {
@@ -136,7 +136,7 @@
                   "id": "a7umh3wyb9oNBwSs8FLN8EePGVSAECBX",
                   "type": "function"
                 },
-                "fingerprint": 10510272083569822519
+                "fingerprint": "432ca75e0d1301d0"
               }
             }
           ],
@@ -152,24 +152,6 @@
             "model": "Qwen3-1.7B-Q4_K_M",
             "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
             "response_id": "chatcmpl-S3Fu9HncpQc2qt4oSTb5YWMCCXvfGXTp"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "Okay, let's see. The user provided a sentence: \"John Doe is a 30 year old software engineer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly John Doe. The age is 30, so that's straightforward. The profession is software engineer. The submit function requires name, age, and profession. All three are present in the text. The age is given as 30, which is an integer. The profession is a string. So I should map these directly. There's no ambiguity here. I need to make sure the age is in uint8 format, which 30 is. The name is a string, and the profession is also a string. So the JSON should have those three fields with the respective values. No other fields are needed. I'll call the submit function with these values.\n",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"name\": \"John Doe\", \"age\": 30, \"profession\": \"software engineer\"}",
-                    "name": "submit"
-                  },
-                  "id": "a7umh3wyb9oNBwSs8FLN8EePGVSAECBX",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3780452378824438782
           },
           "finish_reason": "tool_calls",
           "raw": {

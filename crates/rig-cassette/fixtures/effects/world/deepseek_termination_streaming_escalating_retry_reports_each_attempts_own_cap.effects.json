@@ -442,13 +442,6 @@
             "response_model": "deepseek-flash",
             "response_id": "6eab369d-4506-4135-932e-187d96bb6475"
           },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam",
-              "role": "assistant"
-            },
-            "fingerprint": 17617707631670792820
-          },
           "finish_reason": "length",
           "raw": {
             "usage": {
@@ -682,13 +675,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743"
-          },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup.",
-              "role": "assistant"
-            },
-            "fingerprint": 618153783423138705
           },
           "finish_reason": "stop",
           "raw": {

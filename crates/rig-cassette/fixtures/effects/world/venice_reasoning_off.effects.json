@@ -94,15 +94,6 @@
             "response_model": "qwen3-235b-a22b-thinking-2507",
             "response_id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd"
           },
-          "native": {
-            "item": {
-              "content": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common sources of security vulnerabilities and software crashes.",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8656563125379045729
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

@@ -110,13 +110,6 @@
             "response_model": "Qwen/Qwen3.5-9B",
             "response_id": "gen-1790146093-WuyGPAbUsMMWf9VvZNxJ"
           },
-          "native": {
-            "item": {
-              "content": "cedar",
-              "role": "assistant"
-            },
-            "fingerprint": 10831170027988163448
-          },
           "finish_reason": "stop",
           "raw": {
             "usage": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -232,7 +232,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E8bwLnJiH0ksD/imeuAfY/C0rtmhwhrFAp4mc5BcR0wKYQFpFH0TWK0T9KIUGq/DFjAW5Vb/J8jr6RLtepE0ShVobNrKJA6ToJCtVWjiAq09aKjddjsWU+npescPZU1UcvgiNVLUH5QfNWaHKsJLkcudQJsB40Rh4lnvC6Y6GZkjEOMKsgEBaRR9E06L1mWarrSm2r4j0mwh0cicYwGQVZeD4AvRaJm5m7udE3q8xf/qMOntO2VlmPPpmSvJ5UE/2NDveu0/AasadwjjPYgZMkrRmZvmOFMK2tahthOb2ItkECKxGU8ZM+wGXMspvZYZBPqKCeB9RbFWI+IPunjoWrOSu785UMiaA521pzZaUW2pc4/FABLbeYRP987t/7SdBLeipgK4VneNQdaedx3vGdm6c5SSc2rr"
                 },
-                "fingerprint": 8657837095694333088
+                "fingerprint": "c4769bec21b9ff84"
               }
             }
           ],
@@ -248,14 +248,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "IzC_as-dB6usz7IPg6Ht8AI"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 14099325371670013298
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -324,7 +316,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E8bwLnJiH0ksD/imeuAfY/C0rtmhwhrFAp4mc5BcR0wKYQFpFH0TWK0T9KIUGq/DFjAW5Vb/J8jr6RLtepE0ShVobNrKJA6ToJCtVWjiAq09aKjddjsWU+npescPZU1UcvgiNVLUH5QfNWaHKsJLkcudQJsB40Rh4lnvC6Y6GZkjEOMKsgEBaRR9E06L1mWarrSm2r4j0mwh0cicYwGQVZeD4AvRaJm5m7udE3q8xf/qMOntO2VlmPPpmSvJ5UE/2NDveu0/AasadwjjPYgZMkrRmZvmOFMK2tahthOb2ItkECKxGU8ZM+wGXMspvZYZBPqKCeB9RbFWI+IPunjoWrOSu785UMiaA521pzZaUW2pc4/FABLbeYRP987t/7SdBLeipgK4VneNQdaedx3vGdm6c5SSc2rr"
                 },
-                "fingerprint": 8657837095694333088
+                "fingerprint": "c4769bec21b9ff84"
               }
             }
           }
@@ -410,7 +402,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E8bwLnJiH0ksD/imeuAfY/C0rtmhwhrFAp4mc5BcR0wKYQFpFH0TWK0T9KIUGq/DFjAW5Vb/J8jr6RLtepE0ShVobNrKJA6ToJCtVWjiAq09aKjddjsWU+npescPZU1UcvgiNVLUH5QfNWaHKsJLkcudQJsB40Rh4lnvC6Y6GZkjEOMKsgEBaRR9E06L1mWarrSm2r4j0mwh0cicYwGQVZeD4AvRaJm5m7udE3q8xf/qMOntO2VlmPPpmSvJ5UE/2NDveu0/AasadwjjPYgZMkrRmZvmOFMK2tahthOb2ItkECKxGU8ZM+wGXMspvZYZBPqKCeB9RbFWI+IPunjoWrOSu785UMiaA521pzZaUW2pc4/FABLbeYRP987t/7SdBLeipgK4VneNQdaedx3vGdm6c5SSc2rr"
                     },
-                    "fingerprint": 8657837095694333088
+                    "fingerprint": "c4769bec21b9ff84"
                   }
                 }
               ],
@@ -421,15 +413,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "IzC_as-dB6usz7IPg6Ht8AI"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 14099325371670013298
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -516,7 +500,7 @@
                 "item": {
                   "text": "The result is -3."
                 },
-                "fingerprint": 10215099691242579379
+                "fingerprint": "e67c2bd9d62b071f"
               }
             }
           ],
@@ -531,13 +515,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "IzC_aqDVMZ-fz7IPz6u1iQ0"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 16697550678443752259
           },
           "finish_reason": "stop",
           "raw": {
@@ -596,7 +573,7 @@
                 "item": {
                   "text": "The result is -3."
                 },
-                "fingerprint": 10215099691242579379
+                "fingerprint": "e67c2bd9d62b071f"
               }
             }
           }

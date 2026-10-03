@@ -176,15 +176,6 @@
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-ERDC5sS3otxM98bOfRtZuqfjPwRnB"
           },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "ready",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 5329546866666182096
-          },
           "provider_request_id": "req_6764ffb4a8774849b8283cbed4987a3a",
           "finish_reason": "stop",
           "raw": {
@@ -260,16 +251,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-ERDC5sS3otxM98bOfRtZuqfjPwRnB"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "ready",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             }
           ]
         }
@@ -377,15 +359,6 @@
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-ERDC6hWEUyLGKPVCBuFCWFvp2oWCd"
           },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "again",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 16476637925928325713
-          },
           "provider_request_id": "req_e9483f8550f2437abd583803ea4cb5b1",
           "finish_reason": "stop",
           "raw": {
@@ -461,16 +434,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-ERDC6hWEUyLGKPVCBuFCWFvp2oWCd"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "again",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 16476637925928325713
-              }
+              "stop": "stop"
             }
           ]
         }

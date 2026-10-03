@@ -80,7 +80,7 @@
                   "text": "The dominant non-background color is red.",
                   "thoughtSignature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
                 },
-                "fingerprint": 18107128511828007244
+                "fingerprint": "500dc8f1e64f4568"
               }
             }
           ],
@@ -96,13 +96,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "qK6yaq-WE7GImtkPg8Xe-QQ"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 16145498361306002346
           },
           "finish_reason": "stop",
           "raw": {
@@ -159,7 +152,7 @@
                   "text": "The dominant non-background color is red.",
                   "thoughtSignature": "Eo0DCooDAWkUfRNLUB6ngezqF4Ris03PUt/wd0s/RqXoBkEMcjbPkwRJ4srK0lh6l45/tpry38uLyZLHwYUyT9ss91F/+qS6qPJsW3t+zWP3RmnZDJfp76EjX5oikSUePaqDFWkK248oWVkm2M1tOfUd+E4Sq6Ud9J3Facia1vyqFDXtOH+EvHbCJsa2qef0E2KO07LFRLcbC3ilEOk5hpM0+WqhFk3/zflheaoR2KTOVnn0oS2TgQ0s4+ovJbdeKjeGXugJ61DjS9MkB6EVk78CdnY+QIivUUEB6Tm3vbeIFL7PHdLuXiOFsfCblvjEYhPHFqXywoew5Rr606vp0hd6jOqONwbwJHXMyh+okNCOZv5dbuusy6BpTq8F03hRWm8zpaYRWGSteFVf3d+D+Vh26c7D4M795TCSxyHH/OkNqF3MA47evDKLiti/BQ7QxOJn/LQGpWVMlDLLzovpgx81xg8G65o0wqCMk85RFAAMxaMCYTlQ/Q5TMQPFQCIRvQf69C6lg9CC+0l/aMXqWg=="
                 },
-                "fingerprint": 18107128511828007244
+                "fingerprint": "500dc8f1e64f4568"
               }
             }
           }

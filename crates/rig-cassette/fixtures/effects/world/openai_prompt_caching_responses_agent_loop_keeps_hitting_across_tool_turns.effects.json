@@ -155,7 +155,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15005270810337298103
+                "fingerprint": "d36c0ad487491738"
               }
             },
             {
@@ -178,7 +178,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 11262948105391484874
+                "fingerprint": "a128501de383d877"
               }
             }
           ],
@@ -412,7 +412,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15005270810337298103
+                    "fingerprint": "d36c0ad487491738"
                   }
                 },
                 {
@@ -435,7 +435,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11262948105391484874
+                    "fingerprint": "a128501de383d877"
                   }
                 }
               ],
@@ -531,7 +531,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 16273850518116636134
+                "fingerprint": "91f87f8814c86222"
               }
             }
           ],

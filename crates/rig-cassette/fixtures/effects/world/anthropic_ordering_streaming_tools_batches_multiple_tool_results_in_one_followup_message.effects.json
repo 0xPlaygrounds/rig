@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -38,33 +38,25 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
         "batch": 14,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 15,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -75,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -91,15 +83,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 28,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -231,7 +215,7 @@
                   "text": "I'll call both tools simultaneously right now!",
                   "type": "text"
                 },
-                "fingerprint": 9523235931415277704
+                "fingerprint": "419c104b03bf2e1e"
               }
             },
             {
@@ -253,7 +237,7 @@
                   "name": "lookup_harbor_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 3912181296065001547
+                "fingerprint": "3f1a3547c66d21f2"
               }
             },
             {
@@ -275,7 +259,7 @@
                   "name": "lookup_orchard_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 9870586724246750420
+                "fingerprint": "6f12c0678153cc25"
               }
             }
           ],
@@ -300,11 +284,11 @@
               "output_tokens": 70,
               "input_tokens": 700,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011CfciBKzKHuxvs9EcZeQc2",
@@ -366,7 +350,7 @@
                   "text": "I'll call both tools simultaneously right now!",
                   "type": "text"
                 },
-                "fingerprint": 9523235931415277704
+                "fingerprint": "419c104b03bf2e1e"
               }
             }
           }
@@ -411,7 +395,7 @@
                   "name": "lookup_harbor_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 3912181296065001547
+                "fingerprint": "3f1a3547c66d21f2"
               }
             }
           }
@@ -456,7 +440,7 @@
                   "name": "lookup_orchard_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 9870586724246750420
+                "fingerprint": "6f12c0678153cc25"
               }
             }
           }
@@ -552,7 +536,7 @@
                       "text": "I'll call both tools simultaneously right now!",
                       "type": "text"
                     },
-                    "fingerprint": 9523235931415277704
+                    "fingerprint": "419c104b03bf2e1e"
                   }
                 },
                 {
@@ -574,7 +558,7 @@
                       "name": "lookup_harbor_label",
                       "type": "tool_use"
                     },
-                    "fingerprint": 3912181296065001547
+                    "fingerprint": "3f1a3547c66d21f2"
                   }
                 },
                 {
@@ -596,7 +580,7 @@
                       "name": "lookup_orchard_label",
                       "type": "tool_use"
                     },
-                    "fingerprint": 9870586724246750420
+                    "fingerprint": "6f12c0678153cc25"
                   }
                 }
               ],
@@ -682,7 +666,7 @@
                   "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
                   "type": "text"
                 },
-                "fingerprint": 17962358045931762559
+                "fingerprint": "84a6c75f1745511b"
               }
             }
           ],
@@ -707,11 +691,11 @@
               "output_tokens": 26,
               "input_tokens": 846,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfciBS7RRh2uEB8RJLAZ3",
@@ -789,7 +773,7 @@
                   "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
                   "type": "text"
                 },
-                "fingerprint": 17962358045931762559
+                "fingerprint": "84a6c75f1745511b"
               }
             }
           }

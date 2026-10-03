@@ -2,52 +2,52 @@
   "header": {
     "deliveries": [
       {
-        "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 32,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 42,
-        "id": 0,
-        "kind": {
-          "delivery": "outcome"
+          "items": 5
         }
       },
       {
         "batch": 43,
-        "id": 1,
+        "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 44,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 48,
+        "batch": 65,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 49,
+        "batch": 69,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 74,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -188,7 +188,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -212,7 +212,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 11930698768044836350
+                "fingerprint": "ca02fbd03c6215af"
               }
             }
           ],
@@ -357,36 +357,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
-            "kind": "reasoning"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "",
-              "native": {
-                "item": {
-                  "content": [],
-                  "encrypted_content": "gAAAAABqv0pGsvIsBWAWoxIwaEu9v09n-oa71GHyzN3hzHvslq-uhosuYUagDqZ2aBLD7dHMvv1tD6ZOrgRvHBS0cooZsDS-FyJcfssixKJIJ8xL39Wdyp28v42Nlrv8GwgxSJXV1WSQKHGCG-sOhhA46CK97FEFtSh7yGBxxgWYTJ-g3vt0L42jULg0vrSGLeEACJFJMCEyhdbqNBODFQe2Ah7t_5jS_tFCza11u_04_XsAAth6VHxUsk9rUTpbhUdpryKCZ0d69e0MteevyV1JMNSN3hQjXOl81935QWDtq5LHTi4hI78niS_UQledV6GnmgAL4D5lHJcsBT30_TpTA-QlJxWxIpFZG4b8-QX38NJwTOdWjA_JrdgMtSsM1XQAOGNEIRSE9nNW4Zy2lRq9RZjxdsKEJbnUqegAmzSqRTqg-LUKLrN9HK28hEetklyy1US8WRw8FLyAFIGFMDZHjtSsQEaV2Nr6cE6AGmZw_uA799mCd75sO-0rUBttWa15cq3Zh-ywt_TgB2DE-PQN3CH0UxrJn5T-Sv2QYnhCORG9NeruC_x4UUmzSveoGj-Ha9N0m-0tUOCa6PJUythqySWjkcZFX6GCHGC92kO_w9WsqDykVZ0AwThm27hKaAp5Fh0p2q-rX3aCTVyVWwGHPpjLrmpV0XpYMMrfR5kEvtVofL9ll-qHQlKYLGIk-il5mb-MdOmpwgxc9CUEg4TBnRourbqxlrm6lePssSks_2YFk8k0rKTHo0Qkt__tBgl960tEmrnDEv7m9WH3ykZq_SF44aHrKcxE5jZx8pdknoZy4iU08AUIzaKueRcmiZcZM7JAMdv5Yeax5EiJNZQ4NGfIX8nAxl6d5BHZYRYUGaGz5U0Cpq4P9CHM7T6m8GHLJoOQq-sJpdqJn-vj9sDuUBGVvGQ_wDU05z1CoaQ78RfXQsEUy5_63pd2z9xgjk4KZsznQbYX-ncCBE4EBWVENPA6EsfW_b6mFFjO4MoAJ4_-IdIl4RWcVce3U94TS5rV3Qv_I4UY_opiuh7r2xJ348i8YWrVa_s_uwf-LBvZwB2CSm2lD_OwFu_qiajEB7rvF_tK5IPy7qScyzHEg38Bne5Q87hOE6ubk5SzKa-WxC7DUpGOsFa6aXOFrh9C78fOXMKxSdHLUpG8kXI_n30JJ7XYA0YRef2u8TXKecypwHbPBJjKlhbaHTouVdCxCUjLtqY21fMds7IzBW2hSDbGjZDPZAtJrDy9pUV-eucSOuBhd4MEtQF8serEeJwgGaLlMgyu-1lIYNOD8gRr7PoEkA9wYf66uHEoZbsrIePOoEwCIUaelL2XhN1hIinF-jYGUzA63yBFjEvtSfsezrKgVKxIccqdvisv8juMUWhcK4tNtld_Rz91-1jTxY6-lsJpHSsBYyQJ73elOdMDTLdCeUM6l4SryQFeJWCP5ePuhxIJinXhKMi-lc056_t81mSUztG1QSdbbsHjgCWeCAF1BdEsNBkpuNXtvCdM2Fi7alUJt5HnluA9uxeUIqFH4MPqGbaQwpOWPLBx52ybdBLoIg1Xs4x4ObE3sVAyAjoqSxjDY1g60vBqMq-u6Q-MmIv1kabsQJwxFrFeg9wvWG2JIBmG0vrHwA==",
-                  "id": "rs_076a2c542ba94f3f016abf4a45fafc87d0b9999f652125b85e",
-                  "summary": [],
-                  "type": "reasoning"
-                },
-                "fingerprint": 337210683625289162
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 2,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -394,7 +365,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 2,
+            "part": 1,
             "json": "{\"x\":17,\"y\":25}"
           }
         },
@@ -402,7 +373,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 2,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -424,7 +395,36 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 11930698768044836350
+                "fingerprint": "ca02fbd03c6215af"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0pGsvIsBWAWoxIwaEu9v09n-oa71GHyzN3hzHvslq-uhosuYUagDqZ2aBLD7dHMvv1tD6ZOrgRvHBS0cooZsDS-FyJcfssixKJIJ8xL39Wdyp28v42Nlrv8GwgxSJXV1WSQKHGCG-sOhhA46CK97FEFtSh7yGBxxgWYTJ-g3vt0L42jULg0vrSGLeEACJFJMCEyhdbqNBODFQe2Ah7t_5jS_tFCza11u_04_XsAAth6VHxUsk9rUTpbhUdpryKCZ0d69e0MteevyV1JMNSN3hQjXOl81935QWDtq5LHTi4hI78niS_UQledV6GnmgAL4D5lHJcsBT30_TpTA-QlJxWxIpFZG4b8-QX38NJwTOdWjA_JrdgMtSsM1XQAOGNEIRSE9nNW4Zy2lRq9RZjxdsKEJbnUqegAmzSqRTqg-LUKLrN9HK28hEetklyy1US8WRw8FLyAFIGFMDZHjtSsQEaV2Nr6cE6AGmZw_uA799mCd75sO-0rUBttWa15cq3Zh-ywt_TgB2DE-PQN3CH0UxrJn5T-Sv2QYnhCORG9NeruC_x4UUmzSveoGj-Ha9N0m-0tUOCa6PJUythqySWjkcZFX6GCHGC92kO_w9WsqDykVZ0AwThm27hKaAp5Fh0p2q-rX3aCTVyVWwGHPpjLrmpV0XpYMMrfR5kEvtVofL9ll-qHQlKYLGIk-il5mb-MdOmpwgxc9CUEg4TBnRourbqxlrm6lePssSks_2YFk8k0rKTHo0Qkt__tBgl960tEmrnDEv7m9WH3ykZq_SF44aHrKcxE5jZx8pdknoZy4iU08AUIzaKueRcmiZcZM7JAMdv5Yeax5EiJNZQ4NGfIX8nAxl6d5BHZYRYUGaGz5U0Cpq4P9CHM7T6m8GHLJoOQq-sJpdqJn-vj9sDuUBGVvGQ_wDU05z1CoaQ78RfXQsEUy5_63pd2z9xgjk4KZsznQbYX-ncCBE4EBWVENPA6EsfW_b6mFFjO4MoAJ4_-IdIl4RWcVce3U94TS5rV3Qv_I4UY_opiuh7r2xJ348i8YWrVa_s_uwf-LBvZwB2CSm2lD_OwFu_qiajEB7rvF_tK5IPy7qScyzHEg38Bne5Q87hOE6ubk5SzKa-WxC7DUpGOsFa6aXOFrh9C78fOXMKxSdHLUpG8kXI_n30JJ7XYA0YRef2u8TXKecypwHbPBJjKlhbaHTouVdCxCUjLtqY21fMds7IzBW2hSDbGjZDPZAtJrDy9pUV-eucSOuBhd4MEtQF8serEeJwgGaLlMgyu-1lIYNOD8gRr7PoEkA9wYf66uHEoZbsrIePOoEwCIUaelL2XhN1hIinF-jYGUzA63yBFjEvtSfsezrKgVKxIccqdvisv8juMUWhcK4tNtld_Rz91-1jTxY6-lsJpHSsBYyQJ73elOdMDTLdCeUM6l4SryQFeJWCP5ePuhxIJinXhKMi-lc056_t81mSUztG1QSdbbsHjgCWeCAF1BdEsNBkpuNXtvCdM2Fi7alUJt5HnluA9uxeUIqFH4MPqGbaQwpOWPLBx52ybdBLoIg1Xs4x4ObE3sVAyAjoqSxjDY1g60vBqMq-u6Q-MmIv1kabsQJwxFrFeg9wvWG2JIBmG0vrHwA==",
+                  "id": "rs_076a2c542ba94f3f016abf4a45fafc87d0b9999f652125b85e",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": "82b6ea64ef91009f"
               }
             }
           }
@@ -520,7 +520,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -544,7 +544,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11930698768044836350
+                    "fingerprint": "ca02fbd03c6215af"
                   }
                 }
               ],
@@ -632,7 +632,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -811,7 +811,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           }

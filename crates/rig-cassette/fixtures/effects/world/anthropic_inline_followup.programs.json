@@ -338,7 +338,7 @@
                     "text": "The dominant non-background color is **bright red**.",
                     "type": "text"
                   },
-                  "fingerprint": 12330449253093814802
+                  "fingerprint": "74399dee01316488"
                 }
               }
             ],
@@ -350,8 +350,7 @@
                 "response_model": "claude-sonnet-4-6",
                 "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
               },
-              "stop": "stop",
-              "native": null
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -379,7 +378,7 @@
                       "text": "The dominant non-background color is **bright red**.",
                       "type": "text"
                     },
-                    "fingerprint": 12330449253093814802
+                    "fingerprint": "74399dee01316488"
                   }
                 }
               ],
@@ -445,8 +444,7 @@
               "response_model": "claude-sonnet-4-6",
               "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
             },
-            "stop": "stop",
-            "native": null
+            "stop": "stop"
           }
         },
         {
@@ -459,7 +457,7 @@
                   "text": "The dominant non-background color is **bright red**.",
                   "type": "text"
                 },
-                "fingerprint": 12330449253093814802
+                "fingerprint": "74399dee01316488"
               }
             }
           }

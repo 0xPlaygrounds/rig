@@ -124,7 +124,7 @@
                 "item": {
                   "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
                 },
-                "fingerprint": 13268155671576221190
+                "fingerprint": "7f1b58aa7efb120b"
               }
             },
             {
@@ -148,7 +148,7 @@
                   "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
                   "type": "function"
                 },
-                "fingerprint": 10443962742099781388
+                "fingerprint": "9fdd775c55e26bcd"
               }
             }
           ],
@@ -165,24 +165,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "c12a54d0-dfbc-4240-8f84-38c74005ad57"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3269494540679106501
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -431,7 +413,7 @@
                 "item": {
                   "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
                 },
-                "fingerprint": 13268155671576221190
+                "fingerprint": "7f1b58aa7efb120b"
               }
             }
           }
@@ -478,7 +460,7 @@
                   "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
                   "type": "function"
                 },
-                "fingerprint": 10443962742099781388
+                "fingerprint": "9fdd775c55e26bcd"
               }
             }
           }
@@ -546,7 +528,7 @@
                     "item": {
                       "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
                     },
-                    "fingerprint": 13268155671576221190
+                    "fingerprint": "7f1b58aa7efb120b"
                   }
                 },
                 {
@@ -570,7 +552,7 @@
                       "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
                       "type": "function"
                     },
-                    "fingerprint": 10443962742099781388
+                    "fingerprint": "9fdd775c55e26bcd"
                   }
                 }
               ],
@@ -581,25 +563,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "c12a54d0-dfbc-4240-8f84-38c74005ad57"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3269494540679106501
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -678,14 +642,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "dbcd8f2d-843b-4883-b5ff-a9f3bcfd0bd9"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "reasoning_content": "",
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

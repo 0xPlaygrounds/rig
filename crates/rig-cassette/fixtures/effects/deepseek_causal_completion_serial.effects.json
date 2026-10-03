@@ -126,7 +126,7 @@
                   "id": "call_00_66V6gslxFASIbOAEVUNQ7228",
                   "type": "function"
                 },
-                "fingerprint": 17547892071143312464
+                "fingerprint": "ae049fc4251091bb"
               }
             }
           ],
@@ -142,23 +142,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "3033dee9-bf2c-4412-9367-010c5edb773b"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"q\": \"What is the capital of France?\"}",
-                    "name": "lookup"
-                  },
-                  "id": "call_00_66V6gslxFASIbOAEVUNQ7228",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2633767935777554342
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -282,13 +265,6 @@
             "response_model": "deepseek-flash",
             "response_id": "38c004c7-735e-4a6b-8891-b56a9ee0dca3"
           },
-          "native": {
-            "item": {
-              "content": "Paris",
-              "role": "assistant"
-            },
-            "fingerprint": 10907891467078341492
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -367,7 +343,7 @@
                       "id": "call_00_66V6gslxFASIbOAEVUNQ7228",
                       "type": "function"
                     },
-                    "fingerprint": 17547892071143312464
+                    "fingerprint": "ae049fc4251091bb"
                   }
                 }
               ],
@@ -378,24 +354,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "3033dee9-bf2c-4412-9367-010c5edb773b"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"q\": \"What is the capital of France?\"}",
-                        "name": "lookup"
-                      },
-                      "id": "call_00_66V6gslxFASIbOAEVUNQ7228",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2633767935777554342
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -468,13 +427,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "38876aab-d77b-4f40-a431-a84062c46fd9"
-          },
-          "native": {
-            "item": {
-              "content": "Paris",
-              "role": "assistant"
-            },
-            "fingerprint": 10907891467078341492
           },
           "finish_reason": "stop",
           "raw": {

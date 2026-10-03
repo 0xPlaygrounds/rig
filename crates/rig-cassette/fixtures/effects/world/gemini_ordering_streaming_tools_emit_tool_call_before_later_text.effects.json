@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,28 +10,20 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 15,
         "id": 2,
         "kind": {
@@ -40,7 +32,15 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 16,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -155,7 +155,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
                 },
-                "fingerprint": 9787574756319870180
+                "fingerprint": "58766188075a0b9a"
               }
             }
           ],
@@ -171,14 +171,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "5y-_avX5HJ_-qtsPpcym4Qo"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 1522745164610273574
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -241,7 +233,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
                 },
-                "fingerprint": 9787574756319870180
+                "fingerprint": "58766188075a0b9a"
               }
             }
           }
@@ -321,7 +313,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E9FUr8sYnytVZlpqDQgxHGGzq9iKOMqkHX1GQfGB1ncKXwFpFH0T+CWKFbjbAYG7UOb/32Q9lmNtH46799XVuuODyNoXBOD27z7UBU09vdUPY9OBW/FbBHuIYRULU2Jqcjmsb06piLNrp4Jzq/ShR6grLo2AmiHHn09xiAh+wuOfCmgBaRR9E5tVOYcA5d5LeGyUqWMbdHA66mjoKuv5QqlyDNa2Ukv+w3bgnZcy+WbzAwtfyFjZ8ECGILjMJD3DDE/cNGlIzp32SfFxyCshUewuNwjQvnv2oc8q5n++bI8gSpdP7PzclWgdLQ=="
                     },
-                    "fingerprint": 9787574756319870180
+                    "fingerprint": "58766188075a0b9a"
                   }
                 }
               ],
@@ -332,15 +324,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "5y-_avX5HJ_-qtsPpcym4Qo"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 1522745164610273574
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -394,7 +378,7 @@
                 "item": {
                   "text": "The alpha signal marker is crimson-harbor."
                 },
-                "fingerprint": 5716153350322670992
+                "fingerprint": "9f2f1f25eaaed636"
               }
             }
           ],
@@ -409,13 +393,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "6C-_atbNBe3vqtsP2ofk4Qc"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 6554359038851653464
           },
           "finish_reason": "stop",
           "raw": {
@@ -474,7 +451,7 @@
                 "item": {
                   "text": "The alpha signal marker is crimson-harbor."
                 },
-                "fingerprint": 5716153350322670992
+                "fingerprint": "9f2f1f25eaaed636"
               }
             }
           }

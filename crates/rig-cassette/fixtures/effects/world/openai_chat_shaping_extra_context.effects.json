@@ -97,15 +97,6 @@
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeC0h4cdD6iU8vFi6fr3XIgAAZxB"
           },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "A glarb-glarb is an ancient farming tool from planet Jiro.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 11177280835969388096
-          },
           "provider_request_id": "req_a34239ce5ed24ef4b358c705fd6ff277",
           "finish_reason": "stop",
           "raw": {

@@ -137,7 +137,7 @@
                   "id": "VHGTYUUqS",
                   "type": "function"
                 },
-                "fingerprint": 15536449218640941437
+                "fingerprint": "6bba653d42fe5e7c"
               }
             }
           ],
@@ -152,24 +152,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RyjZu811lhnvWrEFsDewD3kC"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "VHGTYUUqS",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17799251003892606199
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -236,7 +218,7 @@
                   "id": "VHGTYUUqS",
                   "type": "function"
                 },
-                "fingerprint": 15536449218640941437
+                "fingerprint": "6bba653d42fe5e7c"
               }
             }
           }

@@ -100,13 +100,6 @@
             "response_model": "deepseek-flash",
             "response_id": "5b504aa4-557d-4ee4-b2c5-2af8181f87a3"
           },
-          "native": {
-            "item": {
-              "content": "```json\n{\n  \"name\": \"Seattle Rust Meetup\",\n  \"location\": \"Seattle, WA\",\n  \"date\": \"2025-06-12\",\n  \"time\": \"18:30\",\n  \"topic\": \"Rust in Production\"\n}\n```",
-              "role": "assistant"
-            },
-            "fingerprint": 2985600960489387983
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

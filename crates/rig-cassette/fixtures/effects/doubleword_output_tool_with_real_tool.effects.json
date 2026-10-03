@@ -159,7 +159,7 @@
                   "id": "call_206a9678ffe84a1cae6564cb",
                   "type": "function"
                 },
-                "fingerprint": 12320095547931120819
+                "fingerprint": "08d5e366b5df20d2"
               }
             }
           ],
@@ -176,23 +176,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_2f266ec4-a284-467d-980b-764d9e5e602e"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_206a9678ffe84a1cae6564cb",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2740649031531773577
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -318,7 +301,7 @@
                       "id": "call_206a9678ffe84a1cae6564cb",
                       "type": "function"
                     },
-                    "fingerprint": 12320095547931120819
+                    "fingerprint": "08d5e366b5df20d2"
                   }
                 }
               ],
@@ -329,24 +312,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_2f266ec4-a284-467d-980b-764d9e5e602e"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_206a9678ffe84a1cae6564cb",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2740649031531773577
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -450,7 +416,7 @@
                   "id": "call_1612b6fd8e5b4d1f877e4588",
                   "type": "function"
                 },
-                "fingerprint": 9461326977492077436
+                "fingerprint": "eda941c53a6c17d7"
               }
             }
           ],
@@ -467,23 +433,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_902a3c6f-2f4d-4e96-98e5-eb6c776b18f6"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"Event\", \"summary\": \"Rust meetup in Seattle with a sum of 42.\"}",
-                    "name": "final_result"
-                  },
-                  "id": "call_1612b6fd8e5b4d1f877e4588",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2053608190511790506
           },
           "finish_reason": "tool_calls",
           "raw": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,15 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +42,7 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,15 +50,7 @@
         }
       },
       {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -174,7 +174,7 @@
                 "item": {
                   "text": "The first number is 121932631112635269.\nThe second number is 63."
                 },
-                "fingerprint": 6392441863912881999
+                "fingerprint": "64c784600702c7c3"
               }
             }
           ],
@@ -191,13 +191,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "o3izaofSCeqb6dkP9J27sQk"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 16013037177734409693
           },
           "finish_reason": "stop",
           "raw": {
@@ -364,7 +357,7 @@
                 "item": {
                   "text": "The first number is 121932631112635269.\nThe second number is 63."
                 },
-                "fingerprint": 6392441863912881999
+                "fingerprint": "64c784600702c7c3"
               }
             }
           }

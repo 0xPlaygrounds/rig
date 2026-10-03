@@ -159,7 +159,7 @@
                   },
                   "thoughtSignature": "CrcBAWkUfROdMpbcYuGVYITyb4TGI1g6zA8E/Y10RsuH6n4U2cVc5dKrqxHUZJ1S9ZRycgUEjkAxBw5TX9fqNgTNPbenPI9yKk3hRRWjumDzCOexH82QvGzWRx9s/mRRwET89ERGtez2enz6OsnohmD5Xsp4BN1n9Mz1AgYwzLQ5x7O2TDQf7p8hugaGQ2ZRTj45mLuI1Cz7D2SJZQWzXvFNUEqQ18MPVm7NPQ6ZO3sdoBmPDGRlwQHR"
                 },
-                "fingerprint": 8179177553486652348
+                "fingerprint": "90addb73cbf98ea2"
               }
             }
           ],
@@ -175,14 +175,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "nC2_apTBG6Cfz7IProizKQ"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 12143662111672307464
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -301,7 +293,7 @@
                       },
                       "thoughtSignature": "CrcBAWkUfROdMpbcYuGVYITyb4TGI1g6zA8E/Y10RsuH6n4U2cVc5dKrqxHUZJ1S9ZRycgUEjkAxBw5TX9fqNgTNPbenPI9yKk3hRRWjumDzCOexH82QvGzWRx9s/mRRwET89ERGtez2enz6OsnohmD5Xsp4BN1n9Mz1AgYwzLQ5x7O2TDQf7p8hugaGQ2ZRTj45mLuI1Cz7D2SJZQWzXvFNUEqQ18MPVm7NPQ6ZO3sdoBmPDGRlwQHR"
                     },
-                    "fingerprint": 8179177553486652348
+                    "fingerprint": "90addb73cbf98ea2"
                   }
                 }
               ],
@@ -312,15 +304,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "nC2_apTBG6Cfz7IProizKQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 12143662111672307464
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -384,7 +368,7 @@
                 "item": {
                   "text": "The result of the add tool is 15."
                 },
-                "fingerprint": 14763892842790002
+                "fingerprint": "7d72452dfb1e6d66"
               }
             }
           ],
@@ -399,13 +383,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "nS2_ap_vB83Vz7IPmKzkoAM"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 11493448354273703824
           },
           "finish_reason": "stop",
           "raw": {

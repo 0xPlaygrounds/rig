@@ -133,7 +133,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 8200798643363381261
+                "fingerprint": "2ccde00e0fd9fb84"
               }
             }
           ],
@@ -158,11 +158,11 @@
               "output_tokens": 69,
               "input_tokens": 633,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011Cfci7YHdLjzbJUUM8M3X7",
@@ -217,7 +217,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 8200798643363381261
+                "fingerprint": "2ccde00e0fd9fb84"
               }
             }
           }
@@ -303,7 +303,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 8200798643363381261
+                    "fingerprint": "2ccde00e0fd9fb84"
                   }
                 }
               ],
@@ -379,7 +379,7 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -404,11 +404,11 @@
               "output_tokens": 4,
               "input_tokens": 715,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011Cfci7dkJ7oze9Hvi37JvJ",
@@ -446,7 +446,7 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           }

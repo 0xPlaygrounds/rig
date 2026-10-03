@@ -209,7 +209,7 @@
                   "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                   "type": "text"
                 },
-                "fingerprint": 10467860637490036730
+                "fingerprint": "330544d311850026"
               }
             },
             {
@@ -231,7 +231,7 @@
                   "name": "list_files",
                   "type": "tool_use"
                 },
-                "fingerprint": 13108827125994560541
+                "fingerprint": "438d467c27beb310"
               }
             }
           ],
@@ -349,7 +349,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 10467860637490036730
+                    "fingerprint": "330544d311850026"
                   }
                 },
                 {
@@ -371,7 +371,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 13108827125994560541
+                    "fingerprint": "438d467c27beb310"
                   }
                 }
               ],
@@ -483,7 +483,7 @@
                   "text": "Now let me read the README.md file:",
                   "type": "text"
                 },
-                "fingerprint": 2444938797179649616
+                "fingerprint": "b11124b410cc15f4"
               }
             },
             {
@@ -509,7 +509,7 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 2036286586206492196
+                "fingerprint": "f4e224f0ca0bd201"
               }
             }
           ],
@@ -629,7 +629,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 10467860637490036730
+                    "fingerprint": "330544d311850026"
                   }
                 },
                 {
@@ -651,7 +651,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 13108827125994560541
+                    "fingerprint": "438d467c27beb310"
                   }
                 }
               ],
@@ -693,7 +693,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 2444938797179649616
+                    "fingerprint": "b11124b410cc15f4"
                   }
                 },
                 {
@@ -719,7 +719,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 2036286586206492196
+                    "fingerprint": "f4e224f0ca0bd201"
                   }
                 }
               ],
@@ -831,7 +831,7 @@
                   "text": "Now let me read the tests/basic.rs file:",
                   "type": "text"
                 },
-                "fingerprint": 4987555910873365550
+                "fingerprint": "ed1ab8a998fb5bec"
               }
             },
             {
@@ -857,7 +857,7 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 3272740737935552046
+                "fingerprint": "0aa6a35c079aa837"
               }
             }
           ],

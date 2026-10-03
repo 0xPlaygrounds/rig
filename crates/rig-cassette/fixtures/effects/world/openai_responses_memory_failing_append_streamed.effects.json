@@ -17,19 +17,11 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 24,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 26,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -152,7 +144,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -173,7 +165,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 12598636203455125710
+                "fingerprint": "0cd5e8fd3135ad2a"
               }
             }
           ],
@@ -299,35 +291,6 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
-            "kind": "reasoning"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "",
-              "native": {
-                "item": {
-                  "content": [],
-                  "encrypted_content": "gAAAAABqv0qhKBSbwNx2JoGWAEtrUe2DiOUYSApyGxGFhoCul1PBEOlmY4UOYuFEYk_4Oarybz8DJGPsAFXfvRxSwa5UrQtB3taJCu5lfW9je2Y1-o1VkTFJSE-NKx9B35HePmK1PyX5_3aLdrkMeOk2QS32B3qDod8FG99WMSQFID8zbI28QuUANgxdTKk5KoV_o_u_zf6m1olzCtibFce3EvQSJaFi8_HWvCTuh4sndwMR2nif2-U74ounWdphD37W4UEGQNoOQtGZBxQ88Pfp4gHbMVjf_6jjQFhTp_Rb8eefVY6H_SwZoupxhdHLqkYLW5hPoUCLhDBtNBx31N-E8rHTmdDO12_9_CBAYv66Za1LJSW-bm5sccQVWNVJvVIcoX6uC1JP2p0UmY4aevyFt2TkWJP0VVCBEnqWE1EttjRL8fVEvVAkROFepUB8x7O4246yTqAHmGWTETjCekND07xFE9Zo8SjDfJnw3TcliQbunC_1_J3nKpHUD2do3UQ8CT6Q6bSB4qU1YvOyJVh7a8dFKEa5eYuM1R9AmkvzGYm5Qvdhd8JPPEbX5bCPq4_efdJFMoz2CJQLUQ_sC2nhxVgZvqwZO06rse5cpFgL0BI-6Nj1jI0c8B11LCrB-PTToXGLcED_ZkGcggY3_hKegPmrt0ZIMto5aOYOY62Vv6N-ulNnTy-RLKYcjNQX9Y_eSbRmwsrZeBKwT7YMyu5YY70NoikgsORym5ghaNnEQicWQQcrD51pxn-arg_vr3QtsqOeoEJ2X_wLY4WZSEyaF1h31SwdLLXFWXM-8PjwzfgVvBBJUsqJUJdLTrU6lsVXxIaOIuJFIsnI5svIQGTenRC7-EAoDjNmW1Blf32W-m_UJNgBddtxvtt-lDrlnGcpPcYfkiziiGMmGznEqa-sdzKxiSeReM6_0PsCSr-B-Z4OJ3FBEv5HZYqWN_PonKmmW7m67F2eBSdYeIn8SQ1DFYAaZujS8xWnRc9VGljLpnPbwCD-crV3AnVi98_RBXWwxVnkgQD5a8qX02IDXLAL583S5jhN5Hc7z_Vm6djqHL8pHnWWf8uai8r8V2qjwrtpeP8U8r2-ic5Y3rsujVVe1wlDWQPPQpIiGKY30n1iuVqNTtT5zpZ9qCSjQx9ZuBMj4AMsCAWl9pQrxgp8Kx6g0xaJZ2Ox5ndtnj2bbdHwMGaFrrq2BBhQgY0Nt7nZyN31gh-64CkLPddhUuj590-a5UEy-ijlNMsKFaLoto7dqYKpUwFaxZ5fgJ3TydVsFAmuap017yuVcf0X6Cv66RtetwjszMfy607NewgDo4JrEUV1MTuciDdE9fBFGcPyuSrgkAbdpK3E--mMTwefTwcAmFbzcl9tx_KxEaCGK380ZX3QUfgyayq8y26q9w0FdmNlfVoH7hdTIx8cajPPbVjP6d14P-U9kftL7FBz66d34_2uH6et-urfaH_lXmEvrCKwA2v_i6Q-F1VpxQsMcelQR66KmRck8w==",
-                  "id": "rs_0a7b0cbadca1af3e016abf4aa0bd7887d0809255f1b4764a33",
-                  "summary": [],
-                  "type": "reasoning"
-                },
-                "fingerprint": 337210683625289162
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
             "part": 1,
             "kind": "text"
           }
@@ -363,7 +326,36 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 12598636203455125710
+                "fingerprint": "0cd5e8fd3135ad2a"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0qhKBSbwNx2JoGWAEtrUe2DiOUYSApyGxGFhoCul1PBEOlmY4UOYuFEYk_4Oarybz8DJGPsAFXfvRxSwa5UrQtB3taJCu5lfW9je2Y1-o1VkTFJSE-NKx9B35HePmK1PyX5_3aLdrkMeOk2QS32B3qDod8FG99WMSQFID8zbI28QuUANgxdTKk5KoV_o_u_zf6m1olzCtibFce3EvQSJaFi8_HWvCTuh4sndwMR2nif2-U74ounWdphD37W4UEGQNoOQtGZBxQ88Pfp4gHbMVjf_6jjQFhTp_Rb8eefVY6H_SwZoupxhdHLqkYLW5hPoUCLhDBtNBx31N-E8rHTmdDO12_9_CBAYv66Za1LJSW-bm5sccQVWNVJvVIcoX6uC1JP2p0UmY4aevyFt2TkWJP0VVCBEnqWE1EttjRL8fVEvVAkROFepUB8x7O4246yTqAHmGWTETjCekND07xFE9Zo8SjDfJnw3TcliQbunC_1_J3nKpHUD2do3UQ8CT6Q6bSB4qU1YvOyJVh7a8dFKEa5eYuM1R9AmkvzGYm5Qvdhd8JPPEbX5bCPq4_efdJFMoz2CJQLUQ_sC2nhxVgZvqwZO06rse5cpFgL0BI-6Nj1jI0c8B11LCrB-PTToXGLcED_ZkGcggY3_hKegPmrt0ZIMto5aOYOY62Vv6N-ulNnTy-RLKYcjNQX9Y_eSbRmwsrZeBKwT7YMyu5YY70NoikgsORym5ghaNnEQicWQQcrD51pxn-arg_vr3QtsqOeoEJ2X_wLY4WZSEyaF1h31SwdLLXFWXM-8PjwzfgVvBBJUsqJUJdLTrU6lsVXxIaOIuJFIsnI5svIQGTenRC7-EAoDjNmW1Blf32W-m_UJNgBddtxvtt-lDrlnGcpPcYfkiziiGMmGznEqa-sdzKxiSeReM6_0PsCSr-B-Z4OJ3FBEv5HZYqWN_PonKmmW7m67F2eBSdYeIn8SQ1DFYAaZujS8xWnRc9VGljLpnPbwCD-crV3AnVi98_RBXWwxVnkgQD5a8qX02IDXLAL583S5jhN5Hc7z_Vm6djqHL8pHnWWf8uai8r8V2qjwrtpeP8U8r2-ic5Y3rsujVVe1wlDWQPPQpIiGKY30n1iuVqNTtT5zpZ9qCSjQx9ZuBMj4AMsCAWl9pQrxgp8Kx6g0xaJZ2Ox5ndtnj2bbdHwMGaFrrq2BBhQgY0Nt7nZyN31gh-64CkLPddhUuj590-a5UEy-ijlNMsKFaLoto7dqYKpUwFaxZ5fgJ3TydVsFAmuap017yuVcf0X6Cv66RtetwjszMfy607NewgDo4JrEUV1MTuciDdE9fBFGcPyuSrgkAbdpK3E--mMTwefTwcAmFbzcl9tx_KxEaCGK380ZX3QUfgyayq8y26q9w0FdmNlfVoH7hdTIx8cajPPbVjP6d14P-U9kftL7FBz66d34_2uH6et-urfaH_lXmEvrCKwA2v_i6Q-F1VpxQsMcelQR66KmRck8w==",
+                  "id": "rs_0a7b0cbadca1af3e016abf4aa0bd7887d0809255f1b4764a33",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": "82b6ea64ef91009f"
               }
             }
           }
@@ -409,7 +401,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -430,7 +422,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 12598636203455125710
+                    "fingerprint": "0cd5e8fd3135ad2a"
                   }
                 }
               ],

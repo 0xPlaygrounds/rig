@@ -91,13 +91,6 @@
             "response_model": "deepseek-flash",
             "response_id": "39bd2ab0-2de8-4745-9a1b-7ce94129dfe4"
           },
-          "native": {
-            "item": {
-              "content": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship.",
-              "role": "assistant"
-            },
-            "fingerprint": 16059462463832856412
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

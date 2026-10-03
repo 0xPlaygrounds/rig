@@ -143,7 +143,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_5324718cd6a14a74bb8f1483"
+                "provider": "call_8fc1fc4641fc444d9c498e57"
               },
               "function": {
                 "name": "add",
@@ -158,17 +158,17 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_5324718cd6a14a74bb8f1483",
+                  "id": "call_8fc1fc4641fc444d9c498e57",
                   "type": "function"
                 },
-                "fingerprint": 6664430165433828367
+                "fingerprint": "79bd3943420346ac"
               }
             }
           ],
           "usage": {
             "input_tokens": 505,
-            "output_tokens": 36,
-            "total_tokens": 541,
+            "output_tokens": 37,
+            "total_tokens": 542,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -177,24 +177,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_bcd79fd8-310f-472a-8d4f-7014efd8cb7c"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_5324718cd6a14a74bb8f1483",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 11538813919764223389
+            "response_id": "resp_a2df74fe-e713-45da-bc9b-849c8fd1751a"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -211,7 +194,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_5324718cd6a14a74bb8f1483",
+                      "id": "call_8fc1fc4641fc444d9c498e57",
                       "type": "function"
                     }
                   ]
@@ -219,9 +202,10 @@
               }
             ],
             "created": 0,
-            "id": "resp_bcd79fd8-310f-472a-8d4f-7014efd8cb7c",
+            "id": "resp_a2df74fe-e713-45da-bc9b-849c8fd1751a",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
+            "service_tier": "default",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -230,7 +214,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 36,
+              "completion_tokens": 37,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -243,7 +227,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 541
+              "total_tokens": 542
             }
           }
         }
@@ -301,7 +285,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_5324718cd6a14a74bb8f1483"
+                    "provider": "call_8fc1fc4641fc444d9c498e57"
                   },
                   "function": {
                     "name": "add",
@@ -316,10 +300,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_5324718cd6a14a74bb8f1483",
+                      "id": "call_8fc1fc4641fc444d9c498e57",
                       "type": "function"
                     },
-                    "fingerprint": 6664430165433828367
+                    "fingerprint": "79bd3943420346ac"
                   }
                 }
               ],
@@ -328,26 +312,9 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_bcd79fd8-310f-472a-8d4f-7014efd8cb7c"
+                "response_id": "resp_a2df74fe-e713-45da-bc9b-849c8fd1751a"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_5324718cd6a14a74bb8f1483",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11538813919764223389
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -355,7 +322,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_5324718cd6a14a74bb8f1483"
+                    "provider": "call_8fc1fc4641fc444d9c498e57"
                   },
                   "name": "add",
                   "content": [
@@ -430,33 +397,14 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "toolcall",
-              "id": {
-                "provider": "call_df02e13f874443369c13a481"
-              },
-              "function": {
-                "name": "final_result",
-                "arguments": {
-                  "result": "{\"summary\": \"Rust Meetup Seattle: 42 attendees expected\", \"location\": \"Seattle\", \"event_type\": \"meetup\"}"
-                }
-              },
-              "native": {
-                "item": {
-                  "function": {
-                    "arguments": "{\"result\": \"{\\\"summary\\\": \\\"Rust Meetup Seattle: 42 attendees expected\\\", \\\"location\\\": \\\"Seattle\\\", \\\"event_type\\\": \\\"meetup\\\"}\"}",
-                    "name": "final_result"
-                  },
-                  "id": "call_df02e13f874443369c13a481",
-                  "type": "function"
-                },
-                "fingerprint": 8288138453972924471
-              }
+              "type": "text",
+              "text": "[called tool final_result with {\"summary\": \"Rust Meetup Seattle: 42 attendees expected\", \"location\": \"Seattle\", \"type\": \"meetup\"}]"
             }
           ],
           "usage": {
-            "input_tokens": 176,
-            "output_tokens": 54,
-            "total_tokens": 230,
+            "input_tokens": 154,
+            "output_tokens": 36,
+            "total_tokens": 190,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -465,49 +413,23 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_b1f1b497-b7a1-487d-b30a-0bc6d8acd248"
+            "response_id": "resp_9184ed87-5c32-41aa-a539-92b7e0841e28"
           },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"result\": \"{\\\"summary\\\": \\\"Rust Meetup Seattle: 42 attendees expected\\\", \\\"location\\\": \\\"Seattle\\\", \\\"event_type\\\": \\\"meetup\\\"}\"}",
-                    "name": "final_result"
-                  },
-                  "id": "call_df02e13f874443369c13a481",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 18144570786577599323
-          },
-          "finish_reason": "tool_calls",
+          "finish_reason": "stop",
           "raw": {
             "choices": [
               {
-                "finish_reason": "tool_calls",
+                "finish_reason": "stop",
                 "index": 0,
                 "message": {
+                  "content": "[called tool final_result with {\"summary\": \"Rust Meetup Seattle: 42 attendees expected\", \"location\": \"Seattle\", \"type\": \"meetup\"}]",
                   "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"result\": \"{\\\"summary\\\": \\\"Rust Meetup Seattle: 42 attendees expected\\\", \\\"location\\\": \\\"Seattle\\\", \\\"event_type\\\": \\\"meetup\\\"}\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_df02e13f874443369c13a481",
-                      "type": "function"
-                    }
-                  ]
+                  "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "resp_b1f1b497-b7a1-487d-b30a-0bc6d8acd248",
+            "id": "resp_9184ed87-5c32-41aa-a539-92b7e0841e28",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -518,20 +440,20 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 54,
+              "completion_tokens": 36,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 176,
+              "prompt_tokens": 154,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
                 "cache_write_tokens": 0,
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 230
+              "total_tokens": 190
             }
           }
         }
@@ -565,7 +487,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_5324718cd6a14a74bb8f1483"
+                    "provider": "call_8fc1fc4641fc444d9c498e57"
                   },
                   "function": {
                     "name": "add",
@@ -580,10 +502,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_5324718cd6a14a74bb8f1483",
+                      "id": "call_8fc1fc4641fc444d9c498e57",
                       "type": "function"
                     },
-                    "fingerprint": 6664430165433828367
+                    "fingerprint": "79bd3943420346ac"
                   }
                 }
               ],
@@ -592,26 +514,9 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_bcd79fd8-310f-472a-8d4f-7014efd8cb7c"
+                "response_id": "resp_a2df74fe-e713-45da-bc9b-849c8fd1751a"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_5324718cd6a14a74bb8f1483",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11538813919764223389
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -619,7 +524,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_5324718cd6a14a74bb8f1483"
+                    "provider": "call_8fc1fc4641fc444d9c498e57"
                   },
                   "name": "add",
                   "content": [
@@ -635,27 +540,8 @@
               "role": "assistant",
               "content": [
                 {
-                  "type": "toolcall",
-                  "id": {
-                    "provider": "call_df02e13f874443369c13a481"
-                  },
-                  "function": {
-                    "name": "final_result",
-                    "arguments": {
-                      "result": "{\"summary\": \"Rust Meetup Seattle: 42 attendees expected\", \"location\": \"Seattle\", \"event_type\": \"meetup\"}"
-                    }
-                  },
-                  "native": {
-                    "item": {
-                      "function": {
-                        "arguments": "{\"result\": \"{\\\"summary\\\": \\\"Rust Meetup Seattle: 42 attendees expected\\\", \\\"location\\\": \\\"Seattle\\\", \\\"event_type\\\": \\\"meetup\\\"}\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_df02e13f874443369c13a481",
-                      "type": "function"
-                    },
-                    "fingerprint": 8288138453972924471
-                  }
+                  "type": "text",
+                  "text": "[called tool final_result with {\"summary\": \"Rust Meetup Seattle: 42 attendees expected\", \"location\": \"Seattle\", \"type\": \"meetup\"}]"
                 }
               ],
               "origin": {
@@ -663,43 +549,16 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_b1f1b497-b7a1-487d-b30a-0bc6d8acd248"
+                "response_id": "resp_9184ed87-5c32-41aa-a539-92b7e0841e28"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"result\": \"{\\\"summary\\\": \\\"Rust Meetup Seattle: 42 attendees expected\\\", \\\"location\\\": \\\"Seattle\\\", \\\"event_type\\\": \\\"meetup\\\"}\"}",
-                        "name": "final_result"
-                      },
-                      "id": "call_df02e13f874443369c13a481",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 18144570786577599323
-              }
+              "stop": "stop"
             },
             {
               "role": "user",
               "content": [
                 {
-                  "type": "toolresult",
-                  "call": {
-                    "provider": "call_df02e13f874443369c13a481"
-                  },
-                  "name": "final_result",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "The `final_result` arguments were missing required field(s): title, category, summary. Call `final_result` again with every required field."
-                    }
-                  ],
-                  "is_error": true
+                  "type": "text",
+                  "text": "Provide your final answer by calling the `final_result` tool with the structured result as its arguments, not as plain text."
                 }
               ]
             }
@@ -768,7 +627,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_e90ae944a76145b8a0650028"
+                "provider": "call_4344609a3a5f42148c330b36"
               },
               "function": {
                 "name": "final_result",
@@ -784,17 +643,17 @@
                     "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"meetup\", \"summary\": \"Rust Meetup Seattle: 42 attendees expected\"}",
                     "name": "final_result"
                   },
-                  "id": "call_e90ae944a76145b8a0650028",
+                  "id": "call_4344609a3a5f42148c330b36",
                   "type": "function"
                 },
-                "fingerprint": 11880348970118850979
+                "fingerprint": "8d2cc1f24c7c14f4"
               }
             }
           ],
           "usage": {
-            "input_tokens": 662,
+            "input_tokens": 628,
             "output_tokens": 65,
-            "total_tokens": 727,
+            "total_tokens": 693,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -803,24 +662,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_8b7ab14c-5136-4220-88e2-5ee04367535b"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"meetup\", \"summary\": \"Rust Meetup Seattle: 42 attendees expected\"}",
-                    "name": "final_result"
-                  },
-                  "id": "call_e90ae944a76145b8a0650028",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2850833194425797869
+            "response_id": "resp_aa8a9f5b-23a5-4911-bd7d-9549e67debc5"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -837,7 +679,7 @@
                         "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"meetup\", \"summary\": \"Rust Meetup Seattle: 42 attendees expected\"}",
                         "name": "final_result"
                       },
-                      "id": "call_e90ae944a76145b8a0650028",
+                      "id": "call_4344609a3a5f42148c330b36",
                       "type": "function"
                     }
                   ]
@@ -845,7 +687,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_8b7ab14c-5136-4220-88e2-5ee04367535b",
+            "id": "resp_aa8a9f5b-23a5-4911-bd7d-9549e67debc5",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "service_tier": "default",
@@ -863,14 +705,14 @@
                 "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "prompt_tokens": 662,
+              "prompt_tokens": 628,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
                 "cache_write_tokens": 0,
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 727
+              "total_tokens": 693
             }
           }
         }

@@ -129,7 +129,7 @@
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": 10687537869136156801
+                "fingerprint": "4394fb12a55985e2"
               }
             }
           ],
@@ -257,7 +257,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 7677433660722303974
+                "fingerprint": "7693826edb17268a"
               }
             }
           ],
@@ -358,7 +358,7 @@
                       "name": "lookup",
                       "type": "tool_use"
                     },
-                    "fingerprint": 10687537869136156801
+                    "fingerprint": "4394fb12a55985e2"
                   }
                 }
               ],
@@ -433,7 +433,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 7677433660722303974
+                "fingerprint": "7693826edb17268a"
               }
             }
           ],

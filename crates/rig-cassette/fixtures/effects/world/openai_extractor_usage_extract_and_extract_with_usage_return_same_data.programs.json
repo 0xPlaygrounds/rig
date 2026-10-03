@@ -252,7 +252,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 15820736257873808470
+                  "fingerprint": "b6724d78b6b01f15"
                 }
               }
             ],
@@ -264,8 +264,7 @@
                 "response_model": "gpt-4o-mini-2024-07-18",
                 "response_id": "resp_0e0eb27a9caabdc9006ab39698a3b487d0ab93c9a9fffa6bbe"
               },
-              "stop": "tool_use",
-              "native": null
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -307,7 +306,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15820736257873808470
+                    "fingerprint": "b6724d78b6b01f15"
                   }
                 }
               ],
@@ -469,8 +468,7 @@
               "response_model": "gpt-4o-mini-2024-07-18",
               "response_id": "resp_0e0eb27a9caabdc9006ab39698a3b487d0ab93c9a9fffa6bbe"
             },
-            "stop": "tool_use",
-            "native": null
+            "stop": "tool_use"
           }
         },
         {

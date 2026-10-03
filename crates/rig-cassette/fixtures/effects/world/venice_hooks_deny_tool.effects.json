@@ -149,7 +149,7 @@
                   "id": "z57dP70g5",
                   "type": "function"
                 },
-                "fingerprint": 12560878953872249412
+                "fingerprint": "c5e95195c3d16b15"
               }
             }
           ],
@@ -164,25 +164,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RmNC8T4qrLhWrwz2LjX91JmB"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "z57dP70g5",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16153177290139982536
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -287,7 +268,7 @@
                       "id": "z57dP70g5",
                       "type": "function"
                     },
-                    "fingerprint": 12560878953872249412
+                    "fingerprint": "c5e95195c3d16b15"
                   }
                 }
               ],
@@ -298,26 +279,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RmNC8T4qrLhWrwz2LjX91JmB"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "z57dP70g5",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16153177290139982536
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -391,15 +353,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RN2vYyAdwR1qzomC9oBtjt4I"
-          },
-          "native": {
-            "item": {
-              "content": "I'm unable to assist with that specific request as the add tool is not available. However, I can help guide you through the addition process! To add 17 and 25, you can follow these steps:\n\n1. Start with the first number, 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42.",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8682607780826211166
           },
           "finish_reason": "stop",
           "raw": {

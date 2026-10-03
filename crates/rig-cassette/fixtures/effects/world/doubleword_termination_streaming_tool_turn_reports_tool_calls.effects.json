@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,17 +10,25 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 15,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 20,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -28,7 +36,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -36,7 +44,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -60,11 +68,19 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 28,
+        "batch": 26,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -207,7 +223,7 @@
                   "id": "call_587f04067e864e9f9671b361",
                   "type": "function"
                 },
-                "fingerprint": 14942217312613282379
+                "fingerprint": "2a16fd6e594ddade"
               }
             }
           ],
@@ -224,23 +240,6 @@
             "model": "Qwen/Qwen3.5-9B",
             "response_model": "Qwen/Qwen3.5-9B",
             "response_id": "gen-1790976765-RRP7weOo3epOg1lZw0Mg"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 2.0, \"y\": 3.0}",
-                    "name": "add"
-                  },
-                  "id": "call_587f04067e864e9f9671b361",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16900492599850380589
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -320,7 +319,7 @@
                   "id": "call_587f04067e864e9f9671b361",
                   "type": "function"
                 },
-                "fingerprint": 14942217312613282379
+                "fingerprint": "2a16fd6e594ddade"
               }
             }
           }
@@ -412,7 +411,7 @@
                       "id": "call_587f04067e864e9f9671b361",
                       "type": "function"
                     },
-                    "fingerprint": 14942217312613282379
+                    "fingerprint": "2a16fd6e594ddade"
                   }
                 }
               ],
@@ -423,24 +422,7 @@
                 "response_model": "Qwen/Qwen3.5-9B",
                 "response_id": "gen-1790976765-RRP7weOo3epOg1lZw0Mg"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 2.0, \"y\": 3.0}",
-                        "name": "add"
-                      },
-                      "id": "call_587f04067e864e9f9671b361",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16900492599850380589
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -518,13 +500,6 @@
             "model": "Qwen/Qwen3.5-9B",
             "response_model": "Qwen/Qwen3.5-9B",
             "response_id": "gen-1790976765-jHyLzZipBa1NLygO5C9f"
-          },
-          "native": {
-            "item": {
-              "content": "2 + 3 = 5",
-              "role": "assistant"
-            },
-            "fingerprint": 1378530497831400427
           },
           "finish_reason": "stop",
           "raw": {

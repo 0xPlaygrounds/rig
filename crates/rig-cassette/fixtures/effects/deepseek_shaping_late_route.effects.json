@@ -132,7 +132,7 @@
                 "item": {
                   "reasoning_content": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call."
                 },
-                "fingerprint": 1553583555139624119
+                "fingerprint": "9d155d612d510cc8"
               }
             },
             {
@@ -156,7 +156,7 @@
                   "id": "call_00_LgHctJCpImd9K7GzWLLk4051",
                   "type": "function"
                 },
-                "fingerprint": 9039591306979668630
+                "fingerprint": "244563381cfeed8f"
               }
             }
           ],
@@ -173,24 +173,6 @@
             "model": "deepseek-reasoner",
             "response_model": "deepseek-flash",
             "response_id": "bc22f0a8-679d-4ec3-b095-0b3eb93b6cbc"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_LgHctJCpImd9K7GzWLLk4051",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14255694079776252574
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -295,7 +277,7 @@
                     "item": {
                       "reasoning_content": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call."
                     },
-                    "fingerprint": 1553583555139624119
+                    "fingerprint": "9d155d612d510cc8"
                   }
                 },
                 {
@@ -319,7 +301,7 @@
                       "id": "call_00_LgHctJCpImd9K7GzWLLk4051",
                       "type": "function"
                     },
-                    "fingerprint": 9039591306979668630
+                    "fingerprint": "244563381cfeed8f"
                   }
                 }
               ],
@@ -330,25 +312,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "bc22f0a8-679d-4ec3-b095-0b3eb93b6cbc"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_LgHctJCpImd9K7GzWLLk4051",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14255694079776252574
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -423,14 +387,6 @@
             "model": "deepseek-reasoner",
             "response_model": "deepseek-flash",
             "response_id": "2f669286-d1e4-4dc2-9e3a-b0c0ff82492b"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "reasoning_content": "",
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

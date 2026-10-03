@@ -24,7 +24,23 @@
         }
       },
       {
+        "batch": 15,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 16,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -33,22 +49,6 @@
       },
       {
         "batch": 17,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -217,7 +217,7 @@
                   },
                   "thoughtSignature": "CnABaRR9E4t1Vs88M4t2gdShe2B4qqir+dnv6UPfQkAm0qrWfesOF6MZ4SWGXMkJ0dfpgYhOibfN6EjNxzjm6x0/xY+P6OJw586W+J1pp3v9zrKiooWHhUF6b8w4C8JlBXIAr/r350gv2UEIEb4/UYAECtIBAWkUfRNJAzRFRJWGCOA4ecvdkGlRDULpQRDHwxkXK2LumDOeNAleEEoVZfp3R6+gmD/E5VQ7w402H8I7KbKEPvKFq/Viw+hcGnplhH/Sq01LvJWoOZGA0z72mnV3ew97rhI6tyOEWouSOQz6IWbmMp77LkTqXxf1+4UZmfxihZpixf/qaH2urZAzbYtDDWQ8/iJf2hLADw9V1V+N5ghXzUTdoJcDqI2XfPTWY9kymZ75aVxjPLJHiHQCwg/IPLPyGNjw5FmDKeCEdbx6vFr8xaLnCjQBaRR9E7PAt+fawMUd65lpfE/8017N3rnLT7vGqT6b17zxB16qX/PHMiaeFXikZ6y9K9ik"
                 },
-                "fingerprint": 8902351908525368867
+                "fingerprint": "86e9b2386ec39947"
               }
             }
           ],
@@ -233,14 +233,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "fy2_av-FHvyJqtsP3o3WmAk"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 690116288094262387
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -309,7 +301,7 @@
                   },
                   "thoughtSignature": "CnABaRR9E4t1Vs88M4t2gdShe2B4qqir+dnv6UPfQkAm0qrWfesOF6MZ4SWGXMkJ0dfpgYhOibfN6EjNxzjm6x0/xY+P6OJw586W+J1pp3v9zrKiooWHhUF6b8w4C8JlBXIAr/r350gv2UEIEb4/UYAECtIBAWkUfRNJAzRFRJWGCOA4ecvdkGlRDULpQRDHwxkXK2LumDOeNAleEEoVZfp3R6+gmD/E5VQ7w402H8I7KbKEPvKFq/Viw+hcGnplhH/Sq01LvJWoOZGA0z72mnV3ew97rhI6tyOEWouSOQz6IWbmMp77LkTqXxf1+4UZmfxihZpixf/qaH2urZAzbYtDDWQ8/iJf2hLADw9V1V+N5ghXzUTdoJcDqI2XfPTWY9kymZ75aVxjPLJHiHQCwg/IPLPyGNjw5FmDKeCEdbx6vFr8xaLnCjQBaRR9E7PAt+fawMUd65lpfE/8017N3rnLT7vGqT6b17zxB16qX/PHMiaeFXikZ6y9K9ik"
                 },
-                "fingerprint": 8902351908525368867
+                "fingerprint": "86e9b2386ec39947"
               }
             }
           }
@@ -395,7 +387,7 @@
                       },
                       "thoughtSignature": "CnABaRR9E4t1Vs88M4t2gdShe2B4qqir+dnv6UPfQkAm0qrWfesOF6MZ4SWGXMkJ0dfpgYhOibfN6EjNxzjm6x0/xY+P6OJw586W+J1pp3v9zrKiooWHhUF6b8w4C8JlBXIAr/r350gv2UEIEb4/UYAECtIBAWkUfRNJAzRFRJWGCOA4ecvdkGlRDULpQRDHwxkXK2LumDOeNAleEEoVZfp3R6+gmD/E5VQ7w402H8I7KbKEPvKFq/Viw+hcGnplhH/Sq01LvJWoOZGA0z72mnV3ew97rhI6tyOEWouSOQz6IWbmMp77LkTqXxf1+4UZmfxihZpixf/qaH2urZAzbYtDDWQ8/iJf2hLADw9V1V+N5ghXzUTdoJcDqI2XfPTWY9kymZ75aVxjPLJHiHQCwg/IPLPyGNjw5FmDKeCEdbx6vFr8xaLnCjQBaRR9E7PAt+fawMUd65lpfE/8017N3rnLT7vGqT6b17zxB16qX/PHMiaeFXikZ6y9K9ik"
                     },
-                    "fingerprint": 8902351908525368867
+                    "fingerprint": "86e9b2386ec39947"
                   }
                 }
               ],
@@ -406,15 +398,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "fy2_av-FHvyJqtsP3o3WmAk"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 690116288094262387
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -478,7 +462,7 @@
                 "item": {
                   "text": "I can compute 12 + 8 = 20. I cannot compute 30 - 7, as I do not have a subtraction tool."
                 },
-                "fingerprint": 8588574325162030938
+                "fingerprint": "a7d4da889ea13818"
               }
             }
           ],
@@ -493,13 +477,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "gC2_avbVKZ-I6dkP7dGFsAo"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 15381778090683030566
           },
           "finish_reason": "stop",
           "raw": {
@@ -566,7 +543,7 @@
                 "item": {
                   "text": "I can compute 12 + 8 = 20. I cannot compute 30 - 7, as I do not have a subtraction tool."
                 },
-                "fingerprint": 8588574325162030938
+                "fingerprint": "a7d4da889ea13818"
               }
             }
           }

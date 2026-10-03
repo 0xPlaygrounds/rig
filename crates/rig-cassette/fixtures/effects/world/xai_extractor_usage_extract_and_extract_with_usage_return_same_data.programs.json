@@ -251,7 +251,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 1504500526460771010
+                  "fingerprint": "7ecbd2e98f114a79"
                 }
               }
             ],
@@ -263,8 +263,7 @@
                 "response_model": "grok-4.3",
                 "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e"
               },
-              "stop": "tool_use",
-              "native": null
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -306,7 +305,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1504500526460771010
+                    "fingerprint": "7ecbd2e98f114a79"
                   }
                 }
               ],
@@ -448,8 +447,7 @@
               "response_model": "grok-4.3",
               "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e"
             },
-            "stop": "tool_use",
-            "native": null
+            "stop": "tool_use"
           }
         },
         {

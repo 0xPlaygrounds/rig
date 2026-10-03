@@ -129,7 +129,7 @@
                   "text": "I'll calculate the sum right away!",
                   "type": "text"
                 },
-                "fingerprint": 8607239451623559848
+                "fingerprint": "e36af2289caed876"
               }
             },
             {
@@ -157,7 +157,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 10412343574078086093
+                "fingerprint": "f852bc84652960e8"
               }
             }
           ],
@@ -182,11 +182,11 @@
               "output_tokens": 77,
               "input_tokens": 660,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011CfchwS5Hv6KUnRcARjmmf",
@@ -248,7 +248,7 @@
                   "text": "I'll calculate the sum right away!",
                   "type": "text"
                 },
-                "fingerprint": 8607239451623559848
+                "fingerprint": "e36af2289caed876"
               }
             }
           }
@@ -299,7 +299,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 10412343574078086093
+                "fingerprint": "f852bc84652960e8"
               }
             }
           }
@@ -376,7 +376,7 @@
                       "text": "I'll calculate the sum right away!",
                       "type": "text"
                     },
-                    "fingerprint": 8607239451623559848
+                    "fingerprint": "e36af2289caed876"
                   }
                 },
                 {
@@ -404,7 +404,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 10412343574078086093
+                    "fingerprint": "f852bc84652960e8"
                   }
                 }
               ],
@@ -480,7 +480,7 @@
                   "text": "The dominant color in the image is **red**, and 17 + 25 = **42**.",
                   "type": "text"
                 },
-                "fingerprint": 13266254865328821479
+                "fingerprint": "2b08efe1a1c53763"
               }
             }
           ],
@@ -505,11 +505,11 @@
               "output_tokens": 25,
               "input_tokens": 750,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfchwZ4yefmXz5wzTqbre",
@@ -603,7 +603,7 @@
                   "text": "The dominant color in the image is **red**, and 17 + 25 = **42**.",
                   "type": "text"
                 },
-                "fingerprint": 13266254865328821479
+                "fingerprint": "2b08efe1a1c53763"
               }
             }
           }

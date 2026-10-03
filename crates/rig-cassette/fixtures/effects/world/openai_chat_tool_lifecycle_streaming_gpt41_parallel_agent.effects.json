@@ -6,25 +6,33 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 4
         }
       },
       {
-        "batch": 28,
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 30,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 31,
+        "batch": 32,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -191,7 +199,7 @@
                   "id": "call_BpbgaN2bEwYW34EbOsYJQpIM",
                   "type": "function"
                 },
-                "fingerprint": 3121039051628235691
+                "fingerprint": "306df73d2623cba2"
               }
             },
             {
@@ -214,7 +222,7 @@
                   "id": "call_RtM8ybJUkyh7CK1d8donWsC3",
                   "type": "function"
                 },
-                "fingerprint": 9048724230678161766
+                "fingerprint": "8432c8db7c179599"
               }
             }
           ],
@@ -231,31 +239,6 @@
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
             "response_id": "chatcmpl-ERDAy43pAROqR342mOcEOmQVKAWrx"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"value\": \"red\"}",
-                    "name": "alpha"
-                  },
-                  "id": "call_BpbgaN2bEwYW34EbOsYJQpIM",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"value\": \"blue\"}",
-                    "name": "beta"
-                  },
-                  "id": "call_RtM8ybJUkyh7CK1d8donWsC3",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7906341572721291726
           },
           "provider_request_id": "req_23dff62b153d49c7b65d6cdbab4190bd",
           "finish_reason": "tool_calls",
@@ -330,7 +313,7 @@
                   "id": "call_BpbgaN2bEwYW34EbOsYJQpIM",
                   "type": "function"
                 },
-                "fingerprint": 3121039051628235691
+                "fingerprint": "306df73d2623cba2"
               }
             }
           }
@@ -376,7 +359,7 @@
                   "id": "call_RtM8ybJUkyh7CK1d8donWsC3",
                   "type": "function"
                 },
-                "fingerprint": 9048724230678161766
+                "fingerprint": "8432c8db7c179599"
               }
             }
           }

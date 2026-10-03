@@ -257,7 +257,7 @@
                   "id": "call_ckrauJpx0NNdGq7anlNn6E6f",
                   "type": "function"
                 },
-                "fingerprint": 7668813402106034078
+                "fingerprint": "bf632250ec89658b"
               }
             },
             {
@@ -278,7 +278,7 @@
                   "id": "call_c2ykcLsyzQUjFTfkjjDSeQ8H",
                   "type": "function"
                 },
-                "fingerprint": 589658407126081408
+                "fingerprint": "f20b50c7e3367951"
               }
             }
           ],
@@ -295,31 +295,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe9ptf6j468F3yxDif5VQQsBw7Ia"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_ckrauJpx0NNdGq7anlNn6E6f",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_c2ykcLsyzQUjFTfkjjDSeQ8H",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3879067113407169461
           },
           "provider_request_id": "req_1662e5a11f66498c9afce2f9ce18377c",
           "finish_reason": "tool_calls",
@@ -447,7 +422,7 @@
                       "id": "call_ckrauJpx0NNdGq7anlNn6E6f",
                       "type": "function"
                     },
-                    "fingerprint": 7668813402106034078
+                    "fingerprint": "bf632250ec89658b"
                   }
                 },
                 {
@@ -468,7 +443,7 @@
                       "id": "call_c2ykcLsyzQUjFTfkjjDSeQ8H",
                       "type": "function"
                     },
-                    "fingerprint": 589658407126081408
+                    "fingerprint": "f20b50c7e3367951"
                   }
                 }
               ],
@@ -479,32 +454,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe9ptf6j468F3yxDif5VQQsBw7Ia"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_ckrauJpx0NNdGq7anlNn6E6f",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_c2ykcLsyzQUjFTfkjjDSeQ8H",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3879067113407169461
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -589,14 +539,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe9tSSFOZMKiNK1fIKJGbnFDsxFJ"
-          },
-          "native": {
-            "item": {
-              "content": "The labels are crimson-harbor and silver-orchard.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8695463699350161601
           },
           "provider_request_id": "req_0a4cfab53c594fdc803a53d8b5c2df66",
           "finish_reason": "stop",

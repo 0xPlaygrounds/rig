@@ -138,7 +138,7 @@
                   "id": "call_5fd196596c5b4b6da0235a21",
                   "type": "function"
                 },
-                "fingerprint": 13643418234507226216
+                "fingerprint": "2d8a8cb8d0038db1"
               }
             }
           ],
@@ -155,23 +155,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_fe76eedd-cc9a-4f05-99b6-740433065f22"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_5fd196596c5b4b6da0235a21",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 8553098313485237356
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -297,7 +280,7 @@
                       "id": "call_5fd196596c5b4b6da0235a21",
                       "type": "function"
                     },
-                    "fingerprint": 13643418234507226216
+                    "fingerprint": "2d8a8cb8d0038db1"
                   }
                 }
               ],
@@ -308,24 +291,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_fe76eedd-cc9a-4f05-99b6-740433065f22"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_5fd196596c5b4b6da0235a21",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8553098313485237356
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -399,7 +365,7 @@
                     }
                   ]
                 },
-                "fingerprint": 5763809658897458683
+                "fingerprint": "d43d277da029015c"
               }
             },
             {
@@ -420,23 +386,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_e63782d0-2546-46d7-8a3d-fe60cb2d51d3"
-          },
-          "native": {
-            "item": {
-              "reasoning_details": [
-                {
-                  "format": "unknown",
-                  "index": 0,
-                  "text": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive the Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Check:\n- Use add tool? Yes (done).\n- Add 17 and 25? Yes (done).\n- Reply with just the number? Yes (need to ensure no extra text).\n\nPlan: Output \"42\".\n",
-                  "type": "reasoning.text"
-                }
-              ],
-              "content": "42",
-              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to use the `add` tool to add 17 and 25, and then reply with *just* the number (the result).\n2.  **Execute the Tool:** I have already called the `add` tool with `x=17` and `y=25`.\n3.  **Receive the Result:** The tool returned `42`.\n4.  **Format the Output:** The user specified \"reply with just the number\".\n5.  **Final Output:** 42.\n\nConstraint Check:\n- Use add tool? Yes (done).\n- Add 17 and 25? Yes (done).\n- Reply with just the number? Yes (need to ensure no extra text).\n\nPlan: Output \"42\".\n",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 2976628372606073919
           },
           "finish_reason": "stop",
           "raw": {

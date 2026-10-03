@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 3,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 3,
+        "batch": 4,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -161,7 +161,7 @@
                   },
                   "thoughtSignature": "EtICCs8CAWkUfROsKCaI3miEbp2jee7wP84eJsiCGjXa5quAmerFIILPofcu5KwNjA9wFbhLGFQHvscnGZ2mPf7fD1ph0YhX6/PUBgEFc9RXBxSjUEWBeDFuEx0wmb/pwYgyAxX584GBZ/c6+gJ7DVTYti038u15KQFotmsr/ZTgrcil5Hbi1VlgwKrBR6u9os17OEua1WqyIAWKMRHB7YBGeVjwlM+Et3Lyt8drxT769gUgz4QLrBQsnFngKuO/OD4+9babZuGKFg/H0V8fPHHz5qYHqrBmChgk28guM2n8fI3+VjyUYAzVmcPt/xl82OJKAJDOCN89W9g6Xdqg4eKjAclJHWQqj9ng9rgz3sr9XtkgrpnK+a268Mskqze4BmNuWI7oEgTnwcu/CR7vQgDeosOuEZjPaHAZtI4YzvssLyuiZKhjkD/PsxirEYOPcBFkKX4="
                 },
-                "fingerprint": 416373444121643901
+                "fingerprint": "3931d69027c52858"
               }
             }
           ],
@@ -177,13 +177,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "_Cm_aq-2Mvj6qtsP1u6C8AU"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 7129736407698879163
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -252,7 +245,7 @@
                   },
                   "thoughtSignature": "EtICCs8CAWkUfROsKCaI3miEbp2jee7wP84eJsiCGjXa5quAmerFIILPofcu5KwNjA9wFbhLGFQHvscnGZ2mPf7fD1ph0YhX6/PUBgEFc9RXBxSjUEWBeDFuEx0wmb/pwYgyAxX584GBZ/c6+gJ7DVTYti038u15KQFotmsr/ZTgrcil5Hbi1VlgwKrBR6u9os17OEua1WqyIAWKMRHB7YBGeVjwlM+Et3Lyt8drxT769gUgz4QLrBQsnFngKuO/OD4+9babZuGKFg/H0V8fPHHz5qYHqrBmChgk28guM2n8fI3+VjyUYAzVmcPt/xl82OJKAJDOCN89W9g6Xdqg4eKjAclJHWQqj9ng9rgz3sr9XtkgrpnK+a268Mskqze4BmNuWI7oEgTnwcu/CR7vQgDeosOuEZjPaHAZtI4YzvssLyuiZKhjkD/PsxirEYOPcBFkKX4="
                 },
-                "fingerprint": 416373444121643901
+                "fingerprint": "3931d69027c52858"
               }
             }
           }

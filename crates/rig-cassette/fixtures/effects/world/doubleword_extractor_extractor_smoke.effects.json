@@ -114,7 +114,7 @@
                     }
                   ]
                 },
-                "fingerprint": 7966481152343024160
+                "fingerprint": "0e33b0090ab4fbd5"
               }
             },
             {
@@ -139,7 +139,7 @@
                   "id": "chatcmpl-tool-b75d96f17fafb479",
                   "type": "function"
                 },
-                "fingerprint": 11836841914949553615
+                "fingerprint": "0dc83505c0a6c144"
               }
             }
           ],
@@ -156,32 +156,6 @@
             "model": "Qwen/Qwen3.5-9B",
             "response_model": "Qwen/Qwen3.5-9B",
             "response_id": "resp_d4da397d-b4ce-46a4-9168-2e3ca5d47a59"
-          },
-          "native": {
-            "item": {
-              "reasoning_details": [
-                {
-                  "format": "unknown",
-                  "index": 0,
-                  "text": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n",
-                  "type": "reasoning.text"
-                }
-              ],
-              "reasoning_content": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n",
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"first_name\": \"Ada\", \"job\": \"mathematician\", \"last_name\": \"Lovelace\"}",
-                    "name": "submit"
-                  },
-                  "id": "chatcmpl-tool-b75d96f17fafb479",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16159550114842773490
           },
           "finish_reason": "tool_calls",
           "raw": {

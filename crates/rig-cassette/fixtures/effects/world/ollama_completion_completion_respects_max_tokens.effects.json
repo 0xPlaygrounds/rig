@@ -16,7 +16,7 @@
           "family": "completion",
           "model": "parity",
           "capabilities": {
-            "composes_native_output_with_tools": false
+            "composes_native_output_with_tools": true
           }
         }
       }
@@ -31,7 +31,7 @@
         "required": {
           "parity/model": "completion"
         },
-        "policy": 15425459599997556635
+        "policy": 13711433217307301600
       }
     }
   },
@@ -65,7 +65,7 @@
           "max_tokens": 24,
           "tool_choice": null,
           "additional_params": {
-            "think": false
+            "reasoning_effort": "none"
           },
           "output_schema": null
         },
@@ -77,7 +77,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences"
+              "text": "We are to explain Rust in one or two sentences, focusing on what it is and why memory safety matters.\n Rust is"
             }
           ],
           "usage": {
@@ -86,34 +86,34 @@
             "total_tokens": 66
           },
           "origin": {
-            "api": "ollama.chat",
+            "api": "openai.chat",
             "provider": "ollama",
             "model": "qwen3:4b",
-            "response_model": "qwen3:4b"
-          },
-          "native": {
-            "item": {
-              "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
-              "role": "assistant"
-            },
-            "fingerprint": 890959966931501331
+            "response_model": "qwen3:4b",
+            "response_id": "chatcmpl-46"
           },
           "finish_reason": "length",
           "raw": {
-            "created_at": "1970-01-01T00:00:00Z",
-            "done": true,
-            "done_reason": "length",
-            "eval_count": 24,
-            "eval_duration": 318697665,
-            "load_duration": 4220408500,
-            "message": {
-              "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
-              "role": "assistant"
-            },
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "message": {
+                  "content": "We are to explain Rust in one or two sentences, focusing on what it is and why memory safety matters.\n Rust is",
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-46",
             "model": "qwen3:4b",
-            "prompt_eval_count": 42,
-            "prompt_eval_duration": 2035633750,
-            "total_duration": 6668117083
+            "object": "chat.completion",
+            "system_fingerprint": "fp_ollama",
+            "usage": {
+              "completion_tokens": 24,
+              "prompt_tokens": 42,
+              "total_tokens": 66
+            }
           }
         }
       },

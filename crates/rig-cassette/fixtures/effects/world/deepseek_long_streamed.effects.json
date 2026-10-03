@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -38,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -66,11 +66,11 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -78,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -96,7 +96,7 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 35,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,21 +104,21 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 35,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 31,
+        "batch": 37,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 40,
+        "batch": 56,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -126,21 +126,21 @@
         }
       },
       {
-        "batch": 40,
+        "batch": 56,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 57,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 53,
+        "batch": 73,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -148,21 +148,21 @@
         }
       },
       {
-        "batch": 53,
+        "batch": 73,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 74,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 63,
+        "batch": 82,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -170,37 +170,29 @@
         }
       },
       {
-        "batch": 63,
+        "batch": 82,
         "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 64,
+        "batch": 83,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 69,
+        "batch": 87,
         "id": 10,
         "kind": {
           "delivery": "stream",
-          "items": 12
+          "items": 6
         }
       },
       {
-        "batch": 70,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 9
-        }
-      },
-      {
-        "batch": 71,
+        "batch": 88,
         "id": 10,
         "kind": {
           "delivery": "stream",
@@ -208,7 +200,31 @@
         }
       },
       {
-        "batch": 117,
+        "batch": 89,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 90,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 91,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 92,
         "id": 10,
         "kind": {
           "delivery": "stream",
@@ -216,21 +232,45 @@
         }
       },
       {
-        "batch": 118,
+        "batch": 93,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 94,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 133,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 133,
         "id": 10,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 119,
+        "batch": 134,
         "id": 11,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 129,
+        "batch": 142,
         "id": 12,
         "kind": {
           "delivery": "stream",
@@ -238,37 +278,37 @@
         }
       },
       {
-        "batch": 129,
+        "batch": 142,
         "id": 12,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 131,
+        "batch": 144,
         "id": 13,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 135,
+        "batch": 149,
         "id": 14,
         "kind": {
           "delivery": "stream",
-          "items": 15
+          "items": 3
         }
       },
       {
-        "batch": 136,
+        "batch": 150,
         "id": 14,
         "kind": {
           "delivery": "stream",
-          "items": 9
+          "items": 1
         }
       },
       {
-        "batch": 137,
+        "batch": 151,
         "id": 14,
         "kind": {
           "delivery": "stream",
@@ -276,7 +316,135 @@
         }
       },
       {
-        "batch": 141,
+        "batch": 152,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 153,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 154,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 155,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 156,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 157,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 158,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 159,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 160,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 161,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 162,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 163,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 164,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 165,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 166,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 167,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 175,
         "id": 14,
         "kind": {
           "delivery": "stream",
@@ -284,21 +452,21 @@
         }
       },
       {
-        "batch": 141,
+        "batch": 175,
         "id": 14,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 143,
+        "batch": 177,
         "id": 15,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 212,
+        "batch": 213,
         "id": 16,
         "kind": {
           "delivery": "stream",
@@ -306,21 +474,21 @@
         }
       },
       {
-        "batch": 212,
+        "batch": 213,
         "id": 16,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 213,
+        "batch": 215,
         "id": 17,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 219,
+        "batch": 226,
         "id": 18,
         "kind": {
           "delivery": "stream",
@@ -328,21 +496,21 @@
         }
       },
       {
-        "batch": 219,
+        "batch": 226,
         "id": 18,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 220,
+        "batch": 228,
         "id": 19,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 227,
+        "batch": 233,
         "id": 20,
         "kind": {
           "delivery": "stream",
@@ -350,7 +518,7 @@
         }
       },
       {
-        "batch": 228,
+        "batch": 234,
         "id": 20,
         "kind": {
           "delivery": "stream",
@@ -358,7 +526,7 @@
         }
       },
       {
-        "batch": 228,
+        "batch": 234,
         "id": 20,
         "kind": {
           "delivery": "outcome"
@@ -594,7 +762,7 @@
                   "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                   "type": "function"
                 },
-                "fingerprint": 2944050724405728981
+                "fingerprint": "82736f2a6f4f2420"
               }
             }
           ],
@@ -610,23 +778,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
-          },
-          "native": {
-            "item": {
-              "content": "I'll start by listing the repository files.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "list_files"
-                  },
-                  "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16738730488977610080
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -782,7 +933,7 @@
                   "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                   "type": "function"
                 },
-                "fingerprint": 2944050724405728981
+                "fingerprint": "82736f2a6f4f2420"
               }
             }
           }
@@ -867,7 +1018,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -878,24 +1029,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1012,7 +1146,7 @@
                   "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                   "type": "function"
                 },
-                "fingerprint": 5984171962297643636
+                "fingerprint": "f9fc6ee19339b781"
               }
             }
           ],
@@ -1028,23 +1162,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"README.md\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 13554448172621885760
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1111,7 +1228,7 @@
                   "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                   "type": "function"
                 },
-                "fingerprint": 5984171962297643636
+                "fingerprint": "f9fc6ee19339b781"
               }
             }
           }
@@ -1196,7 +1313,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -1207,24 +1324,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1267,7 +1367,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -1278,24 +1378,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1412,7 +1495,7 @@
                   "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                   "type": "function"
                 },
-                "fingerprint": 9583381845984878884
+                "fingerprint": "1f22db10b05fa839"
               }
             }
           ],
@@ -1428,23 +1511,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"tests/basic.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 4268617447122551050
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1511,7 +1577,7 @@
                   "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                   "type": "function"
                 },
-                "fingerprint": 9583381845984878884
+                "fingerprint": "1f22db10b05fa839"
               }
             }
           }
@@ -1596,7 +1662,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -1607,24 +1673,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1667,7 +1716,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -1678,24 +1727,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1738,7 +1770,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -1749,24 +1781,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1883,7 +1898,7 @@
                   "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                   "type": "function"
                 },
-                "fingerprint": 15834709815581195667
+                "fingerprint": "0cd60a87c87b12ca"
               }
             }
           ],
@@ -1899,23 +1914,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/lib.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7114913500388050371
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1982,7 +1980,7 @@
                   "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                   "type": "function"
                 },
-                "fingerprint": 15834709815581195667
+                "fingerprint": "0cd60a87c87b12ca"
               }
             }
           }
@@ -2067,7 +2065,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -2078,24 +2076,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2138,7 +2119,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -2149,24 +2130,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2209,7 +2173,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -2220,24 +2184,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2280,7 +2227,7 @@
                       "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                       "type": "function"
                     },
-                    "fingerprint": 15834709815581195667
+                    "fingerprint": "0cd60a87c87b12ca"
                   }
                 }
               ],
@@ -2291,24 +2238,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7114913500388050371
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2423,7 +2353,7 @@
                   "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                   "type": "function"
                 },
-                "fingerprint": 16751651133879434816
+                "fingerprint": "9a18953e6d9abac1"
               }
             }
           ],
@@ -2439,23 +2369,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "b2de5ede-4215-45da-9afa-6058d1151a13"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "run_tests"
-                  },
-                  "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3122173394083850956
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2520,7 +2433,7 @@
                   "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                   "type": "function"
                 },
-                "fingerprint": 16751651133879434816
+                "fingerprint": "9a18953e6d9abac1"
               }
             }
           }
@@ -2605,7 +2518,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -2616,24 +2529,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2676,7 +2572,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -2687,24 +2583,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2747,7 +2626,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -2758,24 +2637,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2818,7 +2680,7 @@
                       "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                       "type": "function"
                     },
-                    "fingerprint": 15834709815581195667
+                    "fingerprint": "0cd60a87c87b12ca"
                   }
                 }
               ],
@@ -2829,24 +2691,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7114913500388050371
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2887,7 +2732,7 @@
                       "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                       "type": "function"
                     },
-                    "fingerprint": 16751651133879434816
+                    "fingerprint": "9a18953e6d9abac1"
                   }
                 }
               ],
@@ -2898,24 +2743,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b2de5ede-4215-45da-9afa-6058d1151a13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3122173394083850956
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3037,7 +2865,7 @@
                   "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
                   "type": "function"
                 },
-                "fingerprint": 12613439282465330346
+                "fingerprint": "ff4a32c0849bea01"
               }
             }
           ],
@@ -3053,23 +2881,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "515c0276-45d9-4dd5-afd0-b202f4949d13"
-          },
-          "native": {
-            "item": {
-              "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                    "name": "write_file"
-                  },
-                  "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 6626704488181423474
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -3332,7 +3143,7 @@
                   "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
                   "type": "function"
                 },
-                "fingerprint": 12613439282465330346
+                "fingerprint": "ff4a32c0849bea01"
               }
             }
           }
@@ -3417,7 +3228,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -3428,24 +3239,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3488,7 +3282,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -3499,24 +3293,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3559,7 +3336,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -3570,24 +3347,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3630,7 +3390,7 @@
                       "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                       "type": "function"
                     },
-                    "fingerprint": 15834709815581195667
+                    "fingerprint": "0cd60a87c87b12ca"
                   }
                 }
               ],
@@ -3641,24 +3401,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7114913500388050371
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3699,7 +3442,7 @@
                       "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                       "type": "function"
                     },
-                    "fingerprint": 16751651133879434816
+                    "fingerprint": "9a18953e6d9abac1"
                   }
                 }
               ],
@@ -3710,24 +3453,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b2de5ede-4215-45da-9afa-6058d1151a13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3122173394083850956
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3775,7 +3501,7 @@
                       "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
                       "type": "function"
                     },
-                    "fingerprint": 12613439282465330346
+                    "fingerprint": "ff4a32c0849bea01"
                   }
                 }
               ],
@@ -3786,24 +3512,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "515c0276-45d9-4dd5-afd0-b202f4949d13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 6626704488181423474
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3918,7 +3627,7 @@
                   "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
                   "type": "function"
                 },
-                "fingerprint": 6386359408540049049
+                "fingerprint": "630fa15d37ee2e9a"
               }
             }
           ],
@@ -3934,23 +3643,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "78c8eb63-b383-4820-a922-12e9826f0fcd"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "run_tests"
-                  },
-                  "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3066681393652355339
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -4015,7 +3707,7 @@
                   "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
                   "type": "function"
                 },
-                "fingerprint": 6386359408540049049
+                "fingerprint": "630fa15d37ee2e9a"
               }
             }
           }
@@ -4100,7 +3792,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -4111,24 +3803,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4171,7 +3846,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -4182,24 +3857,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4242,7 +3900,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -4253,24 +3911,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4313,7 +3954,7 @@
                       "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                       "type": "function"
                     },
-                    "fingerprint": 15834709815581195667
+                    "fingerprint": "0cd60a87c87b12ca"
                   }
                 }
               ],
@@ -4324,24 +3965,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7114913500388050371
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4382,7 +4006,7 @@
                       "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                       "type": "function"
                     },
-                    "fingerprint": 16751651133879434816
+                    "fingerprint": "9a18953e6d9abac1"
                   }
                 }
               ],
@@ -4393,24 +4017,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b2de5ede-4215-45da-9afa-6058d1151a13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3122173394083850956
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4458,7 +4065,7 @@
                       "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
                       "type": "function"
                     },
-                    "fingerprint": 12613439282465330346
+                    "fingerprint": "ff4a32c0849bea01"
                   }
                 }
               ],
@@ -4469,24 +4076,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "515c0276-45d9-4dd5-afd0-b202f4949d13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 6626704488181423474
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4527,7 +4117,7 @@
                       "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
                       "type": "function"
                     },
-                    "fingerprint": 6386359408540049049
+                    "fingerprint": "630fa15d37ee2e9a"
                   }
                 }
               ],
@@ -4538,24 +4128,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "78c8eb63-b383-4820-a922-12e9826f0fcd"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3066681393652355339
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4676,7 +4249,7 @@
                   "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
                   "type": "function"
                 },
-                "fingerprint": 12459092173350215110
+                "fingerprint": "8237e93b429767c1"
               }
             }
           ],
@@ -4692,23 +4265,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "f5c213bf-2e1d-4e37-9363-314062979260"
-          },
-          "native": {
-            "item": {
-              "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/calendar.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12304805664530718845
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -4986,7 +4542,7 @@
                   "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
                   "type": "function"
                 },
-                "fingerprint": 12459092173350215110
+                "fingerprint": "8237e93b429767c1"
               }
             }
           }
@@ -5071,7 +4627,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -5082,24 +4638,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5142,7 +4681,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -5153,24 +4692,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5213,7 +4735,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -5224,24 +4746,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5284,7 +4789,7 @@
                       "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                       "type": "function"
                     },
-                    "fingerprint": 15834709815581195667
+                    "fingerprint": "0cd60a87c87b12ca"
                   }
                 }
               ],
@@ -5295,24 +4800,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7114913500388050371
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5353,7 +4841,7 @@
                       "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                       "type": "function"
                     },
-                    "fingerprint": 16751651133879434816
+                    "fingerprint": "9a18953e6d9abac1"
                   }
                 }
               ],
@@ -5364,24 +4852,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b2de5ede-4215-45da-9afa-6058d1151a13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3122173394083850956
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5429,7 +4900,7 @@
                       "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
                       "type": "function"
                     },
-                    "fingerprint": 12613439282465330346
+                    "fingerprint": "ff4a32c0849bea01"
                   }
                 }
               ],
@@ -5440,24 +4911,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "515c0276-45d9-4dd5-afd0-b202f4949d13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 6626704488181423474
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5498,7 +4952,7 @@
                       "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
                       "type": "function"
                     },
-                    "fingerprint": 6386359408540049049
+                    "fingerprint": "630fa15d37ee2e9a"
                   }
                 }
               ],
@@ -5509,24 +4963,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "78c8eb63-b383-4820-a922-12e9826f0fcd"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3066681393652355339
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5573,7 +5010,7 @@
                       "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
                       "type": "function"
                     },
-                    "fingerprint": 12459092173350215110
+                    "fingerprint": "8237e93b429767c1"
                   }
                 }
               ],
@@ -5584,24 +5021,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f5c213bf-2e1d-4e37-9363-314062979260"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12304805664530718845
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5719,7 +5139,7 @@
                   "id": "call_00_82gVvqTeZneDdR8hfD0m1602",
                   "type": "function"
                 },
-                "fingerprint": 12924389044347230929
+                "fingerprint": "f1553fc1a5dc50ee"
               }
             }
           ],
@@ -5735,23 +5155,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "7270fe03-57b2-4ba1-aba9-d25a897176aa"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
-                    "name": "write_file"
-                  },
-                  "id": "call_00_82gVvqTeZneDdR8hfD0m1602",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17411574966494010165
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -5819,7 +5222,7 @@
                   "id": "call_00_82gVvqTeZneDdR8hfD0m1602",
                   "type": "function"
                 },
-                "fingerprint": 12924389044347230929
+                "fingerprint": "f1553fc1a5dc50ee"
               }
             }
           }
@@ -5904,7 +5307,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -5915,24 +5318,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5975,7 +5361,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -5986,24 +5372,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6046,7 +5415,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -6057,24 +5426,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6117,7 +5469,7 @@
                       "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                       "type": "function"
                     },
-                    "fingerprint": 15834709815581195667
+                    "fingerprint": "0cd60a87c87b12ca"
                   }
                 }
               ],
@@ -6128,24 +5480,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7114913500388050371
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6186,7 +5521,7 @@
                       "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                       "type": "function"
                     },
-                    "fingerprint": 16751651133879434816
+                    "fingerprint": "9a18953e6d9abac1"
                   }
                 }
               ],
@@ -6197,24 +5532,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b2de5ede-4215-45da-9afa-6058d1151a13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3122173394083850956
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6262,7 +5580,7 @@
                       "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
                       "type": "function"
                     },
-                    "fingerprint": 12613439282465330346
+                    "fingerprint": "ff4a32c0849bea01"
                   }
                 }
               ],
@@ -6273,24 +5591,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "515c0276-45d9-4dd5-afd0-b202f4949d13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 6626704488181423474
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6331,7 +5632,7 @@
                       "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
                       "type": "function"
                     },
-                    "fingerprint": 6386359408540049049
+                    "fingerprint": "630fa15d37ee2e9a"
                   }
                 }
               ],
@@ -6342,24 +5643,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "78c8eb63-b383-4820-a922-12e9826f0fcd"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3066681393652355339
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6406,7 +5690,7 @@
                       "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
                       "type": "function"
                     },
-                    "fingerprint": 12459092173350215110
+                    "fingerprint": "8237e93b429767c1"
                   }
                 }
               ],
@@ -6417,24 +5701,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f5c213bf-2e1d-4e37-9363-314062979260"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12304805664530718845
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6478,7 +5745,7 @@
                       "id": "call_00_82gVvqTeZneDdR8hfD0m1602",
                       "type": "function"
                     },
-                    "fingerprint": 12924389044347230929
+                    "fingerprint": "f1553fc1a5dc50ee"
                   }
                 }
               ],
@@ -6489,24 +5756,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "7270fe03-57b2-4ba1-aba9-d25a897176aa"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_82gVvqTeZneDdR8hfD0m1602",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 17411574966494010165
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6621,7 +5871,7 @@
                   "id": "call_00_Xvb33Uf4OWXVy7Ey2rGy8398",
                   "type": "function"
                 },
-                "fingerprint": 15699733645455849130
+                "fingerprint": "37cfed8d1265e03b"
               }
             }
           ],
@@ -6637,23 +5887,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "8bad73ed-f93c-4506-a495-d5fdefbd4bd9"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "run_tests"
-                  },
-                  "id": "call_00_Xvb33Uf4OWXVy7Ey2rGy8398",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14692088776401532966
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -6718,7 +5951,7 @@
                   "id": "call_00_Xvb33Uf4OWXVy7Ey2rGy8398",
                   "type": "function"
                 },
-                "fingerprint": 15699733645455849130
+                "fingerprint": "37cfed8d1265e03b"
               }
             }
           }
@@ -6803,7 +6036,7 @@
                       "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
                       "type": "function"
                     },
-                    "fingerprint": 2944050724405728981
+                    "fingerprint": "82736f2a6f4f2420"
                   }
                 }
               ],
@@ -6814,24 +6047,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "17ebe916-fdc0-45f8-b24b-aaf5b8f38ad9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_6ZbBLoJveYhnTwJzmyIs9392",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16738730488977610080
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6874,7 +6090,7 @@
                       "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
                       "type": "function"
                     },
-                    "fingerprint": 5984171962297643636
+                    "fingerprint": "f9fc6ee19339b781"
                   }
                 }
               ],
@@ -6885,24 +6101,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "464cc033-67cd-408c-abf1-0f5056b87ed7"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8X9JIMpmMw7CUfMJ3o3t1283",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13554448172621885760
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -6945,7 +6144,7 @@
                       "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
                       "type": "function"
                     },
-                    "fingerprint": 9583381845984878884
+                    "fingerprint": "1f22db10b05fa839"
                   }
                 }
               ],
@@ -6956,24 +6155,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2e25a3fb-4179-416e-a75e-afff60f19643"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_S8ASKiUfIYsIUQ5feBKa0344",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4268617447122551050
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7016,7 +6198,7 @@
                       "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
                       "type": "function"
                     },
-                    "fingerprint": 15834709815581195667
+                    "fingerprint": "0cd60a87c87b12ca"
                   }
                 }
               ],
@@ -7027,24 +6209,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f255053d-f2dd-4ff8-ab2a-ad59a6736f81"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_n5Xu2ZMpx5yEB2UBaI5R5412",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7114913500388050371
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7085,7 +6250,7 @@
                       "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
                       "type": "function"
                     },
-                    "fingerprint": 16751651133879434816
+                    "fingerprint": "9a18953e6d9abac1"
                   }
                 }
               ],
@@ -7096,24 +6261,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b2de5ede-4215-45da-9afa-6058d1151a13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_mJsezszZWIWsx9zNjY7x6792",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3122173394083850956
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7161,7 +6309,7 @@
                       "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
                       "type": "function"
                     },
-                    "fingerprint": 12613439282465330346
+                    "fingerprint": "ff4a32c0849bea01"
                   }
                 }
               ],
@@ -7172,24 +6320,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "515c0276-45d9-4dd5-afd0-b202f4949d13"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_XchayZLzlB8PC9nYzJrA6253",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 6626704488181423474
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7230,7 +6361,7 @@
                       "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
                       "type": "function"
                     },
-                    "fingerprint": 6386359408540049049
+                    "fingerprint": "630fa15d37ee2e9a"
                   }
                 }
               ],
@@ -7241,24 +6372,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "78c8eb63-b383-4820-a922-12e9826f0fcd"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_irMuYLBoAIX4XLAjfgMl7470",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 3066681393652355339
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7305,7 +6419,7 @@
                       "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
                       "type": "function"
                     },
-                    "fingerprint": 12459092173350215110
+                    "fingerprint": "8237e93b429767c1"
                   }
                 }
               ],
@@ -7316,24 +6430,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f5c213bf-2e1d-4e37-9363-314062979260"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_Wgbl2KfXdEBl8Cej5bZ37609",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12304805664530718845
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7377,7 +6474,7 @@
                       "id": "call_00_82gVvqTeZneDdR8hfD0m1602",
                       "type": "function"
                     },
-                    "fingerprint": 12924389044347230929
+                    "fingerprint": "f1553fc1a5dc50ee"
                   }
                 }
               ],
@@ -7388,24 +6485,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "7270fe03-57b2-4ba1-aba9-d25a897176aa"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
-                        "name": "write_file"
-                      },
-                      "id": "call_00_82gVvqTeZneDdR8hfD0m1602",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 17411574966494010165
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7446,7 +6526,7 @@
                       "id": "call_00_Xvb33Uf4OWXVy7Ey2rGy8398",
                       "type": "function"
                     },
-                    "fingerprint": 15699733645455849130
+                    "fingerprint": "37cfed8d1265e03b"
                   }
                 }
               ],
@@ -7457,24 +6537,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "8bad73ed-f93c-4506-a495-d5fdefbd4bd9"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "run_tests"
-                      },
-                      "id": "call_00_Xvb33Uf4OWXVy7Ey2rGy8398",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14692088776401532966
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -7588,13 +6651,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "af8eb617-2ccd-49e1-aca7-dcb62f5daed8"
-          },
-          "native": {
-            "item": {
-              "content": "done",
-              "role": "assistant"
-            },
-            "fingerprint": 13317791222948023665
           },
           "finish_reason": "stop",
           "raw": {

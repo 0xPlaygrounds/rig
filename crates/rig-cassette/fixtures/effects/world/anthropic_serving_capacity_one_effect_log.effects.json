@@ -263,7 +263,7 @@
                   "text": "I'll call both tools simultaneously right now!",
                   "type": "text"
                 },
-                "fingerprint": 9523235931415277704
+                "fingerprint": "419c104b03bf2e1e"
               }
             },
             {
@@ -285,7 +285,7 @@
                   "name": "lookup_harbor_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 458759045025529359
+                "fingerprint": "53a39865e8261ec6"
               }
             },
             {
@@ -307,7 +307,7 @@
                   "name": "lookup_orchard_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 2505104195065188684
+                "fingerprint": "5afd0aa758fe9955"
               }
             }
           ],
@@ -332,11 +332,11 @@
               "output_tokens": 70,
               "input_tokens": 700,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011Cfci7nPhCVkgnE61xB9AT",
@@ -429,7 +429,7 @@
                       "text": "I'll call both tools simultaneously right now!",
                       "type": "text"
                     },
-                    "fingerprint": 9523235931415277704
+                    "fingerprint": "419c104b03bf2e1e"
                   }
                 },
                 {
@@ -451,7 +451,7 @@
                       "name": "lookup_harbor_label",
                       "type": "tool_use"
                     },
-                    "fingerprint": 458759045025529359
+                    "fingerprint": "53a39865e8261ec6"
                   }
                 },
                 {
@@ -473,7 +473,7 @@
                       "name": "lookup_orchard_label",
                       "type": "tool_use"
                     },
-                    "fingerprint": 2505104195065188684
+                    "fingerprint": "5afd0aa758fe9955"
                   }
                 }
               ],
@@ -559,7 +559,7 @@
                   "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
                   "type": "text"
                 },
-                "fingerprint": 17962358045931762559
+                "fingerprint": "84a6c75f1745511b"
               }
             }
           ],
@@ -584,11 +584,11 @@
               "output_tokens": 26,
               "input_tokens": 846,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011Cfci7tChmYKqFhvkcwKs9",

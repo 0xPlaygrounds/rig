@@ -159,7 +159,7 @@
                   },
                   "thoughtSignature": "CvkBAWkUfRO3kFk8yK/6aT238r7fPMhsfMMlOcVK6CaItLJduYUL/1nCNVwJVyG5HWhaFTJsGKYKc/cVBBKK6MqSbg7V7/JqOtHK62s3oCTxmvCx516MbWbytpfnMPYhSwTMLyO8u87RS0l2gP3FJhdDx/nZAnVKmNWvLlCNWMW1/W1TxImscy4DglVYEHFE8TmJuUz9qQMHKxYbcdNVweQvLhD/J2JEPTifSE7iuSiodKjBr/vbcnFbagYJM+RgAg1Y8nDOjdJdSxxxEpo6hh4NS0TkgLZQDQjwypWG5qJJVjeQNFxWJE0yiW04SYIe46jlTiLQYp4SDtF9"
                 },
-                "fingerprint": 8960789902323050892
+                "fingerprint": "aeb2032f4d72696a"
               }
             }
           ],
@@ -175,14 +175,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "eS2_aruFHZ-I6dkP7dGFsAo"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 4355566465307189484
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -301,7 +293,7 @@
                       },
                       "thoughtSignature": "CvkBAWkUfRO3kFk8yK/6aT238r7fPMhsfMMlOcVK6CaItLJduYUL/1nCNVwJVyG5HWhaFTJsGKYKc/cVBBKK6MqSbg7V7/JqOtHK62s3oCTxmvCx516MbWbytpfnMPYhSwTMLyO8u87RS0l2gP3FJhdDx/nZAnVKmNWvLlCNWMW1/W1TxImscy4DglVYEHFE8TmJuUz9qQMHKxYbcdNVweQvLhD/J2JEPTifSE7iuSiodKjBr/vbcnFbagYJM+RgAg1Y8nDOjdJdSxxxEpo6hh4NS0TkgLZQDQjwypWG5qJJVjeQNFxWJE0yiW04SYIe46jlTiLQYp4SDtF9"
                     },
-                    "fingerprint": 8960789902323050892
+                    "fingerprint": "aeb2032f4d72696a"
                   }
                 }
               ],
@@ -312,15 +304,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "eS2_aruFHZ-I6dkP7dGFsAo"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 4355566465307189484
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -384,7 +368,7 @@
                 "item": {
                   "text": "The result is 42."
                 },
-                "fingerprint": 411675537633045253
+                "fingerprint": "3846bbc9774ea8a1"
               }
             }
           ],
@@ -399,13 +383,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "ei2_ao2AGraO6dkP8-DjqQo"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 5468478854344428733
           },
           "finish_reason": "stop",
           "raw": {

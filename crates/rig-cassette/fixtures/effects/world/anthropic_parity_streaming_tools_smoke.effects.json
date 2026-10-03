@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,29 +10,37 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 22,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 3
         }
       },
       {
-        "batch": 22,
+        "batch": 23,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 24,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -224,7 +232,7 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": 17560259853881716993
+                "fingerprint": "fff6d7302ff6a402"
               }
             }
           ],
@@ -249,11 +257,11 @@
               "output_tokens": 69,
               "input_tokens": 703,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011CfciBcR2kPzwNdo6mnhWQ",
@@ -308,7 +316,7 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": 17560259853881716993
+                "fingerprint": "fff6d7302ff6a402"
               }
             }
           }
@@ -396,7 +404,7 @@
                       "name": "subtract",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17560259853881716993
+                    "fingerprint": "fff6d7302ff6a402"
                   }
                 }
               ],
@@ -493,7 +501,7 @@
                   "text": "The result of 2 - 5 is **-3**.",
                   "type": "text"
                 },
-                "fingerprint": 6013490760940471252
+                "fingerprint": "3b0989211b6b5a92"
               }
             }
           ],
@@ -518,11 +526,11 @@
               "output_tokens": 18,
               "input_tokens": 786,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfciBhJxeHeTWJ9ptizbg",
@@ -576,7 +584,7 @@
                   "text": "The result of 2 - 5 is **-3**.",
                   "type": "text"
                 },
-                "fingerprint": 6013490760940471252
+                "fingerprint": "3b0989211b6b5a92"
               }
             }
           }

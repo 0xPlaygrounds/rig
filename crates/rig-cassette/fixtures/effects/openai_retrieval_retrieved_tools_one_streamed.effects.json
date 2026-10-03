@@ -203,7 +203,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 3583576457128247499
+                "fingerprint": "e0dff4f062d11830"
               }
             }
           ],
@@ -338,7 +338,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -346,7 +346,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"x\":50,\"y\":8}"
           }
         },
@@ -354,7 +354,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -376,7 +376,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 3583576457128247499
+                "fingerprint": "e0dff4f062d11830"
               }
             }
           }
@@ -487,7 +487,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3583576457128247499
+                    "fingerprint": "e0dff4f062d11830"
                   }
                 }
               ],
@@ -571,7 +571,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -747,7 +747,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           }

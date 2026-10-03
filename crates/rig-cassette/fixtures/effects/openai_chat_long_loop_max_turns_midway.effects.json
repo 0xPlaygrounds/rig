@@ -220,7 +220,7 @@
                   "id": "call_H37IIQaNQJxQlPefq1QguStp",
                   "type": "function"
                 },
-                "fingerprint": 12948368427646718228
+                "fingerprint": "b1e6a64a9c62bff3"
               }
             }
           ],
@@ -237,25 +237,6 @@
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
             "response_id": "chatcmpl-EUeGhcyJvc6gDGKZ1kB3fNAMCcl4q"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "list_files"
-                  },
-                  "id": "call_H37IIQaNQJxQlPefq1QguStp",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15033778705811795808
           },
           "provider_request_id": "req_a210ef8aa7f841ffbba571469ba1d9db",
           "finish_reason": "tool_calls",
@@ -375,7 +356,7 @@
                       "id": "call_H37IIQaNQJxQlPefq1QguStp",
                       "type": "function"
                     },
-                    "fingerprint": 12948368427646718228
+                    "fingerprint": "b1e6a64a9c62bff3"
                   }
                 }
               ],
@@ -386,26 +367,7 @@
                 "response_model": "gpt-4.1-mini-2025-04-14",
                 "response_id": "chatcmpl-EUeGhcyJvc6gDGKZ1kB3fNAMCcl4q"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_H37IIQaNQJxQlPefq1QguStp",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15033778705811795808
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -518,7 +480,7 @@
                   "id": "call_8s9cB5hQUnFF2vcXoutVhBq9",
                   "type": "function"
                 },
-                "fingerprint": 4348087192337327921
+                "fingerprint": "c3d17b85bef1a46e"
               }
             },
             {
@@ -541,7 +503,7 @@
                   "id": "call_afAEyP9qYrMBeh5YNJKzknln",
                   "type": "function"
                 },
-                "fingerprint": 9519108996961377233
+                "fingerprint": "b7c1e7c64f98a364"
               }
             },
             {
@@ -564,7 +526,7 @@
                   "id": "call_aU47OJLnPEPoKK7DJNaAf4gb",
                   "type": "function"
                 },
-                "fingerprint": 6018957695950299536
+                "fingerprint": "ce4acb20b36b76c9"
               }
             }
           ],
@@ -581,41 +543,6 @@
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
             "response_id": "chatcmpl-EUeGhxyeEQTtcJ5IgBxEOraEKwFp1"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"README.md\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_8s9cB5hQUnFF2vcXoutVhBq9",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"tests/basic.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_afAEyP9qYrMBeh5YNJKzknln",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"src/lib.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_aU47OJLnPEPoKK7DJNaAf4gb",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12616484965037978382
           },
           "provider_request_id": "req_788fe2c7a94a474d8f1be89213b967ab",
           "finish_reason": "tool_calls",
@@ -799,7 +726,7 @@
                       "id": "call_H37IIQaNQJxQlPefq1QguStp",
                       "type": "function"
                     },
-                    "fingerprint": 12948368427646718228
+                    "fingerprint": "b1e6a64a9c62bff3"
                   }
                 }
               ],
@@ -810,26 +737,7 @@
                 "response_model": "gpt-4.1-mini-2025-04-14",
                 "response_id": "chatcmpl-EUeGhcyJvc6gDGKZ1kB3fNAMCcl4q"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_H37IIQaNQJxQlPefq1QguStp",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15033778705811795808
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -872,7 +780,7 @@
                       "id": "call_8s9cB5hQUnFF2vcXoutVhBq9",
                       "type": "function"
                     },
-                    "fingerprint": 4348087192337327921
+                    "fingerprint": "c3d17b85bef1a46e"
                   }
                 },
                 {
@@ -895,7 +803,7 @@
                       "id": "call_afAEyP9qYrMBeh5YNJKzknln",
                       "type": "function"
                     },
-                    "fingerprint": 9519108996961377233
+                    "fingerprint": "b7c1e7c64f98a364"
                   }
                 },
                 {
@@ -918,7 +826,7 @@
                       "id": "call_aU47OJLnPEPoKK7DJNaAf4gb",
                       "type": "function"
                     },
-                    "fingerprint": 6018957695950299536
+                    "fingerprint": "ce4acb20b36b76c9"
                   }
                 }
               ],
@@ -929,42 +837,7 @@
                 "response_model": "gpt-4.1-mini-2025-04-14",
                 "response_id": "chatcmpl-EUeGhxyeEQTtcJ5IgBxEOraEKwFp1"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_8s9cB5hQUnFF2vcXoutVhBq9",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"tests/basic.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_afAEyP9qYrMBeh5YNJKzknln",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"src/lib.rs\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_aU47OJLnPEPoKK7DJNaAf4gb",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12616484965037978382
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1101,7 +974,7 @@
                   "id": "call_pBk3v0E6FmglxVHd8Lgw2Fxt",
                   "type": "function"
                 },
-                "fingerprint": 11471260989946726283
+                "fingerprint": "5e4f5f4e98ede69c"
               }
             }
           ],
@@ -1118,25 +991,6 @@
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
             "response_id": "chatcmpl-EUeGi4UGxurYNgjP2NEZEIpipzi6j"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "run_tests"
-                  },
-                  "id": "call_pBk3v0E6FmglxVHd8Lgw2Fxt",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 10187973884123653867
           },
           "provider_request_id": "req_d4a3edbd6b9440e699f60d0760752857",
           "finish_reason": "tool_calls",

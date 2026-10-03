@@ -142,7 +142,7 @@
                   "id": "call_4jfWS5vz8jF1krW5ABeG5nQm",
                   "type": "function"
                 },
-                "fingerprint": 13985620740555299823
+                "fingerprint": "2faf84d7da6132ba"
               }
             }
           ],
@@ -159,25 +159,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeFH8HDXIGysJ6tTftPbxOlTV0dd"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\":17,\"y\":25}",
-                    "name": "add"
-                  },
-                  "id": "call_4jfWS5vz8jF1krW5ABeG5nQm",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 13324099311284075261
           },
           "provider_request_id": "req_0049e02bea3346c2a7d1c29586360efb",
           "finish_reason": "tool_calls",
@@ -307,7 +288,7 @@
                       "id": "call_4jfWS5vz8jF1krW5ABeG5nQm",
                       "type": "function"
                     },
-                    "fingerprint": 13985620740555299823
+                    "fingerprint": "2faf84d7da6132ba"
                   }
                 }
               ],
@@ -318,26 +299,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUeFH8HDXIGysJ6tTftPbxOlTV0dd"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_4jfWS5vz8jF1krW5ABeG5nQm",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13324099311284075261
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -412,15 +374,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeFJDwssOOLjGedJroPMaKL4GI46"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "The dominant non-background color is red and the sum is 42.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 2227960337030874405
           },
           "provider_request_id": "req_cf76d7511c7c41a29cbfa12b5d001ee6",
           "finish_reason": "stop",

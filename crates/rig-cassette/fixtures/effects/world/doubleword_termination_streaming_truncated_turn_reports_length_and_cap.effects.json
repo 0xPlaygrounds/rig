@@ -158,13 +158,6 @@
             "response_model": "Qwen/Qwen3.5-9B",
             "response_id": "gen-1790146094-3wghqpFNDjMd0XjQlfQf"
           },
-          "native": {
-            "item": {
-              "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
-              "role": "assistant"
-            },
-            "fingerprint": 12105676980557704324
-          },
           "finish_reason": "length",
           "raw": {
             "usage": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -24,14 +24,6 @@
         }
       },
       {
-        "batch": 15,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 16,
         "id": 2,
         "kind": {
@@ -48,7 +40,15 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 19,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -191,7 +191,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                 },
-                "fingerprint": 10339985542681816012
+                "fingerprint": "892914a8c73574aa"
               }
             }
           ],
@@ -207,14 +207,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "hy2_aryCD8KImtkP0L6SkAY"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 11273866563690217392
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -283,7 +275,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                 },
-                "fingerprint": 10339985542681816012
+                "fingerprint": "892914a8c73574aa"
               }
             }
           }
@@ -369,7 +361,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                     },
-                    "fingerprint": 10339985542681816012
+                    "fingerprint": "892914a8c73574aa"
                   }
                 }
               ],
@@ -380,15 +372,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "hy2_aryCD8KImtkP0L6SkAY"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 11273866563690217392
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -452,7 +436,7 @@
                 "item": {
                   "text": "The exact tool result is: {\"add_response\": {\"result\": \"STREAM-REDACTED-Q3\"}}"
                 },
-                "fingerprint": 11196836222248188278
+                "fingerprint": "65bfeb7d381c6608"
               }
             }
           ],
@@ -467,13 +451,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "iC2_aqLxMfqP6dkP1cOSiAY"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 1333800475890142158
           },
           "finish_reason": "stop",
           "raw": {
@@ -540,7 +517,7 @@
                 "item": {
                   "text": "The exact tool result is: {\"add_response\": {\"result\": \"STREAM-REDACTED-Q3\"}}"
                 },
-                "fingerprint": 11196836222248188278
+                "fingerprint": "65bfeb7d381c6608"
               }
             }
           }

@@ -10,7 +10,7 @@
             "item": {
               "reasoning_content": "\n\n"
             },
-            "fingerprint": 2659556854901446314
+            "fingerprint": "674ef2b5f0e4fe7f"
           }
         }
       },
@@ -71,7 +71,7 @@
             "item": {
               "reasoning_content": "\nOkay, the user is asking why token usage should be reported. They want a concise answer, just one sentence. Let me start by recalling what token usage is. Tokens are the basic units of text in models, used for processing. Reporting them is important for managing costs because each token consumed incurs a cost. If you don't track it, you might exceed budget limits or face unexpected charges. Also, it helps in optimizing model usage by understanding which parts of the input are using more tokens. Maybe mention cost efficiency and resource allocation. Need to make sure it's a single sentence without being too wordy. Let me combine these points: reporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits. That should cover it.\n"
             },
-            "fingerprint": 15941010609189017826
+            "fingerprint": "70cfe3d1e53044bf"
           }
         }
       },
@@ -132,7 +132,7 @@
             "item": {
               "reasoning_content": "\nOkay, the user wants three short bullet points about token usage reporting. Let me start by recalling what token usage reporting is. It's about tracking how many tokens (like words or characters) are used in AI interactions. The user specified to be concise and include details for streaming visibility.\n\nFirst, I should mention the key aspects of token usage reporting. Maybe start with monitoring input and output tokens. That's fundamental. Then, the second point could be about optimizing costs, since token usage directly affects pricing. Third, maybe something about real-time insights for performance or efficiency. Let me check if those points are accurate and concise. Yes, each bullet is a short point with a detail. That should meet the user's request.\n"
             },
-            "fingerprint": 3087256257802451192
+            "fingerprint": "426a2bf5d4511b35"
           }
         }
       },
@@ -183,7 +183,7 @@
             "item": {
               "reasoning_content": "\n\n"
             },
-            "fingerprint": 2659556854901446314
+            "fingerprint": "674ef2b5f0e4fe7f"
           }
         }
       },
@@ -207,7 +207,7 @@
               "id": "call-a12175c2-8979-4850-8618-8a12f5026dc4",
               "type": "function"
             },
-            "fingerprint": 10259269429459204341
+            "fingerprint": "3bd8d12987d3d3da"
           }
         }
       }
@@ -274,7 +274,7 @@
             "item": {
               "reasoning_content": "\n\n"
             },
-            "fingerprint": 2659556854901446314
+            "fingerprint": "674ef2b5f0e4fe7f"
           }
         }
       },

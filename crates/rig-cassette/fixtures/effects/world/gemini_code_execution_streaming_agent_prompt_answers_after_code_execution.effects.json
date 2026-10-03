@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,15 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -22,19 +30,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 24,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,7 +42,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -146,7 +146,7 @@
                 "item": {
                   "text": "The number 2 to the power of 20 is 1,048,576."
                 },
-                "fingerprint": 13366901440491722584
+                "fingerprint": "b4ada33d30f324e4"
               }
             }
           ],
@@ -163,13 +163,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "lnizarrwCKOez7IPveCJ8QQ"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 18393314334619927449
           },
           "finish_reason": "stop",
           "raw": {
@@ -294,7 +287,7 @@
                 "item": {
                   "text": "The number 2 to the power of 20 is 1,048,576."
                 },
-                "fingerprint": 13366901440491722584
+                "fingerprint": "b4ada33d30f324e4"
               }
             }
           }

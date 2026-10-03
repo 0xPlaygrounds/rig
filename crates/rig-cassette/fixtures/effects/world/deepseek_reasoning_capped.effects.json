@@ -84,7 +84,7 @@
                 "item": {
                   "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters"
                 },
-                "fingerprint": 3040200027050051951
+                "fingerprint": "f2271e812a1faf18"
               }
             }
           ],
@@ -101,14 +101,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "d313630b-a376-4f20-be7e-76e1e3e7221b"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters",
-              "role": "assistant"
-            },
-            "fingerprint": 6541369306192880791
           },
           "finish_reason": "length",
           "raw": {

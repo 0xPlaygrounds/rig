@@ -89,13 +89,6 @@
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976622-pOFvx4fBgHopzmqfborQ"
           },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant"
-            },
-            "fingerprint": 675868731199239589
-          },
           "finish_reason": "content_filter",
           "raw": {
             "usage": {

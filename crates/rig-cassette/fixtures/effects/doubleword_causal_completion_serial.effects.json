@@ -128,7 +128,7 @@
                   "id": "chatcmpl-tool-af9590c90e0bef9d",
                   "type": "function"
                 },
-                "fingerprint": 4954758539033223370
+                "fingerprint": "52ae574497c786e5"
               }
             }
           ],
@@ -145,23 +145,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_3e319a56-9630-4fd3-bc40-0f3567aba5d1"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"q\": \"What is the capital of France?\"}",
-                    "name": "lookup"
-                  },
-                  "id": "chatcmpl-tool-af9590c90e0bef9d",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16411611974339696232
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -292,7 +275,7 @@
                     }
                   ]
                 },
-                "fingerprint": 17080021633457856962
+                "fingerprint": "933f4519c34c4d47"
               }
             },
             {
@@ -313,23 +296,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_cd3f23fc-56dd-4577-b41e-83131b89a1f7"
-          },
-          "native": {
-            "item": {
-              "reasoning_details": [
-                {
-                  "format": "unknown",
-                  "index": 0,
-                  "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-                  "type": "reasoning.text"
-                }
-              ],
-              "content": "\n\nParis",
-              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 1049567697013913861
           },
           "finish_reason": "stop",
           "raw": {
@@ -430,7 +396,7 @@
                       "id": "chatcmpl-tool-af9590c90e0bef9d",
                       "type": "function"
                     },
-                    "fingerprint": 4954758539033223370
+                    "fingerprint": "52ae574497c786e5"
                   }
                 }
               ],
@@ -441,24 +407,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_3e319a56-9630-4fd3-bc40-0f3567aba5d1"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"q\": \"What is the capital of France?\"}",
-                        "name": "lookup"
-                      },
-                      "id": "chatcmpl-tool-af9590c90e0bef9d",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16411611974339696232
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -534,14 +483,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_d6be2607-b322-4c6b-9263-3d8e2d3532b8"
-          },
-          "native": {
-            "item": {
-              "content": "Paris",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 10907891467078341492
           },
           "finish_reason": "stop",
           "raw": {

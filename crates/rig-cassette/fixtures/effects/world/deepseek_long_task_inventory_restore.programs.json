@@ -322,7 +322,7 @@
                     "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
                     "type": "function"
                   },
-                  "fingerprint": 12431355939360415266
+                  "fingerprint": "11846c4bf0e4a361"
                 }
               }
             ],
@@ -334,24 +334,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f018213c-e57c-45f4-b4a6-11ea7beeac8c"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the index to understand the task structure.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2249034640131986042
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -410,7 +393,7 @@
                       "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
                       "type": "function"
                     },
-                    "fingerprint": 12431355939360415266
+                    "fingerprint": "11846c4bf0e4a361"
                   }
                 }
               ],
@@ -426,23 +409,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "f018213c-e57c-45f4-b4a6-11ea7beeac8c"
-              },
-              "native": {
-                "item": {
-                  "content": "I'll start by reading the index to understand the task structure.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2249034640131986042
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -541,24 +507,7 @@
               "response_model": "deepseek-flash",
               "response_id": "f018213c-e57c-45f4-b4a6-11ea7beeac8c"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "I'll start by reading the index to understand the task structure.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 2249034640131986042
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -593,7 +542,7 @@
                   "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
                   "type": "function"
                 },
-                "fingerprint": 12431355939360415266
+                "fingerprint": "11846c4bf0e4a361"
               }
             }
           }
@@ -662,7 +611,7 @@
                     "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
                     "type": "function"
                   },
-                  "fingerprint": 3131514500532262433
+                  "fingerprint": "5ddda3baf2ffa30a"
                 }
               }
             ],
@@ -674,24 +623,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "1cfcb3e3-305f-498b-9740-9d35c8bf7133"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Index read. Now I'll read each depot in a separate turn, starting with depot/1.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/1\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11891898833949526754
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -750,7 +682,7 @@
                       "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
                       "type": "function"
                     },
-                    "fingerprint": 3131514500532262433
+                    "fingerprint": "5ddda3baf2ffa30a"
                   }
                 }
               ],
@@ -766,23 +698,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "1cfcb3e3-305f-498b-9740-9d35c8bf7133"
-              },
-              "native": {
-                "item": {
-                  "content": "Index read. Now I'll read each depot in a separate turn, starting with depot/1.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/1\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 11891898833949526754
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -877,24 +792,7 @@
               "response_model": "deepseek-flash",
               "response_id": "1cfcb3e3-305f-498b-9740-9d35c8bf7133"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "Index read. Now I'll read each depot in a separate turn, starting with depot/1.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/1\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 11891898833949526754
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -929,7 +827,7 @@
                   "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
                   "type": "function"
                 },
-                "fingerprint": 3131514500532262433
+                "fingerprint": "5ddda3baf2ffa30a"
               }
             }
           }
@@ -994,7 +892,7 @@
                     "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
                     "type": "function"
                   },
-                  "fingerprint": 17871530534107369264
+                  "fingerprint": "d7ee08909748e135"
                 }
               }
             ],
@@ -1006,24 +904,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "5b4d64fa-caa9-48f6-ac0f-8bab7beb1bc4"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "depot/1: stock=10, inbound=2, damaged=1, reserved=0 → available = 10+2-1-0 = 11.\n\nNow reading depot/2.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/2\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14100762715725471509
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -1082,7 +963,7 @@
                       "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
                       "type": "function"
                     },
-                    "fingerprint": 17871530534107369264
+                    "fingerprint": "d7ee08909748e135"
                   }
                 }
               ],
@@ -1098,23 +979,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "5b4d64fa-caa9-48f6-ac0f-8bab7beb1bc4"
-              },
-              "native": {
-                "item": {
-                  "content": "depot/1: stock=10, inbound=2, damaged=1, reserved=0 → available = 10+2-1-0 = 11.\n\nNow reading depot/2.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/2\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14100762715725471509
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -1209,24 +1073,7 @@
               "response_model": "deepseek-flash",
               "response_id": "5b4d64fa-caa9-48f6-ac0f-8bab7beb1bc4"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/1: stock=10, inbound=2, damaged=1, reserved=0 → available = 10+2-1-0 = 11.\n\nNow reading depot/2.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/2\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 14100762715725471509
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -1261,7 +1108,7 @@
                   "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
                   "type": "function"
                 },
-                "fingerprint": 17871530534107369264
+                "fingerprint": "d7ee08909748e135"
               }
             }
           }
@@ -1326,7 +1173,7 @@
                     "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
                     "type": "function"
                   },
-                  "fingerprint": 14503040881833179925
+                  "fingerprint": "f24df298603cdad2"
                 }
               }
             ],
@@ -1338,24 +1185,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "792e008b-603b-4a54-8f63-4a1a9b912bcb"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "depot/2: 20+4-2-0 = 22.\n\nReading depot/3.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/3\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2064705471384872048
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -1414,7 +1244,7 @@
                       "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
                       "type": "function"
                     },
-                    "fingerprint": 14503040881833179925
+                    "fingerprint": "f24df298603cdad2"
                   }
                 }
               ],
@@ -1430,23 +1260,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "792e008b-603b-4a54-8f63-4a1a9b912bcb"
-              },
-              "native": {
-                "item": {
-                  "content": "depot/2: 20+4-2-0 = 22.\n\nReading depot/3.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/3\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2064705471384872048
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -1541,24 +1354,7 @@
               "response_model": "deepseek-flash",
               "response_id": "792e008b-603b-4a54-8f63-4a1a9b912bcb"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/2: 20+4-2-0 = 22.\n\nReading depot/3.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/3\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 2064705471384872048
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -1593,7 +1389,7 @@
                   "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
                   "type": "function"
                 },
-                "fingerprint": 14503040881833179925
+                "fingerprint": "f24df298603cdad2"
               }
             }
           }
@@ -1658,7 +1454,7 @@
                     "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
                     "type": "function"
                   },
-                  "fingerprint": 2174686762871361916
+                  "fingerprint": "1e3394654c064139"
                 }
               }
             ],
@@ -1670,24 +1466,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "3f13eebf-52aa-414a-8f32-f57ebdc4afc4"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "depot/3: 30+6-3-0 = 33.\n\nReading depot/4.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/4\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15424002702710913161
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -1746,7 +1525,7 @@
                       "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
                       "type": "function"
                     },
-                    "fingerprint": 2174686762871361916
+                    "fingerprint": "1e3394654c064139"
                   }
                 }
               ],
@@ -1762,23 +1541,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "3f13eebf-52aa-414a-8f32-f57ebdc4afc4"
-              },
-              "native": {
-                "item": {
-                  "content": "depot/3: 30+6-3-0 = 33.\n\nReading depot/4.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/4\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15424002702710913161
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -1873,24 +1635,7 @@
               "response_model": "deepseek-flash",
               "response_id": "3f13eebf-52aa-414a-8f32-f57ebdc4afc4"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/3: 30+6-3-0 = 33.\n\nReading depot/4.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/4\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 15424002702710913161
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -1925,7 +1670,7 @@
                   "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
                   "type": "function"
                 },
-                "fingerprint": 2174686762871361916
+                "fingerprint": "1e3394654c064139"
               }
             }
           }
@@ -1990,7 +1735,7 @@
                     "id": "call_00_JPuTx187wgvSHVUttPcG6304",
                     "type": "function"
                   },
-                  "fingerprint": 286439896261435814
+                  "fingerprint": "9cee631984f760ad"
                 }
               }
             ],
@@ -2002,24 +1747,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "e6eadb83-a23a-4ac2-b00b-3380e288b3c5"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "depot/4: 40+8-4-0 = 44.\n\nReading depot/5.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/5\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_JPuTx187wgvSHVUttPcG6304",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 5440679441866069585
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -2078,7 +1806,7 @@
                       "id": "call_00_JPuTx187wgvSHVUttPcG6304",
                       "type": "function"
                     },
-                    "fingerprint": 286439896261435814
+                    "fingerprint": "9cee631984f760ad"
                   }
                 }
               ],
@@ -2094,23 +1822,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "e6eadb83-a23a-4ac2-b00b-3380e288b3c5"
-              },
-              "native": {
-                "item": {
-                  "content": "depot/4: 40+8-4-0 = 44.\n\nReading depot/5.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/5\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_JPuTx187wgvSHVUttPcG6304",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 5440679441866069585
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -2205,24 +1916,7 @@
               "response_model": "deepseek-flash",
               "response_id": "e6eadb83-a23a-4ac2-b00b-3380e288b3c5"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/4: 40+8-4-0 = 44.\n\nReading depot/5.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/5\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_JPuTx187wgvSHVUttPcG6304",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 5440679441866069585
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -2257,7 +1951,7 @@
                   "id": "call_00_JPuTx187wgvSHVUttPcG6304",
                   "type": "function"
                 },
-                "fingerprint": 286439896261435814
+                "fingerprint": "9cee631984f760ad"
               }
             }
           }
@@ -2322,7 +2016,7 @@
                     "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
                     "type": "function"
                   },
-                  "fingerprint": 13836444297427738610
+                  "fingerprint": "4d251e571cd89c9f"
                 }
               }
             ],
@@ -2334,24 +2028,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "ab7463c4-c881-412a-9d81-375d6897f4b3"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "depot/5: 50+10-5-0 = 55.\n\nReading depot/6.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/6\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2557422761904094980
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -2410,7 +2087,7 @@
                       "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
                       "type": "function"
                     },
-                    "fingerprint": 13836444297427738610
+                    "fingerprint": "4d251e571cd89c9f"
                   }
                 }
               ],
@@ -2426,23 +2103,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "ab7463c4-c881-412a-9d81-375d6897f4b3"
-              },
-              "native": {
-                "item": {
-                  "content": "depot/5: 50+10-5-0 = 55.\n\nReading depot/6.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"read\", \"key\": \"depot/6\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2557422761904094980
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -2537,24 +2197,7 @@
               "response_model": "deepseek-flash",
               "response_id": "ab7463c4-c881-412a-9d81-375d6897f4b3"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/5: 50+10-5-0 = 55.\n\nReading depot/6.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/6\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 2557422761904094980
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -2589,7 +2232,7 @@
                   "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
                   "type": "function"
                 },
-                "fingerprint": 13836444297427738610
+                "fingerprint": "4d251e571cd89c9f"
               }
             }
           }
@@ -2654,7 +2297,7 @@
                     "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
                     "type": "function"
                   },
-                  "fingerprint": 17818762048340439662
+                  "fingerprint": "5122e9c481a388d7"
                 }
               },
               {
@@ -2679,7 +2322,7 @@
                     "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
                     "type": "function"
                   },
-                  "fingerprint": 16758072193801658438
+                  "fingerprint": "5879e4b497ca7ecf"
                 }
               }
             ],
@@ -2691,32 +2334,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "fc72d3de-47d2-405c-8c31-bae55e2863d8"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "depot/6: 60+12-6-0 = 66.\n\nAll six depots read. Now applying in three turns with two parallel applies each.\n\nTurn 1: depot/1 = 11, depot/2 = 22.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/1\", \"value\": 11}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/2\", \"value\": 22}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14115670667911887015
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -2775,7 +2393,7 @@
                       "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
                       "type": "function"
                     },
-                    "fingerprint": 17818762048340439662
+                    "fingerprint": "5122e9c481a388d7"
                   }
                 },
                 {
@@ -2800,7 +2418,7 @@
                       "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
                       "type": "function"
                     },
-                    "fingerprint": 16758072193801658438
+                    "fingerprint": "5879e4b497ca7ecf"
                   }
                 }
               ],
@@ -2816,31 +2434,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "fc72d3de-47d2-405c-8c31-bae55e2863d8"
-              },
-              "native": {
-                "item": {
-                  "content": "depot/6: 60+12-6-0 = 66.\n\nAll six depots read. Now applying in three turns with two parallel applies each.\n\nTurn 1: depot/1 = 11, depot/2 = 22.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/1\", \"value\": 11}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/2\", \"value\": 22}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14115670667911887015
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -2973,32 +2566,7 @@
               "response_model": "deepseek-flash",
               "response_id": "fc72d3de-47d2-405c-8c31-bae55e2863d8"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/6: 60+12-6-0 = 66.\n\nAll six depots read. Now applying in three turns with two parallel applies each.\n\nTurn 1: depot/1 = 11, depot/2 = 22.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/1\", \"value\": 11}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
-                    "type": "function"
-                  },
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/2\", \"value\": 22}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 14115670667911887015
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -3033,7 +2601,7 @@
                   "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
                   "type": "function"
                 },
-                "fingerprint": 17818762048340439662
+                "fingerprint": "5122e9c481a388d7"
               }
             }
           }
@@ -3062,7 +2630,7 @@
                   "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
                   "type": "function"
                 },
-                "fingerprint": 16758072193801658438
+                "fingerprint": "5879e4b497ca7ecf"
               }
             }
           }
@@ -3146,7 +2714,7 @@
                     "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
                     "type": "function"
                   },
-                  "fingerprint": 8186874774006823854
+                  "fingerprint": "8b322c82bfd339fb"
                 }
               },
               {
@@ -3171,7 +2739,7 @@
                     "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
                     "type": "function"
                   },
-                  "fingerprint": 2968547756088652153
+                  "fingerprint": "eec27b2a762f2e42"
                 }
               }
             ],
@@ -3183,32 +2751,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "b24bf23f-f915-4d1b-8df7-a4c88586cb7d"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Turn 1 applied. Turn 2: depot/3 = 33, depot/4 = 44.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/3\", \"value\": 33}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/4\", \"value\": 44}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15451328145613126155
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -3267,7 +2810,7 @@
                       "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
                       "type": "function"
                     },
-                    "fingerprint": 8186874774006823854
+                    "fingerprint": "8b322c82bfd339fb"
                   }
                 },
                 {
@@ -3292,7 +2835,7 @@
                       "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
                       "type": "function"
                     },
-                    "fingerprint": 2968547756088652153
+                    "fingerprint": "eec27b2a762f2e42"
                   }
                 }
               ],
@@ -3308,31 +2851,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "b24bf23f-f915-4d1b-8df7-a4c88586cb7d"
-              },
-              "native": {
-                "item": {
-                  "content": "Turn 1 applied. Turn 2: depot/3 = 33, depot/4 = 44.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/3\", \"value\": 33}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/4\", \"value\": 44}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15451328145613126155
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -3465,32 +2983,7 @@
               "response_model": "deepseek-flash",
               "response_id": "b24bf23f-f915-4d1b-8df7-a4c88586cb7d"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "Turn 1 applied. Turn 2: depot/3 = 33, depot/4 = 44.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/3\", \"value\": 33}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
-                    "type": "function"
-                  },
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/4\", \"value\": 44}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 15451328145613126155
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -3525,7 +3018,7 @@
                   "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
                   "type": "function"
                 },
-                "fingerprint": 8186874774006823854
+                "fingerprint": "8b322c82bfd339fb"
               }
             }
           }
@@ -3554,7 +3047,7 @@
                   "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
                   "type": "function"
                 },
-                "fingerprint": 2968547756088652153
+                "fingerprint": "eec27b2a762f2e42"
               }
             }
           }
@@ -3638,7 +3131,7 @@
                     "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
                     "type": "function"
                   },
-                  "fingerprint": 17490891249191763336
+                  "fingerprint": "5171a93ba462ab05"
                 }
               },
               {
@@ -3663,7 +3156,7 @@
                     "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
                     "type": "function"
                   },
-                  "fingerprint": 3772154963548513502
+                  "fingerprint": "592408df342abd93"
                 }
               }
             ],
@@ -3675,32 +3168,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "bd2b85b5-98f4-423e-89e0-75ba4ec99028"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Turn 2 applied. Turn 3: depot/5 = 55, depot/6 = 66.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/5\", \"value\": 55}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/6\", \"value\": 66}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7581748764187098250
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -3759,7 +3227,7 @@
                       "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
                       "type": "function"
                     },
-                    "fingerprint": 17490891249191763336
+                    "fingerprint": "5171a93ba462ab05"
                   }
                 },
                 {
@@ -3784,7 +3252,7 @@
                       "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
                       "type": "function"
                     },
-                    "fingerprint": 3772154963548513502
+                    "fingerprint": "592408df342abd93"
                   }
                 }
               ],
@@ -3800,31 +3268,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "bd2b85b5-98f4-423e-89e0-75ba4ec99028"
-              },
-              "native": {
-                "item": {
-                  "content": "Turn 2 applied. Turn 3: depot/5 = 55, depot/6 = 66.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/5\", \"value\": 55}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"apply\", \"key\": \"depot/6\", \"value\": 66}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7581748764187098250
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -3957,32 +3400,7 @@
               "response_model": "deepseek-flash",
               "response_id": "bd2b85b5-98f4-423e-89e0-75ba4ec99028"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "Turn 2 applied. Turn 3: depot/5 = 55, depot/6 = 66.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/5\", \"value\": 55}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
-                    "type": "function"
-                  },
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/6\", \"value\": 66}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 7581748764187098250
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -4017,7 +3435,7 @@
                   "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
                   "type": "function"
                 },
-                "fingerprint": 17490891249191763336
+                "fingerprint": "5171a93ba462ab05"
               }
             }
           }
@@ -4046,7 +3464,7 @@
                   "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
                   "type": "function"
                 },
-                "fingerprint": 3772154963548513502
+                "fingerprint": "592408df342abd93"
               }
             }
           }
@@ -4130,7 +3548,7 @@
                     "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
                     "type": "function"
                   },
-                  "fingerprint": 6703138413537790906
+                  "fingerprint": "636da154c2cb05e7"
                 }
               }
             ],
@@ -4142,24 +3560,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "10b2ae59-8d7c-469d-bb76-ef652bb1e057"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "All six applied. Now checking all.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16196769904965062007
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -4218,7 +3619,7 @@
                       "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
                       "type": "function"
                     },
-                    "fingerprint": 6703138413537790906
+                    "fingerprint": "636da154c2cb05e7"
                   }
                 }
               ],
@@ -4234,23 +3635,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "10b2ae59-8d7c-469d-bb76-ef652bb1e057"
-              },
-              "native": {
-                "item": {
-                  "content": "All six applied. Now checking all.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
-                        "name": "task_operation"
-                      },
-                      "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16196769904965062007
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -4343,24 +3727,7 @@
               "response_model": "deepseek-flash",
               "response_id": "10b2ae59-8d7c-469d-bb76-ef652bb1e057"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "All six applied. Now checking all.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 16196769904965062007
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -4395,7 +3762,7 @@
                   "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
                   "type": "function"
                 },
-                "fingerprint": 6703138413537790906
+                "fingerprint": "636da154c2cb05e7"
               }
             }
           }
@@ -4445,14 +3812,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "0904489e-69ac-4bf4-97df-6a4bdf5f9ea0"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "Check(all) passed with no failures at revision 6.\n\nDone. All six depots were built under the exact keys depot/1 through depot/6 (no /available or /reserved suffixes), each read in a separate turn, and applied in three turns with two parallel applies each:\n\n| Key | stock | inbound | damaged | reserved | available |\n|-----|-------|---------|---------|----------|-----------|\n| depot/1 | 10 | 2 | 1 | 0 | 11 |\n| depot/2 | 20 | 4 | 2 | 0 | 22 |\n| depot/3 | 30 | 6 | 3 | 0 | 33 |\n| depot/4 | 40 | 8 | 4 | 0 | 44 |\n| depot/5 | 50 | 10 | 5 | 0 | 55 |\n| depot/6 | 60 | 12 | 6 | 0 | 66 |\n\nValidation: passed (revision 6, no failures). No revision was requested.",
-                  "role": "assistant"
-                },
-                "fingerprint": 7983300691680677439
-              }
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -4497,13 +3857,6 @@
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
                 "response_id": "0904489e-69ac-4bf4-97df-6a4bdf5f9ea0"
-              },
-              "native": {
-                "item": {
-                  "content": "Check(all) passed with no failures at revision 6.\n\nDone. All six depots were built under the exact keys depot/1 through depot/6 (no /available or /reserved suffixes), each read in a separate turn, and applied in three turns with two parallel applies each:\n\n| Key | stock | inbound | damaged | reserved | available |\n|-----|-------|---------|---------|----------|-----------|\n| depot/1 | 10 | 2 | 1 | 0 | 11 |\n| depot/2 | 20 | 4 | 2 | 0 | 22 |\n| depot/3 | 30 | 6 | 3 | 0 | 33 |\n| depot/4 | 40 | 8 | 4 | 0 | 44 |\n| depot/5 | 50 | 10 | 5 | 0 | 55 |\n| depot/6 | 60 | 12 | 6 | 0 | 66 |\n\nValidation: passed (revision 6, no failures). No revision was requested.",
-                  "role": "assistant"
-                },
-                "fingerprint": 7983300691680677439
               },
               "finish_reason": "stop",
               "raw": {
@@ -4552,14 +3905,7 @@
               "response_model": "deepseek-flash",
               "response_id": "0904489e-69ac-4bf4-97df-6a4bdf5f9ea0"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "content": "Check(all) passed with no failures at revision 6.\n\nDone. All six depots were built under the exact keys depot/1 through depot/6 (no /available or /reserved suffixes), each read in a separate turn, and applied in three turns with two parallel applies each:\n\n| Key | stock | inbound | damaged | reserved | available |\n|-----|-------|---------|---------|----------|-----------|\n| depot/1 | 10 | 2 | 1 | 0 | 11 |\n| depot/2 | 20 | 4 | 2 | 0 | 22 |\n| depot/3 | 30 | 6 | 3 | 0 | 33 |\n| depot/4 | 40 | 8 | 4 | 0 | 44 |\n| depot/5 | 50 | 10 | 5 | 0 | 55 |\n| depot/6 | 60 | 12 | 6 | 0 | 66 |\n\nValidation: passed (revision 6, no failures). No revision was requested.",
-                "role": "assistant"
-              },
-              "fingerprint": 7983300691680677439
-            }
+            "stop": "stop"
           }
         },
         {
@@ -4616,24 +3962,7 @@
               "response_model": "deepseek-flash",
               "response_id": "f018213c-e57c-45f4-b4a6-11ea7beeac8c"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "I'll start by reading the index to understand the task structure.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"index\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 2249034640131986042
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -4668,7 +3997,7 @@
                   "id": "call_00_9Zrf6lJcg1tqK3csSmCu8533",
                   "type": "function"
                 },
-                "fingerprint": 12431355939360415266
+                "fingerprint": "11846c4bf0e4a361"
               }
             }
           }
@@ -4718,24 +4047,7 @@
               "response_model": "deepseek-flash",
               "response_id": "1cfcb3e3-305f-498b-9740-9d35c8bf7133"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "Index read. Now I'll read each depot in a separate turn, starting with depot/1.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/1\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 11891898833949526754
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -4770,7 +4082,7 @@
                   "id": "call_00_OlH5W2Xy4MjEuEksfa9P0948",
                   "type": "function"
                 },
-                "fingerprint": 3131514500532262433
+                "fingerprint": "5ddda3baf2ffa30a"
               }
             }
           }
@@ -4816,24 +4128,7 @@
               "response_model": "deepseek-flash",
               "response_id": "5b4d64fa-caa9-48f6-ac0f-8bab7beb1bc4"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/1: stock=10, inbound=2, damaged=1, reserved=0 → available = 10+2-1-0 = 11.\n\nNow reading depot/2.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/2\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 14100762715725471509
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -4868,7 +4163,7 @@
                   "id": "call_00_DyLc0a6HfnzzBQjTr1W58244",
                   "type": "function"
                 },
-                "fingerprint": 17871530534107369264
+                "fingerprint": "d7ee08909748e135"
               }
             }
           }
@@ -4914,24 +4209,7 @@
               "response_model": "deepseek-flash",
               "response_id": "792e008b-603b-4a54-8f63-4a1a9b912bcb"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/2: 20+4-2-0 = 22.\n\nReading depot/3.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/3\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 2064705471384872048
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -4966,7 +4244,7 @@
                   "id": "call_00_F7wrkfQ4rABkEOkNEWSf7305",
                   "type": "function"
                 },
-                "fingerprint": 14503040881833179925
+                "fingerprint": "f24df298603cdad2"
               }
             }
           }
@@ -5012,24 +4290,7 @@
               "response_model": "deepseek-flash",
               "response_id": "3f13eebf-52aa-414a-8f32-f57ebdc4afc4"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/3: 30+6-3-0 = 33.\n\nReading depot/4.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/4\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 15424002702710913161
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -5064,7 +4325,7 @@
                   "id": "call_00_jYIZQxMrc7pVJgRvZwf49015",
                   "type": "function"
                 },
-                "fingerprint": 2174686762871361916
+                "fingerprint": "1e3394654c064139"
               }
             }
           }
@@ -5110,24 +4371,7 @@
               "response_model": "deepseek-flash",
               "response_id": "e6eadb83-a23a-4ac2-b00b-3380e288b3c5"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/4: 40+8-4-0 = 44.\n\nReading depot/5.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/5\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_JPuTx187wgvSHVUttPcG6304",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 5440679441866069585
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -5162,7 +4406,7 @@
                   "id": "call_00_JPuTx187wgvSHVUttPcG6304",
                   "type": "function"
                 },
-                "fingerprint": 286439896261435814
+                "fingerprint": "9cee631984f760ad"
               }
             }
           }
@@ -5208,24 +4452,7 @@
               "response_model": "deepseek-flash",
               "response_id": "ab7463c4-c881-412a-9d81-375d6897f4b3"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/5: 50+10-5-0 = 55.\n\nReading depot/6.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"read\", \"key\": \"depot/6\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 2557422761904094980
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -5260,7 +4487,7 @@
                   "id": "call_00_HUN9JzLpsUFdj9mzmNt77091",
                   "type": "function"
                 },
-                "fingerprint": 13836444297427738610
+                "fingerprint": "4d251e571cd89c9f"
               }
             }
           }
@@ -5306,32 +4533,7 @@
               "response_model": "deepseek-flash",
               "response_id": "fc72d3de-47d2-405c-8c31-bae55e2863d8"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "depot/6: 60+12-6-0 = 66.\n\nAll six depots read. Now applying in three turns with two parallel applies each.\n\nTurn 1: depot/1 = 11, depot/2 = 22.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/1\", \"value\": 11}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
-                    "type": "function"
-                  },
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/2\", \"value\": 22}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 14115670667911887015
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -5366,7 +4568,7 @@
                   "id": "call_00_cFuwxovPwUKD8eQ8fNct1837",
                   "type": "function"
                 },
-                "fingerprint": 17818762048340439662
+                "fingerprint": "5122e9c481a388d7"
               }
             }
           }
@@ -5395,7 +4597,7 @@
                   "id": "call_01_FmRX0mcVG5xZ88ZwLv8R6560",
                   "type": "function"
                 },
-                "fingerprint": 16758072193801658438
+                "fingerprint": "5879e4b497ca7ecf"
               }
             }
           }
@@ -5459,32 +4661,7 @@
               "response_model": "deepseek-flash",
               "response_id": "b24bf23f-f915-4d1b-8df7-a4c88586cb7d"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "Turn 1 applied. Turn 2: depot/3 = 33, depot/4 = 44.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/3\", \"value\": 33}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
-                    "type": "function"
-                  },
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/4\", \"value\": 44}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 15451328145613126155
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -5519,7 +4696,7 @@
                   "id": "call_00_r2smdCGUhV5VT5ul5wJK5890",
                   "type": "function"
                 },
-                "fingerprint": 8186874774006823854
+                "fingerprint": "8b322c82bfd339fb"
               }
             }
           }
@@ -5548,7 +4725,7 @@
                   "id": "call_01_axbI2dZD3HVRh1b2qAKg9186",
                   "type": "function"
                 },
-                "fingerprint": 2968547756088652153
+                "fingerprint": "eec27b2a762f2e42"
               }
             }
           }
@@ -5612,32 +4789,7 @@
               "response_model": "deepseek-flash",
               "response_id": "bd2b85b5-98f4-423e-89e0-75ba4ec99028"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "Turn 2 applied. Turn 3: depot/5 = 55, depot/6 = 66.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/5\", \"value\": 55}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
-                    "type": "function"
-                  },
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"apply\", \"key\": \"depot/6\", \"value\": 66}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 7581748764187098250
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -5672,7 +4824,7 @@
                   "id": "call_00_jVz6aUzV1zwx5iL7EfVk3409",
                   "type": "function"
                 },
-                "fingerprint": 17490891249191763336
+                "fingerprint": "5171a93ba462ab05"
               }
             }
           }
@@ -5701,7 +4853,7 @@
                   "id": "call_01_JfdJIJvg7mpmWD1NPGh34877",
                   "type": "function"
                 },
-                "fingerprint": 3772154963548513502
+                "fingerprint": "592408df342abd93"
               }
             }
           }
@@ -5765,24 +4917,7 @@
               "response_model": "deepseek-flash",
               "response_id": "10b2ae59-8d7c-469d-bb76-ef652bb1e057"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "content": "All six applied. Now checking all.",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"action\": \"check\", \"key\": \"all\", \"value\": null}",
-                      "name": "task_operation"
-                    },
-                    "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 16196769904965062007
-            }
+            "stop": "tool_use"
           }
         },
         {
@@ -5817,7 +4952,7 @@
                   "id": "call_00_A1uhc4JSFIKnbA8eFDCr6061",
                   "type": "function"
                 },
-                "fingerprint": 6703138413537790906
+                "fingerprint": "636da154c2cb05e7"
               }
             }
           }
@@ -5861,14 +4996,7 @@
               "response_model": "deepseek-flash",
               "response_id": "0904489e-69ac-4bf4-97df-6a4bdf5f9ea0"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "content": "Check(all) passed with no failures at revision 6.\n\nDone. All six depots were built under the exact keys depot/1 through depot/6 (no /available or /reserved suffixes), each read in a separate turn, and applied in three turns with two parallel applies each:\n\n| Key | stock | inbound | damaged | reserved | available |\n|-----|-------|---------|---------|----------|-----------|\n| depot/1 | 10 | 2 | 1 | 0 | 11 |\n| depot/2 | 20 | 4 | 2 | 0 | 22 |\n| depot/3 | 30 | 6 | 3 | 0 | 33 |\n| depot/4 | 40 | 8 | 4 | 0 | 44 |\n| depot/5 | 50 | 10 | 5 | 0 | 55 |\n| depot/6 | 60 | 12 | 6 | 0 | 66 |\n\nValidation: passed (revision 6, no failures). No revision was requested.",
-                "role": "assistant"
-              },
-              "fingerprint": 7983300691680677439
-            }
+            "stop": "stop"
           }
         },
         {

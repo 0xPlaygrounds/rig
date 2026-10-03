@@ -126,7 +126,7 @@
                 "item": {
                   "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
                 },
-                "fingerprint": 13815496812336077730
+                "fingerprint": "b9802ae7c4308437"
               }
             },
             {
@@ -151,7 +151,7 @@
                   "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
                   "type": "function"
                 },
-                "fingerprint": 805869510244306993
+                "fingerprint": "626e858d55e8572e"
               }
             }
           ],
@@ -168,24 +168,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "d2e55f9c-c65a-4fbe-955e-31d6d56bb49e"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15464414479245990676
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -315,7 +297,7 @@
                 "item": {
                   "reasoning_content": "The user provided an address: 456 Oak Avenue, Cambridge, MA 02139\n\nLet me extract:\n- street: 456 Oak Avenue\n- city: Cambridge\n- state: MA\n- zip_code: 02139"
                 },
-                "fingerprint": 12035915249725261938
+                "fingerprint": "0c0529fcba4b4187"
               }
             },
             {
@@ -341,7 +323,7 @@
                   "id": "call_00_g8aRMT5YsSXKniFX19a24338",
                   "type": "function"
                 },
-                "fingerprint": 8017924382921845641
+                "fingerprint": "b405b10018a773e6"
               }
             }
           ],
@@ -358,24 +340,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "7103b111-c895-4832-ab38-320440834d83"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "The user provided an address: 456 Oak Avenue, Cambridge, MA 02139\n\nLet me extract:\n- street: 456 Oak Avenue\n- city: Cambridge\n- state: MA\n- zip_code: 02139",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"street\": \"456 Oak Avenue\", \"city\": \"Cambridge\", \"state\": \"MA\", \"zip_code\": \"02139\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_00_g8aRMT5YsSXKniFX19a24338",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15988884898037490576
           },
           "finish_reason": "tool_calls",
           "raw": {

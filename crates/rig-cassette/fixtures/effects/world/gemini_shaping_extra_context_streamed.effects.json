@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -110,7 +110,7 @@
                   "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
                   "thoughtSignature": "Eo0FCooFAWkUfROvOIO2PSXuIKaNYy54VoBnV5Om9WH4puMhYN/xMTD3je8PK4wAi11xUc+qfgWwp2ZXBI1STIoanSsu4t7xxKXdIrOgDw8JXXrMHsjFKq3WtzAyXwNKOdVylF/vnPzF21hylwTlxqsA7dzz/6O/3NGedIja3zXIJK/dbR+zTBzgfS8F6UiKX8QMYqII5ZWS17O5CfPkpVvXo6e6OekXVrgXAZk6YfbxHy44qNN9O/PbpdBNaSzQE29cCmrkBe20M+0xKpe6N5RWJrs/CdvFgJ4BDLQwgFrP8EY+KsMFJgnzSkN7pqt4dXdzI+PKkVBG9/XMVR6rDcDMaOEHtsMez1ij/AeqY7ZxlZPSJB3gfOGS4SCB6Tx3V/32yB8wZRJb09xcthtmB45xW3e5/tpyv41+E7691zxLKAQDmFoib3G26CnfnAU14RN2WjX7X0z7PqPoVqfbBhVT0TDdbyeYwsd+yAZ1uPwCheqrq00MAtGoOnDz3TqRhBXJPQAvCSrMXc3ybpdp/h18YGPoOxr79f1JZb3gUlZBi06T4SYSN/X/H4+llXiYL7T541o1A7oUSwgx/WxF82a3sn+fktN8v/xRd/Z8B099ZfKRtBFnpnQlxqv91yJn2uug3aATgUp20PqTtxq0ShEHp+0xlgaLEcVTDy+4VnkqCWOHfqxyYIhbbiNfran8d8z7kkzFNFAcUHzDvMEoHX1YryIfw5dpZI2N2e68fNAyWfoPAYhXLJYzAyh12vVdiWIN/rh+dKI3bJU/LiaN7bGQsK+kToY/VPE93l0cOdvsMIw6grDV7Wi3314/iQdl8/R/Nt4Aa0SbAJODQLtw+rFfRBmFV3+Z46hkgvIqboI="
                 },
-                "fingerprint": 14673726990416479137
+                "fingerprint": "ecd6ef868d76c88b"
               }
             }
           ],
@@ -126,13 +126,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "YQ_AavuxA_WgqtsPiPLz6QQ"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 5117098154201444803
           },
           "finish_reason": "stop",
           "raw": {
@@ -193,7 +186,7 @@
                   "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
                   "thoughtSignature": "Eo0FCooFAWkUfROvOIO2PSXuIKaNYy54VoBnV5Om9WH4puMhYN/xMTD3je8PK4wAi11xUc+qfgWwp2ZXBI1STIoanSsu4t7xxKXdIrOgDw8JXXrMHsjFKq3WtzAyXwNKOdVylF/vnPzF21hylwTlxqsA7dzz/6O/3NGedIja3zXIJK/dbR+zTBzgfS8F6UiKX8QMYqII5ZWS17O5CfPkpVvXo6e6OekXVrgXAZk6YfbxHy44qNN9O/PbpdBNaSzQE29cCmrkBe20M+0xKpe6N5RWJrs/CdvFgJ4BDLQwgFrP8EY+KsMFJgnzSkN7pqt4dXdzI+PKkVBG9/XMVR6rDcDMaOEHtsMez1ij/AeqY7ZxlZPSJB3gfOGS4SCB6Tx3V/32yB8wZRJb09xcthtmB45xW3e5/tpyv41+E7691zxLKAQDmFoib3G26CnfnAU14RN2WjX7X0z7PqPoVqfbBhVT0TDdbyeYwsd+yAZ1uPwCheqrq00MAtGoOnDz3TqRhBXJPQAvCSrMXc3ybpdp/h18YGPoOxr79f1JZb3gUlZBi06T4SYSN/X/H4+llXiYL7T541o1A7oUSwgx/WxF82a3sn+fktN8v/xRd/Z8B099ZfKRtBFnpnQlxqv91yJn2uug3aATgUp20PqTtxq0ShEHp+0xlgaLEcVTDy+4VnkqCWOHfqxyYIhbbiNfran8d8z7kkzFNFAcUHzDvMEoHX1YryIfw5dpZI2N2e68fNAyWfoPAYhXLJYzAyh12vVdiWIN/rh+dKI3bJU/LiaN7bGQsK+kToY/VPE93l0cOdvsMIw6grDV7Wi3314/iQdl8/R/Nt4Aa0SbAJODQLtw+rFfRBmFV3+Z46hkgvIqboI="
                 },
-                "fingerprint": 14673726990416479137
+                "fingerprint": "ecd6ef868d76c88b"
               }
             }
           }

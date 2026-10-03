@@ -112,7 +112,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -133,7 +133,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 3348718059324345086
+                "fingerprint": "3d83b97473124f4c"
               }
             }
           ],
@@ -299,7 +299,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -320,7 +320,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 3348718059324345086
+                    "fingerprint": "3d83b97473124f4c"
                   }
                 }
               ],
@@ -390,7 +390,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -411,7 +411,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 3348718059324345086
+                    "fingerprint": "3d83b97473124f4c"
                   }
                 }
               ],
@@ -472,7 +472,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -493,7 +493,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 3348718059324345086
+                    "fingerprint": "3d83b97473124f4c"
                   }
                 }
               ],
@@ -543,7 +543,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -564,7 +564,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 8088926427345446529
+                "fingerprint": "c9facc94f9e3b6f9"
               }
             }
           ],
@@ -722,7 +722,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -743,7 +743,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 8088926427345446529
+                    "fingerprint": "c9facc94f9e3b6f9"
                   }
                 }
               ],

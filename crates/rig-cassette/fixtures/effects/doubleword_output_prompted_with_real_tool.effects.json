@@ -136,7 +136,7 @@
                   "id": "call_5604c9df092e46e7b632cbfb",
                   "type": "function"
                 },
-                "fingerprint": 7574678875619858023
+                "fingerprint": "bce1433bb78bb57a"
               }
             }
           ],
@@ -153,23 +153,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_e82b3ff2-b258-4ac8-9249-8c8a43612dd0"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_5604c9df092e46e7b632cbfb",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1877472550211453829
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -295,7 +278,7 @@
                       "id": "call_5604c9df092e46e7b632cbfb",
                       "type": "function"
                     },
-                    "fingerprint": 7574678875619858023
+                    "fingerprint": "bce1433bb78bb57a"
                   }
                 }
               ],
@@ -306,24 +289,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_e82b3ff2-b258-4ac8-9249-8c8a43612dd0"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_5604c9df092e46e7b632cbfb",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 1877472550211453829
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -400,14 +366,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_fb983609-0837-4fc7-aae3-e418f3693b42"
-          },
-          "native": {
-            "item": {
-              "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the significance of the number 42.\"}",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 5470297181527638344
           },
           "finish_reason": "stop",
           "raw": {

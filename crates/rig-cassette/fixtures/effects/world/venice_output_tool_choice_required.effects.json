@@ -123,7 +123,7 @@
                   "id": "MixWwdT5P",
                   "type": "function"
                 },
-                "fingerprint": 10687955672855342879
+                "fingerprint": "29aa04100fdbb8f2"
               }
             }
           ],
@@ -138,25 +138,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RYlzicuxx1nHRNRD35qZVlDJ"
-          },
-          "native": {
-            "item": {
-              "content": "I'm sorry, but I don't have real-time access to the internet or specific tools to provide you with the latest information on local Rust meetups in Seattle. However, I can suggest that you check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information. These platforms often list upcoming events and meetups in your area. If you have any other questions or need further assistance, feel free to ask!",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"title\": \"Local Rust Meetup in Seattle\", \"category\": \"Technology/Software Development\", \"summary\": \"Check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information on local Rust meetups in Seattle.\"}",
-                    "name": "final_result"
-                  },
-                  "id": "MixWwdT5P",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1168307542923130873
           },
           "finish_reason": "tool_calls",
           "raw": {

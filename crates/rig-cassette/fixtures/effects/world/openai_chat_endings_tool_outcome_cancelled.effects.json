@@ -150,7 +150,7 @@
                   "id": "call_gy5MLW9nh6aQMIkxVA3lhEs2",
                   "type": "function"
                 },
-                "fingerprint": 11853062892822308319
+                "fingerprint": "ba639cf84466b2c6"
               }
             }
           ],
@@ -167,25 +167,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-ERDBTIYPxJh13ZwLryBDjQZ0mwgUH"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\":17,\"y\":25}",
-                    "name": "add"
-                  },
-                  "id": "call_gy5MLW9nh6aQMIkxVA3lhEs2",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 5487886547495195605
           },
           "provider_request_id": "req_d24e86144e5542858a689ff4c30b07d2",
           "finish_reason": "tool_calls",

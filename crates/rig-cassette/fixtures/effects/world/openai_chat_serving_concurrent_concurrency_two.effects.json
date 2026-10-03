@@ -289,7 +289,7 @@
                   "id": "call_ZVFBsVWhBCx43czNBggSxIFo",
                   "type": "function"
                 },
-                "fingerprint": 7074091697376947973
+                "fingerprint": "5079d7e6d78d62ce"
               }
             },
             {
@@ -310,7 +310,7 @@
                   "id": "call_ZEi2JhTqc65PdY9DkddpfDBO",
                   "type": "function"
                 },
-                "fingerprint": 15246909270270549671
+                "fingerprint": "7ca767be6da4868e"
               }
             }
           ],
@@ -327,31 +327,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeA5Mv9GeQeSOAUckzY92BJCNoV2"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_ZVFBsVWhBCx43czNBggSxIFo",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_ZEi2JhTqc65PdY9DkddpfDBO",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14871907633361484957
           },
           "provider_request_id": "req_001213630b77441781978b01620c7710",
           "finish_reason": "tool_calls",
@@ -479,7 +454,7 @@
                       "id": "call_ZVFBsVWhBCx43czNBggSxIFo",
                       "type": "function"
                     },
-                    "fingerprint": 7074091697376947973
+                    "fingerprint": "5079d7e6d78d62ce"
                   }
                 },
                 {
@@ -500,7 +475,7 @@
                       "id": "call_ZEi2JhTqc65PdY9DkddpfDBO",
                       "type": "function"
                     },
-                    "fingerprint": 15246909270270549671
+                    "fingerprint": "7ca767be6da4868e"
                   }
                 }
               ],
@@ -511,32 +486,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUeA5Mv9GeQeSOAUckzY92BJCNoV2"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_ZVFBsVWhBCx43czNBggSxIFo",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_ZEi2JhTqc65PdY9DkddpfDBO",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14871907633361484957
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -621,14 +571,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeA7iRqlOlFp8ghj9lKPBOHSeK1J"
-          },
-          "native": {
-            "item": {
-              "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 13121870336098923208
           },
           "provider_request_id": "req_e0feb1ee75bd438e84d034785bfb5f26",
           "finish_reason": "stop",

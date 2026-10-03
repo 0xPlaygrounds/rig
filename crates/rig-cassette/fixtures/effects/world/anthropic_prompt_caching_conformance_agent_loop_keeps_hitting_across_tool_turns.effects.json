@@ -148,7 +148,7 @@
                   "text": "I'll start by looking up the cache policy for 'prefix' first.",
                   "type": "text"
                 },
-                "fingerprint": 8221641958712752174
+                "fingerprint": "18143a0c3a65ecb6"
               }
             },
             {
@@ -174,7 +174,7 @@
                   "name": "lookup_cache_policy",
                   "type": "tool_use"
                 },
-                "fingerprint": 17166229160436839901
+                "fingerprint": "6ae87df206754066"
               }
             }
           ],
@@ -296,7 +296,7 @@
                       "text": "I'll start by looking up the cache policy for 'prefix' first.",
                       "type": "text"
                     },
-                    "fingerprint": 8221641958712752174
+                    "fingerprint": "18143a0c3a65ecb6"
                   }
                 },
                 {
@@ -322,7 +322,7 @@
                       "name": "lookup_cache_policy",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17166229160436839901
+                    "fingerprint": "6ae87df206754066"
                   }
                 }
               ],
@@ -393,7 +393,7 @@
                   "text": "Now I'll look up the cache policy for 'breakpoint'.",
                   "type": "text"
                 },
-                "fingerprint": 14837009626797972340
+                "fingerprint": "e091d5d7dce21c30"
               }
             },
             {
@@ -419,7 +419,7 @@
                   "name": "lookup_cache_policy",
                   "type": "tool_use"
                 },
-                "fingerprint": 11929604573109791895
+                "fingerprint": "2fb483d120b1c462"
               }
             }
           ],
@@ -541,7 +541,7 @@
                       "text": "I'll start by looking up the cache policy for 'prefix' first.",
                       "type": "text"
                     },
-                    "fingerprint": 8221641958712752174
+                    "fingerprint": "18143a0c3a65ecb6"
                   }
                 },
                 {
@@ -567,7 +567,7 @@
                       "name": "lookup_cache_policy",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17166229160436839901
+                    "fingerprint": "6ae87df206754066"
                   }
                 }
               ],
@@ -609,7 +609,7 @@
                       "text": "Now I'll look up the cache policy for 'breakpoint'.",
                       "type": "text"
                     },
-                    "fingerprint": 14837009626797972340
+                    "fingerprint": "e091d5d7dce21c30"
                   }
                 },
                 {
@@ -635,7 +635,7 @@
                       "name": "lookup_cache_policy",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11929604573109791895
+                    "fingerprint": "2fb483d120b1c462"
                   }
                 }
               ],
@@ -706,7 +706,7 @@
                   "text": "cache probe ready",
                   "type": "text"
                 },
-                "fingerprint": 16273850518116636134
+                "fingerprint": "91f87f8814c86222"
               }
             }
           ],

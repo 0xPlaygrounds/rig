@@ -141,7 +141,7 @@
                   "id": "chatcmpl-tool-981f3c122aa05e6a",
                   "type": "function"
                 },
-                "fingerprint": 9020879932589247099
+                "fingerprint": "58911ed09ccc82ca"
               }
             }
           ],
@@ -158,23 +158,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976207-V7MnBQfINJefxU6xz86C"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "chatcmpl-tool-981f3c122aa05e6a",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 490465098540091523
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -254,7 +237,7 @@
                   "id": "chatcmpl-tool-981f3c122aa05e6a",
                   "type": "function"
                 },
-                "fingerprint": 9020879932589247099
+                "fingerprint": "58911ed09ccc82ca"
               }
             }
           }
@@ -357,7 +340,7 @@
                       "id": "chatcmpl-tool-981f3c122aa05e6a",
                       "type": "function"
                     },
-                    "fingerprint": 9020879932589247099
+                    "fingerprint": "58911ed09ccc82ca"
                   }
                 }
               ],
@@ -368,24 +351,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790976207-V7MnBQfINJefxU6xz86C"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "chatcmpl-tool-981f3c122aa05e6a",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 490465098540091523
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -462,13 +428,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976209-HabEf3tUX2JIfA2Sop4B"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

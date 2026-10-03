@@ -152,7 +152,7 @@
                   "id": "call_12658de495544f39b1343880",
                   "type": "function"
                 },
-                "fingerprint": 16417595178594775333
+                "fingerprint": "228fcad8e131b09c"
               }
             }
           ],
@@ -169,23 +169,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_bb6f5432-0dac-42a7-914f-233fae2ae664"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_12658de495544f39b1343880",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2049652597842193315
           },
           "finish_reason": "tool_calls",
           "raw": {

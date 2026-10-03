@@ -126,7 +126,7 @@
                   "id": "call_Zl9z7RjeBvqOunGKxMqtBXml",
                   "type": "function"
                 },
-                "fingerprint": 6994082501670556744
+                "fingerprint": "3dcb5f4e43b325bb"
               }
             }
           ],
@@ -143,25 +143,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-ERDAxzsOeWzIbCWCv8CSaa7lukL2O"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "ping"
-                  },
-                  "id": "call_Zl9z7RjeBvqOunGKxMqtBXml",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16249876782941822072
           },
           "provider_request_id": "req_7797ec5a043b4e0588b5b6c865e9cb37",
           "finish_reason": "tool_calls",

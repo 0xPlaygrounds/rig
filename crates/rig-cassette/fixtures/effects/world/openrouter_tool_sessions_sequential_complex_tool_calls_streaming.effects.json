@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 16,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 98,
+        "batch": 100,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 101,
+        "batch": 104,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 103,
+        "batch": 106,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 141,
+        "batch": 143,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 144,
+        "batch": 146,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 145,
+        "batch": 147,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 177,
+        "batch": 188,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,97 +76,17 @@
         }
       },
       {
-        "batch": 180,
+        "batch": 192,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 182,
+        "batch": 193,
         "id": 7,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 187,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 188,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 189,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 190,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 191,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 192,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 193,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 194,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 195,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 196,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -178,7 +98,7 @@
         }
       },
       {
-        "batch": 200,
+        "batch": 199,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -203,14 +123,6 @@
       },
       {
         "batch": 203,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 204,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -258,27 +170,11 @@
         }
       },
       {
-        "batch": 210,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 211,
         "id": 8,
         "kind": {
           "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 212,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -290,7 +186,7 @@
         }
       },
       {
-        "batch": 216,
+        "batch": 214,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -298,7 +194,127 @@
         }
       },
       {
-        "batch": 216,
+        "batch": 215,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 217,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 218,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 219,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 220,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 222,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 223,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 224,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 225,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 226,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 228,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 229,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 230,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 231,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 232,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 236,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -614,7 +630,7 @@
                   "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                   "type": "function"
                 },
-                "fingerprint": 8766763812417017961
+                "fingerprint": "7e6249409b81f3ae"
               }
             }
           ],
@@ -632,23 +648,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "ping_empty"
-                  },
-                  "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 8733142130881323655
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -728,7 +727,7 @@
                   "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                   "type": "function"
                 },
-                "fingerprint": 8766763812417017961
+                "fingerprint": "7e6249409b81f3ae"
               }
             }
           }
@@ -809,7 +808,7 @@
                       "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 8766763812417017961
+                    "fingerprint": "7e6249409b81f3ae"
                   }
                 }
               ],
@@ -820,24 +819,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8733142130881323655
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1010,7 +992,7 @@
                   "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                   "type": "function"
                 },
-                "fingerprint": 16342013323427368485
+                "fingerprint": "4941e4e5fa409c92"
               }
             }
           ],
@@ -1028,23 +1010,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
-                    "name": "inspect_manifest"
-                  },
-                  "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 985371752751468039
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1141,7 +1106,7 @@
                   "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                   "type": "function"
                 },
-                "fingerprint": 16342013323427368485
+                "fingerprint": "4941e4e5fa409c92"
               }
             }
           }
@@ -1222,7 +1187,7 @@
                       "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 8766763812417017961
+                    "fingerprint": "7e6249409b81f3ae"
                   }
                 }
               ],
@@ -1233,24 +1198,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8733142130881323655
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1308,7 +1256,7 @@
                       "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     },
-                    "fingerprint": 16342013323427368485
+                    "fingerprint": "4941e4e5fa409c92"
                   }
                 }
               ],
@@ -1319,24 +1267,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 985371752751468039
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1500,7 +1431,7 @@
                   "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                   "type": "function"
                 },
-                "fingerprint": 18090450621014759766
+                "fingerprint": "718c770c0dea937b"
               }
             }
           ],
@@ -1518,23 +1449,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790978373-vdpryICSmP5piLmsvyUp"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
-                    "name": "join_labels"
-                  },
-                  "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 8664140557831495114
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1622,7 +1536,7 @@
                   "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                   "type": "function"
                 },
-                "fingerprint": 18090450621014759766
+                "fingerprint": "718c770c0dea937b"
               }
             }
           }
@@ -1703,7 +1617,7 @@
                       "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 8766763812417017961
+                    "fingerprint": "7e6249409b81f3ae"
                   }
                 }
               ],
@@ -1714,24 +1628,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8733142130881323655
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1789,7 +1686,7 @@
                       "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     },
-                    "fingerprint": 16342013323427368485
+                    "fingerprint": "4941e4e5fa409c92"
                   }
                 }
               ],
@@ -1800,24 +1697,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 985371752751468039
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1866,7 +1746,7 @@
                       "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                       "type": "function"
                     },
-                    "fingerprint": 18090450621014759766
+                    "fingerprint": "718c770c0dea937b"
                   }
                 }
               ],
@@ -1877,24 +1757,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978373-vdpryICSmP5piLmsvyUp"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
-                        "name": "join_labels"
-                      },
-                      "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8664140557831495114
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2052,7 +1915,7 @@
                   "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                   "type": "function"
                 },
-                "fingerprint": 17008967999681552231
+                "fingerprint": "32a2417fe1c2e74a"
               }
             }
           ],
@@ -2070,23 +1933,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790978374-7FrbwKLBcdTMrgb3gVhu"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                    "name": "escape_echo"
-                  },
-                  "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1811592314675305885
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2168,7 +2014,7 @@
                   "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                   "type": "function"
                 },
-                "fingerprint": 17008967999681552231
+                "fingerprint": "32a2417fe1c2e74a"
               }
             }
           }
@@ -2249,7 +2095,7 @@
                       "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 8766763812417017961
+                    "fingerprint": "7e6249409b81f3ae"
                   }
                 }
               ],
@@ -2260,24 +2106,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8733142130881323655
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2335,7 +2164,7 @@
                       "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     },
-                    "fingerprint": 16342013323427368485
+                    "fingerprint": "4941e4e5fa409c92"
                   }
                 }
               ],
@@ -2346,24 +2175,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 985371752751468039
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2412,7 +2224,7 @@
                       "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                       "type": "function"
                     },
-                    "fingerprint": 18090450621014759766
+                    "fingerprint": "718c770c0dea937b"
                   }
                 }
               ],
@@ -2423,24 +2235,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978373-vdpryICSmP5piLmsvyUp"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
-                        "name": "join_labels"
-                      },
-                      "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8664140557831495114
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2483,7 +2278,7 @@
                       "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                       "type": "function"
                     },
-                    "fingerprint": 17008967999681552231
+                    "fingerprint": "32a2417fe1c2e74a"
                   }
                 }
               ],
@@ -2494,24 +2289,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790978374-7FrbwKLBcdTMrgb3gVhu"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                        "name": "escape_echo"
-                      },
-                      "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 1811592314675305885
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2668,13 +2446,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790978374-tgKILIYDAnMP2r3izziT"
-          },
-          "native": {
-            "item": {
-              "content": "The production-readiness scenario results are: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
-              "role": "assistant"
-            },
-            "fingerprint": 17407549297619358677
           },
           "finish_reason": "stop",
           "raw": {

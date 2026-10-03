@@ -133,13 +133,6 @@
             "response_model": "deepseek-flash",
             "response_id": "db76bd87-d97c-4eb9-913e-ee10cf217200"
           },
-          "native": {
-            "item": {
-              "content": "Ada.",
-              "role": "assistant"
-            },
-            "fingerprint": 12427621104539078559
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -206,14 +199,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "db76bd87-d97c-4eb9-913e-ee10cf217200"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "Ada.",
-                  "role": "assistant"
-                },
-                "fingerprint": 12427621104539078559
-              }
+              "stop": "stop"
             }
           ]
         }

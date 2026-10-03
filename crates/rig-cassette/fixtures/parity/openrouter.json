@@ -70,19 +70,19 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Your favorite color is teal, the label is crimson-harbor, and you chose the canary release lane.",
+        "text": "Your favorite color is teal, the harbor label is crimson-harbor, and you chose the canary release lane.",
         "native": null
       }
     ],
     "usage": {
-      "input_tokens": 196,
-      "output_tokens": 23,
-      "total_tokens": 219,
+      "input_tokens": 199,
+      "output_tokens": 24,
+      "total_tokens": 223,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790925565-Ud7Ew5LprmuuleOu41B0",
+    "response_id": "gen-1791019693-Izt6iu1QSJ3c67TFdd6R",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -93,7 +93,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Your favorite color is teal, the label is crimson-harbor, and you chose the canary release lane.",
+            "content": "Your favorite color is teal, the harbor label is crimson-harbor, and you chose the canary release lane.",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -102,34 +102,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790925565-Ud7Ew5LprmuuleOu41B0",
+      "id": "gen-1791019693-Izt6iu1QSJ3c67TFdd6R",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
       "service_tier": "default",
       "system_fingerprint": "fp_1d2356bce8",
       "usage": {
-        "completion_tokens": 23,
+        "completion_tokens": 24,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.00072,
+        "cost": 0.0007375,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.00023,
-          "upstream_inference_cost": 0.00072,
-          "upstream_inference_prompt_cost": 0.00049
+          "upstream_inference_completions_cost": 0.00024,
+          "upstream_inference_cost": 0.0007375,
+          "upstream_inference_prompt_cost": 0.0004975
         },
         "is_byok": false,
-        "prompt_tokens": 196,
+        "prompt_tokens": 199,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 219
+        "total_tokens": 223
       }
     }
   },
@@ -217,7 +217,7 @@
               "id": "call_xgCAOfgeY4hXUz0s9pRm3Gls",
               "type": "function"
             },
-            "fingerprint": 17851309748996490499
+            "fingerprint": "f711d673cc7da868"
           }
         }
       },
@@ -235,7 +235,7 @@
               "id": "call_AgvyIELWwkpeRU7lGuvT8c6U",
               "type": "function"
             },
-            "fingerprint": 5063209411268139351
+            "fingerprint": "b87fc175016d6426"
           }
         }
       }
@@ -403,7 +403,7 @@
               "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
               "type": "function"
             },
-            "fingerprint": 9453530483797388230
+            "fingerprint": "14c022c7f629c303"
           }
         }
       },
@@ -421,7 +421,7 @@
               "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
               "type": "function"
             },
-            "fingerprint": 11078893725985676210
+            "fingerprint": "b1f5f8109f5bc10b"
           }
         }
       }
@@ -564,7 +564,7 @@
               "id": "call_8Nfaknxf181yU7YoShxX7RSd",
               "type": "function"
             },
-            "fingerprint": 17268326110754089886
+            "fingerprint": "4ea30f52ff6618d5"
           }
         }
       }
@@ -634,7 +634,7 @@
               "id": "call_R9TubcSGVuRlo8NfFF9le3wY",
               "type": "function"
             },
-            "fingerprint": 1311934652964549555
+            "fingerprint": "286263bc03f9fe04"
           }
         }
       }
@@ -743,7 +743,7 @@
               "id": "call_LaFhH5XPVOk6vaHxoG4yB7RF",
               "type": "function"
             },
-            "fingerprint": 2782438399900499524
+            "fingerprint": "3d4f43f4ca77920f"
           }
         }
       }
@@ -843,7 +843,7 @@
               "id": "call_ex9aPXY67VYdiECpWZtijhqg",
               "type": "function"
             },
-            "fingerprint": 12077180941556566156
+            "fingerprint": "a84e30041b21eb1d"
           }
         }
       }
@@ -937,7 +937,7 @@
               "id": "call_HbaoygNaCgIwWeDLKSePztzs",
               "type": "function"
             },
-            "fingerprint": 6675966961830972901
+            "fingerprint": "f720931de03ab364"
           }
         }
       }
@@ -1096,7 +1096,7 @@
               "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
               "type": "function"
             },
-            "fingerprint": 8766763812417017961
+            "fingerprint": "7e6249409b81f3ae"
           }
         }
       }
@@ -1183,7 +1183,7 @@
               "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
               "type": "function"
             },
-            "fingerprint": 16342013323427368485
+            "fingerprint": "4941e4e5fa409c92"
           }
         }
       }
@@ -1261,7 +1261,7 @@
               "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
               "type": "function"
             },
-            "fingerprint": 18090450621014759766
+            "fingerprint": "718c770c0dea937b"
           }
         }
       }
@@ -1333,7 +1333,7 @@
               "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
               "type": "function"
             },
-            "fingerprint": 17008967999681552231
+            "fingerprint": "32a2417fe1c2e74a"
           }
         }
       }
@@ -1786,7 +1786,7 @@
               "id": "call_fv3ubVl9yrU9F9Q6VolXP8K0",
               "type": "function"
             },
-            "fingerprint": 16716601818366475136
+            "fingerprint": "f86fdd42084383c1"
           }
         }
       }
@@ -1882,7 +1882,7 @@
               "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
               "type": "function"
             },
-            "fingerprint": 9653243133601246653
+            "fingerprint": "30ed285c02df8e12"
           }
         }
       }
@@ -1978,7 +1978,7 @@
               "id": "call_6gWZ1TWO9e4wFBbCrEOwZCq8",
               "type": "function"
             },
-            "fingerprint": 12201274326037289950
+            "fingerprint": "3995d9a081e5ef9d"
           }
         }
       }
@@ -2074,7 +2074,7 @@
               "id": "call_I4NKuOsyQYHERa8VwNGjy8nc",
               "type": "function"
             },
-            "fingerprint": 9901934311465277527
+            "fingerprint": "df327e82f1de6ee6"
           }
         }
       }
@@ -2171,7 +2171,7 @@
               "id": "call_5bTaAoyWUPcI0f12bgh2zweb",
               "type": "function"
             },
-            "fingerprint": 7583440987752350036
+            "fingerprint": "09036929d237c0ff"
           }
         }
       }
@@ -2267,7 +2267,7 @@
               "id": "call_X53mIIO8nUn0JjIJqoJs1x0O",
               "type": "function"
             },
-            "fingerprint": 6873670308450694336
+            "fingerprint": "c2e02a4fcb2a8d73"
           }
         }
       }
@@ -2363,7 +2363,7 @@
               "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
               "type": "function"
             },
-            "fingerprint": 1614758669980730737
+            "fingerprint": "4e5507c6c8eb26de"
           }
         }
       }
@@ -2460,7 +2460,7 @@
               "id": "call_2DkWoYjzwskyOhv0JSVZ5Duq",
               "type": "function"
             },
-            "fingerprint": 13663654279018170391
+            "fingerprint": "762ed161b9e723a0"
           }
         }
       }
@@ -2544,14 +2544,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 64,
-      "output_tokens": 3,
-      "total_tokens": 67,
+      "input_tokens": 100,
+      "output_tokens": 4,
+      "total_tokens": 104,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098084-fQnZuG70xUyQ7RVsMuox",
+    "response_id": "gen-1791020111-cRMDypI1U7yh4BXjNNyo",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -2571,34 +2571,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098084-fQnZuG70xUyQ7RVsMuox",
+      "id": "gen-1791020111-cRMDypI1U7yh4BXjNNyo",
       "model": "openai/gpt-4.1-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 3,
+        "completion_tokens": 4,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000304,
+        "cost": 0.0000464,
         "cost_details": {
-          "upstream_inference_completions_cost": 4.8e-6,
-          "upstream_inference_cost": 0.0000304,
-          "upstream_inference_prompt_cost": 0.0000256
+          "upstream_inference_completions_cost": 6.4e-6,
+          "upstream_inference_cost": 0.0000464,
+          "upstream_inference_prompt_cost": 0.00004
         },
         "is_byok": false,
-        "prompt_tokens": 64,
+        "prompt_tokens": 100,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 67
+        "total_tokens": 104
       }
     }
   },
@@ -2611,14 +2611,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 42,
-      "output_tokens": 5,
-      "total_tokens": 47,
+      "input_tokens": 66,
+      "output_tokens": 6,
+      "total_tokens": 72,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098086-fcVnNiez2KsEjvtMWYSn",
+    "response_id": "gen-1791020118-DkmJ8JutSx02Pz3UdGLl",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -2638,34 +2638,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098086-fcVnNiez2KsEjvtMWYSn",
+      "id": "gen-1791020118-DkmJ8JutSx02Pz3UdGLl",
       "model": "openai/gpt-4.1-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 5,
+        "completion_tokens": 6,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000248,
+        "cost": 0.000036,
         "cost_details": {
-          "upstream_inference_completions_cost": 8e-6,
-          "upstream_inference_cost": 0.0000248,
-          "upstream_inference_prompt_cost": 0.0000168
+          "upstream_inference_completions_cost": 9.6e-6,
+          "upstream_inference_cost": 0.000036,
+          "upstream_inference_prompt_cost": 0.0000264
         },
         "is_byok": false,
-        "prompt_tokens": 42,
+        "prompt_tokens": 66,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 47
+        "total_tokens": 72
       }
     }
   },
@@ -2745,14 +2745,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 64,
-      "output_tokens": 3,
-      "total_tokens": 67,
+      "input_tokens": 100,
+      "output_tokens": 4,
+      "total_tokens": 104,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098088-SBLlyi13fCM91LAxBZBr",
+    "response_id": "gen-1791020125-suGV0pILiYDSTB3QwXeG",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -2772,34 +2772,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098088-SBLlyi13fCM91LAxBZBr",
+      "id": "gen-1791020125-suGV0pILiYDSTB3QwXeG",
       "model": "openai/gpt-4.1-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 3,
+        "completion_tokens": 4,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000304,
+        "cost": 0.0000464,
         "cost_details": {
-          "upstream_inference_completions_cost": 4.8e-6,
-          "upstream_inference_cost": 0.0000304,
-          "upstream_inference_prompt_cost": 0.0000256
+          "upstream_inference_completions_cost": 6.4e-6,
+          "upstream_inference_cost": 0.0000464,
+          "upstream_inference_prompt_cost": 0.00004
         },
         "is_byok": false,
-        "prompt_tokens": 64,
+        "prompt_tokens": 100,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 67
+        "total_tokens": 104
       }
     }
   },
@@ -2812,14 +2812,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 42,
-      "output_tokens": 5,
-      "total_tokens": 47,
+      "input_tokens": 66,
+      "output_tokens": 6,
+      "total_tokens": 72,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098089-wthlJTfk3NR2iqgy2qXS",
+    "response_id": "gen-1791020132-Hr2JEzipoqRVTpSDbdWT",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
@@ -2839,34 +2839,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098089-wthlJTfk3NR2iqgy2qXS",
+      "id": "gen-1791020132-Hr2JEzipoqRVTpSDbdWT",
       "model": "openai/gpt-4.1-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 5,
+        "completion_tokens": 6,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000248,
+        "cost": 0.000036,
         "cost_details": {
-          "upstream_inference_completions_cost": 8e-6,
-          "upstream_inference_cost": 0.0000248,
-          "upstream_inference_prompt_cost": 0.0000168
+          "upstream_inference_completions_cost": 9.6e-6,
+          "upstream_inference_cost": 0.000036,
+          "upstream_inference_prompt_cost": 0.0000264
         },
         "is_byok": false,
-        "prompt_tokens": 42,
+        "prompt_tokens": 66,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 47
+        "total_tokens": 72
       }
     }
   },
@@ -2946,14 +2946,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 84,
-      "output_tokens": 2,
-      "total_tokens": 86,
+      "input_tokens": 126,
+      "output_tokens": 3,
+      "total_tokens": 129,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098091-lTflYgQiK8sABb9TofOs",
+    "response_id": "gen-1791020139-v1XIswBiCZDkeV2oOmyH",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -2973,34 +2973,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098091-lTflYgQiK8sABb9TofOs",
+      "id": "gen-1791020139-v1XIswBiCZDkeV2oOmyH",
       "model": "openai/gpt-4o-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_9ca161d435",
+      "service_tier": "default",
+      "system_fingerprint": "fp_582c5eeeb7",
       "usage": {
-        "completion_tokens": 2,
+        "completion_tokens": 3,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000138,
+        "cost": 0.0000207,
         "cost_details": {
-          "upstream_inference_completions_cost": 1.2e-6,
-          "upstream_inference_cost": 0.0000138,
-          "upstream_inference_prompt_cost": 0.0000126
+          "upstream_inference_completions_cost": 1.8e-6,
+          "upstream_inference_cost": 0.0000207,
+          "upstream_inference_prompt_cost": 0.0000189
         },
         "is_byok": false,
-        "prompt_tokens": 84,
+        "prompt_tokens": 126,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 86
+        "total_tokens": 129
       }
     }
   },
@@ -3013,14 +3013,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 44,
-      "output_tokens": 4,
-      "total_tokens": 48,
+      "input_tokens": 74,
+      "output_tokens": 5,
+      "total_tokens": 79,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098092-dhW5VkTrv0f4JJQrQMbP",
+    "response_id": "gen-1791020145-XtsTFa44BX1reZvgs5qE",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -3040,34 +3040,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098092-dhW5VkTrv0f4JJQrQMbP",
+      "id": "gen-1791020145-XtsTFa44BX1reZvgs5qE",
       "model": "openai/gpt-4o-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_f70887b4d3",
+      "service_tier": "default",
+      "system_fingerprint": "fp_9fbc67c88f",
       "usage": {
-        "completion_tokens": 4,
+        "completion_tokens": 5,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 9e-6,
+        "cost": 0.0000141,
         "cost_details": {
-          "upstream_inference_completions_cost": 2.4e-6,
-          "upstream_inference_cost": 9e-6,
-          "upstream_inference_prompt_cost": 6.6e-6
+          "upstream_inference_completions_cost": 3e-6,
+          "upstream_inference_cost": 0.0000141,
+          "upstream_inference_prompt_cost": 0.0000111
         },
         "is_byok": false,
-        "prompt_tokens": 44,
+        "prompt_tokens": 74,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 48
+        "total_tokens": 79
       }
     }
   },
@@ -3147,14 +3147,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 84,
-      "output_tokens": 2,
-      "total_tokens": 86,
+      "input_tokens": 126,
+      "output_tokens": 3,
+      "total_tokens": 129,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098094-RJ0xVMWLgbl3aooIo93L",
+    "response_id": "gen-1791020152-9y4mfjo4E8vMxoeuYSJj",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -3174,34 +3174,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098094-RJ0xVMWLgbl3aooIo93L",
+      "id": "gen-1791020152-9y4mfjo4E8vMxoeuYSJj",
       "model": "openai/gpt-4o-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_9ca161d435",
+      "service_tier": "default",
+      "system_fingerprint": "fp_582c5eeeb7",
       "usage": {
-        "completion_tokens": 2,
+        "completion_tokens": 3,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000138,
+        "cost": 0.0000207,
         "cost_details": {
-          "upstream_inference_completions_cost": 1.2e-6,
-          "upstream_inference_cost": 0.0000138,
-          "upstream_inference_prompt_cost": 0.0000126
+          "upstream_inference_completions_cost": 1.8e-6,
+          "upstream_inference_cost": 0.0000207,
+          "upstream_inference_prompt_cost": 0.0000189
         },
         "is_byok": false,
-        "prompt_tokens": 84,
+        "prompt_tokens": 126,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 86
+        "total_tokens": 129
       }
     }
   },
@@ -3214,14 +3214,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 44,
-      "output_tokens": 4,
-      "total_tokens": 48,
+      "input_tokens": 74,
+      "output_tokens": 5,
+      "total_tokens": 79,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098095-BE2xQ9OtmO1PawiIIYuV",
+    "response_id": "gen-1791020159-9bNWClmeM19u8OSy8gLH",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
@@ -3241,34 +3241,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790098095-BE2xQ9OtmO1PawiIIYuV",
+      "id": "gen-1791020159-9bNWClmeM19u8OSy8gLH",
       "model": "openai/gpt-4o-mini",
       "object": "chat.completion",
       "provider": "OpenAI",
-      "service_tier": null,
-      "system_fingerprint": "fp_f70887b4d3",
+      "service_tier": "default",
+      "system_fingerprint": "fp_9fbc67c88f",
       "usage": {
-        "completion_tokens": 4,
+        "completion_tokens": 5,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 9e-6,
+        "cost": 0.0000141,
         "cost_details": {
-          "upstream_inference_completions_cost": 2.4e-6,
-          "upstream_inference_cost": 9e-6,
-          "upstream_inference_prompt_cost": 6.6e-6
+          "upstream_inference_completions_cost": 3e-6,
+          "upstream_inference_cost": 0.0000141,
+          "upstream_inference_prompt_cost": 0.0000111
         },
         "is_byok": false,
-        "prompt_tokens": 44,
+        "prompt_tokens": 74,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 48
+        "total_tokens": 79
       }
     }
   },
@@ -3348,43 +3348,43 @@
       }
     ],
     "usage": {
-      "input_tokens": 64,
-      "output_tokens": 3,
-      "total_tokens": 67,
+      "input_tokens": 100,
+      "output_tokens": 4,
+      "total_tokens": 104,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098096-GxZUhfSOI5DfHSZ02HjQ",
+    "response_id": "gen-1791020165-T2f8f5uN24pOjr4H5wbT",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 3,
+        "completion_tokens": 4,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000304,
+        "cost": 0.0000464,
         "cost_details": {
-          "upstream_inference_completions_cost": 4.8e-6,
-          "upstream_inference_cost": 0.0000304,
-          "upstream_inference_prompt_cost": 0.0000256
+          "upstream_inference_completions_cost": 6.4e-6,
+          "upstream_inference_cost": 0.0000464,
+          "upstream_inference_prompt_cost": 0.00004
         },
         "is_byok": false,
-        "prompt_tokens": 64,
+        "prompt_tokens": 100,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 67
+        "total_tokens": 104
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098096-GxZUhfSOI5DfHSZ02HjQ",
+      "response_id": "gen-1791020165-T2f8f5uN24pOjr4H5wbT",
       "model": "openai/gpt-4.1-mini",
       "additional_params": {
         "created": 0,
@@ -3403,43 +3403,43 @@
       }
     ],
     "usage": {
-      "input_tokens": 42,
-      "output_tokens": 5,
-      "total_tokens": 47,
+      "input_tokens": 66,
+      "output_tokens": 6,
+      "total_tokens": 72,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098098-RdHFl4PniGtrbweRFiEJ",
+    "response_id": "gen-1791020172-YkoWKqeh3lCredmUr7S0",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 5,
+        "completion_tokens": 6,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000248,
+        "cost": 0.000036,
         "cost_details": {
-          "upstream_inference_completions_cost": 8e-6,
-          "upstream_inference_cost": 0.0000248,
-          "upstream_inference_prompt_cost": 0.0000168
+          "upstream_inference_completions_cost": 9.6e-6,
+          "upstream_inference_cost": 0.000036,
+          "upstream_inference_prompt_cost": 0.0000264
         },
         "is_byok": false,
-        "prompt_tokens": 42,
+        "prompt_tokens": 66,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 47
+        "total_tokens": 72
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098098-RdHFl4PniGtrbweRFiEJ",
+      "response_id": "gen-1791020172-YkoWKqeh3lCredmUr7S0",
       "model": "openai/gpt-4.1-mini",
       "additional_params": {
         "created": 0,
@@ -3513,43 +3513,43 @@
       }
     ],
     "usage": {
-      "input_tokens": 64,
-      "output_tokens": 3,
-      "total_tokens": 67,
+      "input_tokens": 100,
+      "output_tokens": 4,
+      "total_tokens": 104,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098100-UIFPfJwYLrvkA4XptbQe",
+    "response_id": "gen-1791020179-VysZUHS3m8l1fJj54rrb",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 3,
+        "completion_tokens": 4,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000304,
+        "cost": 0.0000464,
         "cost_details": {
-          "upstream_inference_completions_cost": 4.8e-6,
-          "upstream_inference_cost": 0.0000304,
-          "upstream_inference_prompt_cost": 0.0000256
+          "upstream_inference_completions_cost": 6.4e-6,
+          "upstream_inference_cost": 0.0000464,
+          "upstream_inference_prompt_cost": 0.00004
         },
         "is_byok": false,
-        "prompt_tokens": 64,
+        "prompt_tokens": 100,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 67
+        "total_tokens": 104
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098100-UIFPfJwYLrvkA4XptbQe",
+      "response_id": "gen-1791020179-VysZUHS3m8l1fJj54rrb",
       "model": "openai/gpt-4.1-mini",
       "additional_params": {
         "created": 0,
@@ -3568,43 +3568,43 @@
       }
     ],
     "usage": {
-      "input_tokens": 42,
-      "output_tokens": 5,
-      "total_tokens": 47,
+      "input_tokens": 66,
+      "output_tokens": 6,
+      "total_tokens": 72,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098101-RfMytqBHtEFpSaR6KncI",
+    "response_id": "gen-1791020186-cGX2OQH537jTFnrFdJiM",
     "finish_reason": "stop",
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 5,
+        "completion_tokens": 6,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000248,
+        "cost": 0.000036,
         "cost_details": {
-          "upstream_inference_completions_cost": 8e-6,
-          "upstream_inference_cost": 0.0000248,
-          "upstream_inference_prompt_cost": 0.0000168
+          "upstream_inference_completions_cost": 9.6e-6,
+          "upstream_inference_cost": 0.000036,
+          "upstream_inference_prompt_cost": 0.0000264
         },
         "is_byok": false,
-        "prompt_tokens": 42,
+        "prompt_tokens": 66,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 47
+        "total_tokens": 72
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098101-RfMytqBHtEFpSaR6KncI",
+      "response_id": "gen-1791020186-cGX2OQH537jTFnrFdJiM",
       "model": "openai/gpt-4.1-mini",
       "additional_params": {
         "created": 0,
@@ -3678,50 +3678,50 @@
       }
     ],
     "usage": {
-      "input_tokens": 84,
-      "output_tokens": 2,
-      "total_tokens": 86,
+      "input_tokens": 126,
+      "output_tokens": 3,
+      "total_tokens": 129,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098103-0MXMn7hHvNNGTxNAqb4t",
+    "response_id": "gen-1791020193-3NoC0Nk4ChtdLiXgbBZC",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 2,
+        "completion_tokens": 3,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000138,
+        "cost": 0.0000207,
         "cost_details": {
-          "upstream_inference_completions_cost": 1.2e-6,
-          "upstream_inference_cost": 0.0000138,
-          "upstream_inference_prompt_cost": 0.0000126
+          "upstream_inference_completions_cost": 1.8e-6,
+          "upstream_inference_cost": 0.0000207,
+          "upstream_inference_prompt_cost": 0.0000189
         },
         "is_byok": false,
-        "prompt_tokens": 84,
+        "prompt_tokens": 126,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 86
+        "total_tokens": 129
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098103-0MXMn7hHvNNGTxNAqb4t",
+      "response_id": "gen-1791020193-3NoC0Nk4ChtdLiXgbBZC",
       "model": "openai/gpt-4o-mini",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_9ca161d435",
-        "service_tier": null
+        "system_fingerprint": "fp_582c5eeeb7",
+        "service_tier": "default"
       }
     }
   },
@@ -3734,50 +3734,50 @@
       }
     ],
     "usage": {
-      "input_tokens": 44,
-      "output_tokens": 4,
-      "total_tokens": 48,
+      "input_tokens": 74,
+      "output_tokens": 5,
+      "total_tokens": 79,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098104-9o4NBu7F5e3GUacqHzeX",
+    "response_id": "gen-1791020199-HRsvvLFpDhbjUXLNd1LM",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 4,
+        "completion_tokens": 5,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 9e-6,
+        "cost": 0.0000141,
         "cost_details": {
-          "upstream_inference_completions_cost": 2.4e-6,
-          "upstream_inference_cost": 9e-6,
-          "upstream_inference_prompt_cost": 6.6e-6
+          "upstream_inference_completions_cost": 3e-6,
+          "upstream_inference_cost": 0.0000141,
+          "upstream_inference_prompt_cost": 0.0000111
         },
         "is_byok": false,
-        "prompt_tokens": 44,
+        "prompt_tokens": 74,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 48
+        "total_tokens": 79
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098104-9o4NBu7F5e3GUacqHzeX",
+      "response_id": "gen-1791020199-HRsvvLFpDhbjUXLNd1LM",
       "model": "openai/gpt-4o-mini",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_f70887b4d3",
-        "service_tier": null
+        "system_fingerprint": "fp_9fbc67c88f",
+        "service_tier": "default"
       }
     }
   },
@@ -3846,50 +3846,50 @@
       }
     ],
     "usage": {
-      "input_tokens": 84,
-      "output_tokens": 2,
-      "total_tokens": 86,
+      "input_tokens": 126,
+      "output_tokens": 3,
+      "total_tokens": 129,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098105-hElvgsQ2EkKLIswnMc3z",
+    "response_id": "gen-1791020206-5zuSHcJg5eJwT1aIh2TV",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 2,
+        "completion_tokens": 3,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0000138,
+        "cost": 0.0000207,
         "cost_details": {
-          "upstream_inference_completions_cost": 1.2e-6,
-          "upstream_inference_cost": 0.0000138,
-          "upstream_inference_prompt_cost": 0.0000126
+          "upstream_inference_completions_cost": 1.8e-6,
+          "upstream_inference_cost": 0.0000207,
+          "upstream_inference_prompt_cost": 0.0000189
         },
         "is_byok": false,
-        "prompt_tokens": 84,
+        "prompt_tokens": 126,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 86
+        "total_tokens": 129
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098105-hElvgsQ2EkKLIswnMc3z",
+      "response_id": "gen-1791020206-5zuSHcJg5eJwT1aIh2TV",
       "model": "openai/gpt-4o-mini",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_9ca161d435",
-        "service_tier": null
+        "system_fingerprint": "fp_582c5eeeb7",
+        "service_tier": "default"
       }
     }
   },
@@ -3902,50 +3902,50 @@
       }
     ],
     "usage": {
-      "input_tokens": 44,
-      "output_tokens": 4,
-      "total_tokens": 48,
+      "input_tokens": 74,
+      "output_tokens": 5,
+      "total_tokens": 79,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790098106-VVwsECl5sN4qcxOBzIM1",
+    "response_id": "gen-1791020213-cO8Xv3EZfoz19WSUFlgt",
     "finish_reason": "stop",
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "completion_tokens": 4,
+        "completion_tokens": 5,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 9e-6,
+        "cost": 0.0000141,
         "cost_details": {
-          "upstream_inference_completions_cost": 2.4e-6,
-          "upstream_inference_cost": 9e-6,
-          "upstream_inference_prompt_cost": 6.6e-6
+          "upstream_inference_completions_cost": 3e-6,
+          "upstream_inference_cost": 0.0000141,
+          "upstream_inference_prompt_cost": 0.0000111
         },
         "is_byok": false,
-        "prompt_tokens": 44,
+        "prompt_tokens": 74,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 48
+        "total_tokens": 79
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790098106-VVwsECl5sN4qcxOBzIM1",
+      "response_id": "gen-1791020213-cO8Xv3EZfoz19WSUFlgt",
       "model": "openai/gpt-4o-mini",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_f70887b4d3",
-        "service_tier": null
+        "system_fingerprint": "fp_9fbc67c88f",
+        "service_tier": "default"
       }
     }
   },
@@ -4025,7 +4025,7 @@
                 }
               ]
             },
-            "fingerprint": 10656099742093694005
+            "fingerprint": "4bbdd4d327125a3e"
           }
         }
       },
@@ -4045,7 +4045,7 @@
               "id": "toolu_bdrk_019dEVmYMmaH7sxMpy6omxDP",
               "type": "function"
             },
-            "fingerprint": 15716455151629599871
+            "fingerprint": "b268a4d52e9d5b44"
           }
         }
       },
@@ -4065,7 +4065,7 @@
               "id": "toolu_bdrk_01QeCuqAatT8ULbrX37NrvCo",
               "type": "function"
             },
-            "fingerprint": 8091182728686932544
+            "fingerprint": "57aa90d69a9916f7"
           }
         }
       }
@@ -4140,7 +4140,7 @@
               "id": "toolu_bdrk_013fD9yB3iurzyrW7eYZbewH",
               "type": "function"
             },
-            "fingerprint": 11963107450643303700
+            "fingerprint": "0d317da8ed9cee25"
           }
         }
       },
@@ -4160,7 +4160,7 @@
               "id": "toolu_bdrk_01R9J4zABnWLSoWBf5D5ZTeG",
               "type": "function"
             },
-            "fingerprint": 16202827552678488298
+            "fingerprint": "36912b654109852f"
           }
         }
       }
@@ -4235,7 +4235,7 @@
               "id": "toolu_bdrk_01MppZHfMhmde3vWKvygxTXK",
               "type": "function"
             },
-            "fingerprint": 944775258769938686
+            "fingerprint": "37e57f9d5af4c153"
           }
         }
       }
@@ -4362,7 +4362,7 @@
                 }
               ]
             },
-            "fingerprint": 9055930055626511252
+            "fingerprint": "9afd9729e56c0689"
           }
         }
       },
@@ -4382,7 +4382,7 @@
               "id": "toolu_bdrk_01TYZpBHDQy75LPeX5PxewPJ",
               "type": "function"
             },
-            "fingerprint": 9942304565399171106
+            "fingerprint": "14b68fcefd23afb3"
           }
         }
       }
@@ -4509,7 +4509,7 @@
                 }
               ]
             },
-            "fingerprint": 4650718791407097717
+            "fingerprint": "4905e0a8577a9c2e"
           }
         }
       },
@@ -4585,7 +4585,7 @@
                 }
               ]
             },
-            "fingerprint": 197520246987920328
+            "fingerprint": "3d9d4f29eb647b35"
           }
         }
       },
@@ -4605,7 +4605,7 @@
               "id": "toolu_bdrk_01BvKjq5iNYCuwBUaw49iy9U",
               "type": "function"
             },
-            "fingerprint": 11801047132074297624
+            "fingerprint": "52f77b799c4eec89"
           }
         }
       },
@@ -4625,7 +4625,7 @@
               "id": "toolu_bdrk_01C8DztmpwRtQkV58sYUu1ef",
               "type": "function"
             },
-            "fingerprint": 13998317232340357940
+            "fingerprint": "fe81aae9f74d641b"
           }
         }
       }
@@ -4741,7 +4741,7 @@
               "id": "toolu_bdrk_01TvB3iTHAPU7aJmA2aGYnmW",
               "type": "function"
             },
-            "fingerprint": 9924965291783188004
+            "fingerprint": "e97c27f1fd5fad9d"
           }
         }
       },
@@ -4761,7 +4761,7 @@
               "id": "toolu_bdrk_01EcwWMqhSudGmxPyPWeodeA",
               "type": "function"
             },
-            "fingerprint": 18437469220932956112
+            "fingerprint": "14a098a595115999"
           }
         }
       }
@@ -4868,7 +4868,7 @@
               "id": "toolu_bdrk_012rnfjYJFrzmjPBLkyYFKPh",
               "type": "function"
             },
-            "fingerprint": 4338593536260090128
+            "fingerprint": "f6d359b0aeeb6ad1"
           }
         }
       }
@@ -5030,7 +5030,7 @@
                 }
               ]
             },
-            "fingerprint": 13371861369930839734
+            "fingerprint": "aa97df6c8e9b25a3"
           }
         }
       },
@@ -5050,7 +5050,7 @@
               "id": "toolu_bdrk_016wyKbfHgsYDvmhcz5fLV9s",
               "type": "function"
             },
-            "fingerprint": 17264846844660001756
+            "fingerprint": "05e66e61513b1e61"
           }
         }
       }
@@ -5221,7 +5221,7 @@
                 }
               ]
             },
-            "fingerprint": 638015052644270350
+            "fingerprint": "df60efa7120324eb"
           }
         }
       },
@@ -5317,7 +5317,7 @@
               "id": "call_FQL08YQ1YJl8AJmlxzEOkdYo",
               "type": "function"
             },
-            "fingerprint": 13241798284522054077
+            "fingerprint": "f90ab7abf0f05dae"
           }
         }
       }
@@ -5412,7 +5412,7 @@
               "id": "call_hVilKmj3z4zQAmjTM4UhiMPI",
               "type": "function"
             },
-            "fingerprint": 10638550939659943989
+            "fingerprint": "2513f768b29c52ce"
           }
         }
       }
@@ -5506,7 +5506,7 @@
               "id": "call_99Uiz8CVFeFdlVEOZwy8mKrx",
               "type": "function"
             },
-            "fingerprint": 5318247809198406343
+            "fingerprint": "588fb1a47e855f94"
           }
         }
       }
@@ -5605,7 +5605,7 @@
               "id": "call_nVHyIjvJiSIgzjhBeheFeFHQ",
               "type": "function"
             },
-            "fingerprint": 3321155733175069011
+            "fingerprint": "0ad1326e7de28a48"
           }
         }
       }
@@ -5700,7 +5700,7 @@
               "id": "call_c4PmpTrNcTn68fpUsSeddhqx",
               "type": "function"
             },
-            "fingerprint": 8140178880683745775
+            "fingerprint": "a3ad428f662fd730"
           }
         }
       }
@@ -5798,7 +5798,7 @@
               "id": "call_nlKW6UknxQ7zWBR4vVIMyc3q",
               "type": "function"
             },
-            "fingerprint": 5475357897988391304
+            "fingerprint": "5b3309e1736a621b"
           }
         }
       }
@@ -5898,7 +5898,7 @@
               "id": "call_HXlOdw4QUVynI59wdXNKgYln",
               "type": "function"
             },
-            "fingerprint": 957713481455413724
+            "fingerprint": "ed2aeb0f827f933f"
           }
         }
       }
@@ -5994,7 +5994,7 @@
               "id": "call_i0DORhyawLKhk25OzkSmJURi",
               "type": "function"
             },
-            "fingerprint": 1788651363608659414
+            "fingerprint": "7eec6c24fdaef4a5"
           }
         }
       }
@@ -6089,7 +6089,7 @@
               "id": "call_03ksrUnfD5U30ldSJBlWQYLX",
               "type": "function"
             },
-            "fingerprint": 2709611309979315134
+            "fingerprint": "34548b4e7c6f9651"
           }
         }
       },
@@ -6110,7 +6110,7 @@
               "id": "call_dCejLkDhmwaVNrkZrx3tIaH6",
               "type": "function"
             },
-            "fingerprint": 657117748970122474
+            "fingerprint": "023121e3a0853177"
           }
         }
       }
@@ -6546,7 +6546,7 @@
               "id": "call_Sk6BOg0tKFwiehgqqpplebed",
               "type": "function"
             },
-            "fingerprint": 17542395470151150020
+            "fingerprint": "f11770a561143d0b"
           }
         }
       },
@@ -6564,7 +6564,7 @@
               "id": "call_liaSB46XNjB6utANeiIP7OB7",
               "type": "function"
             },
-            "fingerprint": 2056388583346144504
+            "fingerprint": "ea6e76234e3d7fe7"
           }
         }
       }
@@ -6732,7 +6732,7 @@
               "id": "call_yCrTyFAdWEAj0LBZWNoPLXAb",
               "type": "function"
             },
-            "fingerprint": 17214017976003374587
+            "fingerprint": "6ac9a83f3affb55c"
           }
         }
       },
@@ -6750,7 +6750,7 @@
               "id": "call_6OotrHdESLrrayR3tjBrt78l",
               "type": "function"
             },
-            "fingerprint": 3293201731013886409
+            "fingerprint": "0c69c26676ef9976"
           }
         }
       }
@@ -7079,7 +7079,7 @@
               "id": "call_oSxDU6xWkx9Xj4YidEpuAyxV",
               "type": "function"
             },
-            "fingerprint": 5041179843765314686
+            "fingerprint": "c7b8eaeff7125633"
           }
         }
       },
@@ -7099,7 +7099,7 @@
               "id": "call_LmHub9sRBSCf8Sl5TOzSrHjJ",
               "type": "function"
             },
-            "fingerprint": 5030483115899977357
+            "fingerprint": "8017ed51acc62906"
           }
         }
       }
@@ -8561,7 +8561,7 @@
                 }
               ]
             },
-            "fingerprint": 14370776417839125258
+            "fingerprint": "008fbfa661142167"
           }
         }
       },
@@ -8643,7 +8643,7 @@
                 }
               ]
             },
-            "fingerprint": 3369964215093496419
+            "fingerprint": "e2d1aa27312f90f4"
           }
         }
       },
@@ -8752,7 +8752,7 @@
                 }
               ]
             },
-            "fingerprint": 16350564468611990841
+            "fingerprint": "c3a13c90a0e8e87a"
           }
         }
       },
@@ -8861,7 +8861,7 @@
                 }
               ]
             },
-            "fingerprint": 14789897820645509604
+            "fingerprint": "bfd563ffd90a9141"
           }
         }
       },
@@ -8943,7 +8943,7 @@
                 }
               ]
             },
-            "fingerprint": 10056184692911154892
+            "fingerprint": "c4f6f65ad52af339"
           }
         }
       },
@@ -9019,7 +9019,7 @@
                 }
               ]
             },
-            "fingerprint": 2735735772107230957
+            "fingerprint": "a203c3a9fa2b0d16"
           }
         }
       },
@@ -9039,7 +9039,7 @@
               "id": "toolu_013SUiJqcL7VhgeEj2k67XvA",
               "type": "function"
             },
-            "fingerprint": 6335203952561222254
+            "fingerprint": "33a73d90df54b881"
           }
         }
       },
@@ -9059,7 +9059,7 @@
               "id": "toolu_014howMhyVevBZ1RUBYH83MV",
               "type": "function"
             },
-            "fingerprint": 15585099997225196202
+            "fingerprint": "ef68e6d4266e8421"
           }
         }
       }
@@ -9172,7 +9172,7 @@
                 }
               ]
             },
-            "fingerprint": 17199324810269598669
+            "fingerprint": "0c77ad6984cd30fe"
           }
         }
       },
@@ -9192,7 +9192,7 @@
               "id": "toolu_01KUfKU16y9Q9VHXnDLmstRR",
               "type": "function"
             },
-            "fingerprint": 7048219363281755502
+            "fingerprint": "9140ed7eba190543"
           }
         }
       }
@@ -9363,7 +9363,7 @@
                 }
               ]
             },
-            "fingerprint": 11247380607566695337
+            "fingerprint": "9a01e79b1c6c7162"
           }
         }
       },
@@ -9383,7 +9383,7 @@
               "id": "toolu_01EwKwJbk6sm7KuMWEsnNi5Q",
               "type": "function"
             },
-            "fingerprint": 14914411159740354184
+            "fingerprint": "a391604d3cb88ed1"
           }
         }
       }
@@ -9487,7 +9487,7 @@
                 }
               ]
             },
-            "fingerprint": 17811655791712545420
+            "fingerprint": "a373335a764dca61"
           }
         }
       },
@@ -9507,7 +9507,7 @@
               "id": "toolu_01HKiVjt7yeUyu35jbZDXKuw",
               "type": "function"
             },
-            "fingerprint": 2841040163085684062
+            "fingerprint": "59e83c8babf8057d"
           }
         }
       },
@@ -9527,7 +9527,7 @@
               "id": "toolu_01BGQTcrLrqN879pRhCaqXmM",
               "type": "function"
             },
-            "fingerprint": 8234579881143034855
+            "fingerprint": "7897d992052b6238"
           }
         }
       }
@@ -9599,7 +9599,7 @@
                 }
               ]
             },
-            "fingerprint": 14215649379858641821
+            "fingerprint": "e8a22bc096055006"
           }
         }
       },
@@ -9619,7 +9619,7 @@
               "id": "toolu_01EGVFsxXmBZQVGszJZHdp5V",
               "type": "function"
             },
-            "fingerprint": 3496732018076448243
+            "fingerprint": "cc8cf21f873ac4a6"
           }
         }
       }
@@ -9746,7 +9746,7 @@
                 }
               ]
             },
-            "fingerprint": 18179985588633265425
+            "fingerprint": "61c98db5e290b672"
           }
         }
       },
@@ -9766,7 +9766,7 @@
               "id": "toolu_01BC1hJawCiqryyy3emj8gse",
               "type": "function"
             },
-            "fingerprint": 16395225550936182729
+            "fingerprint": "a15a893a418cb460"
           }
         }
       }
@@ -9844,7 +9844,7 @@
                 }
               ]
             },
-            "fingerprint": 5156375774144924026
+            "fingerprint": "f3b38456aebd312f"
           }
         }
       },
@@ -9864,7 +9864,7 @@
               "id": "call_qPoLPPBC0vBsH6iFIawlPX7B",
               "type": "function"
             },
-            "fingerprint": 5914089728868436698
+            "fingerprint": "1a4ad51e4edceab5"
           }
         }
       }
@@ -10040,7 +10040,7 @@
               "id": "call_3hPsIosy6WSvU7wJxinOOteP",
               "type": "function"
             },
-            "fingerprint": 1705494655342203676
+            "fingerprint": "415aa668ad90d70f"
           }
         }
       }
@@ -10173,7 +10173,7 @@
                 }
               ]
             },
-            "fingerprint": 13313324983237895248
+            "fingerprint": "5f2785b877531efd"
           }
         }
       },
@@ -10276,7 +10276,7 @@
                 }
               ]
             },
-            "fingerprint": 10976792628854148364
+            "fingerprint": "50296725ed8a4979"
           }
         }
       },
@@ -10379,7 +10379,7 @@
                 }
               ]
             },
-            "fingerprint": 4302565417911163457
+            "fingerprint": "c4c06a74e6ad9f82"
           }
         }
       }
@@ -10477,7 +10477,7 @@
                 }
               ]
             },
-            "fingerprint": 337210683625289162
+            "fingerprint": "82b6ea64ef91009f"
           }
         }
       }
@@ -10575,7 +10575,7 @@
                 }
               ]
             },
-            "fingerprint": 17191458068668705595
+            "fingerprint": "82a39d9e037005bc"
           }
         }
       },
@@ -10684,7 +10684,7 @@
                 }
               ]
             },
-            "fingerprint": 17160279707016377618
+            "fingerprint": "73880d82877e6f77"
           }
         }
       },
@@ -10786,7 +10786,7 @@
                 }
               ]
             },
-            "fingerprint": 9323185958552851373
+            "fingerprint": "0006a9b29c8da45e"
           }
         }
       }
@@ -10884,7 +10884,7 @@
                 }
               ]
             },
-            "fingerprint": 6432558687126514704
+            "fingerprint": "2b7fce04f0cdda3d"
           }
         }
       },
@@ -10993,7 +10993,7 @@
                 }
               ]
             },
-            "fingerprint": 10729955500958905503
+            "fingerprint": "7bdcbc6b10180498"
           }
         }
       },
@@ -11102,7 +11102,7 @@
                 }
               ]
             },
-            "fingerprint": 10674098594810926777
+            "fingerprint": "b02d63fbe39193ca"
           }
         }
       }
@@ -11207,7 +11207,7 @@
                 }
               ]
             },
-            "fingerprint": 18333426564261107637
+            "fingerprint": "c637ee7703c70666"
           }
         }
       },
@@ -11439,7 +11439,7 @@
                 }
               ]
             },
-            "fingerprint": 15928695747524738581
+            "fingerprint": "e3263b92f6179a56"
           }
         }
       },
@@ -11515,7 +11515,7 @@
                 }
               ]
             },
-            "fingerprint": 462427777089228657
+            "fingerprint": "2d98d971ef5d1a62"
           }
         }
       },
@@ -11597,7 +11597,7 @@
                 }
               ]
             },
-            "fingerprint": 9696809624252352053
+            "fingerprint": "c439b33e041ddfb6"
           }
         }
       },
@@ -11679,7 +11679,7 @@
                 }
               ]
             },
-            "fingerprint": 6336103768149009725
+            "fingerprint": "b6cdc499f4355ad6"
           }
         }
       },
@@ -11761,7 +11761,7 @@
                 }
               ]
             },
-            "fingerprint": 1315104729175650711
+            "fingerprint": "f291809bc92cbc48"
           }
         }
       },
@@ -11870,7 +11870,7 @@
                 }
               ]
             },
-            "fingerprint": 1129885085068804546
+            "fingerprint": "c782bf7e0a5acc5f"
           }
         }
       },
@@ -13004,7 +13004,7 @@
               "id": "call_ZgBuTqfrI7QrRSCbXdybhffH",
               "type": "function"
             },
-            "fingerprint": 16304860571777356334
+            "fingerprint": "b78043567236c70d"
           }
         }
       }
@@ -13568,7 +13568,7 @@
                 }
               ]
             },
-            "fingerprint": 337210683625289162
+            "fingerprint": "82b6ea64ef91009f"
           }
         }
       },
@@ -13720,7 +13720,7 @@
                 }
               ]
             },
-            "fingerprint": 17853953175355412334
+            "fingerprint": "d1d8389c0aea332b"
           }
         }
       },
@@ -13744,7 +13744,7 @@
               "id": "toolu_bdrk_01WaM3SYH9H2zV2heHAqpV34",
               "type": "function"
             },
-            "fingerprint": 15369729535678226365
+            "fingerprint": "23b5c007a8b0ae22"
           }
         }
       }
@@ -13915,7 +13915,7 @@
                 }
               ]
             },
-            "fingerprint": 14500247579880539150
+            "fingerprint": "6e51570a6a51e90b"
           }
         }
       },
@@ -13937,7 +13937,7 @@
               "id": "toolu_bdrk_011VqPk5c2vqJLCSu6nMBHDv",
               "type": "function"
             },
-            "fingerprint": 2763696340626369777
+            "fingerprint": "7cfa213ac03e9c22"
           }
         }
       }
@@ -14064,7 +14064,7 @@
                 }
               ]
             },
-            "fingerprint": 15554612375687409295
+            "fingerprint": "d6a031bedfeb7080"
           }
         }
       },
@@ -14140,7 +14140,7 @@
                 }
               ]
             },
-            "fingerprint": 2053762366981529578
+            "fingerprint": "0cbc73099927800f"
           }
         }
       },
@@ -14162,7 +14162,7 @@
               "id": "toolu_bdrk_01NgMPmfDENNZGH6wvs3oUdk",
               "type": "function"
             },
-            "fingerprint": 9940846692266437202
+            "fingerprint": "94d46db602041723"
           }
         }
       }
@@ -14333,7 +14333,7 @@
                 }
               ]
             },
-            "fingerprint": 13933190573791081309
+            "fingerprint": "03c18733ffff2ea6"
           }
         }
       },
@@ -14430,7 +14430,7 @@
                 }
               ]
             },
-            "fingerprint": 9791772238675237441
+            "fingerprint": "5907c8a245e729aa"
           }
         }
       },
@@ -14454,7 +14454,7 @@
               "id": "toolu_bdrk_01QBZTas4q3nGkYYh7HjiEcM",
               "type": "function"
             },
-            "fingerprint": 11752167323957180924
+            "fingerprint": "220e2b9391342269"
           }
         }
       }
@@ -14625,7 +14625,7 @@
                 }
               ]
             },
-            "fingerprint": 1278598220574713303
+            "fingerprint": "54663450e8570f88"
           }
         }
       },
@@ -14649,7 +14649,7 @@
               "id": "toolu_bdrk_01P5RN3ebjwa6a5dNpXQxrG1",
               "type": "function"
             },
-            "fingerprint": 9805419563953789138
+            "fingerprint": "1efcc2d0df44c067"
           }
         }
       }
@@ -18924,7 +18924,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_DoS8OxxR5lUAA28Ko16Nor43",
+          "id": "call_W9jsKGvbWjgY1LyvcvAHNRAq",
           "name": "lookup_harbor_label",
           "arguments": {},
           "native": {
@@ -18933,10 +18933,10 @@
                 "arguments": "{}",
                 "name": "lookup_harbor_label"
               },
-              "id": "call_DoS8OxxR5lUAA28Ko16Nor43",
+              "id": "call_W9jsKGvbWjgY1LyvcvAHNRAq",
               "type": "function"
             },
-            "fingerprint": 12856341655908602253
+            "fingerprint": "15fa5e01e0bfddbc"
           }
         }
       }
@@ -18949,7 +18949,7 @@
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152570-NWaQ1AVloVF1IiHNRmQs",
+    "response_id": "gen-1791018462-8F7XEbjy6x9WJT8S5DbJ",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -18978,14 +18978,14 @@
         "total_tokens": 123
       },
       "finish_reason": "tool_calls",
-      "response_id": "gen-1790152570-NWaQ1AVloVF1IiHNRmQs",
+      "response_id": "gen-1791018462-8F7XEbjy6x9WJT8S5DbJ",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_67bbf2f77c",
-        "service_tier": null
+        "system_fingerprint": "fp_2845e6d08d",
+        "service_tier": "default"
       }
     }
   },
@@ -18998,14 +18998,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 67,
+      "input_tokens": 66,
       "output_tokens": 11,
-      "total_tokens": 78,
+      "total_tokens": 77,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790152571-GWDRq6h1lG5ekpKbbXD8",
+    "response_id": "gen-1791018463-hARZE6kFGqNV1804nPPP",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -19017,31 +19017,31 @@
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0002775,
+        "cost": 0.000275,
         "cost_details": {
           "upstream_inference_completions_cost": 0.00011,
-          "upstream_inference_cost": 0.0002775,
-          "upstream_inference_prompt_cost": 0.0001675
+          "upstream_inference_cost": 0.000275,
+          "upstream_inference_prompt_cost": 0.000165
         },
         "is_byok": false,
-        "prompt_tokens": 67,
+        "prompt_tokens": 66,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 78
+        "total_tokens": 77
       },
       "finish_reason": "stop",
-      "response_id": "gen-1790152571-GWDRq6h1lG5ekpKbbXD8",
+      "response_id": "gen-1791018463-hARZE6kFGqNV1804nPPP",
       "model": "openai/gpt-4o",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "provider": "OpenAI",
-        "system_fingerprint": "fp_6359026e51",
-        "service_tier": null
+        "system_fingerprint": "fp_3172c6e1cc",
+        "service_tier": "default"
       }
     }
   },
@@ -19062,7 +19062,7 @@
               "id": "call_NcNQgk31ThHo5PPSMWpvVsgj",
               "type": "function"
             },
-            "fingerprint": 701652019345374696
+            "fingerprint": "cc4d1214652b1299"
           }
         }
       },
@@ -19080,7 +19080,7 @@
               "id": "call_aQJxmDlFQAZvsMHhBQVPZqpD",
               "type": "function"
             },
-            "fingerprint": 8405839067000831075
+            "fingerprint": "139a9eacbf7cc7ea"
           }
         }
       }
@@ -19152,7 +19152,7 @@
                 }
               ]
             },
-            "fingerprint": 337210683625289162
+            "fingerprint": "82b6ea64ef91009f"
           }
         }
       },
@@ -19172,7 +19172,7 @@
               "id": "call_LociDJa7mVNaa3zPsXAgXno6",
               "type": "function"
             },
-            "fingerprint": 525114045191811020
+            "fingerprint": "20ae48720083e7f7"
           }
         }
       }
@@ -19243,7 +19243,7 @@
                 }
               ]
             },
-            "fingerprint": 337210683625289162
+            "fingerprint": "82b6ea64ef91009f"
           }
         }
       },
@@ -19263,7 +19263,7 @@
               "id": "call_1ZXYiRWb1hi1C7NeEdU0b982",
               "type": "function"
             },
-            "fingerprint": 1498572941278128694
+            "fingerprint": "0bc621e7cd5fa61d"
           }
         }
       }
@@ -19334,7 +19334,7 @@
                 }
               ]
             },
-            "fingerprint": 337210683625289162
+            "fingerprint": "82b6ea64ef91009f"
           }
         }
       },
@@ -19410,7 +19410,7 @@
               "id": "call_hHVkO0rhEeUnRGeJTo8niTGv",
               "type": "function"
             },
-            "fingerprint": 13088916680689138319
+            "fingerprint": "6fa9faf930c94492"
           }
         }
       }
@@ -19673,7 +19673,7 @@
               "id": "call_t5zetyN5drp8zqf4iFDCmh63",
               "type": "function"
             },
-            "fingerprint": 293658528123934807
+            "fingerprint": "29b8ccf64d005226"
           }
         }
       }
@@ -19902,7 +19902,7 @@
               "id": "call_7K8RytYgHp3bB8lU7QIppN3v",
               "type": "function"
             },
-            "fingerprint": 16801494994718251225
+            "fingerprint": "ddfe80b1125831b8"
           }
         }
       }
@@ -20131,7 +20131,7 @@
               "id": "call_CYctakapOdaXmPQNLi0ZHcRV",
               "type": "function"
             },
-            "fingerprint": 14384839497311290286
+            "fingerprint": "0c47271b3b401123"
           }
         }
       }
@@ -20360,7 +20360,7 @@
               "id": "call_qsejHJMhpJqQQmOE6JxdPv03",
               "type": "function"
             },
-            "fingerprint": 5643782726176260587
+            "fingerprint": "dd0ab5ec67157422"
           }
         }
       }
@@ -20565,7 +20565,7 @@
               "id": "call_MNnuKCMYebdV1G5JF3VIbbRc",
               "type": "function"
             },
-            "fingerprint": 15871797620888994203
+            "fingerprint": "c145ed0a881ff6ea"
           }
         }
       }
@@ -20747,7 +20747,7 @@
               "id": "call_2FZUm9B3F3N4UMHSNM34v9Of",
               "type": "function"
             },
-            "fingerprint": 5657711464013131108
+            "fingerprint": "6a60acc13e425d75"
           }
         }
       }
@@ -20931,7 +20931,7 @@
               "id": "call_HXbAxHqI5MF3XY4Lh40oB4Yq",
               "type": "function"
             },
-            "fingerprint": 9800612908830575020
+            "fingerprint": "d7e90baab9af9c91"
           }
         }
       }
@@ -21116,7 +21116,7 @@
               "id": "call_IrFpBbipgPnZi5Jz7ayOWliF",
               "type": "function"
             },
-            "fingerprint": 12768657872328024955
+            "fingerprint": "5ded420f0bd0594a"
           }
         }
       }
@@ -21196,7 +21196,7 @@
               "id": "call_z7ZaTkuVmeHfDlj1sa5ydzNv",
               "type": "function"
             },
-            "fingerprint": 5677956600906810687
+            "fingerprint": "bb762dae6a299670"
           }
         }
       }
@@ -21298,7 +21298,7 @@
               "id": "call_dAe83CkPAGgTdJaMGNZkAGsz",
               "type": "function"
             },
-            "fingerprint": 4175713795496495365
+            "fingerprint": "5fb864e76455055e"
           }
         }
       }
@@ -21392,7 +21392,7 @@
               "id": "call_bpjgMO75QfiCdJjnppujoGEI",
               "type": "function"
             },
-            "fingerprint": 17565034246285943194
+            "fingerprint": "a7eecf644ebd392f"
           }
         }
       },
@@ -21412,7 +21412,7 @@
               "id": "call_9qnlGMMO87nPOaE4j7hgNpMA",
               "type": "function"
             },
-            "fingerprint": 8419270197544660008
+            "fingerprint": "f621a80ecc62c407"
           }
         }
       }
@@ -21515,7 +21515,7 @@
               "id": "call_7AWyotXOTbD5iR6GUlBJTiZd",
               "type": "function"
             },
-            "fingerprint": 17991457768230882922
+            "fingerprint": "e365435758b71ecb"
           }
         }
       },
@@ -21535,7 +21535,7 @@
               "id": "call_e67cOgkRlKpDAAUBIeAVIWbW",
               "type": "function"
             },
-            "fingerprint": 8387797491283043048
+            "fingerprint": "79aa5e299f8d27cb"
           }
         }
       }
@@ -21636,7 +21636,7 @@
               "id": "call_V2jukW58t8Xx9NnywaDVYJiL",
               "type": "function"
             },
-            "fingerprint": 13770706977127373743
+            "fingerprint": "d2c699d09068854c"
           }
         }
       }
@@ -21728,7 +21728,7 @@
               "id": "call_s9jZn5TYYArpRUbjVVOvluLV",
               "type": "function"
             },
-            "fingerprint": 10268979532496125726
+            "fingerprint": "bf2a407944029381"
           }
         }
       }
@@ -21830,7 +21830,7 @@
               "id": "call_ewR8Zvlqeg3Mnsgl7FdZvONn",
               "type": "function"
             },
-            "fingerprint": 4924365038707011847
+            "fingerprint": "bcec8e708edc757c"
           }
         }
       }
@@ -21932,7 +21932,7 @@
               "id": "call_lomZrnqpxYGARKbgvsQ3o4AN",
               "type": "function"
             },
-            "fingerprint": 7250885999050846081
+            "fingerprint": "63858a9b1be4b8b6"
           }
         }
       }
@@ -22026,7 +22026,7 @@
               "id": "call_wFwApKRUJwQqtCnx2F72XX3k",
               "type": "function"
             },
-            "fingerprint": 10315852922979436611
+            "fingerprint": "0999c8b23138f08e"
           }
         }
       },
@@ -22046,7 +22046,7 @@
               "id": "call_A6glGZzTEX2mzXNVjgCnRBbP",
               "type": "function"
             },
-            "fingerprint": 14189787639951406275
+            "fingerprint": "ebf809f004406778"
           }
         }
       }
@@ -22149,7 +22149,7 @@
               "id": "call_GRdw2SdiYBJcuhwuii2aYNvf",
               "type": "function"
             },
-            "fingerprint": 10804498304449559408
+            "fingerprint": "8d426446006ae491"
           }
         }
       },
@@ -22169,7 +22169,7 @@
               "id": "call_w5rPcRzZ75zap0hvljIIIJBd",
               "type": "function"
             },
-            "fingerprint": 6940424763492144227
+            "fingerprint": "4b90fa63e90761c8"
           }
         }
       }
@@ -22270,7 +22270,7 @@
               "id": "call_RKlhqc5ooBt4oFFwZxuGFDrF",
               "type": "function"
             },
-            "fingerprint": 13941923469426245567
+            "fingerprint": "c37020af8b239810"
           }
         }
       }
@@ -22362,7 +22362,7 @@
               "id": "call_9z9Ya49ScOaIVOvEynoGxKo3",
               "type": "function"
             },
-            "fingerprint": 1880240397282229891
+            "fingerprint": "ad5c1fe83c607dfc"
           }
         }
       }
@@ -22464,7 +22464,7 @@
               "id": "call_semR9XVJkUu21QdnfeMStqUg",
               "type": "function"
             },
-            "fingerprint": 9157867920735697749
+            "fingerprint": "15bfc4a94d387322"
           }
         }
       }
@@ -22543,7 +22543,7 @@
               "id": "call_P6T0v4W2TPHozhpookNIPwFS",
               "type": "function"
             },
-            "fingerprint": 6055396994513018566
+            "fingerprint": "654c6dd21ad00065"
           }
         }
       }
@@ -22614,7 +22614,7 @@
               "id": "call_p28RVZ4IJThkvcnMvBJBicrj",
               "type": "function"
             },
-            "fingerprint": 17129474585405935137
+            "fingerprint": "60c7a66c276c8c84"
           }
         }
       },
@@ -22634,7 +22634,7 @@
               "id": "call_5n82fsbj3fdJ6k89Cj4yiUqo",
               "type": "function"
             },
-            "fingerprint": 16255540196066869159
+            "fingerprint": "e2ba834e0df8f024"
           }
         }
       }
@@ -22705,7 +22705,7 @@
               "id": "call_UY7Su6nU5BeOF1MQBwZjUQNo",
               "type": "function"
             },
-            "fingerprint": 5729929918422517159
+            "fingerprint": "1a0e4bd46754eaba"
           }
         }
       },
@@ -22725,7 +22725,7 @@
               "id": "call_C35AIfyhpgGbVdQEORSztIM1",
               "type": "function"
             },
-            "fingerprint": 1951306952386970581
+            "fingerprint": "6e10cc987aec833e"
           }
         }
       }
@@ -22794,7 +22794,7 @@
               "id": "call_YLU4vX6n0RMyNF6g4digB9NJ",
               "type": "function"
             },
-            "fingerprint": 2511031462894425295
+            "fingerprint": "dafa75f5db75bec0"
           }
         }
       }
@@ -22863,7 +22863,7 @@
               "id": "call_jYReGAD5ZM7H8PL58jI8ECwC",
               "type": "function"
             },
-            "fingerprint": 7418617744079497582
+            "fingerprint": "33ffc4452059a681"
           }
         }
       }
@@ -22942,7 +22942,7 @@
               "id": "call_2l1REw8AnHQFcoo1XSM6TYcA",
               "type": "function"
             },
-            "fingerprint": 1232671934668689432
+            "fingerprint": "6ade426d0936ca6f"
           }
         }
       }
@@ -23022,7 +23022,7 @@
               "id": "call_uq0u0VSF3CijaHgtEyLCRrm5",
               "type": "function"
             },
-            "fingerprint": 13719590190607578092
+            "fingerprint": "bb0c85b949edd9ff"
           }
         }
       }
@@ -23094,7 +23094,7 @@
               "id": "call_L6vXIA64thaHGp1XkEWat6Y0",
               "type": "function"
             },
-            "fingerprint": 13157473140216347375
+            "fingerprint": "acbf877fd818dea6"
           }
         }
       },
@@ -23114,7 +23114,7 @@
               "id": "call_UpMBqZgKHGDZ0Dr7y6jweXsZ",
               "type": "function"
             },
-            "fingerprint": 6933671348666895369
+            "fingerprint": "c8493203073c7782"
           }
         }
       }
@@ -23186,7 +23186,7 @@
               "id": "call_rgJKL6cnWpzm3J3ilBaQwqKh",
               "type": "function"
             },
-            "fingerprint": 9120823910354043426
+            "fingerprint": "41a523b834175ed7"
           }
         }
       },
@@ -23206,7 +23206,7 @@
               "id": "call_6g3rrRI8YEHc2MnakboSdvif",
               "type": "function"
             },
-            "fingerprint": 10006668047602763642
+            "fingerprint": "422ab42525c0a0bd"
           }
         }
       }
@@ -23276,7 +23276,7 @@
               "id": "call_J6M9K3YxmNEYMwK4zmrSyWAl",
               "type": "function"
             },
-            "fingerprint": 12761653964076603143
+            "fingerprint": "192884d814368618"
           }
         }
       }
@@ -23346,7 +23346,7 @@
               "id": "call_WN2gAu2OA5A5q5ESlLdKT52F",
               "type": "function"
             },
-            "fingerprint": 12428723454958829190
+            "fingerprint": "d75d83c82a88a735"
           }
         }
       }
@@ -23418,7 +23418,7 @@
               "id": "call_oCbwRO4sF92DK2iYWWI8oU5D",
               "type": "function"
             },
-            "fingerprint": 10586809208437750649
+            "fingerprint": "ebf85b2ae61edb84"
           }
         }
       }
@@ -23512,7 +23512,7 @@
               "id": "call_IyuTpXMJ1vTm7lct29XMogcX",
               "type": "function"
             },
-            "fingerprint": 5363494726986506731
+            "fingerprint": "ed91cbda67bdd8ea"
           }
         }
       }
@@ -23606,7 +23606,7 @@
               "id": "call_FhJBH21KJPBO5s6Z8yLI3Kd8",
               "type": "function"
             },
-            "fingerprint": 5563810789760203112
+            "fingerprint": "208eac8f8917450e"
           }
         }
       }
@@ -23700,7 +23700,7 @@
               "id": "call_Yr7TWNyWRRuFBY4C6YrYJVWc",
               "type": "function"
             },
-            "fingerprint": 15039418768047492537
+            "fingerprint": "45c609f7d7219963"
           }
         }
       }
@@ -23794,7 +23794,7 @@
               "id": "call_4HILvW9xCdNHmdWWKFK7DAiL",
               "type": "function"
             },
-            "fingerprint": 10148365440062813917
+            "fingerprint": "f8c51b0ab3228903"
           }
         }
       }
@@ -23888,7 +23888,7 @@
               "id": "call_H65kD5ayKdCFlTw95hDGSmzI",
               "type": "function"
             },
-            "fingerprint": 1924547551825209861
+            "fingerprint": "6004e39fbbd6db6f"
           }
         }
       }
@@ -23982,7 +23982,7 @@
               "id": "call_d4kYzMJBzZdQZ3pKxGyW4flz",
               "type": "function"
             },
-            "fingerprint": 8074751280035149825
+            "fingerprint": "b44795604d1a369c"
           }
         }
       }
@@ -24076,7 +24076,7 @@
               "id": "call_bAu6MYmaTullXW5lgiT0MoPx",
               "type": "function"
             },
-            "fingerprint": 12882827780955230925
+            "fingerprint": "6e6497bf232f1170"
           }
         }
       }
@@ -24170,7 +24170,7 @@
               "id": "call_CHyBBxRD7t1ONiAYScP5UwbF",
               "type": "function"
             },
-            "fingerprint": 7662974927786172622
+            "fingerprint": "b4e2131ce1b70218"
           }
         }
       }
@@ -24264,7 +24264,7 @@
               "id": "call_kGq8hrpWt3JC3rKBNHhe6cPd",
               "type": "function"
             },
-            "fingerprint": 3549579207261134333
+            "fingerprint": "b8ef6c78e595de6b"
           }
         }
       }
@@ -24358,7 +24358,7 @@
               "id": "call_PgA5G16KOwTczgwDe8Bf9BIs",
               "type": "function"
             },
-            "fingerprint": 9906858909337616022
+            "fingerprint": "618add3c5808250c"
           }
         }
       }
@@ -24452,7 +24452,7 @@
               "id": "call_0XF5xdjSFqW05d0h3LdyVERs",
               "type": "function"
             },
-            "fingerprint": 2151380304669178708
+            "fingerprint": "e20d9973ab5be1fa"
           }
         }
       }
@@ -24546,7 +24546,7 @@
               "id": "call_wcMjXNiYvQaflPWjiNPGKi6O",
               "type": "function"
             },
-            "fingerprint": 681392323257652051
+            "fingerprint": "b2f3421ef8373d52"
           }
         }
       }
@@ -24617,7 +24617,7 @@
               "id": "call_4fmauVeSfI5Y8CT4GJwpsz9K",
               "type": "function"
             },
-            "fingerprint": 10258218517246111900
+            "fingerprint": "c308555cbb142605"
           }
         }
       }
@@ -24688,7 +24688,7 @@
               "id": "call_3tDLA3VmJGByx4YO9LByy5Dg",
               "type": "function"
             },
-            "fingerprint": 17673702217701104976
+            "fingerprint": "0df48e91b8df642a"
           }
         }
       }
@@ -24759,7 +24759,7 @@
               "id": "call_c1YwTBmRVBpLPMwPt7qjcHBU",
               "type": "function"
             },
-            "fingerprint": 5055219874711245142
+            "fingerprint": "4602c09ef72a7d74"
           }
         }
       }
@@ -24830,7 +24830,7 @@
               "id": "call_kVIoUwTVPecCqBqW0Lb4RIOo",
               "type": "function"
             },
-            "fingerprint": 2790815022125333237
+            "fingerprint": "24f6e62062773267"
           }
         }
       }
@@ -24901,7 +24901,7 @@
               "id": "call_CDxGToTeN8L255fikOZ4srZk",
               "type": "function"
             },
-            "fingerprint": 15548022235167956730
+            "fingerprint": "6ef31b4a30463d4c"
           }
         }
       }
@@ -24972,7 +24972,7 @@
               "id": "call_DCEnMT2dyPAeU36zqAZQCmNt",
               "type": "function"
             },
-            "fingerprint": 13925342989183560167
+            "fingerprint": "1d430f7fd5c237de"
           }
         }
       }
@@ -25044,7 +25044,7 @@
               "id": "call_xjmhdPjBEsic21er1uSArPsU",
               "type": "function"
             },
-            "fingerprint": 7736979078214682221
+            "fingerprint": "1de9609cb58169a0"
           }
         }
       }
@@ -25116,7 +25116,7 @@
               "id": "call_LBtT0lBF484tU7jPQMTFQ3Ve",
               "type": "function"
             },
-            "fingerprint": 5367034997115210586
+            "fingerprint": "b9146eec270a711c"
           }
         }
       }
@@ -25188,7 +25188,7 @@
               "id": "call_PXTutpJ7PV2yDF2buDE50H09",
               "type": "function"
             },
-            "fingerprint": 5083068432942258106
+            "fingerprint": "0c2feb659a947d7c"
           }
         }
       }
@@ -25260,7 +25260,7 @@
               "id": "call_fF4JfoFdX3g5jyvZSaWWfYCm",
               "type": "function"
             },
-            "fingerprint": 1973656252190328413
+            "fingerprint": "3c1132d8759163cf"
           }
         }
       }
@@ -25332,7 +25332,7 @@
               "id": "call_MPCm5HkzB0hRVyPVCm3o9OEP",
               "type": "function"
             },
-            "fingerprint": 9102031377816000294
+            "fingerprint": "d95dd7f3b3d7fb3c"
           }
         }
       }
@@ -25404,7 +25404,7 @@
               "id": "call_MTxrannd3c6KpkqgTUkXDhSI",
               "type": "function"
             },
-            "fingerprint": 3876050551280562278
+            "fingerprint": "afc9a0d5b51c90b9"
           }
         }
       }
@@ -25566,7 +25566,7 @@
                 }
               ]
             },
-            "fingerprint": 4827398013962902452
+            "fingerprint": "6fc13322245e1391"
           }
         }
       },
@@ -25590,7 +25590,7 @@
               "id": "toolu_bdrk_01RQB6qFCK2VaopQBp841MCP",
               "type": "function"
             },
-            "fingerprint": 14418713841788664234
+            "fingerprint": "735fd501d850e2eb"
           }
         }
       }
@@ -25662,7 +25662,7 @@
                 }
               ]
             },
-            "fingerprint": 9698294786456786096
+            "fingerprint": "5f8623992708611d"
           }
         }
       },
@@ -25738,7 +25738,7 @@
                 }
               ]
             },
-            "fingerprint": 8929000674564114838
+            "fingerprint": "f5d80a487db1334b"
           }
         }
       },
@@ -25762,7 +25762,7 @@
               "id": "toolu_bdrk_015819uVYUVTuEE8bW6j8U6T",
               "type": "function"
             },
-            "fingerprint": 7192695986068311961
+            "fingerprint": "0c150a9280ca6916"
           }
         }
       }
@@ -25866,7 +25866,7 @@
                 }
               ]
             },
-            "fingerprint": 9698294786456786096
+            "fingerprint": "5f8623992708611d"
           }
         }
       },
@@ -25963,7 +25963,7 @@
                 }
               ]
             },
-            "fingerprint": 5173344827242526314
+            "fingerprint": "a65bf40ddaa4fa2f"
           }
         }
       },
@@ -25987,7 +25987,7 @@
               "id": "toolu_bdrk_01SCjQfMoNBsQGW8tXRUz9cY",
               "type": "function"
             },
-            "fingerprint": 868379364134792503
+            "fingerprint": "f28694cc5092f564"
           }
         }
       }
@@ -26061,7 +26061,7 @@
                 }
               ]
             },
-            "fingerprint": 337210683625289162
+            "fingerprint": "82b6ea64ef91009f"
           }
         }
       }
@@ -26133,7 +26133,7 @@
                 }
               ]
             },
-            "fingerprint": 12355641247177967312
+            "fingerprint": "c2c53d9b5ea3f895"
           }
         }
       },
@@ -26209,7 +26209,7 @@
                 }
               ]
             },
-            "fingerprint": 13797819768719407603
+            "fingerprint": "ddcf19d66255b2f4"
           }
         }
       },
@@ -26233,7 +26233,7 @@
               "id": "toolu_bdrk_01VzaKHoRgZVCVCqesM54vz6",
               "type": "function"
             },
-            "fingerprint": 4367294521050119435
+            "fingerprint": "d1f3f8b2a821e238"
           }
         }
       }
@@ -26336,7 +26336,7 @@
                 }
               ]
             },
-            "fingerprint": 8866675188125285498
+            "fingerprint": "ad76ea6d669a943f"
           }
         }
       },
@@ -26432,7 +26432,7 @@
                 }
               ]
             },
-            "fingerprint": 5668084506798378806
+            "fingerprint": "24f6dc59a09c76a3"
           }
         }
       },

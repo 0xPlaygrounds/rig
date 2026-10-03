@@ -115,7 +115,7 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": 7025148662212511952
+                "fingerprint": "2f1bd9391c2c03cb"
               }
             }
           ],
@@ -140,11 +140,11 @@
               "output_tokens": 138,
               "input_tokens": 679,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011CfLccqL7BL1hUWEhUi3xw",
@@ -201,7 +201,7 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": 7025148662212511952
+                "fingerprint": "2f1bd9391c2c03cb"
               }
             }
           }

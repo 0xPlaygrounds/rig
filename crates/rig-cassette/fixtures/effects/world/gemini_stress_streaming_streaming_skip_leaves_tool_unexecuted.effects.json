@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,29 +10,37 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 16,
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,14 +48,14 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 27,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -55,7 +63,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 28,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -63,7 +71,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 30,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -71,7 +79,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 30,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -261,7 +269,7 @@
                   },
                   "thoughtSignature": "CnIBaRR9E1oFWofkg4Xjfr9TxnCDz+/Xs95aGQlRaHaJfgZRv13YRNDEPwhq6Ne64HBbpvLcnegKhFJSlR0ckAZyvKBReZQ0pDd63/F+6Qo75DFmjzQkeNFUlv5UyW5Z4VKXtdAMsOHeyN77WzqaFhnPIfoKxQEBaRR9E11gYOfk5SfBarp/SV4oLOpkiVoVDB4jmBws2K2EC5BLUdvN57d9QwpKNHFaVAnbL5qreiOgdM/7ZDFZj+LHorYsnWVgxCbJALBxbNK15wVvEEOeszvvfcp76VajesiGNWKPgqALUVbgI3GwmydSvrSSbZ0qxx0FEXDs0XjwyXvOZJFZu7n7kTEin/MlDxmpZRhCZxs4xV7ACYa28LrwKVmXTR3c9wUbzec9htdNNBhQFyXkFwA65fMKfl5BSTCfPApnAWkUfRNZYQjbsVPT0EH9l2DchRbm5q61jEMZttOLqGXOGl206ZbZJMGlHgYvbq9+2Q02KF5LDXgiJVgPhPDkXQrrWWrzuV0AwPN86yHIQafSaqQm/e+mqn+EiBUMYC2PO7p9fszYNg=="
                 },
-                "fingerprint": 11256730490019568519
+                "fingerprint": "24eb2f726ba0c58b"
               }
             }
           ],
@@ -277,14 +285,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "ShDAariTOYW7qtsPhaLT0Q8"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 6453777134851886231
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -353,7 +353,7 @@
                   },
                   "thoughtSignature": "CnIBaRR9E1oFWofkg4Xjfr9TxnCDz+/Xs95aGQlRaHaJfgZRv13YRNDEPwhq6Ne64HBbpvLcnegKhFJSlR0ckAZyvKBReZQ0pDd63/F+6Qo75DFmjzQkeNFUlv5UyW5Z4VKXtdAMsOHeyN77WzqaFhnPIfoKxQEBaRR9E11gYOfk5SfBarp/SV4oLOpkiVoVDB4jmBws2K2EC5BLUdvN57d9QwpKNHFaVAnbL5qreiOgdM/7ZDFZj+LHorYsnWVgxCbJALBxbNK15wVvEEOeszvvfcp76VajesiGNWKPgqALUVbgI3GwmydSvrSSbZ0qxx0FEXDs0XjwyXvOZJFZu7n7kTEin/MlDxmpZRhCZxs4xV7ACYa28LrwKVmXTR3c9wUbzec9htdNNBhQFyXkFwA65fMKfl5BSTCfPApnAWkUfRNZYQjbsVPT0EH9l2DchRbm5q61jEMZttOLqGXOGl206ZbZJMGlHgYvbq9+2Q02KF5LDXgiJVgPhPDkXQrrWWrzuV0AwPN86yHIQafSaqQm/e+mqn+EiBUMYC2PO7p9fszYNg=="
                 },
-                "fingerprint": 11256730490019568519
+                "fingerprint": "24eb2f726ba0c58b"
               }
             }
           }
@@ -439,7 +439,7 @@
                       },
                       "thoughtSignature": "CnIBaRR9E1oFWofkg4Xjfr9TxnCDz+/Xs95aGQlRaHaJfgZRv13YRNDEPwhq6Ne64HBbpvLcnegKhFJSlR0ckAZyvKBReZQ0pDd63/F+6Qo75DFmjzQkeNFUlv5UyW5Z4VKXtdAMsOHeyN77WzqaFhnPIfoKxQEBaRR9E11gYOfk5SfBarp/SV4oLOpkiVoVDB4jmBws2K2EC5BLUdvN57d9QwpKNHFaVAnbL5qreiOgdM/7ZDFZj+LHorYsnWVgxCbJALBxbNK15wVvEEOeszvvfcp76VajesiGNWKPgqALUVbgI3GwmydSvrSSbZ0qxx0FEXDs0XjwyXvOZJFZu7n7kTEin/MlDxmpZRhCZxs4xV7ACYa28LrwKVmXTR3c9wUbzec9htdNNBhQFyXkFwA65fMKfl5BSTCfPApnAWkUfRNZYQjbsVPT0EH9l2DchRbm5q61jEMZttOLqGXOGl206ZbZJMGlHgYvbq9+2Q02KF5LDXgiJVgPhPDkXQrrWWrzuV0AwPN86yHIQafSaqQm/e+mqn+EiBUMYC2PO7p9fszYNg=="
                     },
-                    "fingerprint": 11256730490019568519
+                    "fingerprint": "24eb2f726ba0c58b"
                   }
                 }
               ],
@@ -450,15 +450,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "ShDAariTOYW7qtsPhaLT0Q8"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 6453777134851886231
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -543,7 +535,7 @@
                 "item": {
                   "text": "The sum of 14 and 6 is 20.\n"
                 },
-                "fingerprint": 13554773790640073766
+                "fingerprint": "0f108b5c53f5c5b0"
               }
             },
             {
@@ -568,7 +560,7 @@
                     "name": "subtract"
                   }
                 },
-                "fingerprint": 8664485386300771222
+                "fingerprint": "934f06706b3684fc"
               }
             }
           ],
@@ -583,14 +575,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "SxDAatGJOv__qtsP_bWC8QQ"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP"
-            },
-            "fingerprint": 8658316989596684593
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -650,7 +634,7 @@
                 "item": {
                   "text": "The sum of 14 and 6 is 20.\n"
                 },
-                "fingerprint": 13554773790640073766
+                "fingerprint": "0f108b5c53f5c5b0"
               }
             }
           }
@@ -698,7 +682,7 @@
                     "name": "subtract"
                   }
                 },
-                "fingerprint": 8664485386300771222
+                "fingerprint": "934f06706b3684fc"
               }
             }
           }
@@ -759,7 +743,7 @@
                       },
                       "thoughtSignature": "CnIBaRR9E1oFWofkg4Xjfr9TxnCDz+/Xs95aGQlRaHaJfgZRv13YRNDEPwhq6Ne64HBbpvLcnegKhFJSlR0ckAZyvKBReZQ0pDd63/F+6Qo75DFmjzQkeNFUlv5UyW5Z4VKXtdAMsOHeyN77WzqaFhnPIfoKxQEBaRR9E11gYOfk5SfBarp/SV4oLOpkiVoVDB4jmBws2K2EC5BLUdvN57d9QwpKNHFaVAnbL5qreiOgdM/7ZDFZj+LHorYsnWVgxCbJALBxbNK15wVvEEOeszvvfcp76VajesiGNWKPgqALUVbgI3GwmydSvrSSbZ0qxx0FEXDs0XjwyXvOZJFZu7n7kTEin/MlDxmpZRhCZxs4xV7ACYa28LrwKVmXTR3c9wUbzec9htdNNBhQFyXkFwA65fMKfl5BSTCfPApnAWkUfRNZYQjbsVPT0EH9l2DchRbm5q61jEMZttOLqGXOGl206ZbZJMGlHgYvbq9+2Q02KF5LDXgiJVgPhPDkXQrrWWrzuV0AwPN86yHIQafSaqQm/e+mqn+EiBUMYC2PO7p9fszYNg=="
                     },
-                    "fingerprint": 11256730490019568519
+                    "fingerprint": "24eb2f726ba0c58b"
                   }
                 }
               ],
@@ -770,15 +754,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "ShDAariTOYW7qtsPhaLT0Q8"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 6453777134851886231
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -808,7 +784,7 @@
                     "item": {
                       "text": "The sum of 14 and 6 is 20.\n"
                     },
-                    "fingerprint": 13554773790640073766
+                    "fingerprint": "0f108b5c53f5c5b0"
                   }
                 },
                 {
@@ -833,7 +809,7 @@
                         "name": "subtract"
                       }
                     },
-                    "fingerprint": 8664485386300771222
+                    "fingerprint": "934f06706b3684fc"
                   }
                 }
               ],
@@ -844,15 +820,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "SxDAatGJOv__qtsP_bWC8QQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 8658316989596684593
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -938,7 +906,7 @@
                 "item": {
                   "text": "I was able to add 14 and 6 to get 20. However, the subtract tool is currently offline, so I cannot subtract 9 from 40."
                 },
-                "fingerprint": 18219367016492864465
+                "fingerprint": "ee2ccf0bc40bee57"
               }
             }
           ],
@@ -953,13 +921,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "TBDAarfXHNWgqtsP3OnBmQI"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 12140379471403610983
           },
           "finish_reason": "stop",
           "raw": {
@@ -1026,7 +987,7 @@
                 "item": {
                   "text": "I was able to add 14 and 6 to get 20. However, the subtract tool is currently offline, so I cannot subtract 9 from 40."
                 },
-                "fingerprint": 18219367016492864465
+                "fingerprint": "ee2ccf0bc40bee57"
               }
             }
           }

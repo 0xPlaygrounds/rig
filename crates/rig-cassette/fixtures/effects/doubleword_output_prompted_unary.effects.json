@@ -85,14 +85,6 @@
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_54804a29-b356-41b6-93fa-a5edfb999709"
           },
-          "native": {
-            "item": {
-              "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A monthly gathering for Rust developers in Seattle to discuss projects, share knowledge, and network.\"}",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 2267820295855281764
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

@@ -133,7 +133,7 @@
                   },
                   "thoughtSignature": "EtoCCtcCAWkUfRO+tZNVoyFJBDJ9AFV/qI3CdiZH2oXkETAg5VMyOFHisiLuTJFVjyfzcyG7MkINVxgeb34vAvGtwxx/yBMow2k6a608eBbPnr+M51zsqbyD/L6/yluKGLBVnneZhh90DfKsLaRz4tRFM/8MbAM2m/NInQtectlBap9ByaeFeYm/lENlN7UI1gcdPtz6Gxju/8YxfK74UnLfwye27h3OdVHe4hmRXUrhvnPrqgd6aQvtDkil15XZmlT+vIEVrNEMNjUvBGnQrVIOhTWIvybOxxxozBxRDsgrVsEAszopk/vghmBaKoD9wJsnKyMe0a6juFHxeFWweLcQH7uBgpnjxqF0xjjlMkhEsONGhTh1JzaM4P7JjO8X56xhK8YytKQAT+Ar0auoFma+91ny/TJfznUEXgQGLp7pTioysw1iOaX6ztxJfKguATkhXwwSB/2DcK4dWg=="
                 },
-                "fingerprint": 4350426640509382078
+                "fingerprint": "5ba13e8dfce83467"
               }
             }
           ],
@@ -149,13 +149,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "BQ_Aaq-RJJaGqtsPkODlsAM"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 11040755099303928258
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -224,7 +217,7 @@
                   },
                   "thoughtSignature": "EtoCCtcCAWkUfRO+tZNVoyFJBDJ9AFV/qI3CdiZH2oXkETAg5VMyOFHisiLuTJFVjyfzcyG7MkINVxgeb34vAvGtwxx/yBMow2k6a608eBbPnr+M51zsqbyD/L6/yluKGLBVnneZhh90DfKsLaRz4tRFM/8MbAM2m/NInQtectlBap9ByaeFeYm/lENlN7UI1gcdPtz6Gxju/8YxfK74UnLfwye27h3OdVHe4hmRXUrhvnPrqgd6aQvtDkil15XZmlT+vIEVrNEMNjUvBGnQrVIOhTWIvybOxxxozBxRDsgrVsEAszopk/vghmBaKoD9wJsnKyMe0a6juFHxeFWweLcQH7uBgpnjxqF0xjjlMkhEsONGhTh1JzaM4P7JjO8X56xhK8YytKQAT+Ar0auoFma+91ny/TJfznUEXgQGLp7pTioysw1iOaX6ztxJfKguATkhXwwSB/2DcK4dWg=="
                 },
-                "fingerprint": 4350426640509382078
+                "fingerprint": "5ba13e8dfce83467"
               }
             }
           }
@@ -317,7 +310,7 @@
                       },
                       "thoughtSignature": "EtoCCtcCAWkUfRO+tZNVoyFJBDJ9AFV/qI3CdiZH2oXkETAg5VMyOFHisiLuTJFVjyfzcyG7MkINVxgeb34vAvGtwxx/yBMow2k6a608eBbPnr+M51zsqbyD/L6/yluKGLBVnneZhh90DfKsLaRz4tRFM/8MbAM2m/NInQtectlBap9ByaeFeYm/lENlN7UI1gcdPtz6Gxju/8YxfK74UnLfwye27h3OdVHe4hmRXUrhvnPrqgd6aQvtDkil15XZmlT+vIEVrNEMNjUvBGnQrVIOhTWIvybOxxxozBxRDsgrVsEAszopk/vghmBaKoD9wJsnKyMe0a6juFHxeFWweLcQH7uBgpnjxqF0xjjlMkhEsONGhTh1JzaM4P7JjO8X56xhK8YytKQAT+Ar0auoFma+91ny/TJfznUEXgQGLp7pTioysw1iOaX6ztxJfKguATkhXwwSB/2DcK4dWg=="
                     },
-                    "fingerprint": 4350426640509382078
+                    "fingerprint": "5ba13e8dfce83467"
                   }
                 }
               ],
@@ -328,14 +321,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "BQ_Aaq-RJJaGqtsPkODlsAM"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 11040755099303928258
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -399,7 +385,7 @@
                   "text": "the adder is broken",
                   "thoughtSignature": "EtYCCtMCAWkUfRMvUSeACp8+UlX3WUIrrQoGItL9I/rIWZERYiFR8WQGKpRYPeCGfPSu66at3eeVxNCeijoaI+uc87cKZ/7hRdNvRPWtL6iyzWNV+aje4HFDi6Zp1RvUhGxEfrFnxeM+e86Zj6rveQo3oFHUyM/UDIpddRCldKlbqfeWuz44NJLuwxNi28Esypr7sPmh11lgnOVsTuDXHXZ8nWDMlDxXnUM9tco/K+Z8PTN8zdsJv3bQQ8XzAESNfqeQEY5fyeYK+SWBVy2XOK2GNBdL3MbYoP/tnrL1dLoLCaDPLgDt31+Gd+atY+WXBy1Ft9ZGu9K+Ut9hjfAmi6VQYepzmO4A48+p+EIh9Ww0xKYj1ipA464r/FCXh7mgqu/8Zd8nj+7fg0mgIDldShgQS9MYh68SUuYFF4Tm/EOEDUnnev3ZkcqtOQ0zR4foiN3DYupIFG67"
                 },
-                "fingerprint": 8382217321388958331
+                "fingerprint": "9628330a694f9bff"
               }
             }
           ],
@@ -415,13 +401,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "Bg_AaqGwINayqtsP5cOGmQM"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 14739622908140403659
           },
           "finish_reason": "stop",
           "raw": {
@@ -474,7 +453,7 @@
                   "text": "the adder is broken",
                   "thoughtSignature": "EtYCCtMCAWkUfRMvUSeACp8+UlX3WUIrrQoGItL9I/rIWZERYiFR8WQGKpRYPeCGfPSu66at3eeVxNCeijoaI+uc87cKZ/7hRdNvRPWtL6iyzWNV+aje4HFDi6Zp1RvUhGxEfrFnxeM+e86Zj6rveQo3oFHUyM/UDIpddRCldKlbqfeWuz44NJLuwxNi28Esypr7sPmh11lgnOVsTuDXHXZ8nWDMlDxXnUM9tco/K+Z8PTN8zdsJv3bQQ8XzAESNfqeQEY5fyeYK+SWBVy2XOK2GNBdL3MbYoP/tnrL1dLoLCaDPLgDt31+Gd+atY+WXBy1Ft9ZGu9K+Ut9hjfAmi6VQYepzmO4A48+p+EIh9Ww0xKYj1ipA464r/FCXh7mgqu/8Zd8nj+7fg0mgIDldShgQS9MYh68SUuYFF4Tm/EOEDUnnev3ZkcqtOQ0zR4foiN3DYupIFG67"
                 },
-                "fingerprint": 8382217321388958331
+                "fingerprint": "9628330a694f9bff"
               }
             }
           }

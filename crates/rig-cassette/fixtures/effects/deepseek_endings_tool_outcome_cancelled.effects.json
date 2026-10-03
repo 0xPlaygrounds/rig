@@ -137,7 +137,7 @@
                   "id": "call_00_z3aaZiVzFCFnUDA1IkVD9979",
                   "type": "function"
                 },
-                "fingerprint": 10240878473847638451
+                "fingerprint": "3054414b079c047e"
               }
             }
           ],
@@ -153,23 +153,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "a606b163-4a2b-409a-a5d8-6fd429480e81"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_z3aaZiVzFCFnUDA1IkVD9979",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 5925197937001883263
           },
           "finish_reason": "tool_calls",
           "raw": {

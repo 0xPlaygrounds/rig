@@ -136,7 +136,7 @@
                   },
                   "thoughtSignature": "EqMCCqACAWkUfRMEYVuhlLGdUe79Fr2dfqLjAPnbKYCKKhhKxhVJT0ZrU0L04HYybUzQLdJEL45P/EG9p0tQ7oB8JNvG6Xv5hCIzTuyIqbqfnaCWOfpDDTmxXfJXIQR4zu6n4N6pc5tnJsLAuTE9ozJWE5FTLfCiw8wxVfy43ipA58Q5WhRT7sJO2nYFA/5bVZzqqtYa/JwP4fFyo462BqezOvAIgqwPORzG/Lr+AWi70sND8h0rJ83zZBtW5ezobL7xrbWQL1vM2JoquMmLFL7xL+NsyIFyQtnMtrbwZLjYsD5m6RhAGKi8hsitoySspvaqtbxnq+G8CRqvBY5yYpC5q5UH5oLmKluJ4R/Re2IPAxiGrzK3gqPFALo9mTUuQtIu6vw1"
                 },
-                "fingerprint": 10608845023710921188
+                "fingerprint": "aa8f4c2311600405"
               }
             }
           ],
@@ -152,14 +152,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "UQ_AarDXFIOsz7IPmfTGIQ"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 13344303966271830632
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -254,7 +246,7 @@
                       },
                       "thoughtSignature": "EqMCCqACAWkUfRMEYVuhlLGdUe79Fr2dfqLjAPnbKYCKKhhKxhVJT0ZrU0L04HYybUzQLdJEL45P/EG9p0tQ7oB8JNvG6Xv5hCIzTuyIqbqfnaCWOfpDDTmxXfJXIQR4zu6n4N6pc5tnJsLAuTE9ozJWE5FTLfCiw8wxVfy43ipA58Q5WhRT7sJO2nYFA/5bVZzqqtYa/JwP4fFyo462BqezOvAIgqwPORzG/Lr+AWi70sND8h0rJ83zZBtW5ezobL7xrbWQL1vM2JoquMmLFL7xL+NsyIFyQtnMtrbwZLjYsD5m6RhAGKi8hsitoySspvaqtbxnq+G8CRqvBY5yYpC5q5UH5oLmKluJ4R/Re2IPAxiGrzK3gqPFALo9mTUuQtIu6vw1"
                     },
-                    "fingerprint": 10608845023710921188
+                    "fingerprint": "aa8f4c2311600405"
                   }
                 }
               ],
@@ -265,15 +257,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "UQ_AarDXFIOsz7IPmfTGIQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 13344303966271830632
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -339,7 +323,7 @@
                   "text": "42",
                   "thoughtSignature": "EuABCt0BAWkUfROerAu6c13r3Ask9cFbfQaVupVJrFL/WVoJOZ2q+XTpsdy8s9hLWncjEZK6cHQ/oOJJPKjpGl8gSEl3Qctgm0H8FTWK1RyFPxGVwIqI1Ms+oBtKBIMUKyKGUr3BARmXKWgoqivQkQUwKUQe6WMvIuuBi0f+CCaDdMfZZEJA2j09HshQGoyww1JbbT9NG4RtSGz6BkEabIl+iseEJ62EjuaR+P1MbQ0vxKz2NToe0RT3Xr75QhLsQ2S8SujA3uLnCiz3lLjGxyNTFrM2EXOLFi4utYuBdo0IINM="
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -355,13 +339,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "Ug_AapHQDrmtz7IPy5PZ-QM"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

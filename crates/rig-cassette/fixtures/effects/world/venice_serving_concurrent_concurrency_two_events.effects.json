@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 10,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,32 +10,24 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 19,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -67,7 +59,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -115,7 +107,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -127,7 +119,7 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 31,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -136,6 +128,22 @@
       },
       {
         "batch": 32,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -273,7 +281,7 @@
                   "id": "MHf85VsI8",
                   "type": "function"
                 },
-                "fingerprint": 2204965400213942252
+                "fingerprint": "9c15499424369ba5"
               }
             },
             {
@@ -294,7 +302,7 @@
                   "id": "TJHCvQVU9",
                   "type": "function"
                 },
-                "fingerprint": 13277374113842624991
+                "fingerprint": "5ac029df88e134d6"
               }
             }
           ],
@@ -309,32 +317,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "MHf85VsI8",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "TJHCvQVU9",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 4407191838942949610
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -398,7 +380,7 @@
                   "id": "MHf85VsI8",
                   "type": "function"
                 },
-                "fingerprint": 2204965400213942252
+                "fingerprint": "9c15499424369ba5"
               }
             }
           }
@@ -442,7 +424,7 @@
                   "id": "TJHCvQVU9",
                   "type": "function"
                 },
-                "fingerprint": 13277374113842624991
+                "fingerprint": "5ac029df88e134d6"
               }
             }
           }
@@ -548,7 +530,7 @@
                       "id": "MHf85VsI8",
                       "type": "function"
                     },
-                    "fingerprint": 2204965400213942252
+                    "fingerprint": "9c15499424369ba5"
                   }
                 },
                 {
@@ -569,7 +551,7 @@
                       "id": "TJHCvQVU9",
                       "type": "function"
                     },
-                    "fingerprint": 13277374113842624991
+                    "fingerprint": "5ac029df88e134d6"
                   }
                 }
               ],
@@ -580,33 +562,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "MHf85VsI8",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "TJHCvQVU9",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4407191838942949610
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -689,14 +645,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RbsMxTFOC3XK7i4Gt1ToRLia"
-          },
-          "native": {
-            "item": {
-              "content": "The current signals are crimson-harbor and silver-orchard.",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 9436805893853109908
           },
           "finish_reason": "stop",
           "raw": {

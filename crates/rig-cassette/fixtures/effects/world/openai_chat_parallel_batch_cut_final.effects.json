@@ -170,7 +170,7 @@
                   "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
                   "type": "function"
                 },
-                "fingerprint": 9788276843832975374
+                "fingerprint": "0b510353b0873e9b"
               }
             },
             {
@@ -193,7 +193,7 @@
                   "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
                   "type": "function"
                 },
-                "fingerprint": 13361508283144203208
+                "fingerprint": "42672c9bdf08f841"
               }
             },
             {
@@ -216,7 +216,7 @@
                   "id": "call_8T4C9t00iaWV19KaOSuklvba",
                   "type": "function"
                 },
-                "fingerprint": 1096069136241399780
+                "fingerprint": "c5e8a056842d3e69"
               }
             }
           ],
@@ -233,41 +233,6 @@
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
             "response_id": "chatcmpl-EUeEaSb81350vimi1pxycjqZoSfqD"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"slot\": 0}",
-                    "name": "checkpoint_batch"
-                  },
-                  "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"slot\": 1}",
-                    "name": "checkpoint_batch"
-                  },
-                  "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"slot\": 2}",
-                    "name": "checkpoint_batch"
-                  },
-                  "id": "call_8T4C9t00iaWV19KaOSuklvba",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14855411307933313874
           },
           "provider_request_id": "req_41b253289ac94482867027258d788454",
           "finish_reason": "tool_calls",
@@ -465,7 +430,7 @@
                       "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
                       "type": "function"
                     },
-                    "fingerprint": 9788276843832975374
+                    "fingerprint": "0b510353b0873e9b"
                   }
                 },
                 {
@@ -488,7 +453,7 @@
                       "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
                       "type": "function"
                     },
-                    "fingerprint": 13361508283144203208
+                    "fingerprint": "42672c9bdf08f841"
                   }
                 },
                 {
@@ -511,7 +476,7 @@
                       "id": "call_8T4C9t00iaWV19KaOSuklvba",
                       "type": "function"
                     },
-                    "fingerprint": 1096069136241399780
+                    "fingerprint": "c5e8a056842d3e69"
                   }
                 }
               ],
@@ -522,42 +487,7 @@
                 "response_model": "gpt-4.1-mini-2025-04-14",
                 "response_id": "chatcmpl-EUeEaSb81350vimi1pxycjqZoSfqD"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 0}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 1}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 2}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_8T4C9t00iaWV19KaOSuklvba",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14855411307933313874
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -659,15 +589,6 @@
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
             "response_id": "chatcmpl-EUeEbVrLOlbMgmaKwNLV3f0RWVioc"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "checkpoint-complete",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8754285088019305819
           },
           "provider_request_id": "req_1d4f3e4dad344bfc82856f531581657a",
           "finish_reason": "stop",

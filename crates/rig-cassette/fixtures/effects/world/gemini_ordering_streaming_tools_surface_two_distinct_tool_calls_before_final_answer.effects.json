@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -193,7 +193,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                 },
-                "fingerprint": 9787574756319870180
+                "fingerprint": "58766188075a0b9a"
               }
             }
           ],
@@ -209,14 +209,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "9y-_auXSD_LQz7IPgv7xuAQ"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 1522745164610273574
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -279,7 +271,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                 },
-                "fingerprint": 9787574756319870180
+                "fingerprint": "58766188075a0b9a"
               }
             }
           }
@@ -359,7 +351,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                     },
-                    "fingerprint": 9787574756319870180
+                    "fingerprint": "58766188075a0b9a"
                   }
                 }
               ],
@@ -370,15 +362,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "9y-_auXSD_LQz7IPgv7xuAQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 1522745164610273574
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -451,7 +435,7 @@
                   },
                   "thoughtSignature": "CiIBaRR9E+qx6KfTlsltSQLauyH0L2D6wd27b4aqABPTXh48CmwBaRR9E/kWZcn5Rd91LqN5AT+095kKCoebQ5th3V61jxgiF9XTl/tVCtsSSrFgqxrWQwv1gOJ6vE9yWnvc3AT3Gf6W77Tmr7OvdbyRDSciIfs8P7KaSXvX5o/UJl//wRx1k1mUHm8xeqHedN0KUAFpFH0TssvdaSDe5iUnYHCLXXO9J6xkBaRhBo2CGOLys56WolhmnW6N4oNo79IaZyI8iN79ogYbVG4ZHFHxwJfi6DYWVK0wafYWD+POb7tC"
                 },
-                "fingerprint": 4809057603624679569
+                "fingerprint": "7a4cb7bd29e80315"
               }
             }
           ],
@@ -467,14 +451,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "-C-_asObD_Xpz7IP0qaj4Qs"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 2208729604140953391
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -537,7 +513,7 @@
                   },
                   "thoughtSignature": "CiIBaRR9E+qx6KfTlsltSQLauyH0L2D6wd27b4aqABPTXh48CmwBaRR9E/kWZcn5Rd91LqN5AT+095kKCoebQ5th3V61jxgiF9XTl/tVCtsSSrFgqxrWQwv1gOJ6vE9yWnvc3AT3Gf6W77Tmr7OvdbyRDSciIfs8P7KaSXvX5o/UJl//wRx1k1mUHm8xeqHedN0KUAFpFH0TssvdaSDe5iUnYHCLXXO9J6xkBaRhBo2CGOLys56WolhmnW6N4oNo79IaZyI8iN79ogYbVG4ZHFHxwJfi6DYWVK0wafYWD+POb7tC"
                 },
-                "fingerprint": 4809057603624679569
+                "fingerprint": "7a4cb7bd29e80315"
               }
             }
           }
@@ -617,7 +593,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                     },
-                    "fingerprint": 9787574756319870180
+                    "fingerprint": "58766188075a0b9a"
                   }
                 }
               ],
@@ -628,15 +604,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "9y-_auXSD_LQz7IPgv7xuAQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 1522745164610273574
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -676,7 +644,7 @@
                       },
                       "thoughtSignature": "CiIBaRR9E+qx6KfTlsltSQLauyH0L2D6wd27b4aqABPTXh48CmwBaRR9E/kWZcn5Rd91LqN5AT+095kKCoebQ5th3V61jxgiF9XTl/tVCtsSSrFgqxrWQwv1gOJ6vE9yWnvc3AT3Gf6W77Tmr7OvdbyRDSciIfs8P7KaSXvX5o/UJl//wRx1k1mUHm8xeqHedN0KUAFpFH0TssvdaSDe5iUnYHCLXXO9J6xkBaRhBo2CGOLys56WolhmnW6N4oNo79IaZyI8iN79ogYbVG4ZHFHxwJfi6DYWVK0wafYWD+POb7tC"
                     },
-                    "fingerprint": 4809057603624679569
+                    "fingerprint": "7a4cb7bd29e80315"
                   }
                 }
               ],
@@ -687,15 +655,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "-C-_asObD_Xpz7IP0qaj4Qs"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 2208729604140953391
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -759,7 +719,7 @@
                   "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
                   "thoughtSignature": "CloBaRR9E9FLG0CBKdgKLlLZVBNY66VNh3CZoyP6DOOI9dnnyIk9yrd2/74SmodQlNpnG3R52DTRxLLGTh22q/RL7B3B3c90GAmWY+sV0P7Flh1Exu7hWF7HvdMKtgEBaRR9Ex9o4ZTmaGhA7uXG6D+JhwQYRZeGtR3Tpxp1l7WxXmezcDnDoypC7tNZ4AsVeZcG1QvAh4prSntmWhEJvlsn+nuNpYoQSfImqeZcbDQQuLiT5e6Q6vwvC6vlitYd6ypQ0cW4DpOI8N6coep9CIVnwxKL0/CwCfLYtTs0EPfZY/Lm9jjaYiUaear8p99+kMx5hNqoX69quO54dBEIBbj8yJ8C510Hp7CHBdOjx3ZSRcCsegp2AWkUfRNhMNIguesEZTH3YGPdQKjjy0x0yR9LT6dRxweesbmsZctnE8WF3BVcL+U1ReN1oQSFys0XYd5HJyqP3/8QNrFgpz5Rg/HMqA+Nz3Ed3Q031mFCT0PfMx/S1Pta7DWA4ZpIOl8vYS5+Zn52f6GnsORANQ=="
                 },
-                "fingerprint": 11101283957732075835
+                "fingerprint": "0d20edf319acb5d1"
               }
             }
           ],
@@ -775,13 +735,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "-C-_ap2lNbuhz7IP7Y6v6AI"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 10318810282950349641
           },
           "finish_reason": "stop",
           "raw": {
@@ -834,7 +787,7 @@
                   "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
                   "thoughtSignature": "CloBaRR9E9FLG0CBKdgKLlLZVBNY66VNh3CZoyP6DOOI9dnnyIk9yrd2/74SmodQlNpnG3R52DTRxLLGTh22q/RL7B3B3c90GAmWY+sV0P7Flh1Exu7hWF7HvdMKtgEBaRR9Ex9o4ZTmaGhA7uXG6D+JhwQYRZeGtR3Tpxp1l7WxXmezcDnDoypC7tNZ4AsVeZcG1QvAh4prSntmWhEJvlsn+nuNpYoQSfImqeZcbDQQuLiT5e6Q6vwvC6vlitYd6ypQ0cW4DpOI8N6coep9CIVnwxKL0/CwCfLYtTs0EPfZY/Lm9jjaYiUaear8p99+kMx5hNqoX69quO54dBEIBbj8yJ8C510Hp7CHBdOjx3ZSRcCsegp2AWkUfRNhMNIguesEZTH3YGPdQKjjy0x0yR9LT6dRxweesbmsZctnE8WF3BVcL+U1ReN1oQSFys0XYd5HJyqP3/8QNrFgpz5Rg/HMqA+Nz3Ed3Q031mFCT0PfMx/S1Pta7DWA4ZpIOl8vYS5+Zn52f6GnsORANQ=="
                 },
-                "fingerprint": 11101283957732075835
+                "fingerprint": "0d20edf319acb5d1"
               }
             }
           }

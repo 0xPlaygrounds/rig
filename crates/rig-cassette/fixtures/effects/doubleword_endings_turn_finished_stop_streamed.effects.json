@@ -138,7 +138,7 @@
                   "id": "call_b796bc3c8e0a4fa488f98daa",
                   "type": "function"
                 },
-                "fingerprint": 11487311981509176431
+                "fingerprint": "4418b83f709419ce"
               }
             }
           ],
@@ -155,23 +155,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790146008-I86Q60jpABFhRzuNTaD1"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_b796bc3c8e0a4fa488f98daa",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17005210231229554281
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -251,7 +234,7 @@
                   "id": "call_b796bc3c8e0a4fa488f98daa",
                   "type": "function"
                 },
-                "fingerprint": 11487311981509176431
+                "fingerprint": "4418b83f709419ce"
               }
             }
           }

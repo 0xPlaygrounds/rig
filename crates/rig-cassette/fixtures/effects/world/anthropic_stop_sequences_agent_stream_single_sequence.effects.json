@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -14,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -101,7 +109,7 @@
                   "text": "alpha\nbravo\n",
                   "type": "text"
                 },
-                "fingerprint": 2286340693688032215
+                "fingerprint": "4dccd02928c36dc9"
               }
             }
           ],
@@ -126,11 +134,11 @@
               "output_tokens": 6,
               "input_tokens": 27,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "stop_sequence",
             "stop_sequence": "charlie",
@@ -185,7 +193,7 @@
                   "text": "alpha\nbravo\n",
                   "type": "text"
                 },
-                "fingerprint": 2286340693688032215
+                "fingerprint": "4dccd02928c36dc9"
               }
             }
           }

@@ -175,7 +175,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9Ex6k0QmMJyPFWW0TEnbF2NTz0ejWPvgNnLfG9bDkMHUKVwFpFH0TZaoXg4usTXzddCNb+OCcy2jEXmblguRIi2kndHiIe063EAb5ier4U72+YBJk8tBlyF6Xoqc4TRWUKJvqQGenBCVkmph12WBdKfNBdysrAjwr1wreAQFpFH0TE1d3J5xNkjWKdOI5hhKc8SKwUu+qHCSgk4C1wCzALs9tq2dt9yDmUihQT8XA4zsF4nylDnF7Y/xAj0hsKT/ZTWfqdq/pNA3J9KbQlkP+H1tipbFHfqDGiKlNI3c6CHfzmPSoKmsw7GaLL/4Z+OkRSa6BiZKBQ5pPy/2K3dooxGkC2SjRI3SwS3RrHjX4fHMD7Q9cglCNFOaQK12z+g4tg6/KctBCAoRDJvhF12vohQdzWUlDxBZV/nZ+G52PjQrCt99dFN55pn+etSc+dgH4MGErgfbZmeh4pA=="
                 },
-                "fingerprint": 1857486851785009144
+                "fingerprint": "ef3a4d5720d3a566"
               }
             }
           ],
@@ -191,14 +191,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "Sy2_aviBMbXxqtsPu5q06AQ"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 8591927711733973290
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -267,7 +259,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9Ex6k0QmMJyPFWW0TEnbF2NTz0ejWPvgNnLfG9bDkMHUKVwFpFH0TZaoXg4usTXzddCNb+OCcy2jEXmblguRIi2kndHiIe063EAb5ier4U72+YBJk8tBlyF6Xoqc4TRWUKJvqQGenBCVkmph12WBdKfNBdysrAjwr1wreAQFpFH0TE1d3J5xNkjWKdOI5hhKc8SKwUu+qHCSgk4C1wCzALs9tq2dt9yDmUihQT8XA4zsF4nylDnF7Y/xAj0hsKT/ZTWfqdq/pNA3J9KbQlkP+H1tipbFHfqDGiKlNI3c6CHfzmPSoKmsw7GaLL/4Z+OkRSa6BiZKBQ5pPy/2K3dooxGkC2SjRI3SwS3RrHjX4fHMD7Q9cglCNFOaQK12z+g4tg6/KctBCAoRDJvhF12vohQdzWUlDxBZV/nZ+G52PjQrCt99dFN55pn+etSc+dgH4MGErgfbZmeh4pA=="
                 },
-                "fingerprint": 1857486851785009144
+                "fingerprint": "ef3a4d5720d3a566"
               }
             }
           }
@@ -353,7 +345,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9Ex6k0QmMJyPFWW0TEnbF2NTz0ejWPvgNnLfG9bDkMHUKVwFpFH0TZaoXg4usTXzddCNb+OCcy2jEXmblguRIi2kndHiIe063EAb5ier4U72+YBJk8tBlyF6Xoqc4TRWUKJvqQGenBCVkmph12WBdKfNBdysrAjwr1wreAQFpFH0TE1d3J5xNkjWKdOI5hhKc8SKwUu+qHCSgk4C1wCzALs9tq2dt9yDmUihQT8XA4zsF4nylDnF7Y/xAj0hsKT/ZTWfqdq/pNA3J9KbQlkP+H1tipbFHfqDGiKlNI3c6CHfzmPSoKmsw7GaLL/4Z+OkRSa6BiZKBQ5pPy/2K3dooxGkC2SjRI3SwS3RrHjX4fHMD7Q9cglCNFOaQK12z+g4tg6/KctBCAoRDJvhF12vohQdzWUlDxBZV/nZ+G52PjQrCt99dFN55pn+etSc+dgH4MGErgfbZmeh4pA=="
                     },
-                    "fingerprint": 1857486851785009144
+                    "fingerprint": "ef3a4d5720d3a566"
                   }
                 }
               ],
@@ -364,15 +356,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "Sy2_aviBMbXxqtsPu5q06AQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 8591927711733973290
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -436,7 +420,7 @@
                 "item": {
                   "text": "25"
                 },
-                "fingerprint": 3094961924234177110
+                "fingerprint": "be4c9c495feecf68"
               }
             }
           ],
@@ -451,13 +435,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "TC2_apT3JrCKmtkPyMiCiAY"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 14548592104024673530
           },
           "finish_reason": "stop",
           "raw": {
@@ -508,7 +485,7 @@
                 "item": {
                   "text": "25"
                 },
-                "fingerprint": 3094961924234177110
+                "fingerprint": "be4c9c495feecf68"
               }
             }
           }

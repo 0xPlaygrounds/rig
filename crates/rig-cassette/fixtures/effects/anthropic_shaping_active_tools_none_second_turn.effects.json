@@ -118,7 +118,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_019dtWzWSZpMDoAmGNbv1X66"
+                "provider": "toolu_01KX3j7V575t7Nw5ffiVidjr"
               },
               "function": {
                 "name": "add",
@@ -132,7 +132,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_019dtWzWSZpMDoAmGNbv1X66",
+                  "id": "toolu_01KX3j7V575t7Nw5ffiVidjr",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -140,7 +140,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 4921696847819406948
+                "fingerprint": "6264a0a1c4c9c3d4"
               }
             }
           ],
@@ -156,9 +156,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfci84ChkX4XTTaJVUD7D"
+            "response_id": "msg_011CfezAf7qnFqBvx6wm6w4C"
           },
-          "provider_request_id": "req_011Cfci83rczy3hZqdokVJ8c",
+          "provider_request_id": "req_011CfezAemmNfeRdsv23FmDe",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -167,7 +167,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_019dtWzWSZpMDoAmGNbv1X66",
+                "id": "toolu_01KX3j7V575t7Nw5ffiVidjr",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -177,7 +177,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfci84ChkX4XTTaJVUD7D",
+            "id": "msg_011CfezAf7qnFqBvx6wm6w4C",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -252,7 +252,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_019dtWzWSZpMDoAmGNbv1X66"
+                    "provider": "toolu_01KX3j7V575t7Nw5ffiVidjr"
                   },
                   "function": {
                     "name": "add",
@@ -266,7 +266,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_019dtWzWSZpMDoAmGNbv1X66",
+                      "id": "toolu_01KX3j7V575t7Nw5ffiVidjr",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -274,7 +274,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4921696847819406948
+                    "fingerprint": "6264a0a1c4c9c3d4"
                   }
                 }
               ],
@@ -283,7 +283,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011Cfci84ChkX4XTTaJVUD7D"
+                "response_id": "msg_011CfezAf7qnFqBvx6wm6w4C"
               },
               "stop": "tool_use"
             },
@@ -293,7 +293,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_019dtWzWSZpMDoAmGNbv1X66"
+                    "provider": "toolu_01KX3j7V575t7Nw5ffiVidjr"
                   },
                   "name": "add",
                   "content": [
@@ -328,14 +328,14 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
           "usage": {
-            "input_tokens": 134,
-            "output_tokens": 4,
-            "total_tokens": 138,
+            "input_tokens": 80,
+            "output_tokens": 5,
+            "total_tokens": 85,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -344,9 +344,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfci89YBupWVbTaqHzVcy"
+            "response_id": "msg_011CfezAkqeKBeibLV1FYibz"
           },
-          "provider_request_id": "req_011Cfci89C6fMwvvy9t7m9Sn",
+          "provider_request_id": "req_011CfezAkUZRRPLKnBBjAUPY",
           "finish_reason": "stop",
           "raw": {
             "container": null,
@@ -357,7 +357,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfci89YBupWVbTaqHzVcy",
+            "id": "msg_011CfezAkqeKBeibLV1FYibz",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -372,8 +372,8 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 134,
-              "output_tokens": 4,
+              "input_tokens": 80,
+              "output_tokens": 5,
               "service_tier": "standard"
             }
           }

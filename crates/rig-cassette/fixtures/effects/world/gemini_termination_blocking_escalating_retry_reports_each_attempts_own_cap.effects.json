@@ -93,7 +93,7 @@
                 "item": {
                   "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
                 },
-                "fingerprint": 13790674082092144146
+                "fingerprint": "07cc015d47ce9346"
               }
             }
           ],
@@ -108,13 +108,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "p3izatO-GbjiqtsPytTWQA"
-          },
-          "native": {
-            "item": {
-              "finishReason": "MAX_TOKENS",
-              "index": 0
-            },
-            "fingerprint": 10059733656189903332
           },
           "finish_reason": "length",
           "raw": {
@@ -201,7 +194,7 @@
                 "item": {
                   "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
                 },
-                "fingerprint": 16343423285875149723
+                "fingerprint": "69d770c19eeee12d"
               }
             }
           ],
@@ -216,13 +209,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "p3izaob7Ooi-qtsPpfaNwQQ"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 17631171569396485033
           },
           "finish_reason": "stop",
           "raw": {

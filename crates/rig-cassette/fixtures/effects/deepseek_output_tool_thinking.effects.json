@@ -99,7 +99,7 @@
                 "item": {
                   "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce."
                 },
-                "fingerprint": 17961302505746318098
+                "fingerprint": "ffa13314978cfdc7"
               }
             },
             {
@@ -124,7 +124,7 @@
                   "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168",
                   "type": "function"
                 },
-                "fingerprint": 5792537595325342080
+                "fingerprint": "413356b6e72ab065"
               }
             }
           ],
@@ -141,24 +141,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "f95f4256-70cd-4efc-bf3a-3e38d30a6a91"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Meetup\", \"summary\": \"A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code.\"}",
-                    "name": "final_result"
-                  },
-                  "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9438777352771791763
           },
           "finish_reason": "tool_calls",
           "raw": {

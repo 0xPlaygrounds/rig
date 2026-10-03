@@ -110,7 +110,7 @@
                   "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
                   "type": "text"
                 },
-                "fingerprint": 13589871804653066448
+                "fingerprint": "7d56c2b6aafe286e"
               }
             }
           ],
@@ -135,11 +135,11 @@
               "output_tokens": 22,
               "input_tokens": 107,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011Cfdxu5GqYqjcLtcwRXBwj",
@@ -201,7 +201,7 @@
                   "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
                   "type": "text"
                 },
-                "fingerprint": 13589871804653066448
+                "fingerprint": "7d56c2b6aafe286e"
               }
             }
           }

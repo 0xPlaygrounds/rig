@@ -343,16 +343,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 14585632120862735230
-              }
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -390,15 +381,6 @@
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
-              },
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 14585632120862735230
               },
               "provider_request_id": "req_1a38404650834cf7a3be6c88157f5335",
               "finish_reason": "stop",
@@ -455,16 +437,7 @@
               "response_model": "gpt-5-mini-2025-08-07",
               "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "annotations": [],
-                "content": "The dominant non-background color is bright red.",
-                "refusal": null,
-                "role": "assistant"
-              },
-              "fingerprint": 14585632120862735230
-            }
+            "stop": "stop"
           }
         },
         {

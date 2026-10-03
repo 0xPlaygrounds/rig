@@ -160,7 +160,7 @@
                   },
                   "thoughtSignature": "EqMCCqACAWkUfRMMctJvh3E+GAFSJRa9sLnQry3ErAvEf5UU27WdAP0cl0Q3HQffLmJyWx2lT//KcCD1WNeDHuIdijCq8OXkz4j78X/qv0o3vBqzhSceIMdAOI6tX1cuEvBT6mpb5oGvyhWtdV2GhqpdPfiiQZCLkmrCkj03dDWYt8p7/4DGpEiZH1VersgncW8YV202BoaIIp2iQwaBR8DWTmNhFasJ0uFWraHZIfTMjB+Ua7rEaD/HYW5zLGRKYcdbBVgpPBOZl1U9oHVUnVTczMi9KnPvLRM9pYhcEhJYXUBOKhVt2Pn9F0XE50oh8nf/JphtaTph/Tp+JXd3hprmW307B/8hQV6dibpySNT1ODuqT3AzLNiq/lE4iectbN6G80nI"
                 },
-                "fingerprint": 8658654362607789344
+                "fingerprint": "b7837f32f23cb56d"
               }
             }
           ],
@@ -176,14 +176,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "eiy_aoTEH5Drz7IPvqvX6QI"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 16918167542247888192
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -304,7 +296,7 @@
                       },
                       "thoughtSignature": "EqMCCqACAWkUfRMMctJvh3E+GAFSJRa9sLnQry3ErAvEf5UU27WdAP0cl0Q3HQffLmJyWx2lT//KcCD1WNeDHuIdijCq8OXkz4j78X/qv0o3vBqzhSceIMdAOI6tX1cuEvBT6mpb5oGvyhWtdV2GhqpdPfiiQZCLkmrCkj03dDWYt8p7/4DGpEiZH1VersgncW8YV202BoaIIp2iQwaBR8DWTmNhFasJ0uFWraHZIfTMjB+Ua7rEaD/HYW5zLGRKYcdbBVgpPBOZl1U9oHVUnVTczMi9KnPvLRM9pYhcEhJYXUBOKhVt2Pn9F0XE50oh8nf/JphtaTph/Tp+JXd3hprmW307B/8hQV6dibpySNT1ODuqT3AzLNiq/lE4iectbN6G80nI"
                     },
-                    "fingerprint": 8658654362607789344
+                    "fingerprint": "b7837f32f23cb56d"
                   }
                 }
               ],
@@ -315,15 +307,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "eiy_aoTEH5Drz7IPvqvX6QI"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 16918167542247888192
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -388,7 +372,7 @@
                   "text": "That be 42, ye landlubber!",
                   "thoughtSignature": "EpIKCo8KAWkUfRPl/6GBd1BuKmQmDGxEr8QiXU0BWmcANTBawvXGV0PCl8U6Ul1XlmGCg9/DeU61qHaf3TegQsghqYK+tYw2cfnTA/MfxdIi3n1GFVHo6IS86fU6a4N/KuPUt7MiZZ28aumnm8sWqSqk6XqSeNyVp/VOQmIvw7ykGay60R0Qq4kcf8SSmcch1L/p80+w91XM/amvnBqxvuWU0KTmaK7IEw8rgccFTBvd4HmenNFVGNFJZMzVcBZ/dyoGM2Z4BDxEdDOrIu3vqNllJ/3Opwvw3JYSy3HK5j+EEV9V5W3szGo1n6u5fFbMqPWgwBrl5Fr0suKnEqV44t+lLztxSurJ/audzUzBcaDJXpxoWC5aLqw+rdPsg4bbbihDOLp3Lcj8xO9BTUbB6NIGka/VQdPaoG2C9CxjG5aixeKEMNfwUFwFla2F9ncLjDCORgDkPbMn4axTCyYvMri8sF9rGTt4La/QbQfD9ofrEJ8vCi/yRCk2xeIK7rHJxc2XocxZffvh6axSUtElcSb4ETfdVb3cZgYzcXiSS/zEM/ZcFZfKTZ0clSwjbJ88LdFWmLaMKfpHzBs3aAkyjmK085g+DlykyzmfdVwaDpXcAaALy6NFffqnb3foJRIrcFQhtEAbTQHK2DAMTOZNnxTm4WjAlqpzFLa5ZLU9U9KKK7Xv6RvdA4s14H7wV8ekW+elDpb5myv0wg1U0i9A9tcHFOwkLRB9yen7gEfyOdySu6DWZL+pIQATPhyMkdtDUHtnPH1Uqh/Tmz44mJTtc4huboucws4lUydl9P2GIoixmnBtY95Hvd7tBuN/gYaj34REQhTgyOWksfy1LbKVL9GELYPotGkCVBkqwJa84U2GK5KIthgoM4JT2xhdxRMI/Vd0Dj8pj0hhROTAdKDAAtp/mBT7l95lwm48nbKeu7CyBw8f7BMg04LyPNklsQhEbi9mxkvxTUz8ADWIscXV2vfMC/KT8PTUhfhvUun/ZMzTXF/YS8rTrbiY5hyyxy8Mqb/wBkrmW0MYJ/UTmlbMO2JSHQZXgtD+WzfpC+ZhAal2prOfw4yMIC8wE6I5YS9ArC1X3oz/993nVnQP2rp0TFND9j0h7/FVuLzLMC4cqwT+ISs2CVZKF1qwD6WOZk6sh/90L3alJXaoGql5/MDrQjcx51CQ0rMEG57gpnxer+N4ucMXmTXZGvWgXwoW2BnAH3vueiF20mtVb78c046MRr792/mMCF25ramXz2aQBIM9bEBY1S9bge16663zFUoW4u3vcn16a6MkP8V5aL78Yp6FmMU3ysnGccGDe67YjvJugwxgS6gCJ6hkxb/dfG0tzf6xlIPcgwKi2a2jffOtcYpFrEiuW3oyRsuyOf0/Axti9zxz3lOxVj6X1XvoEUBmK/tGLgVEgkgmE19EySxrVfS5Sh1M3/FpJF7+iDIOqnzh0ziA9falMtBB84l6Z9Gc4DDCOk+i6ebYM36TkymcRBDxsJOLmkFa+ws3v9lySsTE/Id2Q5oYd5mBm+C6mLcICyWYvq15//bUXSjzhsni1oTvAWRTnbELCS/5WrUSBIWF2O0wMQZdTmrIBejZjGu0os94V1UJxtBeM/N00XVOJFl1aU7MOhihA3OPd3ZK5rLJJVbZo0XXiVMBPj/k1B8YclaeIXpd6CyVKVlhArxSMYhAC/eOKgKG7VpYiuTw+qLrCUymJSi+OYet3Vt7mKSUsbthc1s="
                 },
-                "fingerprint": 4039588654888063253
+                "fingerprint": "b42d8772f934276b"
               }
             }
           ],
@@ -404,13 +388,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "eyy_ap6cFYHAz7IPh6yPmAQ"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 1551239966998845647
           },
           "finish_reason": "stop",
           "raw": {

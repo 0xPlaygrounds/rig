@@ -128,7 +128,7 @@
                   "id": "call_I4NKuOsyQYHERa8VwNGjy8nc",
                   "type": "function"
                 },
-                "fingerprint": 9901934311465277527
+                "fingerprint": "df327e82f1de6ee6"
               }
             }
           ],
@@ -146,25 +146,6 @@
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
             "response_id": "gen-1790152492-DJIes7gfkA84LLqvWG3C"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"name\":\"John Doe\",\"age\":30,\"profession\":\"software engineer\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_I4NKuOsyQYHERa8VwNGjy8nc",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17487145772602146327
           },
           "finish_reason": "tool_calls",
           "raw": {

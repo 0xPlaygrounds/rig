@@ -113,7 +113,7 @@
                 "item": {
                   "reasoning_content": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit."
                 },
-                "fingerprint": 12150265052958880711
+                "fingerprint": "c497448a01014d28"
               }
             },
             {
@@ -138,7 +138,7 @@
                   "id": "call_00_SgewdJKcqwzsfe6l5NSP9539",
                   "type": "function"
                 },
-                "fingerprint": 14695144940651838752
+                "fingerprint": "b5969c5c85226a6d"
               }
             }
           ],
@@ -155,24 +155,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "94a6a107-2a96-46af-866a-cd59898befa3"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"name\": \"John Doe\", \"age\": 30, \"profession\": \"software engineer\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_00_SgewdJKcqwzsfe6l5NSP9539",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9988390814866380896
           },
           "finish_reason": "tool_calls",
           "raw": {

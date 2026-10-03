@@ -79,7 +79,7 @@
                   "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
                   "thoughtSignature": "ErQDCrEDAWkUfRNG9fHn1fqwHGcbpGSymwzBbto4nd8sjd5RsXdNeqkZGV5lXtRR8MmVEWIix6J0cmqLMm+Cm4b82mEZWebUI7eto0ph8071aBL6/BkvGShLNhJ+iN0spvKPERkh7BBbAwZBRylKNbzbYUBtn8uHqtWoyeWdcXyjNoTE9YYmKfmLMQ6OZpUyhP0gblPLp0NdVldf9q6+Lj6AwISzFuKA5Xwrd9jbWbXuiNPt1KJ+CHv20Nh598x19tyx9ZE8KiCxnkCiIyN4NGesegJc+f1Bjoh/q7MjgYSAXJ2SQdaZgNtzjYWWA65+J8KPbjM42v3r3duqpqoBVlO22szEk8pdhiAyjG2hwgchJHJT60aIxh3th7Df0bAsk5ANrGTU5Tm15tp8B7k+RnwQeox2soKcf47iHDQtK8lMlF1fcDG0n4Mg2GHaD3e7ijoz/OOuRwmhUkBNv93zrAMoa2R/L2rZvbhsCBlmalWL7/zQGeRamwANsp6b1CNBSQD7ODJ8dXG/hy4Wj6ZxkZIvjlFdCuTJib4KlXuuEdQYL6R6ugFU1nskMu4VX1171wu1lNOG3Q=="
                 },
-                "fingerprint": 14673726990416479137
+                "fingerprint": "ecd6ef868d76c88b"
               }
             }
           ],
@@ -95,13 +95,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "bw_Aasv7F8ukmtkPg9jS8Qc"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 5117098154201444803
           },
           "finish_reason": "stop",
           "raw": {

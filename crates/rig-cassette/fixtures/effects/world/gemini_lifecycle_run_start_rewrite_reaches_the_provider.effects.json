@@ -80,7 +80,7 @@
                 "item": {
                   "text": "PINEAPPLE"
                 },
-                "fingerprint": 12970439695123635531
+                "fingerprint": "4cf697616aa62e23"
               }
             }
           ],
@@ -96,13 +96,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "pXizaozIJY-mqtsPzOOGwQU"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 9903234301545163423
           },
           "finish_reason": "stop",
           "raw": {

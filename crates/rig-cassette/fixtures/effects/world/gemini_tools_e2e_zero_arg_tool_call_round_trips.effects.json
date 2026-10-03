@@ -129,7 +129,7 @@
                   },
                   "thoughtSignature": "CqsBAWkUfRMfvrXOJeMgwiDbeyv9yHtmNTQzKQjsUnymWLGUg83/5XeCY5aaJhGgdlzlVZ7GRcnhQcGBOUn/lyuqf7jThgR6Myjp7wtpBzoQvfiD2K1LXboRikVg6nbfkYxZhnGK3hJuRmE6MglieZbENQg7XqC2OZksUYdQN8bi13xviYcdHecTBtTCQP+50kWLcsqpYwmor88TZDhZcQt9jy06ZO1PyhVRwyIF"
                 },
-                "fingerprint": 7590120184630212196
+                "fingerprint": "db64f6e50fb27962"
               }
             }
           ],
@@ -145,14 +145,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "yim_asTyMunqz7IPxeLFoQk"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 17202026757395061816
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -262,7 +254,7 @@
                       },
                       "thoughtSignature": "CqsBAWkUfRMfvrXOJeMgwiDbeyv9yHtmNTQzKQjsUnymWLGUg83/5XeCY5aaJhGgdlzlVZ7GRcnhQcGBOUn/lyuqf7jThgR6Myjp7wtpBzoQvfiD2K1LXboRikVg6nbfkYxZhnGK3hJuRmE6MglieZbENQg7XqC2OZksUYdQN8bi13xviYcdHecTBtTCQP+50kWLcsqpYwmor88TZDhZcQt9jy06ZO1PyhVRwyIF"
                     },
-                    "fingerprint": 7590120184630212196
+                    "fingerprint": "db64f6e50fb27962"
                   }
                 }
               ],
@@ -273,15 +265,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "yim_asTyMunqz7IPxeLFoQk"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 17202026757395061816
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -333,7 +317,7 @@
                 "item": {
                   "text": "The ping tool returned the marker: pong-crimson-7423"
                 },
-                "fingerprint": 5074480350385675545
+                "fingerprint": "e3772e54bdc2c1fb"
               }
             }
           ],
@@ -348,13 +332,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "yym_apHkHcefz7IPqczOiQ0"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 9003661593023741439
           },
           "finish_reason": "stop",
           "raw": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 30,
+        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -24,79 +24,23 @@
         }
       },
       {
-        "batch": 40,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 41,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 42,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 44,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 45,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 47,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 48,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
         "batch": 49,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 50,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -108,11 +52,91 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 53,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
           "items": 1
         }
       },
       {
+        "batch": 54,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 58,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 59,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 60,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 61,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 64,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 70,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -300,7 +324,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15241903345472568337
+                "fingerprint": "350b3872cceaef88"
               }
             }
           ],
@@ -461,7 +485,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -469,7 +493,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"x\":2,\"y\":5}"
           }
         },
@@ -477,7 +501,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -499,7 +523,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15241903345472568337
+                "fingerprint": "350b3872cceaef88"
               }
             }
           }
@@ -583,7 +607,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15241903345472568337
+                    "fingerprint": "350b3872cceaef88"
                   }
                 }
               ],
@@ -690,7 +714,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 6983192443972837536
+                "fingerprint": "4716af56a76dd426"
               }
             }
           ],
@@ -1012,7 +1036,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 6983192443972837536
+                "fingerprint": "4716af56a76dd426"
               }
             }
           }

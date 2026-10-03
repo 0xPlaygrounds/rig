@@ -160,14 +160,6 @@
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_9a3c10bb-6469-456c-a87d-ec8b98ce709a"
           },
-          "native": {
-            "item": {
-              "content": "ready",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 5329546866666182096
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

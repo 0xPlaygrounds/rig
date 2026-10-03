@@ -47,6 +47,14 @@
         }
       },
       {
+        "batch": 17,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 18,
         "id": 3,
         "kind": {
@@ -55,15 +63,7 @@
         }
       },
       {
-        "batch": 19,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -201,7 +201,7 @@
                   },
                   "thoughtSignature": "EowECokEAWkUfRM8kY4m6brbbtHGab9BcfvSWbNnuIvd06C5URvryL5UljulGicYfRJeLUrwQpr1EDbYDK6YCwZHQ6UgadAWPRshH1IbijpDNKX4LMZRUX830xun3mOiFUNHdEj1ZI5714y5bcq9NKOahzg/UMqVt0pBaooqP2CZE9HAi3TfUTfziBpmM41OKLCVehWfa7KqoT24s1Stp2vrIT2pFktwoJ+n0w95lQV63BW2BlcGw3c4T8x2LsVzUXTVrLsqTpU7hAuTcvCBVlsiOORvG2y6sAXj7pOkLHV1+s7gmAdbCDBKEWhhCNsoQdpsIxJi5sepu5o5XMx6PXgGFGmhTfeOG4gTNAJXQsaDZAH3EfXh+Q+I725XWprh15KPh5OoOwr2fbjc34GJTl3ZiqAgrAGNLI/RZjETn2LBcUZLtrneDxhTgm8QeyPbcEiyBQQMU+ytsQXY7hom2NYdNckpAemdmWRHP8htk/oTuJNtQqKdhE6XuCTId+I3VfZxQ5R7ZmsI5ofa9pFyJMRMMxBc3unb0bvKkYTSLbsSauR4dVvHAmvQh6jdZ5Esa6HVWTE62Tegxb/W8aVLi02PqeuS2cZUOBcI5LLOyNX6MNOEi+L5Yy0q1Wavgsh83KZvNbRiVUhoOwfjhubAMdbF+orEywvFpkI9OPPhaFPHU0gbB+9Bqvrf2Z32RSE="
                 },
-                "fingerprint": 2958802882076081169
+                "fingerprint": "d9992c01906b54c6"
               }
             },
             {
@@ -221,7 +221,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 365475659472992569
+                "fingerprint": "77b91eaca9398ff8"
               }
             }
           ],
@@ -237,13 +237,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "VSy_aqG0EcKImtkP0L6SkAY"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 15815159551613222091
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -306,7 +299,7 @@
                   },
                   "thoughtSignature": "EowECokEAWkUfRM8kY4m6brbbtHGab9BcfvSWbNnuIvd06C5URvryL5UljulGicYfRJeLUrwQpr1EDbYDK6YCwZHQ6UgadAWPRshH1IbijpDNKX4LMZRUX830xun3mOiFUNHdEj1ZI5714y5bcq9NKOahzg/UMqVt0pBaooqP2CZE9HAi3TfUTfziBpmM41OKLCVehWfa7KqoT24s1Stp2vrIT2pFktwoJ+n0w95lQV63BW2BlcGw3c4T8x2LsVzUXTVrLsqTpU7hAuTcvCBVlsiOORvG2y6sAXj7pOkLHV1+s7gmAdbCDBKEWhhCNsoQdpsIxJi5sepu5o5XMx6PXgGFGmhTfeOG4gTNAJXQsaDZAH3EfXh+Q+I725XWprh15KPh5OoOwr2fbjc34GJTl3ZiqAgrAGNLI/RZjETn2LBcUZLtrneDxhTgm8QeyPbcEiyBQQMU+ytsQXY7hom2NYdNckpAemdmWRHP8htk/oTuJNtQqKdhE6XuCTId+I3VfZxQ5R7ZmsI5ofa9pFyJMRMMxBc3unb0bvKkYTSLbsSauR4dVvHAmvQh6jdZ5Esa6HVWTE62Tegxb/W8aVLi02PqeuS2cZUOBcI5LLOyNX6MNOEi+L5Yy0q1Wavgsh83KZvNbRiVUhoOwfjhubAMdbF+orEywvFpkI9OPPhaFPHU0gbB+9Bqvrf2Z32RSE="
                 },
-                "fingerprint": 2958802882076081169
+                "fingerprint": "d9992c01906b54c6"
               }
             }
           }
@@ -349,7 +342,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 365475659472992569
+                "fingerprint": "77b91eaca9398ff8"
               }
             }
           }
@@ -455,7 +448,7 @@
                       },
                       "thoughtSignature": "EowECokEAWkUfRM8kY4m6brbbtHGab9BcfvSWbNnuIvd06C5URvryL5UljulGicYfRJeLUrwQpr1EDbYDK6YCwZHQ6UgadAWPRshH1IbijpDNKX4LMZRUX830xun3mOiFUNHdEj1ZI5714y5bcq9NKOahzg/UMqVt0pBaooqP2CZE9HAi3TfUTfziBpmM41OKLCVehWfa7KqoT24s1Stp2vrIT2pFktwoJ+n0w95lQV63BW2BlcGw3c4T8x2LsVzUXTVrLsqTpU7hAuTcvCBVlsiOORvG2y6sAXj7pOkLHV1+s7gmAdbCDBKEWhhCNsoQdpsIxJi5sepu5o5XMx6PXgGFGmhTfeOG4gTNAJXQsaDZAH3EfXh+Q+I725XWprh15KPh5OoOwr2fbjc34GJTl3ZiqAgrAGNLI/RZjETn2LBcUZLtrneDxhTgm8QeyPbcEiyBQQMU+ytsQXY7hom2NYdNckpAemdmWRHP8htk/oTuJNtQqKdhE6XuCTId+I3VfZxQ5R7ZmsI5ofa9pFyJMRMMxBc3unb0bvKkYTSLbsSauR4dVvHAmvQh6jdZ5Esa6HVWTE62Tegxb/W8aVLi02PqeuS2cZUOBcI5LLOyNX6MNOEi+L5Yy0q1Wavgsh83KZvNbRiVUhoOwfjhubAMdbF+orEywvFpkI9OPPhaFPHU0gbB+9Bqvrf2Z32RSE="
                     },
-                    "fingerprint": 2958802882076081169
+                    "fingerprint": "d9992c01906b54c6"
                   }
                 },
                 {
@@ -475,7 +468,7 @@
                         "name": "lookup_orchard_label"
                       }
                     },
-                    "fingerprint": 365475659472992569
+                    "fingerprint": "77b91eaca9398ff8"
                   }
                 }
               ],
@@ -486,14 +479,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "VSy_aqG0EcKImtkP0L6SkAY"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "index": 0,
-                  "finishReason": "STOP"
-                },
-                "fingerprint": 15815159551613222091
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -567,7 +553,7 @@
                 "item": {
                   "text": "The alpha signal is crimson-harbor and the beta signal is silver-orchard."
                 },
-                "fingerprint": 13611082838940457123
+                "fingerprint": "368345f54a1a200f"
               }
             }
           ],
@@ -582,13 +568,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "Viy_avaTGPH7qtsP9quGoAY"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 12058627702223453899
           },
           "finish_reason": "stop",
           "raw": {
@@ -647,7 +626,7 @@
                 "item": {
                   "text": "The alpha signal is crimson-harbor and the beta signal is silver-orchard."
                 },
-                "fingerprint": 13611082838940457123
+                "fingerprint": "368345f54a1a200f"
               }
             }
           }

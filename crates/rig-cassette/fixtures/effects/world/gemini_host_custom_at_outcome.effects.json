@@ -174,7 +174,7 @@
                   },
                   "thoughtSignature": "CpQCAWkUfRNdnMHWXkS5HOdIrusIFVIp00UN/R3sWwQ+Bz2lx/M4nqSE0jOkBy75533bVBaOOVasYTlpNQklwh6at3JxzdTS9evGJsiNDpmKMcoSsu6RHXYxh1x3rXCkIC6qOTlqYkYxcxm6KXNCV1khmMSWzcIGq0Hw4qB4NFiKK70nN8mj/s5FijMc+QwyGOmRSIJO2lZME5nWnm0aONpaVmgPnBrAXY6KK4Zkx25vexmhjFf1NXGGFHH69ZsIjzRE5WYdukwldzMSkidMeldsh+lsh1n2TbPwgqjNoF5GnvO3RBLsXs6tp4N5k19N0lIE0zvZAPLggIubK/u+2X0U7ZsS8smP/od97vTqornaJcPKYECu"
                 },
-                "fingerprint": 1958421634539370803
+                "fingerprint": "b6fc0cd2218dad9f"
               }
             }
           ],
@@ -190,14 +190,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "zSm_aouLD-ulqtsPuIPDmQk"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 204535871462235517
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -338,7 +330,7 @@
                       },
                       "thoughtSignature": "CpQCAWkUfRNdnMHWXkS5HOdIrusIFVIp00UN/R3sWwQ+Bz2lx/M4nqSE0jOkBy75533bVBaOOVasYTlpNQklwh6at3JxzdTS9evGJsiNDpmKMcoSsu6RHXYxh1x3rXCkIC6qOTlqYkYxcxm6KXNCV1khmMSWzcIGq0Hw4qB4NFiKK70nN8mj/s5FijMc+QwyGOmRSIJO2lZME5nWnm0aONpaVmgPnBrAXY6KK4Zkx25vexmhjFf1NXGGFHH69ZsIjzRE5WYdukwldzMSkidMeldsh+lsh1n2TbPwgqjNoF5GnvO3RBLsXs6tp4N5k19N0lIE0zvZAPLggIubK/u+2X0U7ZsS8smP/od97vTqornaJcPKYECu"
                     },
-                    "fingerprint": 1958421634539370803
+                    "fingerprint": "b6fc0cd2218dad9f"
                   }
                 }
               ],
@@ -349,15 +341,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "zSm_aouLD-ulqtsPuIPDmQk"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 204535871462235517
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -421,7 +405,7 @@
                 "item": {
                   "text": "42"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -436,13 +420,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "zim_atPQA8Tn8QHG1tKoCQ"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

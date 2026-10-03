@@ -381,7 +381,7 @@
                   "id": "call_00_fwzCh259PbEUGOAseE065274",
                   "type": "function"
                 },
-                "fingerprint": 6731712881795324630
+                "fingerprint": "32f2d13afe80c943"
               }
             }
           ],
@@ -397,23 +397,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "87f0bc41-958a-4e29-977f-9efa6ebd20b6"
-          },
-          "native": {
-            "item": {
-              "content": "I'll run the scenario step by step, starting with the empty ping.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "ping_empty"
-                  },
-                  "id": "call_00_fwzCh259PbEUGOAseE065274",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15696441914953740913
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -531,7 +514,7 @@
                       "id": "call_00_fwzCh259PbEUGOAseE065274",
                       "type": "function"
                     },
-                    "fingerprint": 6731712881795324630
+                    "fingerprint": "32f2d13afe80c943"
                   }
                 }
               ],
@@ -542,24 +525,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "87f0bc41-958a-4e29-977f-9efa6ebd20b6"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the scenario step by step, starting with the empty ping.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_fwzCh259PbEUGOAseE065274",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15696441914953740913
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -739,7 +705,7 @@
                   "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
                   "type": "function"
                 },
-                "fingerprint": 5002999279667894490
+                "fingerprint": "f2425f88850fb693"
               }
             }
           ],
@@ -755,23 +721,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "f50b1c1f-81af-4c1e-abfd-9af91430b496"
-          },
-          "native": {
-            "item": {
-              "content": "Now the manifest inspection.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                    "name": "inspect_manifest"
-                  },
-                  "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2234443604044332428
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -889,7 +838,7 @@
                       "id": "call_00_fwzCh259PbEUGOAseE065274",
                       "type": "function"
                     },
-                    "fingerprint": 6731712881795324630
+                    "fingerprint": "32f2d13afe80c943"
                   }
                 }
               ],
@@ -900,24 +849,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "87f0bc41-958a-4e29-977f-9efa6ebd20b6"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the scenario step by step, starting with the empty ping.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_fwzCh259PbEUGOAseE065274",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15696441914953740913
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -979,7 +911,7 @@
                       "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
                       "type": "function"
                     },
-                    "fingerprint": 5002999279667894490
+                    "fingerprint": "f2425f88850fb693"
                   }
                 }
               ],
@@ -990,24 +922,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f50b1c1f-81af-4c1e-abfd-9af91430b496"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Now the manifest inspection.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2234443604044332428
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1178,7 +1093,7 @@
                   "id": "call_00_jHHgh6MNimQgHOjPkwyT7277",
                   "type": "function"
                 },
-                "fingerprint": 16301312796814638531
+                "fingerprint": "ca9cc931263562e8"
               }
             }
           ],
@@ -1194,23 +1109,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "24c218e0-99c0-4835-bc5e-d71d50a6a682"
-          },
-          "native": {
-            "item": {
-              "content": "Now the labels join.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
-                    "name": "join_labels"
-                  },
-                  "id": "call_00_jHHgh6MNimQgHOjPkwyT7277",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12332627088525915447
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1328,7 +1226,7 @@
                       "id": "call_00_fwzCh259PbEUGOAseE065274",
                       "type": "function"
                     },
-                    "fingerprint": 6731712881795324630
+                    "fingerprint": "32f2d13afe80c943"
                   }
                 }
               ],
@@ -1339,24 +1237,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "87f0bc41-958a-4e29-977f-9efa6ebd20b6"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the scenario step by step, starting with the empty ping.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_fwzCh259PbEUGOAseE065274",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15696441914953740913
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1418,7 +1299,7 @@
                       "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
                       "type": "function"
                     },
-                    "fingerprint": 5002999279667894490
+                    "fingerprint": "f2425f88850fb693"
                   }
                 }
               ],
@@ -1429,24 +1310,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f50b1c1f-81af-4c1e-abfd-9af91430b496"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Now the manifest inspection.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2234443604044332428
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1499,7 +1363,7 @@
                       "id": "call_00_jHHgh6MNimQgHOjPkwyT7277",
                       "type": "function"
                     },
-                    "fingerprint": 16301312796814638531
+                    "fingerprint": "ca9cc931263562e8"
                   }
                 }
               ],
@@ -1510,24 +1374,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "24c218e0-99c0-4835-bc5e-d71d50a6a682"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Now the labels join.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
-                        "name": "join_labels"
-                      },
-                      "id": "call_00_jHHgh6MNimQgHOjPkwyT7277",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12332627088525915447
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1692,7 +1539,7 @@
                   "id": "call_00_G9h8O7ZjkAhe3aAZt7O59255",
                   "type": "function"
                 },
-                "fingerprint": 4610319493761823933
+                "fingerprint": "9865b49bd59b84dc"
               }
             }
           ],
@@ -1708,23 +1555,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "e6bb50cb-3ef1-4994-a250-6e76ce2247a4"
-          },
-          "native": {
-            "item": {
-              "content": "Now the escape echo with the user's exact escaped text.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                    "name": "escape_echo"
-                  },
-                  "id": "call_00_G9h8O7ZjkAhe3aAZt7O59255",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 8303712222061584191
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1842,7 +1672,7 @@
                       "id": "call_00_fwzCh259PbEUGOAseE065274",
                       "type": "function"
                     },
-                    "fingerprint": 6731712881795324630
+                    "fingerprint": "32f2d13afe80c943"
                   }
                 }
               ],
@@ -1853,24 +1683,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "87f0bc41-958a-4e29-977f-9efa6ebd20b6"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll run the scenario step by step, starting with the empty ping.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "ping_empty"
-                      },
-                      "id": "call_00_fwzCh259PbEUGOAseE065274",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15696441914953740913
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1932,7 +1745,7 @@
                       "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
                       "type": "function"
                     },
-                    "fingerprint": 5002999279667894490
+                    "fingerprint": "f2425f88850fb693"
                   }
                 }
               ],
@@ -1943,24 +1756,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f50b1c1f-81af-4c1e-abfd-9af91430b496"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Now the manifest inspection.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
-                        "name": "inspect_manifest"
-                      },
-                      "id": "call_00_BS7vN1s2zKpPHmJqgJ3H1488",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2234443604044332428
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2013,7 +1809,7 @@
                       "id": "call_00_jHHgh6MNimQgHOjPkwyT7277",
                       "type": "function"
                     },
-                    "fingerprint": 16301312796814638531
+                    "fingerprint": "ca9cc931263562e8"
                   }
                 }
               ],
@@ -2024,24 +1820,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "24c218e0-99c0-4835-bc5e-d71d50a6a682"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Now the labels join.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
-                        "name": "join_labels"
-                      },
-                      "id": "call_00_jHHgh6MNimQgHOjPkwyT7277",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12332627088525915447
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2088,7 +1867,7 @@
                       "id": "call_00_G9h8O7ZjkAhe3aAZt7O59255",
                       "type": "function"
                     },
-                    "fingerprint": 4610319493761823933
+                    "fingerprint": "9865b49bd59b84dc"
                   }
                 }
               ],
@@ -2099,24 +1878,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "e6bb50cb-3ef1-4994-a250-6e76ce2247a4"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "Now the escape echo with the user's exact escaped text.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
-                        "name": "escape_echo"
-                      },
-                      "id": "call_00_G9h8O7ZjkAhe3aAZt7O59255",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8303712222061584191
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2274,13 +2036,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "96d61330-a2b9-4704-91a7-fac169b454de"
-          },
-          "native": {
-            "item": {
-              "content": "All four checks passed: EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, retries=2), LABELS-OK, and ESCAPE-OK.",
-              "role": "assistant"
-            },
-            "fingerprint": 6861690081360184954
           },
           "finish_reason": "stop",
           "raw": {

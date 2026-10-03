@@ -129,7 +129,7 @@
                   },
                   "thoughtSignature": "CqMBAWkUfROdWBtuCgtlyXX9J1950IuQ1Tj43cP25m6Fs5kcY1vFOWzoQ/PYeVF4RfyaZV0nPe/kHhUkcmcouyrQrbEcX7yIX932YoLDF7uf+XvgJEZwIcTgFr9ffL87Dm3P5rQ15QiYkFuvMfAtwvxtt9oCrhhg+Bjx0Yj7q4nlCxgZsBSUJSNWnZjY9yPmKJdT9HV/tWwmIvK/6jg9TcvnDpk0Fg=="
                 },
-                "fingerprint": 15541174006626745822
+                "fingerprint": "11b9de3b5e488ba4"
               }
             }
           ],
@@ -145,14 +145,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "lS2_au6YBKSCqtsP6JPmiQg"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 12565707186894933728
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -262,7 +254,7 @@
                       },
                       "thoughtSignature": "CqMBAWkUfROdWBtuCgtlyXX9J1950IuQ1Tj43cP25m6Fs5kcY1vFOWzoQ/PYeVF4RfyaZV0nPe/kHhUkcmcouyrQrbEcX7yIX932YoLDF7uf+XvgJEZwIcTgFr9ffL87Dm3P5rQ15QiYkFuvMfAtwvxtt9oCrhhg+Bjx0Yj7q4nlCxgZsBSUJSNWnZjY9yPmKJdT9HV/tWwmIvK/6jg9TcvnDpk0Fg=="
                     },
-                    "fingerprint": 15541174006626745822
+                    "fingerprint": "11b9de3b5e488ba4"
                   }
                 }
               ],
@@ -273,15 +265,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "lS2_au6YBKSCqtsP6JPmiQg"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 12565707186894933728
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -333,7 +317,7 @@
                 "item": {
                   "text": "The tool returned: `{\"fetch_motto_response\": {\"result\": \"steady\"}}`"
                 },
-                "fingerprint": 6904441257678307336
+                "fingerprint": "1a2d57071bf2a5fc"
               }
             }
           ],
@@ -348,13 +332,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "lS2_aoG1LOa7qtsP2bTs4Qc"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 15510779372462266542
           },
           "finish_reason": "stop",
           "raw": {

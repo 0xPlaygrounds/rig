@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 18,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,17 +10,33 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
+        "batch": 28,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 42,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 43,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -44,15 +60,15 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 48,
+        "batch": 47,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -64,63 +80,7 @@
         }
       },
       {
-        "batch": 50,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 53,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 63,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 75,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -234,7 +194,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13594511667864747100
+                "fingerprint": "0b6df2e0208bca39"
               }
             }
           ],
@@ -359,7 +319,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -367,7 +327,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{}"
           }
         },
@@ -375,7 +335,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -394,7 +354,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13594511667864747100
+                "fingerprint": "0b6df2e0208bca39"
               }
             }
           }
@@ -475,7 +435,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13594511667864747100
+                    "fingerprint": "0b6df2e0208bca39"
                   }
                 }
               ],
@@ -549,7 +509,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 17533915885882795836
+                "fingerprint": "97f4fa8fc41f703e"
               }
             }
           ],
@@ -803,7 +763,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 17533915885882795836
+                "fingerprint": "97f4fa8fc41f703e"
               }
             }
           }

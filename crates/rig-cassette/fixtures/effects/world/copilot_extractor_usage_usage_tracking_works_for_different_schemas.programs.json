@@ -254,7 +254,7 @@
                     "id": "call_REDACTED_1",
                     "type": "function"
                   },
-                  "fingerprint": 12908725377621566586
+                  "fingerprint": "728c3beb92d5624d"
                 }
               }
             ],
@@ -266,24 +266,7 @@
                 "response_model": "gpt-4o-mini-2024-07-18",
                 "response_id": "chatcmpl-REDACTED_1"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "padding": "abcdefghijklmnopqr",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_REDACTED_1",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 6129085379251983414
-              }
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -325,7 +308,7 @@
                       "id": "call_REDACTED_1",
                       "type": "function"
                     },
-                    "fingerprint": 12908725377621566586
+                    "fingerprint": "728c3beb92d5624d"
                   }
                 }
               ],
@@ -342,23 +325,6 @@
                 "model": "gpt-4o-mini",
                 "response_model": "gpt-4o-mini-2024-07-18",
                 "response_id": "chatcmpl-REDACTED_1"
-              },
-              "native": {
-                "item": {
-                  "padding": "abcdefghijklmnopqr",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
-                        "name": "submit"
-                      },
-                      "id": "call_REDACTED_1",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 6129085379251983414
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -454,24 +420,7 @@
               "response_model": "gpt-4o-mini-2024-07-18",
               "response_id": "chatcmpl-REDACTED_1"
             },
-            "stop": "tool_use",
-            "native": {
-              "item": {
-                "padding": "abcdefghijklmnopqr",
-                "role": "assistant",
-                "tool_calls": [
-                  {
-                    "function": {
-                      "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
-                      "name": "submit"
-                    },
-                    "id": "call_REDACTED_1",
-                    "type": "function"
-                  }
-                ]
-              },
-              "fingerprint": 6129085379251983414
-            }
+            "stop": "tool_use"
           }
         },
         {

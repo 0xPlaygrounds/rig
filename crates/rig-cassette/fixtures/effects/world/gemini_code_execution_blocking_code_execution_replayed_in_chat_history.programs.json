@@ -188,7 +188,7 @@
                   "item": {
                     "text": "The number is 169."
                   },
-                  "fingerprint": 14867055607564542871
+                  "fingerprint": "dfe9d28b3160b005"
                 }
               }
             ],
@@ -200,14 +200,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 13425564892417382995
-              }
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -254,7 +247,7 @@
                     "item": {
                       "text": "The number is 169."
                     },
-                    "fingerprint": 14867055607564542871
+                    "fingerprint": "dfe9d28b3160b005"
                   }
                 }
               ],
@@ -271,13 +264,6 @@
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
                 "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
-              },
-              "native": {
-                "item": {
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 13425564892417382995
               },
               "finish_reason": "stop",
               "raw": {
@@ -348,14 +334,7 @@
               "response_model": "gemini-2.5-flash",
               "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "finishReason": "STOP",
-                "index": 0
-              },
-              "fingerprint": 13425564892417382995
-            }
+            "stop": "stop"
           }
         },
         {
@@ -395,7 +374,7 @@
                 "item": {
                   "text": "The number is 169."
                 },
-                "fingerprint": 14867055607564542871
+                "fingerprint": "dfe9d28b3160b005"
               }
             }
           }
@@ -442,14 +421,7 @@
               "response_model": "gemini-2.5-flash",
               "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "finishReason": "STOP",
-                "index": 0
-              },
-              "fingerprint": 13425564892417382995
-            }
+            "stop": "stop"
           }
         },
         {
@@ -489,7 +461,7 @@
                 "item": {
                   "text": "The number is 169."
                 },
-                "fingerprint": 14867055607564542871
+                "fingerprint": "dfe9d28b3160b005"
               }
             }
           }

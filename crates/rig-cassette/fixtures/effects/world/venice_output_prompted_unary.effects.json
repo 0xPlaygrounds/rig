@@ -90,15 +90,6 @@
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RaOxoHnhxIi0IsJRRINTnRvj"
           },
-          "native": {
-            "item": {
-              "content": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering for Rust programming language enthusiasts in Seattle to share knowledge and collaborate on projects.\"\n}\n```",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8134396120992780219
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

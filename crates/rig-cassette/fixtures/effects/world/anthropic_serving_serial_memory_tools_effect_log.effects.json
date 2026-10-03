@@ -203,7 +203,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 15492938783705641159
+                "fingerprint": "758036811c9dc6f2"
               }
             }
           ],
@@ -339,7 +339,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 15492938783705641159
+                    "fingerprint": "758036811c9dc6f2"
                   }
                 }
               ],
@@ -415,7 +415,7 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -515,7 +515,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 15492938783705641159
+                    "fingerprint": "758036811c9dc6f2"
                   }
                 }
               ],
@@ -557,7 +557,7 @@
                       "text": "42",
                       "type": "text"
                     },
-                    "fingerprint": 10728865193441065857
+                    "fingerprint": "23f07d1922e80d53"
                   }
                 }
               ],

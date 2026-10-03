@@ -129,7 +129,7 @@
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": 11658884501472644088
+                "fingerprint": "351b872626d3d13b"
               }
             }
           ],
@@ -154,11 +154,11 @@
               "output_tokens": 58,
               "input_tokens": 624,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011CfchdsvJ6bmwdDLbP33KG",
@@ -211,7 +211,7 @@
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": 11658884501472644088
+                "fingerprint": "351b872626d3d13b"
               }
             }
           }
@@ -292,7 +292,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 7677433660722303974
+                "fingerprint": "7693826edb17268a"
               }
             }
           ],
@@ -393,7 +393,7 @@
                       "name": "lookup",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11658884501472644088
+                    "fingerprint": "351b872626d3d13b"
                   }
                 }
               ],
@@ -468,7 +468,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 7677433660722303974
+                "fingerprint": "7693826edb17268a"
               }
             }
           ],
@@ -493,11 +493,11 @@
               "output_tokens": 4,
               "input_tokens": 695,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011Cfche1mLWhYTwQzfVqQ4P",
@@ -535,7 +535,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 7677433660722303974
+                "fingerprint": "7693826edb17268a"
               }
             }
           }

@@ -6263,7 +6263,7 @@
                 "item": {
                   "text": "ready"
                 },
-                "fingerprint": 12598636203455125710
+                "fingerprint": "0cd5e8fd3135ad2a"
               }
             }
           ],
@@ -6279,13 +6279,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "m3izatD1NOqb6dkP9J27sQk"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 5329546866666182096
           },
           "finish_reason": "stop",
           "raw": {

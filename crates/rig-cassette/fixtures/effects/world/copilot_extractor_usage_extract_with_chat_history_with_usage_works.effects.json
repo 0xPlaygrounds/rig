@@ -141,7 +141,7 @@
                   "id": "call_REDACTED_1",
                   "type": "function"
                 },
-                "fingerprint": 7039445904868117067
+                "fingerprint": "a70dec64fc949366"
               }
             }
           ],
@@ -158,23 +158,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-REDACTED_1"
-          },
-          "native": {
-            "item": {
-              "padding": "abcdefghijklmnopqrstuvwxyz012",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"city\":\"Springfield\",\"state\":\"IL\",\"street\":\"123 Main St\",\"zip_code\":\"62701\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_REDACTED_1",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7470593263727859279
           },
           "finish_reason": "tool_calls",
           "raw": {

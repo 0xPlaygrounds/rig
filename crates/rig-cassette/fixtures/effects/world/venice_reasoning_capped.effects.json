@@ -84,7 +84,7 @@
                 "item": {
                   "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
                 },
-                "fingerprint": 5605682256475863184
+                "fingerprint": "8d65a9c09d28e795"
               }
             }
           ],
@@ -99,15 +99,6 @@
             "model": "qwen3-235b-a22b-thinking-2507",
             "response_model": "qwen3-235b-a22b-thinking-2507",
             "response_id": "chatcmpl-RqRBfGOV1gJZTR0fcgDZyFBj"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "name": null,
-              "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**",
-              "role": "assistant"
-            },
-            "fingerprint": 9151228525801828208
           },
           "finish_reason": "length",
           "raw": {

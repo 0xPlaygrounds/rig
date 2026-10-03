@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -152,7 +152,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E2E9ebhFw5X2ER/bmOllCSlrbHh/YONkGJsw0egv9Y4KSwFpFH0TeKTBDyqs4gWp6wU+9r+dq28Do3uY/QHVWSOPEgFc9bKPt+VoPwaZEaq25MpR0cJhqsgjDWJ5vqw+Ea8fbKiP1+HQtcPinwp7AWkUfRPQbZG2t4j7YesxSdUc12D0DMlhCaiRQl1vFHQMcsAmHuHcr34wHMbLJgSLOhz4sTn2XVu1jgxfMQrX/c7c0+ZN7FNmhxNwCX0l+272GiGc64fsvm3Wr9U9gf8/JTHnqaG23f3sqRCF3P023oV0/0pL1gQrs0UW"
                 },
-                "fingerprint": 17825429466415078988
+                "fingerprint": "8aeaaea51d945ee2"
               }
             }
           ],
@@ -168,14 +168,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "96uyavTuJOmfqtsPx4qjoAQ"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 1796581241087333800
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -244,7 +236,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E2E9ebhFw5X2ER/bmOllCSlrbHh/YONkGJsw0egv9Y4KSwFpFH0TeKTBDyqs4gWp6wU+9r+dq28Do3uY/QHVWSOPEgFc9bKPt+VoPwaZEaq25MpR0cJhqsgjDWJ5vqw+Ea8fbKiP1+HQtcPinwp7AWkUfRPQbZG2t4j7YesxSdUc12D0DMlhCaiRQl1vFHQMcsAmHuHcr34wHMbLJgSLOhz4sTn2XVu1jgxfMQrX/c7c0+ZN7FNmhxNwCX0l+272GiGc64fsvm3Wr9U9gf8/JTHnqaG23f3sqRCF3P023oV0/0pL1gQrs0UW"
                 },
-                "fingerprint": 17825429466415078988
+                "fingerprint": "8aeaaea51d945ee2"
               }
             }
           }

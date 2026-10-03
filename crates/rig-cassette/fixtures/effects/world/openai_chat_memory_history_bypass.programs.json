@@ -92,8 +92,7 @@
           "rig_ecs::agent::Utterance": {},
           "rig_ecs::agent::content::parts::AssistantHead": {
             "origin": null,
-            "stop": null,
-            "native": null
+            "stop": null
           }
         },
         {

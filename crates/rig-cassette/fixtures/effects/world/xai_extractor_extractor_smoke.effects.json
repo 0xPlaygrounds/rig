@@ -114,7 +114,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 10434526415641016842
+                "fingerprint": "157cdefa9c2d503f"
               }
             },
             {
@@ -139,7 +139,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17673789314001178837
+                "fingerprint": "4822f557f5820566"
               }
             }
           ],

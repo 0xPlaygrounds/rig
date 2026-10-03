@@ -128,7 +128,7 @@
                   },
                   "thoughtSignature": "EukCCuYCAWkUfRPZPOg2LOL+hwCFtezz2xj6RUSrKdz9lsCZ5TUJyOXEH6GTyWwBUCY0AOoN24Bnl94uY3KF89H4BhfrX8oLDWtOTY0EvYuKJitj00Ze5/SRIljUVdisKHtioVW565YHe/lzOEksQSXjQzp5Js3mAnOs/zhLZfor3j4BnbswCMO4uVn9y/4CxNAr9qQLesGdE0e+IadsmpVvvaJS7D0WXHxudmpg8BwNZph1quv3vnaCnuBK0ED65Su3jJeuM08kxv18gj8mSWLZN00cx99nv912q/idLbJktd35AHHc/a81vQGLvlKwP7ncEuDeCZ9PO6T8hg9VMBXfLOO9spTNd+BQe/XOBtJw/pSISZNTk8osSISkM2pullUYpA83r/HUEXwiyQKNCZhmoWJCQNtCoO4q+qd6NGfoVecx8iIbLNaqOfHFj+fK6E7r6bsutP9ufCI27XwIZbAa/EMSOaSijpWdTA=="
                 },
-                "fingerprint": 6355847416608628914
+                "fingerprint": "2a7f33f2ba1c6bf1"
               }
             }
           ],
@@ -144,14 +144,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "3Sm_auueENqfz7IPvLryuQs"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 3372604483790744538
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -265,7 +257,7 @@
                   "text": "Paris",
                   "thoughtSignature": "EqsCCqgCAWkUfRPkUN+zDOI0F4Pg21rT5VDThuinmxhwot3v/ioZ6aHnYTRZpq9YOKErt4dRnYj7A6ufjSFrQmvr5ByyPdwYi3X6C4QRmzmNkyVn91by7tq0mX//pSfoyW43TvJsHggVleXyq1j5/4CGe25RW43M3DrnEpLNZ3qTO2oTXKCdct7+DxbRK2Gs/g7lglN1jtmmZE/qG5wbrUjK+ZxW8eTA93vZ0bPe5dk8FHt8KRGzzxVcQOCkVDl58aHVguKVVlgkhNgC9EHQ8a3+ZY9wY232ybOl+UYZ705UbxJtoxwXa1RoJOrSAmKr13AaUxoS5Ra6qAXJ8If+6GMuXE/BB7SkSzS7I93sS1DZE2gCi9fVR8rfofDEtog+o7DSDNL7w0gC2wxxSVA="
                 },
-                "fingerprint": 7677433660722303974
+                "fingerprint": "7693826edb17268a"
               }
             }
           ],
@@ -281,13 +273,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "3im_apDjDeucz7IPueyrwQk"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 10907891467078341492
           },
           "finish_reason": "stop",
           "raw": {
@@ -373,7 +358,7 @@
                       },
                       "thoughtSignature": "EukCCuYCAWkUfRPZPOg2LOL+hwCFtezz2xj6RUSrKdz9lsCZ5TUJyOXEH6GTyWwBUCY0AOoN24Bnl94uY3KF89H4BhfrX8oLDWtOTY0EvYuKJitj00Ze5/SRIljUVdisKHtioVW565YHe/lzOEksQSXjQzp5Js3mAnOs/zhLZfor3j4BnbswCMO4uVn9y/4CxNAr9qQLesGdE0e+IadsmpVvvaJS7D0WXHxudmpg8BwNZph1quv3vnaCnuBK0ED65Su3jJeuM08kxv18gj8mSWLZN00cx99nv912q/idLbJktd35AHHc/a81vQGLvlKwP7ncEuDeCZ9PO6T8hg9VMBXfLOO9spTNd+BQe/XOBtJw/pSISZNTk8osSISkM2pullUYpA83r/HUEXwiyQKNCZhmoWJCQNtCoO4q+qd6NGfoVecx8iIbLNaqOfHFj+fK6E7r6bsutP9ufCI27XwIZbAa/EMSOaSijpWdTA=="
                     },
-                    "fingerprint": 6355847416608628914
+                    "fingerprint": "2a7f33f2ba1c6bf1"
                   }
                 }
               ],
@@ -384,15 +369,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "3Sm_auueENqfz7IPvLryuQs"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 3372604483790744538
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -455,7 +432,7 @@
                 "item": {
                   "text": "Paris"
                 },
-                "fingerprint": 7677433660722303974
+                "fingerprint": "7693826edb17268a"
               }
             }
           ],
@@ -470,13 +447,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "3ym_avquA8rnz7IPh-PtwA0"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 10907891467078341492
           },
           "finish_reason": "stop",
           "raw": {

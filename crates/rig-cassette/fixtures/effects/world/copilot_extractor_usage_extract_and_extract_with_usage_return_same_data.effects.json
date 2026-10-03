@@ -141,7 +141,7 @@
                   "id": "call_REDACTED_1",
                   "type": "function"
                 },
-                "fingerprint": 3177546441342826218
+                "fingerprint": "a47ea9a6413b5ab1"
               }
             }
           ],
@@ -158,23 +158,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-REDACTED_1"
-          },
-          "native": {
-            "item": {
-              "padding": "abcdefghijklmnopqrstu",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_REDACTED_1",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 11459162893395818658
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -348,7 +331,7 @@
                   "id": "call_REDACTED_2",
                   "type": "function"
                 },
-                "fingerprint": 3828908185059869465
+                "fingerprint": "913184daf54632d6"
               }
             }
           ],
@@ -365,23 +348,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-REDACTED_2"
-          },
-          "native": {
-            "item": {
-              "padding": "abcdefghijklmnopqrstuvwxyz",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_REDACTED_2",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1747412057304347223
           },
           "finish_reason": "tool_calls",
           "raw": {

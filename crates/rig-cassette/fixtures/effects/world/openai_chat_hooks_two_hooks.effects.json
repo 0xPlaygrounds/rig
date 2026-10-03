@@ -157,7 +157,7 @@
                   "id": "call_WJhBGnMYiCJMKzn0q3nAWIqL",
                   "type": "function"
                 },
-                "fingerprint": 16842029208926184754
+                "fingerprint": "d00f4dd3c56973c7"
               }
             }
           ],
@@ -174,25 +174,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe5iWo7QmRq7sJDswXLXnqaimO2t"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\":17,\"y\":25}",
-                    "name": "add"
-                  },
-                  "id": "call_WJhBGnMYiCJMKzn0q3nAWIqL",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 14633165689570298766
           },
           "provider_request_id": "req_a385365770574bbe841ea624255837bb",
           "finish_reason": "tool_calls",
@@ -316,7 +297,7 @@
                       "id": "call_WJhBGnMYiCJMKzn0q3nAWIqL",
                       "type": "function"
                     },
-                    "fingerprint": 16842029208926184754
+                    "fingerprint": "d00f4dd3c56973c7"
                   }
                 }
               ],
@@ -327,26 +308,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe5iWo7QmRq7sJDswXLXnqaimO2t"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_WJhBGnMYiCJMKzn0q3nAWIqL",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 14633165689570298766
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -421,15 +383,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe5kDewlVGrx6JthimdZyC0WIKfM"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "42",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "provider_request_id": "req_756891be7aad411983bbb55fd3332844",
           "finish_reason": "stop",

@@ -134,7 +134,7 @@
                   "id": "call_uEPs0122m2uB3AVdYGZToYhG",
                   "type": "function"
                 },
-                "fingerprint": 5110007036003567211
+                "fingerprint": "bd510e34393c2afa"
               }
             }
           ],
@@ -151,25 +151,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe8oStttPR2d01HaSJl2fcf6gZnw"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\":17,\"y\":25}",
-                    "name": "add"
-                  },
-                  "id": "call_uEPs0122m2uB3AVdYGZToYhG",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9985631195123147825
           },
           "provider_request_id": "req_eb9c5a00006d4a1f9c965f77f916606d",
           "finish_reason": "tool_calls",
@@ -291,7 +272,7 @@
                       "id": "call_uEPs0122m2uB3AVdYGZToYhG",
                       "type": "function"
                     },
-                    "fingerprint": 5110007036003567211
+                    "fingerprint": "bd510e34393c2afa"
                   }
                 }
               ],
@@ -302,26 +283,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe8oStttPR2d01HaSJl2fcf6gZnw"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_uEPs0122m2uB3AVdYGZToYhG",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 9985631195123147825
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -396,15 +358,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe8qB88NRjWqSw5yPbl0dH4nZjPF"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"meetup\",\"summary\":\"The sum of 17 and 25 is 42.\"}",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 17233650806262028684
           },
           "provider_request_id": "req_1b2e5e75c7be4146b0184aabab2dafb8",
           "finish_reason": "stop",

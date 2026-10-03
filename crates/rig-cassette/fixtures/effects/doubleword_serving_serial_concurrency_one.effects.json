@@ -133,7 +133,7 @@
                   "id": "call_b8af4aea21ab49569494d889",
                   "type": "function"
                 },
-                "fingerprint": 5223819108343162744
+                "fingerprint": "718cbedca931ea85"
               }
             },
             {
@@ -158,7 +158,7 @@
                   "id": "call_7b14d7f72fb9413487c756a7",
                   "type": "function"
                 },
-                "fingerprint": 13891396008827286919
+                "fingerprint": "83f297dd9a75ea86"
               }
             }
           ],
@@ -175,31 +175,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976554-Of88HQmmbG7U473Z99RD"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "\n",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_b8af4aea21ab49569494d889",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_7b14d7f72fb9413487c756a7",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16852543470457897836
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -328,7 +303,7 @@
                       "id": "call_b8af4aea21ab49569494d889",
                       "type": "function"
                     },
-                    "fingerprint": 5223819108343162744
+                    "fingerprint": "718cbedca931ea85"
                   }
                 },
                 {
@@ -353,7 +328,7 @@
                       "id": "call_7b14d7f72fb9413487c756a7",
                       "type": "function"
                     },
-                    "fingerprint": 13891396008827286919
+                    "fingerprint": "83f297dd9a75ea86"
                   }
                 }
               ],
@@ -364,32 +339,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790976554-Of88HQmmbG7U473Z99RD"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "\n",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_b8af4aea21ab49569494d889",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_7b14d7f72fb9413487c756a7",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16852543470457897836
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -476,13 +426,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976566-PHTFFa1x168wVONL8wst"
-          },
-          "native": {
-            "item": {
-              "content": "The labels are crimson-harbor and silver-orchard.",
-              "role": "assistant"
-            },
-            "fingerprint": 8695463699350161601
           },
           "finish_reason": "stop",
           "raw": {

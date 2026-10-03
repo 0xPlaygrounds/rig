@@ -190,7 +190,7 @@
                   },
                   "thoughtSignature": "CqgDAWkUfROb/uRYnw9nuAhy2OyRzK/RGG/8WCIMDzmUqFs+KUsCB6nl8ND7p5o8VzNRHw6v/v5ux2b4rOjKR9hx6ZpfE+jcHREjtI/VN/liD7/S5v7EqMRcPllX/470T2XVorAEjwQQobpIbIhpK5YlK0zEXNREYjo32f9bN2qzieaRWvL/BrbLo97nqRl1tn25c6AsAt9s1HAN4RlhY72he5+1Jx/P4DmxdOQsx6riMoeTwsz1mECDeBJUP2cB/+8ZXC1WILDvBfxxc4g/nNdmwrtr0hLh/dawIlQ0SDCAFzvSgHX4fPtFCw4rKzMESChG1YPekHF1zVQMW1UwQj6TzJdIgt7LSb2PdT8L8pFO9vdDVG/dtM4nuP9r0lsZsdhGa5/cMScdNnwUoIOeBBb/kYLjhwyuIs9SIEGxLj6iDK0Y8fHkClOhs2Co2iS6qs82NjS2YGUI/JylbRH9RRJDsoTUR3EqoLNokfbJLlq/Sjtws5U5wBhP8NOwGHODWJXoOjPARUGdRw7eOUOxeMp1wIFPppDJKS77ygCpfE4JzMo49277k4gu1g=="
                 },
-                "fingerprint": 14228656822266495932
+                "fingerprint": "34da79d1eeab6c3e"
               }
             }
           ],
@@ -206,14 +206,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "aBDAaviqN6_sz7IP8MGCoAM"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 14070058990939423182
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -332,7 +324,7 @@
                       },
                       "thoughtSignature": "CqgDAWkUfROb/uRYnw9nuAhy2OyRzK/RGG/8WCIMDzmUqFs+KUsCB6nl8ND7p5o8VzNRHw6v/v5ux2b4rOjKR9hx6ZpfE+jcHREjtI/VN/liD7/S5v7EqMRcPllX/470T2XVorAEjwQQobpIbIhpK5YlK0zEXNREYjo32f9bN2qzieaRWvL/BrbLo97nqRl1tn25c6AsAt9s1HAN4RlhY72he5+1Jx/P4DmxdOQsx6riMoeTwsz1mECDeBJUP2cB/+8ZXC1WILDvBfxxc4g/nNdmwrtr0hLh/dawIlQ0SDCAFzvSgHX4fPtFCw4rKzMESChG1YPekHF1zVQMW1UwQj6TzJdIgt7LSb2PdT8L8pFO9vdDVG/dtM4nuP9r0lsZsdhGa5/cMScdNnwUoIOeBBb/kYLjhwyuIs9SIEGxLj6iDK0Y8fHkClOhs2Co2iS6qs82NjS2YGUI/JylbRH9RRJDsoTUR3EqoLNokfbJLlq/Sjtws5U5wBhP8NOwGHODWJXoOjPARUGdRw7eOUOxeMp1wIFPppDJKS77ygCpfE4JzMo49277k4gu1g=="
                     },
-                    "fingerprint": 14228656822266495932
+                    "fingerprint": "34da79d1eeab6c3e"
                   }
                 }
               ],
@@ -343,15 +335,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "aBDAaviqN6_sz7IP8MGCoAM"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 14070058990939423182
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -420,7 +404,7 @@
                 "item": {
                   "text": "SUM: 42\nCODE: CINNABAR-42"
                 },
-                "fingerprint": 9903729898033117324
+                "fingerprint": "45fd9e03c4e08c76"
               }
             }
           ],
@@ -435,13 +419,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "aRDAao30NPuez7IPnq3-KA"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 136167375727840760
           },
           "finish_reason": "stop",
           "raw": {

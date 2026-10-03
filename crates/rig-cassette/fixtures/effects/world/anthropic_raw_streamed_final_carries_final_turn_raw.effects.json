@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 10,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,29 +10,37 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 5
+          "items": 4
         }
       },
       {
-        "batch": 17,
+        "batch": 19,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -177,7 +185,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 6040272151992627573
+                "fingerprint": "e46d46eddef8f5ac"
               }
             }
           ],
@@ -202,11 +210,11 @@
               "output_tokens": 69,
               "input_tokens": 630,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011CfciChEXX3eQxgugPvdXt",
@@ -261,7 +269,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 6040272151992627573
+                "fingerprint": "e46d46eddef8f5ac"
               }
             }
           }
@@ -349,7 +357,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 6040272151992627573
+                    "fingerprint": "e46d46eddef8f5ac"
                   }
                 }
               ],
@@ -425,7 +433,7 @@
                   "text": "The result of 2 + 3 is **5**.",
                   "type": "text"
                 },
-                "fingerprint": 509825265736640893
+                "fingerprint": "64b450d26cc31c35"
               }
             }
           ],
@@ -450,11 +458,11 @@
               "output_tokens": 17,
               "input_tokens": 712,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfciCkiPF8CoxFfxbYVQ2",
@@ -508,7 +516,7 @@
                   "text": "The result of 2 + 3 is **5**.",
                   "type": "text"
                 },
-                "fingerprint": 509825265736640893
+                "fingerprint": "64b450d26cc31c35"
               }
             }
           }

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 19,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 24,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -158,7 +158,7 @@
                   "id": "call_00_zL4qPyJyBBG0nM7ccJXB0492",
                   "type": "function"
                 },
-                "fingerprint": 5560489290547678014
+                "fingerprint": "3de75a725d945b87"
               }
             }
           ],
@@ -174,23 +174,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "f938dc64-1edd-416b-9ac3-581355166d27"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_zL4qPyJyBBG0nM7ccJXB0492",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 11052970448342572144
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -258,7 +241,7 @@
                   "id": "call_00_zL4qPyJyBBG0nM7ccJXB0492",
                   "type": "function"
                 },
-                "fingerprint": 5560489290547678014
+                "fingerprint": "3de75a725d945b87"
               }
             }
           }

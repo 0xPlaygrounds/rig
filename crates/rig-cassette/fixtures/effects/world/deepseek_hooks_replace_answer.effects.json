@@ -91,13 +91,6 @@
             "response_model": "deepseek-flash",
             "response_id": "cf67b715-45fd-4e25-8900-e378ae6b614c"
           },
-          "native": {
-            "item": {
-              "content": "Rust is a systems programming language that enforces memory safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because bugs like buffer overflows, use-after-free, and data races cause crashes and security vulnerabilities, which Rust prevents by design.",
-              "role": "assistant"
-            },
-            "fingerprint": 1748272522656452341
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

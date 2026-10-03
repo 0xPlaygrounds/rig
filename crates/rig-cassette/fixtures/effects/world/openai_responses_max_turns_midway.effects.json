@@ -263,7 +263,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13641159194631755136
+                "fingerprint": "7e2ccee68e55bfdb"
               }
             }
           ],
@@ -513,7 +513,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13641159194631755136
+                    "fingerprint": "7e2ccee68e55bfdb"
                   }
                 }
               ],
@@ -637,7 +637,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7660542891744546243
+                "fingerprint": "628f99c458e1773c"
               }
             }
           ],
@@ -887,7 +887,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13641159194631755136
+                    "fingerprint": "7e2ccee68e55bfdb"
                   }
                 }
               ],
@@ -941,7 +941,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7660542891744546243
+                    "fingerprint": "628f99c458e1773c"
                   }
                 }
               ],
@@ -1065,7 +1065,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 14099050144552776228
+                "fingerprint": "64792c9fcae957d5"
               }
             }
           ],

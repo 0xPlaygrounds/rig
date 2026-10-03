@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 15,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,40 +10,24 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 19,
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 21,
         "id": 2,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 24,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 25,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -51,7 +35,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -64,14 +48,6 @@
       },
       {
         "batch": 28,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -111,14 +87,6 @@
         }
       },
       {
-        "batch": 34,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 35,
         "id": 3,
         "kind": {
@@ -143,14 +111,6 @@
         }
       },
       {
-        "batch": 38,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 39,
         "id": 3,
         "kind": {
@@ -163,19 +123,11 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 41,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 42,
+        "batch": 41,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -207,7 +159,7 @@
         }
       },
       {
-        "batch": 48,
+        "batch": 46,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -216,6 +168,70 @@
       },
       {
         "batch": 48,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 49,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 52,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 53,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 55,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 56,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 57,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 61,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -353,7 +369,7 @@
                   "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                   "type": "function"
                 },
-                "fingerprint": 9453530483797388230
+                "fingerprint": "14c022c7f629c303"
               }
             },
             {
@@ -374,7 +390,7 @@
                   "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                   "type": "function"
                 },
-                "fingerprint": 11078893725985676210
+                "fingerprint": "b1f5f8109f5bc10b"
               }
             }
           ],
@@ -392,31 +408,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790971807-dBiw1k1C1ghp4cB98X5g"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 18369181988732604587
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -496,7 +487,7 @@
                   "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                   "type": "function"
                 },
-                "fingerprint": 9453530483797388230
+                "fingerprint": "14c022c7f629c303"
               }
             }
           }
@@ -540,7 +531,7 @@
                   "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                   "type": "function"
                 },
-                "fingerprint": 11078893725985676210
+                "fingerprint": "b1f5f8109f5bc10b"
               }
             }
           }
@@ -646,7 +637,7 @@
                       "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                       "type": "function"
                     },
-                    "fingerprint": 9453530483797388230
+                    "fingerprint": "14c022c7f629c303"
                   }
                 },
                 {
@@ -667,7 +658,7 @@
                       "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                       "type": "function"
                     },
-                    "fingerprint": 11078893725985676210
+                    "fingerprint": "b1f5f8109f5bc10b"
                   }
                 }
               ],
@@ -678,32 +669,7 @@
                 "response_model": "openai/gpt-4o",
                 "response_id": "gen-1790971807-dBiw1k1C1ghp4cB98X5g"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 18369181988732604587
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -789,13 +755,6 @@
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
             "response_id": "gen-1790971808-hKo3T0fKYL5Ita5TZXu9"
-          },
-          "native": {
-            "item": {
-              "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
-              "role": "assistant"
-            },
-            "fingerprint": 13876475795802914263
           },
           "finish_reason": "stop",
           "raw": {

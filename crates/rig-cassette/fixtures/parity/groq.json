@@ -61,7 +61,7 @@
             "item": {
               "reasoning": "We need to output the JSON object as per schema. Must include fields: lane, risk, checks with compile and replay booleans. Must be compact JSON, no additional properties.\n\nThus: {\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}"
             },
-            "fingerprint": 5043091900563268022
+            "fingerprint": "669373e11a9da343"
           }
         }
       },
@@ -122,19 +122,19 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary.",
+        "text": "Your favorite color is teal, the tool returned the label crimson-harbor, and you chose the canary release lane.",
         "native": null
       }
     ],
     "usage": {
-      "input_tokens": 446,
+      "input_tokens": 444,
       "output_tokens": 26,
-      "total_tokens": 472
+      "total_tokens": 470
     },
-    "response_id": "chatcmpl-9fb5a62c-d459-4f6d-a97b-bb8dc926b227",
+    "response_id": "chatcmpl-c405fb0f-9064-4e92-b1be-7aacd17a53cb",
     "finish_reason": "stop",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xpyr27ezq80faw9wn4gqc5",
+    "provider_request_id": "req_01m40h90gme8dasc7zsd7pns5j",
     "raw": {
       "choices": [
         {
@@ -142,30 +142,30 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary.",
+            "content": "Your favorite color is teal, the tool returned the label crimson-harbor, and you chose the canary release lane.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-9fb5a62c-d459-4f6d-a97b-bb8dc926b227",
+      "id": "chatcmpl-c405fb0f-9064-4e92-b1be-7aacd17a53cb",
       "model": "qwen/qwen3.8-27b",
       "object": "chat.completion",
       "service_tier": "on_demand",
-      "system_fingerprint": "fp_5e14805ce3",
+      "system_fingerprint": "fp_57c7e760a9",
       "usage": {
-        "completion_time": 0.051113163,
+        "completion_time": 0.051000784,
         "completion_tokens": 26,
-        "prompt_time": 0.036887346,
-        "prompt_tokens": 446,
-        "queue_time": 0.021058039,
-        "total_time": 0.088000509,
-        "total_tokens": 472
+        "prompt_time": 0.038231801,
+        "prompt_tokens": 444,
+        "queue_time": 0.020256958,
+        "total_time": 0.089232585,
+        "total_tokens": 470
       },
       "usage_breakdown": null,
       "x_groq": {
-        "id": "req_01m3xpyr27ezq80faw9wn4gqc5",
-        "seed": 1967209663
+        "id": "req_01m40h90gme8dasc7zsd7pns5j",
+        "seed": 1311730968
       }
     }
   },
@@ -237,7 +237,7 @@
               "id": "znjyej3xe",
               "type": "function"
             },
-            "fingerprint": 2607539483438289120
+            "fingerprint": "e23bc999ea678745"
           }
         }
       },
@@ -255,7 +255,7 @@
               "id": "b9tm540rw",
               "type": "function"
             },
-            "fingerprint": 3723365074511432487
+            "fingerprint": "2d39cf467e8d6586"
           }
         }
       }
@@ -388,7 +388,7 @@
               "id": "n8wnr03ej",
               "type": "function"
             },
-            "fingerprint": 14624064538263747311
+            "fingerprint": "4c99f54aee41cc58"
           }
         }
       },
@@ -406,7 +406,7 @@
               "id": "vacjvv2b0",
               "type": "function"
             },
-            "fingerprint": 14781990258612689533
+            "fingerprint": "9598ac58f7802b7c"
           }
         }
       }
@@ -539,7 +539,7 @@
               "id": "w2acbw4dw",
               "type": "function"
             },
-            "fingerprint": 10632108957426391274
+            "fingerprint": "80f7b47f503bd8bd"
           }
         }
       }
@@ -604,7 +604,7 @@
               "id": "5dettfrmf",
               "type": "function"
             },
-            "fingerprint": 6171397046664165983
+            "fingerprint": "859633184c7b38e8"
           }
         }
       }
@@ -695,7 +695,7 @@
               "id": "yp19xp3yd",
               "type": "function"
             },
-            "fingerprint": 17547983947895170185
+            "fingerprint": "83a0efb1d31e7d8e"
           }
         }
       }
@@ -777,7 +777,7 @@
               "id": "exd1a5pqa",
               "type": "function"
             },
-            "fingerprint": 10223487362187909342
+            "fingerprint": "bc6c88751cd0954b"
           }
         }
       }
@@ -854,7 +854,7 @@
               "id": "a9md5g42r",
               "type": "function"
             },
-            "fingerprint": 15309550896387512495
+            "fingerprint": "29f052f8d040be68"
           }
         }
       }
@@ -930,7 +930,7 @@
               "id": "zh6t2s3ak",
               "type": "function"
             },
-            "fingerprint": 12501573829821783950
+            "fingerprint": "b0eed89fa6f22ccb"
           }
         }
       }
@@ -1055,7 +1055,7 @@
               "id": "2g9gqs22f",
               "type": "function"
             },
-            "fingerprint": 13878528504571506291
+            "fingerprint": "d6df151c61f9c478"
           }
         }
       }
@@ -1137,7 +1137,7 @@
               "id": "s4n9ph04b",
               "type": "function"
             },
-            "fingerprint": 10091342310896956874
+            "fingerprint": "d22011ff391ee66d"
           }
         }
       }
@@ -1210,7 +1210,7 @@
               "id": "fcvrhvnzk",
               "type": "function"
             },
-            "fingerprint": 2765592344315452178
+            "fingerprint": "fe7dc2ed9edd28a7"
           }
         }
       }
@@ -1278,7 +1278,7 @@
               "id": "6xw6mzz14",
               "type": "function"
             },
-            "fingerprint": 6047589165699830881
+            "fingerprint": "d6bf88798a1fbde2"
           }
         }
       }
@@ -1345,7 +1345,7 @@
               "id": "36jharv3r",
               "type": "function"
             },
-            "fingerprint": 12882692779098668115
+            "fingerprint": "0a80725d38d5c644"
           }
         }
       }
@@ -1461,7 +1461,7 @@
               "id": "x3zhgr0dm",
               "type": "function"
             },
-            "fingerprint": 3109879746244948731
+            "fingerprint": "12fcca3c440af760"
           }
         }
       }
@@ -1535,7 +1535,7 @@
               "id": "yb0yeahxt",
               "type": "function"
             },
-            "fingerprint": 6648891469514492122
+            "fingerprint": "86191449822dbf23"
           }
         }
       }
@@ -1609,7 +1609,7 @@
               "id": "p0hsmxdcq",
               "type": "function"
             },
-            "fingerprint": 17405819827129449497
+            "fingerprint": "dd1cc3b2531864a8"
           }
         }
       }
@@ -1677,7 +1677,7 @@
             "item": {
               "reasoning": "The user says: \"Do not call tools. Reply with exactly this phrase: no-tool-answer\". So we must output exactly that phrase, no extra text. Ensure not to call any tools. Just output \"no-tool-answer\"."
             },
-            "fingerprint": 770299744530509244
+            "fingerprint": "6b5fe3528225d4f1"
           }
         }
       },
@@ -1745,7 +1745,7 @@
             "item": {
               "reasoning": "We have a user request: \"Reply with the single word OK.\" There's no disallowed content. The user wants a single word response: OK. According to policy, we comply."
             },
-            "fingerprint": 11206645919297842122
+            "fingerprint": "efd8ff8a1f97886f"
           }
         }
       },
@@ -1813,7 +1813,7 @@
             "item": {
               "reasoning": "The user wants a single word \"OK\". Just output OK."
             },
-            "fingerprint": 797315307747757961
+            "fingerprint": "a23c89a0e847fe62"
           }
         }
       },
@@ -1932,7 +1932,7 @@
             "item": {
               "reasoning": "We need to use lookup_record twice: once with record:\"alpha\" and once with record:\"beta\". Then verify each returned code using verify_code, which may fail transiently. If transient failure occurs, retry once.\n\nWe must not guess a code; must use tool. So first call lookup_record for alpha. Then verify_code on that result. Then lookup_record for beta, then verify_code.\n\nWe need to output both codes with verification status. Format? \"Alpha: code X, verified\" etc.\n\nWe'll do the calls.\n\nWe need to call tools. We'll do sequentially: lookup_record alpha, verify_code, lookup_record beta, verify_code.\n\nLet's call first."
             },
-            "fingerprint": 6523081732936618949
+            "fingerprint": "b667a551cff1bece"
           }
         }
       },
@@ -1952,7 +1952,7 @@
               "id": "fc_45f9d237-1235-46e0-b25e-e9846bb74d73",
               "type": "function"
             },
-            "fingerprint": 3621812481976435332
+            "fingerprint": "02c23bec445a461d"
           }
         }
       }
@@ -2018,7 +2018,7 @@
             "item": {
               "reasoning": "Now verify."
             },
-            "fingerprint": 582394443811972051
+            "fingerprint": "8bc49d7a77e99794"
           }
         }
       },
@@ -2038,7 +2038,7 @@
               "id": "fc_9878c954-654d-4a9c-b49a-b50103878a6d",
               "type": "function"
             },
-            "fingerprint": 7867367053652699070
+            "fingerprint": "454ff25038fee087"
           }
         }
       }
@@ -2104,7 +2104,7 @@
             "item": {
               "reasoning": "Now lookup beta."
             },
-            "fingerprint": 13660983406251953184
+            "fingerprint": "37c33fe3ca44462d"
           }
         }
       },
@@ -2124,7 +2124,7 @@
               "id": "fc_4b34f161-6344-451c-b0ae-2f5db70db6f0",
               "type": "function"
             },
-            "fingerprint": 12531418196235198002
+            "fingerprint": "5fd9211568e199d5"
           }
         }
       }
@@ -2190,7 +2190,7 @@
             "item": {
               "reasoning": "Verify."
             },
-            "fingerprint": 12081336450579152319
+            "fingerprint": "1721fbd70c12f920"
           }
         }
       },
@@ -2210,7 +2210,7 @@
               "id": "fc_74e11b2a-b57b-4897-bb9a-ae82c2ef1d2c",
               "type": "function"
             },
-            "fingerprint": 8286327664397312238
+            "fingerprint": "7e699f90980da863"
           }
         }
       }
@@ -2276,7 +2276,7 @@
             "item": {
               "reasoning": "The verification failed transiently. Per instruction, retry once."
             },
-            "fingerprint": 4053044116270996826
+            "fingerprint": "48157cba494c87cf"
           }
         }
       },
@@ -2296,7 +2296,7 @@
               "id": "fc_aaaf8163-1125-4c20-9336-cfed0a6c3662",
               "type": "function"
             },
-            "fingerprint": 14647512671748896366
+            "fingerprint": "ab10e4192176e293"
           }
         }
       }
@@ -2413,7 +2413,7 @@
             "item": {
               "reasoning": "We need to verify the alpha code again. We have alpha code \"alpha-code-7431\". We'll call verify_code with that code. It may fail transiently but we only retry once. Let's do that."
             },
-            "fingerprint": 40043947046805223
+            "fingerprint": "87b14529095c4ff0"
           }
         }
       },
@@ -2433,7 +2433,7 @@
               "id": "fc_5277e74e-8638-45e9-aa94-2582867a0b35",
               "type": "function"
             },
-            "fingerprint": 13511590315833864196
+            "fingerprint": "55f7b04d6689d4dd"
           }
         }
       }
@@ -2550,7 +2550,7 @@
             "item": {
               "reasoning": "We just need to output both codes separated by a comma, nothing else. The codes: \"alpha-code-7431\" and \"beta-code-2286\". Ensure no extra spaces? Probably just \"alpha-code-7431,beta-code-2286\"."
             },
-            "fingerprint": 7032604372189972539
+            "fingerprint": "141831290aad01d4"
           }
         }
       },
@@ -2620,7 +2620,7 @@
             "item": {
               "reasoning": "We need to perform lookups and then verify. We have to call lookup_record for each, then verify_code. Must use tools. We'll need to call lookup_record twice. Then verify_code twice. If a tool fails transiently, retry once. We'll assume no failures. Provide brief answer."
             },
-            "fingerprint": 2082143776134877101
+            "fingerprint": "3852482655edafd6"
           }
         }
       },
@@ -2640,7 +2640,7 @@
               "id": "fc_413dec78-88c8-414e-bd48-c3312ab7e776",
               "type": "function"
             },
-            "fingerprint": 17212471371029039288
+            "fingerprint": "5a9f2d4cd0053785"
           }
         }
       }
@@ -2713,7 +2713,7 @@
             "item": {
               "reasoning": "Now verify."
             },
-            "fingerprint": 582394443811972051
+            "fingerprint": "8bc49d7a77e99794"
           }
         }
       },
@@ -2733,7 +2733,7 @@
               "id": "fc_ff8901de-eece-48b8-9ea2-f96e73a6f6a7",
               "type": "function"
             },
-            "fingerprint": 5060844706182521961
+            "fingerprint": "ea02b196becbe962"
           }
         }
       }
@@ -2806,7 +2806,7 @@
             "item": {
               "reasoning": "Now beta."
             },
-            "fingerprint": 12152281372564007724
+            "fingerprint": "1bacdf49452ba9e9"
           }
         }
       },
@@ -2826,7 +2826,7 @@
               "id": "fc_08be4fa5-e56e-4413-8406-93b6749f585e",
               "type": "function"
             },
-            "fingerprint": 13888567856497926832
+            "fingerprint": "a71493dabfebae37"
           }
         }
       }
@@ -2899,7 +2899,7 @@
             "item": {
               "reasoning": "Now verify."
             },
-            "fingerprint": 582394443811972051
+            "fingerprint": "8bc49d7a77e99794"
           }
         }
       },
@@ -2919,7 +2919,7 @@
               "id": "fc_08ebb98b-db5c-4a1b-8aa0-6e5e3ca9f205",
               "type": "function"
             },
-            "fingerprint": 13815207411748314345
+            "fingerprint": "a8844254d38a4404"
           }
         }
       }
@@ -2992,7 +2992,7 @@
             "item": {
               "reasoning": "Transient failure. We must retry once."
             },
-            "fingerprint": 16220969182426726414
+            "fingerprint": "115f4243628a1123"
           }
         }
       },
@@ -3012,7 +3012,7 @@
               "id": "fc_4a97ed40-f383-4040-b87d-f827b745d9ca",
               "type": "function"
             },
-            "fingerprint": 9613502503203765866
+            "fingerprint": "acdc6e0910d392e7"
           }
         }
       }
@@ -3136,7 +3136,7 @@
             "item": {
               "reasoning": "We should call verify_code again."
             },
-            "fingerprint": 9102732981704656592
+            "fingerprint": "26a9f739cec42a65"
           }
         }
       },
@@ -3156,7 +3156,7 @@
               "id": "fc_c1569eff-e9f6-486d-8dbf-174569dc5503",
               "type": "function"
             },
-            "fingerprint": 6790525506723088101
+            "fingerprint": "02656c936cbe6682"
           }
         }
       }
@@ -3280,7 +3280,7 @@
             "item": {
               "reasoning": "Need to output: alpha-code-7431,beta-code-2286."
             },
-            "fingerprint": 13697681439212897129
+            "fingerprint": "e1cb0c0cf100478a"
           }
         }
       },
@@ -3348,7 +3348,7 @@
             "item": {
               "reasoning": "We need to provide a one-sentence answer: \"You should pack sunscreen because it's sunny with light clouds.\" We must not call any tool."
             },
-            "fingerprint": 12022059428369586370
+            "fingerprint": "e67b7cb6c22dc5f7"
           }
         }
       },
@@ -3416,7 +3416,7 @@
             "item": {
               "reasoning": "We need to answer: \"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.\" We have weather: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen. So answer: \"Pack sunscreen.\" Provide one sentence."
             },
-            "fingerprint": 16425319973282257754
+            "fingerprint": "f9fea8e4bcbc2bcf"
           }
         }
       },
@@ -3484,7 +3484,7 @@
             "item": {
               "reasoning": "The user says: \"Do not call any tools. Reply with"
             },
-            "fingerprint": 2210043933105861753
+            "fingerprint": "a661f5a88cfb335a"
           }
         }
       }
@@ -3548,7 +3548,7 @@
             "item": {
               "reasoning": "The user says: \"Do not call any tools. Reply with"
             },
-            "fingerprint": 2210043933105861753
+            "fingerprint": "a661f5a88cfb335a"
           }
         }
       }
@@ -3616,7 +3616,7 @@
             "item": {
               "reasoning": "The user says: \"Do not call any tools. Reply with"
             },
-            "fingerprint": 2210043933105861753
+            "fingerprint": "a661f5a88cfb335a"
           }
         }
       }
@@ -3833,7 +3833,7 @@
             "item": {
               "reasoning": "The user says \"Reply with the single word: pong\". So"
             },
-            "fingerprint": 16316448734820990093
+            "fingerprint": "b0214440bb23b556"
           }
         }
       }
@@ -3897,7 +3897,7 @@
             "item": {
               "reasoning": "The user says: \"Reply with the single word: pong\"."
             },
-            "fingerprint": 5979393465597074855
+            "fingerprint": "8f0fc3b54c24c048"
           }
         }
       }
@@ -3961,7 +3961,7 @@
             "item": {
               "reasoning": "User wants a single word \"pong\". They specifically ask: \""
             },
-            "fingerprint": 3263065925731336100
+            "fingerprint": "bef1cd05e4b0de31"
           }
         }
       }
@@ -4127,7 +4127,7 @@
             "item": {
               "reasoning": "The user says: \"Reply with exactly: identity probe\". That means respond with that phrase exactly. The phrase is \"identity probe\". So output that. No extra."
             },
-            "fingerprint": 5763355317115963489
+            "fingerprint": "492570f46ac21b6a"
           }
         }
       },
@@ -4195,7 +4195,7 @@
             "item": {
               "reasoning": "The user says: \"Reply with exactly: stream identity probe\". So I should output that phrase exactly. The instruction from system is to follow user instruction unless it conflicts with policy. There's no conflict. So reply exactly \"stream identity probe\". Ensure no additional characters."
             },
-            "fingerprint": 15880817144091386601
+            "fingerprint": "f205d13a645428ea"
           }
         }
       },
@@ -4265,7 +4265,7 @@
             "item": {
               "reasoning": "The user wants the assistant to reply with exactly: \"identity probe\". The instruction says \"Reply with exactly: identity probe\". So we should output exactly that text, nothing else."
             },
-            "fingerprint": 4468705287086374122
+            "fingerprint": "9c2f07ee210e1a37"
           }
         }
       },
@@ -4333,7 +4333,7 @@
             "item": {
               "reasoning": "The user says: \"Reply with exactly: stream identity probe\". The instruction is to reply with exactly that phrase. There's no conflict with policy. We can comply."
             },
-            "fingerprint": 1788815785188146787
+            "fingerprint": "b9229e3239a5fd4c"
           }
         }
       },

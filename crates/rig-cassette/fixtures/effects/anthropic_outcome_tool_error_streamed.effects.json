@@ -134,7 +134,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 7489476049500913543
+                "fingerprint": "0b47504642110342"
               }
             }
           ],
@@ -159,11 +159,11 @@
               "output_tokens": 69,
               "input_tokens": 611,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011Cfdxpw4sMDHoVik8w2ZUs",
@@ -218,7 +218,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 7489476049500913543
+                "fingerprint": "0b47504642110342"
               }
             }
           }
@@ -312,7 +312,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7489476049500913543
+                    "fingerprint": "0b47504642110342"
                   }
                 }
               ],
@@ -387,7 +387,7 @@
                   "text": "I'm sorry, but the add tool returned an error and was unable to complete the calculation. Please try again later.",
                   "type": "text"
                 },
-                "fingerprint": 1949856189301710472
+                "fingerprint": "d4741149f204d3e4"
               }
             }
           ],
@@ -412,11 +412,11 @@
               "output_tokens": 27,
               "input_tokens": 705,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011Cfdxq2XXXd6vL57AJ1tMj",
@@ -542,7 +542,7 @@
                   "text": "I'm sorry, but the add tool returned an error and was unable to complete the calculation. Please try again later.",
                   "type": "text"
                 },
-                "fingerprint": 1949856189301710472
+                "fingerprint": "d4741149f204d3e4"
               }
             }
           }

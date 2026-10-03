@@ -99,7 +99,7 @@
                   "text": "ready",
                   "type": "text"
                 },
-                "fingerprint": 12598636203455125710
+                "fingerprint": "0cd5e8fd3135ad2a"
               }
             }
           ],
@@ -124,11 +124,11 @@
               "output_tokens": 4,
               "input_tokens": 26,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfLcbNrrwoY3ZZXAi1sti",
@@ -166,7 +166,7 @@
                   "text": "ready",
                   "type": "text"
                 },
-                "fingerprint": 12598636203455125710
+                "fingerprint": "0cd5e8fd3135ad2a"
               }
             }
           }
@@ -208,7 +208,7 @@
                       "text": "ready",
                       "type": "text"
                     },
-                    "fingerprint": 12598636203455125710
+                    "fingerprint": "0cd5e8fd3135ad2a"
                   }
                 }
               ],

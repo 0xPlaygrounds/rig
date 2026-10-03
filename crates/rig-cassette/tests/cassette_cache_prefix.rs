@@ -60,6 +60,22 @@ use cache_prefix::{EndpointKind, PrefixBlock, Violation};
 /// records that someone silenced the check, not why it is correct.
 const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     (
+        "anthropic/corpus_shaping/tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
+        "venice/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
         "anthropic/long_run_caching/dynamic_tools_30.yaml",
         "the long run's request patch changes the active tools on turn 11; the \
          changed tool list is the behavior being recorded (Claude Opus 5.5 \

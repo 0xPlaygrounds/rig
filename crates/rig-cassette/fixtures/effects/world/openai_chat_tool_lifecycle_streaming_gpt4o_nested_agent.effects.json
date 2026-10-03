@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 35,
+        "batch": 44,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 46,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 39,
+        "batch": 47,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -194,7 +194,7 @@
                   "id": "call_TECOyioASt9BQxP1WvwgbCYW",
                   "type": "function"
                 },
-                "fingerprint": 12216000087618924311
+                "fingerprint": "1f6613aedcef5014"
               }
             }
           ],
@@ -211,24 +211,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
-                    "name": "record_payload"
-                  },
-                  "id": "call_TECOyioASt9BQxP1WvwgbCYW",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 666007596383014093
           },
           "provider_request_id": "req_03654d5d0dab4f9ca2c7f7cee73925e1",
           "finish_reason": "tool_calls",
@@ -311,7 +293,7 @@
                   "id": "call_TECOyioASt9BQxP1WvwgbCYW",
                   "type": "function"
                 },
-                "fingerprint": 12216000087618924311
+                "fingerprint": "1f6613aedcef5014"
               }
             }
           }

@@ -82,13 +82,6 @@
             "response_model": "deepseek-flash",
             "response_id": "c71649d1-fbcc-4665-b7f0-eae77c5035d2"
           },
-          "native": {
-            "item": {
-              "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
-              "role": "assistant"
-            },
-            "fingerprint": 10451453978944546474
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

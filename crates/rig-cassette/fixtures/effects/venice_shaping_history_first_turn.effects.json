@@ -101,15 +101,6 @@
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RFJMJ8oJ6y7zrNh8vcV1NXyF"
           },
-          "native": {
-            "item": {
-              "content": "Ada",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 4857962483737284025
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

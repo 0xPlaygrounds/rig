@@ -271,7 +271,7 @@
                   "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                   "type": "function"
                 },
-                "fingerprint": 5259179666328443233
+                "fingerprint": "f7ed4074d27327c0"
               }
             }
           ],
@@ -287,23 +287,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "92c610ca-49ec-4678-99f4-b6ca0ce82fad"
-          },
-          "native": {
-            "item": {
-              "content": "I'll start by listing the repository files.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "list_files"
-                  },
-                  "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12521211668297466220
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -421,7 +404,7 @@
                       "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                       "type": "function"
                     },
-                    "fingerprint": 5259179666328443233
+                    "fingerprint": "f7ed4074d27327c0"
                   }
                 }
               ],
@@ -432,24 +415,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "92c610ca-49ec-4678-99f4-b6ca0ce82fad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12521211668297466220
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -566,7 +532,7 @@
                   "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
                   "type": "function"
                 },
-                "fingerprint": 2242893980710913816
+                "fingerprint": "c036c91c384137fd"
               }
             }
           ],
@@ -582,23 +548,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "4441d5e7-1bd7-49ae-b306-da8d26122b82"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"README.md\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12210545682805104964
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -716,7 +665,7 @@
                       "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                       "type": "function"
                     },
-                    "fingerprint": 5259179666328443233
+                    "fingerprint": "f7ed4074d27327c0"
                   }
                 }
               ],
@@ -727,24 +676,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "92c610ca-49ec-4678-99f4-b6ca0ce82fad"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "list_files"
-                      },
-                      "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12521211668297466220
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -787,7 +719,7 @@
                       "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
                       "type": "function"
                     },
-                    "fingerprint": 2242893980710913816
+                    "fingerprint": "c036c91c384137fd"
                   }
                 }
               ],
@@ -798,24 +730,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "4441d5e7-1bd7-49ae-b306-da8d26122b82"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"path\": \"README.md\"}",
-                        "name": "read_file"
-                      },
-                      "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 12210545682805104964
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -932,7 +847,7 @@
                   "id": "call_00_cdjFzYqSbNlEPCx1yPun0587",
                   "type": "function"
                 },
-                "fingerprint": 16490999425454977010
+                "fingerprint": "0190668a5a58f7e7"
               }
             }
           ],
@@ -948,23 +863,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "c844db06-3bc4-4c52-ac10-5223268720df"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"path\": \"tests/basic.rs\"}",
-                    "name": "read_file"
-                  },
-                  "id": "call_00_cdjFzYqSbNlEPCx1yPun0587",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12375790345764219216
           },
           "finish_reason": "tool_calls",
           "raw": {

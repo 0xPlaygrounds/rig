@@ -149,7 +149,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -173,7 +173,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15789986824214995631
+                "fingerprint": "0fa09ec4ec88da32"
               }
             }
           ],
@@ -403,7 +403,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -427,7 +427,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15789986824214995631
+                    "fingerprint": "0fa09ec4ec88da32"
                   }
                 }
               ],
@@ -531,7 +531,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -556,7 +556,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 8733156733422856016
+                "fingerprint": "4a2c17d685204a73"
               }
             }
           ],

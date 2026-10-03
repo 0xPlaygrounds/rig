@@ -160,7 +160,7 @@
                   "id": "call_bcc2b2039801447d96d8d967",
                   "type": "function"
                 },
-                "fingerprint": 6965729547673146451
+                "fingerprint": "850c67875a84c6d2"
               }
             }
           ],
@@ -177,23 +177,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976152-slRS9AgwprVco4PqNh46"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_bcc2b2039801447d96d8d967",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 12322155174707907529
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -274,7 +257,7 @@
                   "id": "call_bcc2b2039801447d96d8d967",
                   "type": "function"
                 },
-                "fingerprint": 6965729547673146451
+                "fingerprint": "850c67875a84c6d2"
               }
             }
           }

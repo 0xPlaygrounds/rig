@@ -97,15 +97,6 @@
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RksqIpS1YjkKzh20XFj5i27Y"
           },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their vibrant fall foliage, which can range from",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 7995512571635322581
-          },
           "finish_reason": "length",
           "raw": {
             "choices": [
@@ -207,15 +198,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RfbejHKvIRtkt6XPwh9A9dJS"
-          },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap.",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 2579409823816478923
           },
           "finish_reason": "stop",
           "raw": {

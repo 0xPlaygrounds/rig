@@ -186,7 +186,7 @@
                   "id": "call_iSqtSTVC54dfIeDaZHX1nzvu",
                   "type": "function"
                 },
-                "fingerprint": 16611318365550944793
+                "fingerprint": "d4bd73f24626f962"
               }
             }
           ],
@@ -203,25 +203,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-ERDAwvmqnRoE7GeGRCQoacOtrA0kk"
-          },
-          "native": {
-            "item": {
-              "annotations": [],
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
-                    "name": "record_payload"
-                  },
-                  "id": "call_iSqtSTVC54dfIeDaZHX1nzvu",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 8459138862419731895
           },
           "provider_request_id": "req_a51b78800c5c43a293acec2046887b5e",
           "finish_reason": "tool_calls",

@@ -137,7 +137,7 @@
                   "id": "call_00_4erKljPi1o6o6CvxjR7e0797",
                   "type": "function"
                 },
-                "fingerprint": 6639878043177885131
+                "fingerprint": "0807d97c0e63555e"
               }
             },
             {
@@ -160,7 +160,7 @@
                   "id": "call_01_YPLJSmf2AJHKAkqP6C7D6621",
                   "type": "function"
                 },
-                "fingerprint": 14522982910955032874
+                "fingerprint": "bdc7f804c5266d79"
               }
             },
             {
@@ -183,7 +183,7 @@
                   "id": "call_02_Z8RA4z3vPVpYAzEjLT8u1122",
                   "type": "function"
                 },
-                "fingerprint": 6794946194461224717
+                "fingerprint": "45b0dd398293ca98"
               }
             }
           ],
@@ -199,39 +199,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "ca78f8f8-011a-4e24-80b4-4af5dd74b218"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"slot\": 0}",
-                    "name": "checkpoint_batch"
-                  },
-                  "id": "call_00_4erKljPi1o6o6CvxjR7e0797",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"slot\": 1}",
-                    "name": "checkpoint_batch"
-                  },
-                  "id": "call_01_YPLJSmf2AJHKAkqP6C7D6621",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"slot\": 2}",
-                    "name": "checkpoint_batch"
-                  },
-                  "id": "call_02_Z8RA4z3vPVpYAzEjLT8u1122",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 16381547509417163296
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -419,7 +386,7 @@
                       "id": "call_00_4erKljPi1o6o6CvxjR7e0797",
                       "type": "function"
                     },
-                    "fingerprint": 6639878043177885131
+                    "fingerprint": "0807d97c0e63555e"
                   }
                 },
                 {
@@ -442,7 +409,7 @@
                       "id": "call_01_YPLJSmf2AJHKAkqP6C7D6621",
                       "type": "function"
                     },
-                    "fingerprint": 14522982910955032874
+                    "fingerprint": "bdc7f804c5266d79"
                   }
                 },
                 {
@@ -465,7 +432,7 @@
                       "id": "call_02_Z8RA4z3vPVpYAzEjLT8u1122",
                       "type": "function"
                     },
-                    "fingerprint": 6794946194461224717
+                    "fingerprint": "45b0dd398293ca98"
                   }
                 }
               ],
@@ -476,40 +443,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "ca78f8f8-011a-4e24-80b4-4af5dd74b218"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 0}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_00_4erKljPi1o6o6CvxjR7e0797",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 1}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_01_YPLJSmf2AJHKAkqP6C7D6621",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{\"slot\": 2}",
-                        "name": "checkpoint_batch"
-                      },
-                      "id": "call_02_Z8RA4z3vPVpYAzEjLT8u1122",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 16381547509417163296
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -614,13 +548,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "47392741-fc01-403d-96f5-ce304c1b8243"
-          },
-          "native": {
-            "item": {
-              "content": "checkpoint-complete",
-              "role": "assistant"
-            },
-            "fingerprint": 8754285088019305819
           },
           "finish_reason": "stop",
           "raw": {

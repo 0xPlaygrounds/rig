@@ -130,7 +130,7 @@
                   "id": "hWmfy7LyS",
                   "type": "function"
                 },
-                "fingerprint": 9432525290146736305
+                "fingerprint": "336adfac28935e84"
               }
             }
           ],
@@ -145,24 +145,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-ReqqQ2RLOCzwdH9cuNMuSMn4"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "hWmfy7LyS",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1471179738194395339
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -229,7 +211,7 @@
                   "id": "hWmfy7LyS",
                   "type": "function"
                 },
-                "fingerprint": 9432525290146736305
+                "fingerprint": "336adfac28935e84"
               }
             }
           }
@@ -319,7 +301,7 @@
                       "id": "hWmfy7LyS",
                       "type": "function"
                     },
-                    "fingerprint": 9432525290146736305
+                    "fingerprint": "336adfac28935e84"
                   }
                 }
               ],
@@ -330,25 +312,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-ReqqQ2RLOCzwdH9cuNMuSMn4"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "hWmfy7LyS",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 1471179738194395339
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -420,14 +384,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RvGaZ3BV8t9ueemWAgad7GVU"
-          },
-          "native": {
-            "item": {
-              "content": "the adder is broken",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 14739622908140403659
           },
           "finish_reason": "stop",
           "raw": {

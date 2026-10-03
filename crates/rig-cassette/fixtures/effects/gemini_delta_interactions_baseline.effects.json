@@ -121,7 +121,7 @@
                   "type": "thought",
                   "signature": "CiQBaRR9E4gkWYkOPlFDtPsm3Va7l0T1sZNAZYFpGDUP7YQGOxUKRwFpFH0TDO/cpGIDeJtmz8aEYKFe/oHFqM7n6KUCDuCnrUprgQqq8ufSCX7+wdcenN/+1Lga8+QZE76lGl7DY780k4HAi91SCsQBAWkUfRPA8dt85AClu9DFfO3/628kqW1y5YdGBA0bf0jHHZHbhUGr28lPHSE1j6y3U4D7iMryUr/oEsjlLJHtl1Iq+KLP9wiys6f0DJKFCzw/ozurKxeveRlt67+6mVdu0gjHbzz5eSRmom5287uCUfiM068anE53GeirJ6c/IZUYlwh5eFKFWCAOmEGYGb+K2eMto0KS0q4k6DamxreKdBwZAXLrwGXnZLxDzUK3n96XOZJMZJkXPpJcVKeuXGB5HXgf6wpIAWkUfRN90Aym51EnFwFYVAmUfbX6HmYvGFd3kLi/EN3ewyYkJAkYCfUFN6nyPctcl2NYNg96dGBNrWWrowqpn8OP6chs+Ygu"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -146,7 +146,7 @@
                   "name": "add",
                   "type": "function_call"
                 },
-                "fingerprint": 1367735349799059465
+                "fingerprint": "0bd68e2997afb5a4"
               }
             }
           ],
@@ -230,7 +230,7 @@
                   "type": "thought",
                   "signature": "CiQBaRR9E4gkWYkOPlFDtPsm3Va7l0T1sZNAZYFpGDUP7YQGOxUKRwFpFH0TDO/cpGIDeJtmz8aEYKFe/oHFqM7n6KUCDuCnrUprgQqq8ufSCX7+wdcenN/+1Lga8+QZE76lGl7DY780k4HAi91SCsQBAWkUfRPA8dt85AClu9DFfO3/628kqW1y5YdGBA0bf0jHHZHbhUGr28lPHSE1j6y3U4D7iMryUr/oEsjlLJHtl1Iq+KLP9wiys6f0DJKFCzw/ozurKxeveRlt67+6mVdu0gjHbzz5eSRmom5287uCUfiM068anE53GeirJ6c/IZUYlwh5eFKFWCAOmEGYGb+K2eMto0KS0q4k6DamxreKdBwZAXLrwGXnZLxDzUK3n96XOZJMZJkXPpJcVKeuXGB5HXgf6wpIAWkUfRN90Aym51EnFwFYVAmUfbX6HmYvGFd3kLi/EN3ewyYkJAkYCfUFN6nyPctcl2NYNg96dGBNrWWrowqpn8OP6chs+Ygu"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             }
           }
@@ -278,7 +278,7 @@
                   "name": "add",
                   "type": "function_call"
                 },
-                "fingerprint": 1367735349799059465
+                "fingerprint": "0bd68e2997afb5a4"
               }
             }
           }
@@ -347,7 +347,7 @@
                       "type": "thought",
                       "signature": "CiQBaRR9E4gkWYkOPlFDtPsm3Va7l0T1sZNAZYFpGDUP7YQGOxUKRwFpFH0TDO/cpGIDeJtmz8aEYKFe/oHFqM7n6KUCDuCnrUprgQqq8ufSCX7+wdcenN/+1Lga8+QZE76lGl7DY780k4HAi91SCsQBAWkUfRPA8dt85AClu9DFfO3/628kqW1y5YdGBA0bf0jHHZHbhUGr28lPHSE1j6y3U4D7iMryUr/oEsjlLJHtl1Iq+KLP9wiys6f0DJKFCzw/ozurKxeveRlt67+6mVdu0gjHbzz5eSRmom5287uCUfiM068anE53GeirJ6c/IZUYlwh5eFKFWCAOmEGYGb+K2eMto0KS0q4k6DamxreKdBwZAXLrwGXnZLxDzUK3n96XOZJMZJkXPpJcVKeuXGB5HXgf6wpIAWkUfRN90Aym51EnFwFYVAmUfbX6HmYvGFd3kLi/EN3ewyYkJAkYCfUFN6nyPctcl2NYNg96dGBNrWWrowqpn8OP6chs+Ygu"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -372,7 +372,7 @@
                       "name": "add",
                       "type": "function_call"
                     },
-                    "fingerprint": 1367735349799059465
+                    "fingerprint": "0bd68e2997afb5a4"
                   }
                 }
               ],
@@ -448,7 +448,7 @@
                   "type": "thought",
                   "signature": "CiRlMjQ4MzBhNy01Y2Q2LTQyZmUtOTk4Yi1lZTUzOWU3MmI5YzM="
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -464,7 +464,7 @@
                     }
                   ]
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -548,7 +548,7 @@
                   "type": "thought",
                   "signature": "CiRlMjQ4MzBhNy01Y2Q2LTQyZmUtOTk4Yi1lZTUzOWU3MmI5YzM="
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             }
           }
@@ -587,7 +587,7 @@
                     }
                   ]
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           }

@@ -128,7 +128,7 @@
                   "id": "call_X53mIIO8nUn0JjIJqoJs1x0O",
                   "type": "function"
                 },
-                "fingerprint": 6873670308450694336
+                "fingerprint": "c2e02a4fcb2a8d73"
               }
             }
           ],
@@ -146,25 +146,6 @@
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
             "response_id": "gen-1790152493-mcjos55neEeBmmBt0KMu"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_X53mIIO8nUn0JjIJqoJs1x0O",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 3133122817225006780
           },
           "finish_reason": "tool_calls",
           "raw": {

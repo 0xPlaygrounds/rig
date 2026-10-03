@@ -2,30 +2,30 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
         "batch": 10,
         "id": 0,
         "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
+        "id": 0,
+        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 19,
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -33,7 +33,15 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 21,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 22,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -112,7 +120,7 @@
                   "text": "alpha\nbr",
                   "type": "text"
                 },
-                "fingerprint": 15781426286551714411
+                "fingerprint": "750a1414f22fd69f"
               }
             }
           ],
@@ -137,11 +145,11 @@
               "output_tokens": 3,
               "input_tokens": 40,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "max_tokens",
             "message_id": "msg_011CfLcgTgxmtjTZAVWc25nw",
@@ -187,7 +195,7 @@
                   "text": "alpha\nbr",
                   "type": "text"
                 },
-                "fingerprint": 15781426286551714411
+                "fingerprint": "750a1414f22fd69f"
               }
             }
           }
@@ -245,7 +253,7 @@
                   "text": "alpha\nbravo\ncharlie\ndelta",
                   "type": "text"
                 },
-                "fingerprint": 832327109274538017
+                "fingerprint": "ad358e1eb225a2af"
               }
             }
           ],
@@ -270,11 +278,11 @@
               "output_tokens": 11,
               "input_tokens": 40,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfLcgWf4VhtXBK2SQFfKt",
@@ -328,7 +336,7 @@
                   "text": "alpha\nbravo\ncharlie\ndelta",
                   "type": "text"
                 },
-                "fingerprint": 832327109274538017
+                "fingerprint": "ad358e1eb225a2af"
               }
             }
           }

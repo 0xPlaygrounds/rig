@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 23,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 34,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 35,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 47,
+        "batch": 57,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,43 +32,43 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 63,
         "id": 2,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 52,
-        "id": 3,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 62,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 62,
-        "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 64,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 107,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 116,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 117,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 88,
+        "batch": 124,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,21 +76,21 @@
         }
       },
       {
-        "batch": 95,
+        "batch": 126,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 96,
+        "batch": 128,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 113,
+        "batch": 139,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -98,15 +98,23 @@
         }
       },
       {
-        "batch": 114,
+        "batch": 140,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 114,
+        "batch": 147,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 164,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -236,7 +244,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10440494074159329882
+                "fingerprint": "9309366338bc51f9"
               }
             }
           ],
@@ -368,7 +376,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -376,7 +384,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"token\":\"start\"}"
           }
         },
@@ -384,7 +392,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -405,7 +413,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10440494074159329882
+                "fingerprint": "9309366338bc51f9"
               }
             }
           }
@@ -492,7 +500,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10440494074159329882
+                    "fingerprint": "9309366338bc51f9"
                   }
                 }
               ],
@@ -579,7 +587,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10393305010034030699
+                "fingerprint": "6c11f8b434e3b878"
               }
             }
           ],
@@ -711,7 +719,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -719,7 +727,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"token\":\"cobalt-17\"}"
           }
         },
@@ -727,7 +735,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -748,7 +756,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10393305010034030699
+                "fingerprint": "6c11f8b434e3b878"
               }
             }
           }
@@ -835,7 +843,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10440494074159329882
+                    "fingerprint": "9309366338bc51f9"
                   }
                 }
               ],
@@ -893,7 +901,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10393305010034030699
+                    "fingerprint": "6c11f8b434e3b878"
                   }
                 }
               ],
@@ -980,7 +988,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10026167670979257474
+                "fingerprint": "d41e48f7610f6e7f"
               }
             }
           ],
@@ -1112,7 +1120,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -1120,7 +1128,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"token\":\"orchard-29\"}"
           }
         },
@@ -1128,7 +1136,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1149,7 +1157,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10026167670979257474
+                "fingerprint": "d41e48f7610f6e7f"
               }
             }
           }
@@ -1236,7 +1244,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10440494074159329882
+                    "fingerprint": "9309366338bc51f9"
                   }
                 }
               ],
@@ -1294,7 +1302,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10393305010034030699
+                    "fingerprint": "6c11f8b434e3b878"
                   }
                 }
               ],
@@ -1352,7 +1360,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10026167670979257474
+                    "fingerprint": "d41e48f7610f6e7f"
                   }
                 }
               ],
@@ -1439,7 +1447,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17097497234990018036
+                "fingerprint": "439c80e16678c6ab"
               }
             }
           ],
@@ -1571,7 +1579,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -1579,7 +1587,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"token\":\"harbor-43\"}"
           }
         },
@@ -1587,7 +1595,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1608,7 +1616,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17097497234990018036
+                "fingerprint": "439c80e16678c6ab"
               }
             }
           }
@@ -1695,7 +1703,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10440494074159329882
+                    "fingerprint": "9309366338bc51f9"
                   }
                 }
               ],
@@ -1753,7 +1761,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10393305010034030699
+                    "fingerprint": "6c11f8b434e3b878"
                   }
                 }
               ],
@@ -1811,7 +1819,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10026167670979257474
+                    "fingerprint": "d41e48f7610f6e7f"
                   }
                 }
               ],
@@ -1869,7 +1877,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17097497234990018036
+                    "fingerprint": "439c80e16678c6ab"
                   }
                 }
               ],
@@ -1954,7 +1962,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 6033222713521759663
+                "fingerprint": "2e3d3d4a66aba08f"
               }
             }
           ],
@@ -2143,7 +2151,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 6033222713521759663
+                "fingerprint": "2e3d3d4a66aba08f"
               }
             }
           }

@@ -247,7 +247,7 @@
                     ],
                     "type": "reasoning"
                   },
-                  "fingerprint": 12485289579860747071
+                  "fingerprint": "4a6705d4e60a8498"
                 }
               },
               {
@@ -272,7 +272,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 17579557997486914746
+                  "fingerprint": "eb0d491f8d38103d"
                 }
               }
             ],
@@ -284,8 +284,7 @@
                 "response_model": "grok-4.3",
                 "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73"
               },
-              "stop": "tool_use",
-              "native": null
+              "stop": "tool_use"
             },
             "done": true,
             "usage_recorded": true,
@@ -320,7 +319,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 12485289579860747071
+                    "fingerprint": "4a6705d4e60a8498"
                   }
                 },
                 {
@@ -345,7 +344,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17579557997486914746
+                    "fingerprint": "eb0d491f8d38103d"
                   }
                 }
               ],
@@ -498,8 +497,7 @@
               "response_model": "grok-4.3",
               "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73"
             },
-            "stop": "tool_use",
-            "native": null
+            "stop": "tool_use"
           }
         },
         {
@@ -519,7 +517,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 12485289579860747071
+                "fingerprint": "4a6705d4e60a8498"
               }
             }
           }

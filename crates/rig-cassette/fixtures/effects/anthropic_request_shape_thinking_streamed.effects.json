@@ -78,7 +78,7 @@
                   "thinking": "144",
                   "type": "thinking"
                 },
-                "fingerprint": 17883408413175930617
+                "fingerprint": "51d9fb1eff991ba2"
               }
             },
             {
@@ -89,7 +89,7 @@
                   "text": "144",
                   "type": "text"
                 },
-                "fingerprint": 431554760036180866
+                "fingerprint": "23ab8438379556ae"
               }
             }
           ],
@@ -115,11 +115,11 @@
               "output_tokens": 13,
               "input_tokens": 68,
               "cache_creation_input_tokens": 0,
-              "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
               "cache_read_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
               "output_tokens_details": {
                 "thinking_tokens": 7
               }
@@ -161,7 +161,7 @@
                   "thinking": "144",
                   "type": "thinking"
                 },
-                "fingerprint": 17883408413175930617
+                "fingerprint": "51d9fb1eff991ba2"
               }
             }
           }
@@ -195,7 +195,7 @@
                   "text": "144",
                   "type": "text"
                 },
-                "fingerprint": 431554760036180866
+                "fingerprint": "23ab8438379556ae"
               }
             }
           }

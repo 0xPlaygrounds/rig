@@ -136,7 +136,7 @@
                   "id": "call_00_KXLDY4kwyoXncplZ29tW6381",
                   "type": "function"
                 },
-                "fingerprint": 14476894993077869486
+                "fingerprint": "3d83b4b73df8152b"
               }
             }
           ],
@@ -152,23 +152,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "63a0c6a2-ac27-428d-a494-eda57eba6f57"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_KXLDY4kwyoXncplZ29tW6381",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7924680223974581536
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -236,7 +219,7 @@
                   "id": "call_00_KXLDY4kwyoXncplZ29tW6381",
                   "type": "function"
                 },
-                "fingerprint": 14476894993077869486
+                "fingerprint": "3d83b4b73df8152b"
               }
             }
           }

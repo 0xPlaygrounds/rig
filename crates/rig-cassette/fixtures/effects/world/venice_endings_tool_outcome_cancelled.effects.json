@@ -150,7 +150,7 @@
                   "id": "9C7RdXWf3",
                   "type": "function"
                 },
-                "fingerprint": 9174975520624471016
+                "fingerprint": "e493991801404769"
               }
             }
           ],
@@ -165,25 +165,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RVd0fV2jsKt7i32Szfb9A0ob"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "9C7RdXWf3",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 6475594655682429832
           },
           "finish_reason": "tool_calls",
           "raw": {

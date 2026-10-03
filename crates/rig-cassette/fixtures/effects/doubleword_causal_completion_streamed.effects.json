@@ -128,7 +128,7 @@
                   "id": "call_dbf06978e02e423abfd40bd5",
                   "type": "function"
                 },
-                "fingerprint": 4168951826131942515
+                "fingerprint": "f79e3a4952e86540"
               }
             }
           ],
@@ -145,23 +145,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976037-lIPdoZ3vL6ydGG3GYT6W"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"q\": \"What is the capital of France?\"}",
-                    "name": "lookup"
-                  },
-                  "id": "call_dbf06978e02e423abfd40bd5",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 172477161386126929
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -241,7 +224,7 @@
                   "id": "call_dbf06978e02e423abfd40bd5",
                   "type": "function"
                 },
-                "fingerprint": 4168951826131942515
+                "fingerprint": "f79e3a4952e86540"
               }
             }
           }
@@ -329,7 +312,7 @@
                     }
                   ]
                 },
-                "fingerprint": 17080021633457856962
+                "fingerprint": "933f4519c34c4d47"
               }
             },
             {
@@ -350,23 +333,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_144dc372-0a58-4e10-a95d-ba42b683fd10"
-          },
-          "native": {
-            "item": {
-              "reasoning_details": [
-                {
-                  "format": "unknown",
-                  "index": 0,
-                  "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-                  "type": "reasoning.text"
-                }
-              ],
-              "content": "\n\nParis",
-              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the capital of France?\"\n    *   Constraint: \"Answer in one word.\"\n\n2.  **Identify the Answer:**\n    *   The capital of France is Paris.\n\n3.  **Check Constraint:**\n    *   \"Paris\" is one word.\n\n4.  **Formulate Output:**\n    *   Paris.\n\n5.  **Final Verification:**\n    *   Does it answer the question? Yes.\n    *   Is it one word? Yes.\n\n6.  **Construct Final Response:** Paris.cw\n",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 1049567697013913861
           },
           "finish_reason": "stop",
           "raw": {
@@ -467,7 +433,7 @@
                       "id": "call_dbf06978e02e423abfd40bd5",
                       "type": "function"
                     },
-                    "fingerprint": 4168951826131942515
+                    "fingerprint": "f79e3a4952e86540"
                   }
                 }
               ],
@@ -478,24 +444,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790976037-lIPdoZ3vL6ydGG3GYT6W"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"q\": \"What is the capital of France?\"}",
-                        "name": "lookup"
-                      },
-                      "id": "call_dbf06978e02e423abfd40bd5",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 172477161386126929
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -571,13 +520,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976042-9vkv7V6JOpBahXa1vtZf"
-          },
-          "native": {
-            "item": {
-              "content": "Paris",
-              "role": "assistant"
-            },
-            "fingerprint": 10907891467078341492
           },
           "finish_reason": "stop",
           "raw": {

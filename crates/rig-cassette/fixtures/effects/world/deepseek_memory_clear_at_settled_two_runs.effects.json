@@ -175,13 +175,6 @@
             "response_model": "deepseek-flash",
             "response_id": "73363676-fd63-4a7d-83aa-df4c46d86127"
           },
-          "native": {
-            "item": {
-              "content": "ready",
-              "role": "assistant"
-            },
-            "fingerprint": 5329546866666182096
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -249,14 +242,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "73363676-fd63-4a7d-83aa-df4c46d86127"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             }
           ]
         }
@@ -363,13 +349,6 @@
             "response_model": "deepseek-flash",
             "response_id": "eeb31800-4c9d-4286-95b7-9a04695b3df7"
           },
-          "native": {
-            "item": {
-              "content": "again",
-              "role": "assistant"
-            },
-            "fingerprint": 16476637925928325713
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -437,14 +416,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "eeb31800-4c9d-4286-95b7-9a04695b3df7"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "again",
-                  "role": "assistant"
-                },
-                "fingerprint": 16476637925928325713
-              }
+              "stop": "stop"
             }
           ]
         }

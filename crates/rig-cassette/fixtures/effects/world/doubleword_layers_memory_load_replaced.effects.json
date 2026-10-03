@@ -157,14 +157,6 @@
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_b6c7cb61-3577-4ca8-ae2d-a1919350f349"
           },
-          "native": {
-            "item": {
-              "content": "Ada",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 4857962483737284025
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -244,15 +236,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_b6c7cb61-3577-4ca8-ae2d-a1919350f349"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "Ada",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 4857962483737284025
-              }
+              "stop": "stop"
             }
           ]
         }

@@ -85,7 +85,7 @@
                 "item": {
                   "text": "GAMMA-33 ZULU-99"
                 },
-                "fingerprint": 13072258098003475438
+                "fingerprint": "456f696721a2c6b8"
               }
             }
           ],
@@ -101,13 +101,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "PRDAarjIHYCoqtsP3L2PqQM"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 15353137995579017438
           },
           "finish_reason": "stop",
           "raw": {

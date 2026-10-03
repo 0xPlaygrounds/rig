@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -153,7 +153,7 @@
                   },
                   "thoughtSignature": "EtICCs8CAWkUfROK1saJBN6Y3nMq+lHmMK24dVSDDbnn5EzYEVHF+iGuP0qX7B6gCZLh35yQ9tzLpmJYFXBiL9ceueV15JdCcPB5wHNnYebxDvFh1SXE60aEseHF1WEKuBnjvPJGLRHV4jfvE0mxNzPHymm3F5EWwlhhGfuZXURDzvUfhmDIAzL07SzMhz5WJcPrIvJ1GD1o93Xn87AQxWVykOAj2MHs9aWGN0WrCBPuyVoZZR2g5Lr61R3U1ftpH8/oP1vmcRoRyoEG6dCn0yTy1fzJhOwxmAgUO1l8vIf+30uMwo3JUbBSCfw9TsvMsi+CBAN+YMooN0Pji5dAIVNJqHxl+JBxgdyNyYEh5UkTZry/OLZvUFX//55d/LZjSXzBH1m2o4D8neu2iwflJ3ss8Fnupxovp++l6ZYapfgFxjR+aSb58B2BUTf0AheviK9Pv0A="
                 },
-                "fingerprint": 5285324109240535699
+                "fingerprint": "9e82208f0dcfdb72"
               }
             }
           ],
@@ -169,13 +169,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "UKyyarj2H7foz7IPt-_ZWQ"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "STOP"
-            },
-            "fingerprint": 4725649094030078665
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -244,7 +237,7 @@
                   },
                   "thoughtSignature": "EtICCs8CAWkUfROK1saJBN6Y3nMq+lHmMK24dVSDDbnn5EzYEVHF+iGuP0qX7B6gCZLh35yQ9tzLpmJYFXBiL9ceueV15JdCcPB5wHNnYebxDvFh1SXE60aEseHF1WEKuBnjvPJGLRHV4jfvE0mxNzPHymm3F5EWwlhhGfuZXURDzvUfhmDIAzL07SzMhz5WJcPrIvJ1GD1o93Xn87AQxWVykOAj2MHs9aWGN0WrCBPuyVoZZR2g5Lr61R3U1ftpH8/oP1vmcRoRyoEG6dCn0yTy1fzJhOwxmAgUO1l8vIf+30uMwo3JUbBSCfw9TsvMsi+CBAN+YMooN0Pji5dAIVNJqHxl+JBxgdyNyYEh5UkTZry/OLZvUFX//55d/LZjSXzBH1m2o4D8neu2iwflJ3ss8Fnupxovp++l6ZYapfgFxjR+aSb58B2BUTf0AheviK9Pv0A="
                 },
-                "fingerprint": 5285324109240535699
+                "fingerprint": "9e82208f0dcfdb72"
               }
             }
           }

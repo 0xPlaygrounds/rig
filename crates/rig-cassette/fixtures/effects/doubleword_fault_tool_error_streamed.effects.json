@@ -132,7 +132,7 @@
                   "id": "chatcmpl-tool-9197df582454f754",
                   "type": "function"
                 },
-                "fingerprint": 9105277551718615587
+                "fingerprint": "9e2d172ef2473526"
               }
             }
           ],
@@ -149,23 +149,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790975990-F6qmXmwKzyafNHew9anS"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "chatcmpl-tool-9197df582454f754",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7976636531246421095
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -245,7 +228,7 @@
                   "id": "chatcmpl-tool-9197df582454f754",
                   "type": "function"
                 },
-                "fingerprint": 9105277551718615587
+                "fingerprint": "9e2d172ef2473526"
               }
             }
           }
@@ -335,7 +318,7 @@
                       "id": "chatcmpl-tool-9197df582454f754",
                       "type": "function"
                     },
-                    "fingerprint": 9105277551718615587
+                    "fingerprint": "9e2d172ef2473526"
                   }
                 }
               ],
@@ -346,24 +329,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790975990-F6qmXmwKzyafNHew9anS"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "chatcmpl-tool-9197df582454f754",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 7976636531246421095
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -439,13 +405,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790975991-Z4YD3TgXru5rO7dxsWtN"
-          },
-          "native": {
-            "item": {
-              "content": "The adder is broken.",
-              "role": "assistant"
-            },
-            "fingerprint": 2238664468496518713
           },
           "finish_reason": "stop",
           "raw": {

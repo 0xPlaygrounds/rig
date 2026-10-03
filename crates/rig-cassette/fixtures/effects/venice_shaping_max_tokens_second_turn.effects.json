@@ -136,7 +136,7 @@
                   "id": "qluROtSRz",
                   "type": "function"
                 },
-                "fingerprint": 16308992321422812837
+                "fingerprint": "302dd32615de05c4"
               }
             }
           ],
@@ -151,25 +151,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RFYak7uugi2jaDKrtyilRRzN"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "qluROtSRz",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1386683992933662799
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -297,7 +278,7 @@
                       "id": "qluROtSRz",
                       "type": "function"
                     },
-                    "fingerprint": 16308992321422812837
+                    "fingerprint": "302dd32615de05c4"
                   }
                 }
               ],
@@ -308,26 +289,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RFYak7uugi2jaDKrtyilRRzN"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "qluROtSRz",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 1386683992933662799
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -400,15 +362,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-R3M8McEQVEgs4yDHKhlCsApZ"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

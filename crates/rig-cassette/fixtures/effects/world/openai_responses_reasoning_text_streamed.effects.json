@@ -62,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -78,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -94,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -110,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -166,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -182,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -190,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -214,7 +214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -230,7 +230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -238,7 +238,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -294,7 +294,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -302,7 +302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -310,7 +310,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -318,7 +318,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -334,7 +334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 8
+          "items": 1
         }
       },
       {
@@ -342,7 +342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -350,7 +350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -358,7 +358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -366,7 +366,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -382,7 +382,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -390,7 +390,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -406,7 +406,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -414,7 +414,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -426,7 +426,7 @@
         }
       },
       {
-        "batch": 77,
+        "batch": 67,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -434,287 +434,23 @@
         }
       },
       {
-        "batch": 78,
+        "batch": 84,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 9
         }
       },
       {
-        "batch": 79,
+        "batch": 85,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 80,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 81,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 82,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 92,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 94,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 96,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 97,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 100,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 13
         }
       },
       {
         "batch": 101,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 103,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 104,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 105,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 107,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 108,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 109,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 111,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 112,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 114,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 115,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 116,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 119,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 120,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 122,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 124,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 126,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 129,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 131,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 133,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 135,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 136,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 138,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 139,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 140,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -730,51 +466,11 @@
         }
       },
       {
-        "batch": 143,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 145,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 146,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 147,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 148,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 149,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 16
         }
       },
       {
@@ -782,7 +478,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
@@ -794,11 +490,19 @@
         }
       },
       {
+        "batch": 152,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
         "batch": 153,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -806,7 +510,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -814,7 +518,15 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
+        }
+      },
+      {
+        "batch": 156,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -822,7 +534,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -830,7 +542,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -846,7 +558,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -854,11 +566,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
         "batch": 162,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 163,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -870,7 +590,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -878,7 +598,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -894,19 +614,27 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 10
+          "items": 2
         }
       },
       {
-        "batch": 171,
+        "batch": 168,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 181,
+        "batch": 172,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 193,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -1002,7 +730,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 16862401804743001307
+                "fingerprint": "2ec0f920f409155c"
               }
             },
             {
@@ -1023,7 +751,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 9780439894057613220
+                "fingerprint": "a5f1a0cb183dea44"
               }
             }
           ],
@@ -1857,32 +1585,6 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
-              "native": {
-                "item": {
-                  "content": [],
-                  "encrypted_content": "gAAAAABqv0sGR6MbKzKO9_Lk-IvnXd5T3bchFyYnRRSS8JX5LqSuE4N5CL8yiiQxXVtFRFwU6uOyeD0ZiUvnSGabsW6yTDtY5tMZpQaZnvxvKW3gw0AEpUu2NB6vIChW3da171NLo54yzTmQmI4C8oMZ3lGaiqnrTjYOt4zss8aGU2McCO4Wxa7ZGi324UJhF0OgVIygBNg4b4uqsgBtz1ieb739dx7DlMQkkh1cben8vi4D9dBL8sFbd-ZBUZTa28w6qJc5f94Yh1QpIFAJtT2rFVTJDnnEtcKJHeFDhYLVcZnqqe3qFwhaP6IeXeVGtBenFAftfalgT9coH_2IP__t7Qno6f0ZBOjBZMxf4MH_rGcEjonKxK7uAoA4IAKB5Djw1v4S9sHhdPtZCnhRlJ3Elyosegu5oITr5VfJ9oUpJeNjSUtNYJk-vdnjQgm6978EiXDMKaTSokjdwUvIkPIDm2LlLB9NtPEE3nIUJ95Zz3nagNjoOvFw0iKF9y7NOKsRK8lW-L76pKWZtzvKMrRbgQ6jLYokyyuaFW6y5Ywiv8v7-RKWxhTuJdtIBbuuL4mMqfePHVms_jB48YnoEM0j2m2T_Y1LFuoJgs7jlJRUQafglXWU7QHSeRs-U9rSJDuN6-HnwAvlju5cxQ0cNv38_81ko1VmLmoIfoRX-Ie9kPgMhg37_irPCQiVBfnzoj3tUKrsig8mEp-oKav-rrZw-su41lsqIW30iIl7r6qmbVdXv4xkzY8Z0JCaddWlZP8ffRJc-jDIKoPuYVPMEbjK4v74uQrVhqLJa-AqcL-E_yvnxqsxEArPOmDnrGNjdZCllgF_U6Ow8tcFLmuD9chjWof5OtUG3qBMhkcZulQrsTpJQ71xhh1UiLUHcdOlqR4NVQkcaysCIybPrk-8qxgUgYUIEc6UsVbMSu4bseI72qGfKdzx82aigSt8ndMiBxqSaiDU3tdmIsLwzj1qawoG7rLgn4agVc1jwrQaCyrfyJDfvE8WBfORDAm2TLEc-hvsLLow3-2CwG49ELCtcL5yV-wiBNkUObwzJMHwncwZ8NdE1rFUe34stkXiVFRrSfVyx8-wiF2oJaJJY-u_ZJKn6qOYWn38iS7xWzHdV2o9C-JJQEOf-ruQXCYVdTQlQs1McZOF674BIV3cGtowYCSj8s65IjC7XhBhfQK_tCCsORl8bWSJFayfiYVWZl917t2jRxXMQebdctw3dil_LDDNU3-dzc5OyasuIf-trIcxAxRVCBKwVdwHh7S-K0lBlF1Q3NRtS7twADAQUQnyxHqKO73Q4BKPuocfzjaVXSC3wLyCHxQXlFMh3ny6rch0khwQBGru-c9wUWMg7kpJBp_TP8PWTyaUn30pLEjW74iACsHHY2zCvvr7LjHu1Arund669Oe6kNKUPJ4_QfJv7cBj2untFPXdG5Wx4BI0ujJhKkMMpNXX8RScTMFiKfCIRJ6LfqA-tM18HfJyz6Ci32KqHO8AdhOAT4Bt2xDkhf55zfOaYlvp28X5lg-fN0pyBSXbLqOg-Z2agxzFP1MFVZM_Jj8Jw0UWBRyGlXall4iKFuyVuGYczmDA1D6kOwZdQgBU48q2UC6V5s9AjhtdCyoo2s7iWTsh9VBBKITTeA7EkSpJqBy1plLIbvGWV-gcVgNnQGrMDQ_1YQI9DPOpEgG3rKva5QCCfp9SZ0pfy0nzoma_D7uYDzsIWETeuHvO8pGAIxgQCp9ELCSfyWrLxjWLtBkx8q4tgG7_lVY9a1bV1xH7RlRH-ArLorafL38ZjKA49BA-shDJ0-X_Ah5FYwtxURbeQ4SRzi2vg_3EQhh36D2FsJ22sUE=",
-                  "id": "rs_02770ddde224ac2c016abf4b04cd8087d0b85f6cdb45c17506",
-                  "summary": [
-                    {
-                      "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
-                      "type": "summary_text"
-                    }
-                  ],
-                  "type": "reasoning"
-                },
-                "fingerprint": 16862401804743001307
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
             "part": 1,
             "kind": "text"
@@ -2463,7 +2165,33 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 9780439894057613220
+                "fingerprint": "a5f1a0cb183dea44"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv0sGR6MbKzKO9_Lk-IvnXd5T3bchFyYnRRSS8JX5LqSuE4N5CL8yiiQxXVtFRFwU6uOyeD0ZiUvnSGabsW6yTDtY5tMZpQaZnvxvKW3gw0AEpUu2NB6vIChW3da171NLo54yzTmQmI4C8oMZ3lGaiqnrTjYOt4zss8aGU2McCO4Wxa7ZGi324UJhF0OgVIygBNg4b4uqsgBtz1ieb739dx7DlMQkkh1cben8vi4D9dBL8sFbd-ZBUZTa28w6qJc5f94Yh1QpIFAJtT2rFVTJDnnEtcKJHeFDhYLVcZnqqe3qFwhaP6IeXeVGtBenFAftfalgT9coH_2IP__t7Qno6f0ZBOjBZMxf4MH_rGcEjonKxK7uAoA4IAKB5Djw1v4S9sHhdPtZCnhRlJ3Elyosegu5oITr5VfJ9oUpJeNjSUtNYJk-vdnjQgm6978EiXDMKaTSokjdwUvIkPIDm2LlLB9NtPEE3nIUJ95Zz3nagNjoOvFw0iKF9y7NOKsRK8lW-L76pKWZtzvKMrRbgQ6jLYokyyuaFW6y5Ywiv8v7-RKWxhTuJdtIBbuuL4mMqfePHVms_jB48YnoEM0j2m2T_Y1LFuoJgs7jlJRUQafglXWU7QHSeRs-U9rSJDuN6-HnwAvlju5cxQ0cNv38_81ko1VmLmoIfoRX-Ie9kPgMhg37_irPCQiVBfnzoj3tUKrsig8mEp-oKav-rrZw-su41lsqIW30iIl7r6qmbVdXv4xkzY8Z0JCaddWlZP8ffRJc-jDIKoPuYVPMEbjK4v74uQrVhqLJa-AqcL-E_yvnxqsxEArPOmDnrGNjdZCllgF_U6Ow8tcFLmuD9chjWof5OtUG3qBMhkcZulQrsTpJQ71xhh1UiLUHcdOlqR4NVQkcaysCIybPrk-8qxgUgYUIEc6UsVbMSu4bseI72qGfKdzx82aigSt8ndMiBxqSaiDU3tdmIsLwzj1qawoG7rLgn4agVc1jwrQaCyrfyJDfvE8WBfORDAm2TLEc-hvsLLow3-2CwG49ELCtcL5yV-wiBNkUObwzJMHwncwZ8NdE1rFUe34stkXiVFRrSfVyx8-wiF2oJaJJY-u_ZJKn6qOYWn38iS7xWzHdV2o9C-JJQEOf-ruQXCYVdTQlQs1McZOF674BIV3cGtowYCSj8s65IjC7XhBhfQK_tCCsORl8bWSJFayfiYVWZl917t2jRxXMQebdctw3dil_LDDNU3-dzc5OyasuIf-trIcxAxRVCBKwVdwHh7S-K0lBlF1Q3NRtS7twADAQUQnyxHqKO73Q4BKPuocfzjaVXSC3wLyCHxQXlFMh3ny6rch0khwQBGru-c9wUWMg7kpJBp_TP8PWTyaUn30pLEjW74iACsHHY2zCvvr7LjHu1Arund669Oe6kNKUPJ4_QfJv7cBj2untFPXdG5Wx4BI0ujJhKkMMpNXX8RScTMFiKfCIRJ6LfqA-tM18HfJyz6Ci32KqHO8AdhOAT4Bt2xDkhf55zfOaYlvp28X5lg-fN0pyBSXbLqOg-Z2agxzFP1MFVZM_Jj8Jw0UWBRyGlXall4iKFuyVuGYczmDA1D6kOwZdQgBU48q2UC6V5s9AjhtdCyoo2s7iWTsh9VBBKITTeA7EkSpJqBy1plLIbvGWV-gcVgNnQGrMDQ_1YQI9DPOpEgG3rKva5QCCfp9SZ0pfy0nzoma_D7uYDzsIWETeuHvO8pGAIxgQCp9ELCSfyWrLxjWLtBkx8q4tgG7_lVY9a1bV1xH7RlRH-ArLorafL38ZjKA49BA-shDJ0-X_Ah5FYwtxURbeQ4SRzi2vg_3EQhh36D2FsJ22sUE=",
+                  "id": "rs_02770ddde224ac2c016abf4b04cd8087d0b85f6cdb45c17506",
+                  "summary": [
+                    {
+                      "text": "**Explaining Rust and Memory Safety**\n\nI need to craft a concise explanation of Rust and the importance of memory safety in just one or two sentences. First, I'll define Rust as a systems programming language that emphasizes safety, concurrency, performance, and uses concepts like a borrow checker. Then, I’ll note that memory safety is crucial because it helps prevent bugs, undefined behavior, security vulnerabilities, and crashes, which all contribute to improved reliability and concurrency. I'll keep it brief!",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "2ec0f920f409155c"
               }
             }
           }

@@ -10,14 +10,6 @@
         }
       },
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 7,
         "id": 0,
         "kind": {
@@ -27,6 +19,14 @@
       },
       {
         "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,14 +66,6 @@
         }
       },
       {
-        "batch": 14,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 15,
         "id": 0,
         "kind": {
@@ -83,6 +75,14 @@
       },
       {
         "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -154,6 +154,14 @@
         }
       },
       {
+        "batch": 26,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 27,
         "id": 0,
         "kind": {
@@ -179,14 +187,6 @@
       },
       {
         "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -226,7 +226,7 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 36,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -234,11 +234,19 @@
         }
       },
       {
+        "batch": 37,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 38,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -262,7 +270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -286,7 +294,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -294,7 +302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -314,31 +322,7 @@
         }
       },
       {
-        "batch": 49,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 50,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
+        "batch": 48,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -350,45 +334,45 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
         "batch": 55,
         "id": 0,
         "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 56,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 61,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 62,
+        "id": 2,
+        "kind": {
           "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 58,
-        "id": 0,
+        "batch": 63,
+        "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 59,
-        "id": 0,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 60,
-        "id": 1,
-        "kind": {
-          "delivery": "outcome"
+          "items": 1
         }
       },
       {
@@ -404,7 +388,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
@@ -420,7 +404,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -436,19 +420,11 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 70,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 71,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -468,7 +444,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -484,14 +460,6 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 76,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
@@ -500,7 +468,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -516,7 +484,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -524,7 +492,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -532,7 +500,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -544,19 +512,11 @@
         }
       },
       {
-        "batch": 83,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 84,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -580,15 +540,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 88,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -596,7 +548,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -604,11 +556,107 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
-        "batch": 99,
+        "batch": 91,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 92,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 93,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 95,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 96,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 97,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 98,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 100,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 101,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 102,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 103,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 105,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 106,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -617,6 +665,46 @@
       },
       {
         "batch": 107,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 108,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 110,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 111,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 112,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 114,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -753,7 +841,7 @@
                     }
                   ]
                 },
-                "fingerprint": 18139074956839541234
+                "fingerprint": "bea85aeacef46ecf"
               }
             },
             {
@@ -777,7 +865,7 @@
                   "id": "call_6388968f48a64dc886de41ed",
                   "type": "function"
                 },
-                "fingerprint": 16101763976040688387
+                "fingerprint": "4ac3e3d185884c5a"
               }
             }
           ],
@@ -794,32 +882,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976374-aJVkTWh9O2od5EEE4TBd"
-          },
-          "native": {
-            "item": {
-              "reasoning_details": [
-                {
-                  "format": "unknown",
-                  "index": 0,
-                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-                  "type": "reasoning.text"
-                }
-              ],
-              "content": "",
-              "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_6388968f48a64dc886de41ed",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2914027760640706894
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1246,7 +1308,7 @@
                     }
                   ]
                 },
-                "fingerprint": 18139074956839541234
+                "fingerprint": "bea85aeacef46ecf"
               }
             }
           }
@@ -1293,7 +1355,7 @@
                   "id": "call_6388968f48a64dc886de41ed",
                   "type": "function"
                 },
-                "fingerprint": 16101763976040688387
+                "fingerprint": "4ac3e3d185884c5a"
               }
             }
           }
@@ -1371,7 +1433,7 @@
                         }
                       ]
                     },
-                    "fingerprint": 18139074956839541234
+                    "fingerprint": "bea85aeacef46ecf"
                   }
                 },
                 {
@@ -1395,7 +1457,7 @@
                       "id": "call_6388968f48a64dc886de41ed",
                       "type": "function"
                     },
-                    "fingerprint": 16101763976040688387
+                    "fingerprint": "4ac3e3d185884c5a"
                   }
                 }
               ],
@@ -1406,33 +1468,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790976374-aJVkTWh9O2od5EEE4TBd"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "reasoning_details": [
-                    {
-                      "format": "unknown",
-                      "index": 0,
-                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-                      "type": "reasoning.text"
-                    }
-                  ],
-                  "content": "",
-                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_6388968f48a64dc886de41ed",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2914027760640706894
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1506,7 +1542,7 @@
                     }
                   ]
                 },
-                "fingerprint": 13219916638805988789
+                "fingerprint": "deba5fadfa655b2e"
               }
             },
             {
@@ -1527,22 +1563,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976383-Yiz9LersdHmQ4rhJ7dd4"
-          },
-          "native": {
-            "item": {
-              "reasoning_details": [
-                {
-                  "format": "unknown",
-                  "index": 0,
-                  "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output \"42\".\n",
-                  "type": "reasoning.text"
-                }
-              ],
-              "content": "42",
-              "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output \"42\".\n",
-              "role": "assistant"
-            },
-            "fingerprint": 11932077792335290339
           },
           "finish_reason": "stop",
           "raw": {
@@ -1945,7 +1965,7 @@
                     }
                   ]
                 },
-                "fingerprint": 13219916638805988789
+                "fingerprint": "deba5fadfa655b2e"
               }
             }
           }

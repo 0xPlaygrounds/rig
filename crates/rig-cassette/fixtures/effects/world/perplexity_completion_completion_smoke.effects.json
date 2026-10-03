@@ -90,13 +90,6 @@
             "response_model": "sonar",
             "response_id": "b287424a-8143-42d6-9c38-2390a8c956f7"
           },
-          "native": {
-            "item": {
-              "content": "Rust is a **systems programming language** designed for **speed, reliability, and memory safety** without using a garbage collector.[1][18] Memory safety matters because it helps prevent common bugs and security problems like crashes, memory leaks, and unsafe memory access, and Rust’s compiler checks these issues at compile time.[2][5][18]",
-              "role": "assistant"
-            },
-            "fingerprint": 16415487259194872336
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

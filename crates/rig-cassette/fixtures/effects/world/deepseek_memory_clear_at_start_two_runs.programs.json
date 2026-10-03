@@ -241,14 +241,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "9ff4dba3-8ab6-4606-a109-6c873d6b51be"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -285,13 +278,6 @@
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
                 "response_id": "9ff4dba3-8ab6-4606-a109-6c873d6b51be"
-              },
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
               },
               "finish_reason": "stop",
               "raw": {
@@ -340,14 +326,7 @@
               "response_model": "deepseek-flash",
               "response_id": "9ff4dba3-8ab6-4606-a109-6c873d6b51be"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "content": "ready",
-                "role": "assistant"
-              },
-              "fingerprint": 5329546866666182096
-            }
+            "stop": "stop"
           }
         },
         {

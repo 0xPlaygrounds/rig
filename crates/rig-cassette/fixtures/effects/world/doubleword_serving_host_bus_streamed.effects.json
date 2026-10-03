@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 10,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 19,
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 21,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 23,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -183,7 +183,7 @@
                   "id": "call_6da8872940b34aeea12e509c",
                   "type": "function"
                 },
-                "fingerprint": 15602865777454278093
+                "fingerprint": "af3cde516bbb4984"
               }
             }
           ],
@@ -200,23 +200,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976523-kEByDqseyfUQ5SiSgETx"
-          },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": "",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_6da8872940b34aeea12e509c",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 13932032918739994887
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -297,7 +280,7 @@
                   "id": "call_6da8872940b34aeea12e509c",
                   "type": "function"
                 },
-                "fingerprint": 15602865777454278093
+                "fingerprint": "af3cde516bbb4984"
               }
             }
           }
@@ -381,7 +364,7 @@
                       "id": "call_6da8872940b34aeea12e509c",
                       "type": "function"
                     },
-                    "fingerprint": 15602865777454278093
+                    "fingerprint": "af3cde516bbb4984"
                   }
                 }
               ],
@@ -392,24 +375,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "gen-1790976523-kEByDqseyfUQ5SiSgETx"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_6da8872940b34aeea12e509c",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 13932032918739994887
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -486,13 +452,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "gen-1790976526-wrfX9SbI9KFjOVyacGKd"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

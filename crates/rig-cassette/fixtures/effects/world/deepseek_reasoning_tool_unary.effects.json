@@ -147,7 +147,7 @@
                 "item": {
                   "reasoning_content": "We need answer. Need call add tool. Then reply just number. Let's do tool call."
                 },
-                "fingerprint": 12566115017611566727
+                "fingerprint": "3818c7e05b626db8"
               }
             },
             {
@@ -171,7 +171,7 @@
                   "id": "call_00_41sbga2ves1CtqNy0HCq3888",
                   "type": "function"
                 },
-                "fingerprint": 9294209172532401198
+                "fingerprint": "14549e47e6a2fc27"
               }
             }
           ],
@@ -188,24 +188,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "2d2a5fd7-421a-4929-ba62-1dbe31f26363"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": "We need answer. Need call add tool. Then reply just number. Let's do tool call.",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_41sbga2ves1CtqNy0HCq3888",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 8759954939912287920
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -312,7 +294,7 @@
                     "item": {
                       "reasoning_content": "We need answer. Need call add tool. Then reply just number. Let's do tool call."
                     },
-                    "fingerprint": 12566115017611566727
+                    "fingerprint": "3818c7e05b626db8"
                   }
                 },
                 {
@@ -336,7 +318,7 @@
                       "id": "call_00_41sbga2ves1CtqNy0HCq3888",
                       "type": "function"
                     },
-                    "fingerprint": 9294209172532401198
+                    "fingerprint": "14549e47e6a2fc27"
                   }
                 }
               ],
@@ -347,25 +329,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "2d2a5fd7-421a-4929-ba62-1dbe31f26363"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": "We need answer. Need call add tool. Then reply just number. Let's do tool call.",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_41sbga2ves1CtqNy0HCq3888",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 8759954939912287920
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -433,7 +397,7 @@
                 "item": {
                   "reasoning_content": "Need final just number."
                 },
-                "fingerprint": 15107727197053344789
+                "fingerprint": "8bc8f6adeadae476"
               }
             },
             {
@@ -454,14 +418,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "f93d4df4-56e5-462f-9790-84013cd23ca7"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "reasoning_content": "Need final just number.",
-              "role": "assistant"
-            },
-            "fingerprint": 13680395979237669153
           },
           "finish_reason": "stop",
           "raw": {

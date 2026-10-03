@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 25,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 30,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 26,
+        "batch": 31,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 32,
+        "batch": 38,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 33,
+        "batch": 39,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 34,
+        "batch": 40,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -48,7 +48,7 @@
         }
       },
       {
-        "batch": 34,
+        "batch": 41,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -189,7 +189,7 @@
                   "id": "qMfgNE9jw",
                   "type": "function"
                 },
-                "fingerprint": 4789098985424565295
+                "fingerprint": "3a5bb7391ef5d6be"
               }
             }
           ],
@@ -204,24 +204,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RemwgrfEwI4182qfnqum0rZN"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "qMfgNE9jw",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17969594616402057321
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -288,7 +270,7 @@
                   "id": "qMfgNE9jw",
                   "type": "function"
                 },
-                "fingerprint": 4789098985424565295
+                "fingerprint": "3a5bb7391ef5d6be"
               }
             }
           }
@@ -372,7 +354,7 @@
                       "id": "qMfgNE9jw",
                       "type": "function"
                     },
-                    "fingerprint": 4789098985424565295
+                    "fingerprint": "3a5bb7391ef5d6be"
                   }
                 }
               ],
@@ -383,25 +365,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RemwgrfEwI4182qfnqum0rZN"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "qMfgNE9jw",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 17969594616402057321
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -474,14 +438,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-R0kjh3prXdYaChui2KqgL5xp"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

@@ -91,13 +91,6 @@
             "response_model": "deepseek-flash",
             "response_id": "ba379a03-ea47-4d10-9e8d-dec9f9f76290"
           },
-          "native": {
-            "item": {
-              "content": "cedar",
-              "role": "assistant"
-            },
-            "fingerprint": 10831170027988163448
-          },
           "finish_reason": "stop",
           "raw": {
             "choices": [

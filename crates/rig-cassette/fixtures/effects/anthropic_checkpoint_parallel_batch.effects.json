@@ -136,7 +136,7 @@
                   "name": "checkpoint_batch",
                   "type": "tool_use"
                 },
-                "fingerprint": 1986179757389565033
+                "fingerprint": "8ede66169146f788"
               }
             },
             {
@@ -162,7 +162,7 @@
                   "name": "checkpoint_batch",
                   "type": "tool_use"
                 },
-                "fingerprint": 5601832464409028838
+                "fingerprint": "5153088fc77c0c25"
               }
             },
             {
@@ -188,7 +188,7 @@
                   "name": "checkpoint_batch",
                   "type": "tool_use"
                 },
-                "fingerprint": 17827340904623714366
+                "fingerprint": "7fb1d4dc7f6918e3"
               }
             }
           ],
@@ -397,7 +397,7 @@
                       "name": "checkpoint_batch",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1986179757389565033
+                    "fingerprint": "8ede66169146f788"
                   }
                 },
                 {
@@ -423,7 +423,7 @@
                       "name": "checkpoint_batch",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5601832464409028838
+                    "fingerprint": "5153088fc77c0c25"
                   }
                 },
                 {
@@ -449,7 +449,7 @@
                       "name": "checkpoint_batch",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17827340904623714366
+                    "fingerprint": "7fb1d4dc7f6918e3"
                   }
                 }
               ],
@@ -552,7 +552,7 @@
                   "text": "All three checkpoint_batch calls have been executed in parallel:\n- slot=0: Success - returned \"checkpoint-slot-zero\"\n- slot=1: Failed as expected - returned an error\n- slot=2: Success - returned \"checkpoint-slot-two\"\n\ncheckpoint-complete",
                   "type": "text"
                 },
-                "fingerprint": 15111030368815896324
+                "fingerprint": "177dba22edb701d6"
               }
             }
           ],

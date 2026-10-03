@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 26,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 36,
+        "batch": 33,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 37,
+        "batch": 34,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 54,
+        "batch": 62,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 63,
+        "batch": 72,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 64,
+        "batch": 74,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 85,
+        "batch": 102,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 95,
+        "batch": 112,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 97,
+        "batch": 113,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 134,
+        "batch": 162,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,21 +76,21 @@
         }
       },
       {
-        "batch": 134,
+        "batch": 169,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 135,
+        "batch": 170,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 165,
+        "batch": 190,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -98,21 +98,21 @@
         }
       },
       {
-        "batch": 176,
+        "batch": 198,
         "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 178,
+        "batch": 200,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 274,
+        "batch": 255,
         "id": 10,
         "kind": {
           "delivery": "stream",
@@ -120,21 +120,21 @@
         }
       },
       {
-        "batch": 275,
+        "batch": 266,
         "id": 10,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 277,
+        "batch": 268,
         "id": 11,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 302,
+        "batch": 344,
         "id": 12,
         "kind": {
           "delivery": "stream",
@@ -142,21 +142,21 @@
         }
       },
       {
-        "batch": 305,
+        "batch": 348,
         "id": 12,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 306,
+        "batch": 349,
         "id": 13,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 319,
+        "batch": 367,
         "id": 14,
         "kind": {
           "delivery": "stream",
@@ -164,21 +164,21 @@
         }
       },
       {
-        "batch": 329,
+        "batch": 374,
         "id": 14,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 331,
+        "batch": 375,
         "id": 15,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 408,
+        "batch": 457,
         "id": 16,
         "kind": {
           "delivery": "stream",
@@ -186,21 +186,21 @@
         }
       },
       {
-        "batch": 418,
+        "batch": 464,
         "id": 16,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 419,
+        "batch": 466,
         "id": 17,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 457,
+        "batch": 496,
         "id": 18,
         "kind": {
           "delivery": "stream",
@@ -208,29 +208,37 @@
         }
       },
       {
-        "batch": 465,
+        "batch": 501,
         "id": 18,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 467,
+        "batch": 502,
         "id": 19,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 480,
+        "batch": 538,
         "id": 20,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
-        "batch": 489,
+        "batch": 541,
+        "id": 20,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 554,
         "id": 20,
         "kind": {
           "delivery": "outcome"
@@ -458,7 +466,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7604528152320690143
+                "fingerprint": "fb23c1726de97bbc"
               }
             }
           ],
@@ -640,7 +648,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -648,7 +656,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{}"
           }
         },
@@ -656,7 +664,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -675,7 +683,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7604528152320690143
+                "fingerprint": "fb23c1726de97bbc"
               }
             }
           }
@@ -756,7 +764,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -880,7 +888,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 11393704624206160435
+                "fingerprint": "41e880f76635668c"
               }
             }
           ],
@@ -1062,7 +1070,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -1070,7 +1078,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"path\":\"README.md\"}"
           }
         },
@@ -1078,7 +1086,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1099,7 +1107,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 11393704624206160435
+                "fingerprint": "41e880f76635668c"
               }
             }
           }
@@ -1180,7 +1188,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -1234,7 +1242,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -1358,7 +1366,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17413969927678961127
+                "fingerprint": "3cd663ae081c1ace"
               }
             }
           ],
@@ -1540,7 +1548,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -1548,7 +1556,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"path\":\"tests/basic.rs\"}"
           }
         },
@@ -1556,7 +1564,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1577,7 +1585,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17413969927678961127
+                "fingerprint": "3cd663ae081c1ace"
               }
             }
           }
@@ -1658,7 +1666,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -1712,7 +1720,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -1766,7 +1774,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -1890,7 +1898,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12062615277143624470
+                "fingerprint": "671d61aae93fc067"
               }
             }
           ],
@@ -2072,7 +2080,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -2080,7 +2088,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"path\":\"src/lib.rs\"}"
           }
         },
@@ -2088,7 +2096,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -2109,7 +2117,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12062615277143624470
+                "fingerprint": "671d61aae93fc067"
               }
             }
           }
@@ -2190,7 +2198,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -2244,7 +2252,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -2298,7 +2306,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -2352,7 +2360,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12062615277143624470
+                    "fingerprint": "671d61aae93fc067"
                   }
                 }
               ],
@@ -2474,7 +2482,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5135434476376856243
+                "fingerprint": "3cd6cffab51bf8a4"
               }
             }
           ],
@@ -2656,7 +2664,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -2664,7 +2672,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{}"
           }
         },
@@ -2672,7 +2680,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -2691,7 +2699,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5135434476376856243
+                "fingerprint": "3cd6cffab51bf8a4"
               }
             }
           }
@@ -2772,7 +2780,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -2826,7 +2834,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -2880,7 +2888,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -2934,7 +2942,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12062615277143624470
+                    "fingerprint": "671d61aae93fc067"
                   }
                 }
               ],
@@ -2986,7 +2994,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5135434476376856243
+                    "fingerprint": "3cd6cffab51bf8a4"
                   }
                 }
               ],
@@ -3111,7 +3119,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6261744962689911633
+                "fingerprint": "d8f27d58a7470302"
               }
             }
           ],
@@ -3293,7 +3301,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -3301,7 +3309,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
           }
         },
@@ -3309,7 +3317,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -3331,7 +3339,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6261744962689911633
+                "fingerprint": "d8f27d58a7470302"
               }
             }
           }
@@ -3412,7 +3420,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -3466,7 +3474,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -3520,7 +3528,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -3574,7 +3582,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12062615277143624470
+                    "fingerprint": "671d61aae93fc067"
                   }
                 }
               ],
@@ -3626,7 +3634,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5135434476376856243
+                    "fingerprint": "3cd6cffab51bf8a4"
                   }
                 }
               ],
@@ -3681,7 +3689,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6261744962689911633
+                    "fingerprint": "d8f27d58a7470302"
                   }
                 }
               ],
@@ -3803,7 +3811,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1959018063803911827
+                "fingerprint": "8630234ef8df0f64"
               }
             }
           ],
@@ -3985,7 +3993,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -3993,7 +4001,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{}"
           }
         },
@@ -4001,7 +4009,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -4020,7 +4028,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1959018063803911827
+                "fingerprint": "8630234ef8df0f64"
               }
             }
           }
@@ -4101,7 +4109,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -4155,7 +4163,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -4209,7 +4217,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -4263,7 +4271,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12062615277143624470
+                    "fingerprint": "671d61aae93fc067"
                   }
                 }
               ],
@@ -4315,7 +4323,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5135434476376856243
+                    "fingerprint": "3cd6cffab51bf8a4"
                   }
                 }
               ],
@@ -4370,7 +4378,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6261744962689911633
+                    "fingerprint": "d8f27d58a7470302"
                   }
                 }
               ],
@@ -4422,7 +4430,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1959018063803911827
+                    "fingerprint": "8630234ef8df0f64"
                   }
                 }
               ],
@@ -4546,7 +4554,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15031731605824976876
+                "fingerprint": "25cf3d299cbb21e5"
               }
             }
           ],
@@ -4728,7 +4736,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -4736,7 +4744,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"path\":\"src/calendar.rs\"}"
           }
         },
@@ -4744,7 +4752,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -4765,7 +4773,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15031731605824976876
+                "fingerprint": "25cf3d299cbb21e5"
               }
             }
           }
@@ -4846,7 +4854,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -4900,7 +4908,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -4954,7 +4962,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -5008,7 +5016,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12062615277143624470
+                    "fingerprint": "671d61aae93fc067"
                   }
                 }
               ],
@@ -5060,7 +5068,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5135434476376856243
+                    "fingerprint": "3cd6cffab51bf8a4"
                   }
                 }
               ],
@@ -5115,7 +5123,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6261744962689911633
+                    "fingerprint": "d8f27d58a7470302"
                   }
                 }
               ],
@@ -5167,7 +5175,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1959018063803911827
+                    "fingerprint": "8630234ef8df0f64"
                   }
                 }
               ],
@@ -5221,7 +5229,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15031731605824976876
+                    "fingerprint": "25cf3d299cbb21e5"
                   }
                 }
               ],
@@ -5346,7 +5354,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10117180979939012461
+                "fingerprint": "358708932afc1f82"
               }
             }
           ],
@@ -5528,7 +5536,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -5536,7 +5544,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}"
           }
         },
@@ -5544,7 +5552,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -5566,7 +5574,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10117180979939012461
+                "fingerprint": "358708932afc1f82"
               }
             }
           }
@@ -5647,7 +5655,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -5701,7 +5709,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -5755,7 +5763,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -5809,7 +5817,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12062615277143624470
+                    "fingerprint": "671d61aae93fc067"
                   }
                 }
               ],
@@ -5861,7 +5869,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5135434476376856243
+                    "fingerprint": "3cd6cffab51bf8a4"
                   }
                 }
               ],
@@ -5916,7 +5924,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6261744962689911633
+                    "fingerprint": "d8f27d58a7470302"
                   }
                 }
               ],
@@ -5968,7 +5976,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1959018063803911827
+                    "fingerprint": "8630234ef8df0f64"
                   }
                 }
               ],
@@ -6022,7 +6030,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15031731605824976876
+                    "fingerprint": "25cf3d299cbb21e5"
                   }
                 }
               ],
@@ -6077,7 +6085,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10117180979939012461
+                    "fingerprint": "358708932afc1f82"
                   }
                 }
               ],
@@ -6199,7 +6207,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7684905171791451568
+                "fingerprint": "6a1fcf665a10cc51"
               }
             }
           ],
@@ -6381,7 +6389,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 0,
             "kind": "tool_call"
           }
         },
@@ -6389,7 +6397,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{}"
           }
         },
@@ -6397,7 +6405,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
@@ -6416,7 +6424,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7684905171791451568
+                "fingerprint": "6a1fcf665a10cc51"
               }
             }
           }
@@ -6497,7 +6505,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7604528152320690143
+                    "fingerprint": "fb23c1726de97bbc"
                   }
                 }
               ],
@@ -6551,7 +6559,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11393704624206160435
+                    "fingerprint": "41e880f76635668c"
                   }
                 }
               ],
@@ -6605,7 +6613,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17413969927678961127
+                    "fingerprint": "3cd663ae081c1ace"
                   }
                 }
               ],
@@ -6659,7 +6667,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12062615277143624470
+                    "fingerprint": "671d61aae93fc067"
                   }
                 }
               ],
@@ -6711,7 +6719,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5135434476376856243
+                    "fingerprint": "3cd6cffab51bf8a4"
                   }
                 }
               ],
@@ -6766,7 +6774,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6261744962689911633
+                    "fingerprint": "d8f27d58a7470302"
                   }
                 }
               ],
@@ -6818,7 +6826,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1959018063803911827
+                    "fingerprint": "8630234ef8df0f64"
                   }
                 }
               ],
@@ -6872,7 +6880,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15031731605824976876
+                    "fingerprint": "25cf3d299cbb21e5"
                   }
                 }
               ],
@@ -6927,7 +6935,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10117180979939012461
+                    "fingerprint": "358708932afc1f82"
                   }
                 }
               ],
@@ -6979,7 +6987,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7684905171791451568
+                    "fingerprint": "6a1fcf665a10cc51"
                   }
                 }
               ],
@@ -7101,7 +7109,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 17621867238521964955
+                "fingerprint": "cc2b10c84926d34d"
               }
             }
           ],
@@ -7324,7 +7332,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 17621867238521964955
+                "fingerprint": "cc2b10c84926d34d"
               }
             }
           }

@@ -17,7 +17,7 @@
                 "family": "completion",
                 "model": "parity",
                 "capabilities": {
-                  "composes_native_output_with_tools": false
+                  "composes_native_output_with_tools": true
                 }
               }
             }

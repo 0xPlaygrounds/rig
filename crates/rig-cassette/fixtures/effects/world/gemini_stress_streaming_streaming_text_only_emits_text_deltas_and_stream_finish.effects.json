@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -88,7 +88,7 @@
                 "item": {
                   "text": "The sky is blue."
                 },
-                "fingerprint": 9737323686000885399
+                "fingerprint": "78c7c8cdc99a91fd"
               }
             }
           ],
@@ -104,13 +104,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "pnizasvyNpusqtsPsf3xkAY"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 10293141901048301989
           },
           "finish_reason": "stop",
           "raw": {
@@ -162,7 +155,7 @@
                 "item": {
                   "text": "The sky is blue."
                 },
-                "fingerprint": 9737323686000885399
+                "fingerprint": "78c7c8cdc99a91fd"
               }
             }
           }

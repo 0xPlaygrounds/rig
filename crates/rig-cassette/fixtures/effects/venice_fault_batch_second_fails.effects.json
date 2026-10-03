@@ -131,7 +131,7 @@
                   "id": "niJz913Vx",
                   "type": "function"
                 },
-                "fingerprint": 15662338907235776710
+                "fingerprint": "a19374e1083e0a13"
               }
             },
             {
@@ -152,7 +152,7 @@
                   "id": "LPiXnmf75",
                   "type": "function"
                 },
-                "fingerprint": 4585226786769200031
+                "fingerprint": "e2886c51b7cd8046"
               }
             }
           ],
@@ -167,32 +167,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RWHpraPVYVpRW9ns0HITmyIH"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "niJz913Vx",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "LPiXnmf75",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 5383887892947288856
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -256,7 +230,7 @@
                   "id": "niJz913Vx",
                   "type": "function"
                 },
-                "fingerprint": 15662338907235776710
+                "fingerprint": "a19374e1083e0a13"
               }
             }
           }
@@ -300,7 +274,7 @@
                   "id": "LPiXnmf75",
                   "type": "function"
                 },
-                "fingerprint": 4585226786769200031
+                "fingerprint": "e2886c51b7cd8046"
               }
             }
           }
@@ -411,7 +385,7 @@
                       "id": "niJz913Vx",
                       "type": "function"
                     },
-                    "fingerprint": 15662338907235776710
+                    "fingerprint": "a19374e1083e0a13"
                   }
                 },
                 {
@@ -432,7 +406,7 @@
                       "id": "LPiXnmf75",
                       "type": "function"
                     },
-                    "fingerprint": 4585226786769200031
+                    "fingerprint": "e2886c51b7cd8046"
                   }
                 }
               ],
@@ -443,33 +417,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-RWHpraPVYVpRW9ns0HITmyIH"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "niJz913Vx",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "LPiXnmf75",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 5383887892947288856
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -553,14 +501,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-REewsz8HiPMODzLw6yGWoZu3"
-          },
-          "native": {
-            "item": {
-              "content": "The harbor label is crimson-harbor and the orchard lookup is broken.",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 2571086344462377190
           },
           "finish_reason": "stop",
           "raw": {

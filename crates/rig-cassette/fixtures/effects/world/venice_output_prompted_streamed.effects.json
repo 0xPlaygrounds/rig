@@ -458,14 +458,6 @@
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP"
           },
-          "native": {
-            "item": {
-              "content": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```",
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 7398112675668535686
-          },
           "finish_reason": "stop",
           "raw": {
             "usage": {

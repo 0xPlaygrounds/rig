@@ -172,7 +172,7 @@
                   },
                   "thoughtSignature": "EnMKcQFpFH0TvBUKVq2siF0VJ+K7XNUUwi4e2/sBC15Oi3mQ0E842+74WeXUdyA0C3HF5iYJQYim4CuUo18LlGm+ZHjGawp5CXPnlqeN3iYwutpUl18hSSC0hyAacoeGWXoowvuObbaWTqPvfn0uLdekea+Q"
                 },
-                "fingerprint": 10990170798397138473
+                "fingerprint": "03b1fda745156784"
               }
             }
           ],
@@ -187,14 +187,6 @@
             "model": "gemini-3.1-flash-lite-preview",
             "response_model": "gemini-3.1-flash-lite",
             "response_id": "IS2_aqa7AZmKmtkP36Kc2Qc"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 3342061353648594831
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -314,7 +306,7 @@
                       },
                       "thoughtSignature": "EnMKcQFpFH0TvBUKVq2siF0VJ+K7XNUUwi4e2/sBC15Oi3mQ0E842+74WeXUdyA0C3HF5iYJQYim4CuUo18LlGm+ZHjGawp5CXPnlqeN3iYwutpUl18hSSC0hyAacoeGWXoowvuObbaWTqPvfn0uLdekea+Q"
                     },
-                    "fingerprint": 10990170798397138473
+                    "fingerprint": "03b1fda745156784"
                   }
                 }
               ],
@@ -325,15 +317,7 @@
                 "response_model": "gemini-3.1-flash-lite",
                 "response_id": "IS2_aqa7AZmKmtkP36Kc2Qc"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 3342061353648594831
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -397,7 +381,7 @@
                 "item": {
                   "text": "42"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -412,13 +396,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "IS2_avL3FqLqqtsPgoyn6Qc"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

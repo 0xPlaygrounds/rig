@@ -152,7 +152,7 @@
                   "id": "vPlAgbGR0",
                   "type": "function"
                 },
-                "fingerprint": 8277223783633774470
+                "fingerprint": "8bcb0170e331d8f3"
               }
             }
           ],
@@ -167,25 +167,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-R7bVstIngowcMl9HwTasX1q4"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "vPlAgbGR0",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 4319230685159122014
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -290,7 +271,7 @@
                       "id": "vPlAgbGR0",
                       "type": "function"
                     },
-                    "fingerprint": 8277223783633774470
+                    "fingerprint": "8bcb0170e331d8f3"
                   }
                 }
               ],
@@ -301,26 +282,7 @@
                 "response_model": "mistral-small-3-2-24b-instruct",
                 "response_id": "chatcmpl-R7bVstIngowcMl9HwTasX1q4"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "name": null,
-                  "reasoning_content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "vPlAgbGR0",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 4319230685159122014
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -394,15 +356,6 @@
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
             "response_id": "chatcmpl-RI1gmaSmgIGezyEkCA1jSUR2"
-          },
-          "native": {
-            "item": {
-              "content": "I'm unable to assist with that tool right now. However, I can help with the calculation directly! The sum of 17 and 25 is 42.",
-              "name": null,
-              "reasoning_content": null,
-              "role": "assistant"
-            },
-            "fingerprint": 3229127993939056412
           },
           "finish_reason": "stop",
           "raw": {

@@ -329,7 +329,7 @@
                   "id": "call_47zFWQE6YCwUbR4EQf0rQKcj",
                   "type": "function"
                 },
-                "fingerprint": 11537207277726655596
+                "fingerprint": "a83274be518457d1"
               }
             },
             {
@@ -350,7 +350,7 @@
                   "id": "call_YzjEU38p7JUVcZ4x0rWYQGSe",
                   "type": "function"
                 },
-                "fingerprint": 11447368708074710259
+                "fingerprint": "79b1dcee067f5482"
               }
             }
           ],
@@ -367,31 +367,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe9W2V03YLWVLg62XdOCuwGUEV8O"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_47zFWQE6YCwUbR4EQf0rQKcj",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_YzjEU38p7JUVcZ4x0rWYQGSe",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2464100092386080790
           },
           "provider_request_id": "req_a7d694756f80444da2d12519162ca1b1",
           "finish_reason": "tool_calls",
@@ -519,7 +494,7 @@
                       "id": "call_47zFWQE6YCwUbR4EQf0rQKcj",
                       "type": "function"
                     },
-                    "fingerprint": 11537207277726655596
+                    "fingerprint": "a83274be518457d1"
                   }
                 },
                 {
@@ -540,7 +515,7 @@
                       "id": "call_YzjEU38p7JUVcZ4x0rWYQGSe",
                       "type": "function"
                     },
-                    "fingerprint": 11447368708074710259
+                    "fingerprint": "79b1dcee067f5482"
                   }
                 }
               ],
@@ -551,32 +526,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUe9W2V03YLWVLg62XdOCuwGUEV8O"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_47zFWQE6YCwUbR4EQf0rQKcj",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_YzjEU38p7JUVcZ4x0rWYQGSe",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2464100092386080790
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -661,14 +611,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUe9bgxElloRPFectvokqpSdrL71x"
-          },
-          "native": {
-            "item": {
-              "content": "The results are crimson-harbor and silver-orchard.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 3437498290367338106
           },
           "provider_request_id": "req_8e42f08279d9472c8ad9974193386cf3",
           "finish_reason": "stop",

@@ -145,7 +145,7 @@
                   },
                   "thoughtSignature": "ErgECrUEAWkUfROMNesVktyyXkj6PjQZuRYlSJCi8VzDaFlh5+SFOcuXUwFL/pfInmmv70mXtb7qkh4m2CDmBz/KsbpRRzySI9qIG2i6uYXcXQb86PlGSzWKST51AqvaL3luXZ8ufYsEumyMBzcyh1tA5yCgEEFwvlKR3i9V4XhkYU7Bq4SzfpGSZWyz1y+Y8dzbr81gRkOWXIkVf1Qs9ODBmkxuWyfh34hN7eJOEeE1Btz3uLpJc+iQz5t2aKl5kHoNp5j9hYQ6GZta5UnRNbwg0drBFkxOzhN4ZYyfd6OtHPbuj/XrGXaohwaPjkGyhA//4DmxyjnEqO6UbiJ24zTHMnp2XV9hysZIU61cs7NFI2+wdRV1Slg+kp4EzgpbTzkHBzQQs2D1vhGPNDviXfDF5U3TftHGNcy/BJ/1zFlRF7DyObPqzJMt23he5HFsMkp27H3JPKs3MLgCBwZbueQWEX/BhnEuWN0E+dxGo+Dsj0T4an+5GjPy7I3Hr4ros3nG+rFd+nvocIT1cUCOcsl4VgBRqtLe/woQKVGKQp7fNAwlTILGmM+XTPRkOnSaXIwSzEsMG9Rk8JtDbS2em2c0VRkcgDLJmqWPuy25rNLDYeTUd7BVPePNIxWmTDmhjGFsZQ+qkxL33VH2dapGi/N72ltBdlNlmIkD8SHNjJTY05cWv27NDMe52Mct/Ms+jcqF232FvJknp6sQC3T0/YOcypbkpKW4cRmca5EP7+WsSRu4R3hchH4nfg=="
                 },
-                "fingerprint": 15287516997394127802
+                "fingerprint": "f5bd465c670f970b"
               }
             }
           ],
@@ -161,14 +161,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "lyy_at2rDMefz7IPqczOiQ0"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 425047385756564970
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -299,7 +291,7 @@
                       },
                       "thoughtSignature": "ErgECrUEAWkUfROMNesVktyyXkj6PjQZuRYlSJCi8VzDaFlh5+SFOcuXUwFL/pfInmmv70mXtb7qkh4m2CDmBz/KsbpRRzySI9qIG2i6uYXcXQb86PlGSzWKST51AqvaL3luXZ8ufYsEumyMBzcyh1tA5yCgEEFwvlKR3i9V4XhkYU7Bq4SzfpGSZWyz1y+Y8dzbr81gRkOWXIkVf1Qs9ODBmkxuWyfh34hN7eJOEeE1Btz3uLpJc+iQz5t2aKl5kHoNp5j9hYQ6GZta5UnRNbwg0drBFkxOzhN4ZYyfd6OtHPbuj/XrGXaohwaPjkGyhA//4DmxyjnEqO6UbiJ24zTHMnp2XV9hysZIU61cs7NFI2+wdRV1Slg+kp4EzgpbTzkHBzQQs2D1vhGPNDviXfDF5U3TftHGNcy/BJ/1zFlRF7DyObPqzJMt23he5HFsMkp27H3JPKs3MLgCBwZbueQWEX/BhnEuWN0E+dxGo+Dsj0T4an+5GjPy7I3Hr4ros3nG+rFd+nvocIT1cUCOcsl4VgBRqtLe/woQKVGKQp7fNAwlTILGmM+XTPRkOnSaXIwSzEsMG9Rk8JtDbS2em2c0VRkcgDLJmqWPuy25rNLDYeTUd7BVPePNIxWmTDmhjGFsZQ+qkxL33VH2dapGi/N72ltBdlNlmIkD8SHNjJTY05cWv27NDMe52Mct/Ms+jcqF232FvJknp6sQC3T0/YOcypbkpKW4cRmca5EP7+WsSRu4R3hchH4nfg=="
                     },
-                    "fingerprint": 15287516997394127802
+                    "fingerprint": "f5bd465c670f970b"
                   }
                 }
               ],
@@ -310,15 +302,7 @@
                 "response_model": "gemini-3-flash-preview",
                 "response_id": "lyy_at2rDMefz7IPqczOiQ0"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 425047385756564970
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -382,7 +366,7 @@
                 "item": {
                   "text": "The image's dominant color is red, and the sum is 42."
                 },
-                "fingerprint": 5051904412321372348
+                "fingerprint": "36c0458441630a04"
               }
             }
           ],
@@ -397,13 +381,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "mCy_atOUKo6sz7IPqOu26QI"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 15539768399449702674
           },
           "finish_reason": "stop",
           "raw": {

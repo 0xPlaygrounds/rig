@@ -121,7 +121,7 @@
                   "id": "call_REDACTED_1",
                   "type": "function"
                 },
-                "fingerprint": 15602353414173670196
+                "fingerprint": "6f8222bd0cb32fd5"
               }
             }
           ],
@@ -138,23 +138,6 @@
             "model": "gpt-4o",
             "response_model": "gpt-4o-2024-11-20",
             "response_id": "chatcmpl-REDACTED_1"
-          },
-          "native": {
-            "item": {
-              "padding": "abcdefghijklmnopqrstuvwxyz01234567",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_REDACTED_1",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 6446046097051612954
           },
           "finish_reason": "tool_calls",
           "raw": {

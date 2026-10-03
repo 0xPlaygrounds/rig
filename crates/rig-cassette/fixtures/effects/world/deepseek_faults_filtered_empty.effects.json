@@ -86,13 +86,6 @@
             "response_model": "deepseek-flash",
             "response_id": "62692a1e-c4be-4b75-960c-541315e1fbf0"
           },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant"
-            },
-            "fingerprint": 675868731199239589
-          },
           "finish_reason": "content_filter",
           "raw": {
             "usage": {

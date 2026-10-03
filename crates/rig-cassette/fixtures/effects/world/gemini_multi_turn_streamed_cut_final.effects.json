@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -61,7 +61,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 22,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -90,7 +90,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 36,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -98,7 +98,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 36,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -228,7 +228,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 5972617269481463190
+                "fingerprint": "fad700abd2287768"
               }
             }
           ],
@@ -243,14 +243,6 @@
             "model": "gemini-2.5-flash-lite",
             "response_model": "gemini-2.5-flash-lite",
             "response_id": "hiy_avCWF_qP6dkP1cOSiAY"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 2216673640338135294
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -315,7 +307,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 5972617269481463190
+                "fingerprint": "fad700abd2287768"
               }
             }
           }
@@ -402,7 +394,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 5972617269481463190
+                    "fingerprint": "fad700abd2287768"
                   }
                 }
               ],
@@ -413,15 +405,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hiy_avCWF_qP6dkP1cOSiAY"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 2216673640338135294
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -497,7 +481,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 52097195662351320
+                "fingerprint": "007bb2d40cac1c9a"
               }
             }
           ],
@@ -512,14 +496,6 @@
             "model": "gemini-2.5-flash-lite",
             "response_model": "gemini-2.5-flash-lite",
             "response_id": "hiy_arHgK5_-qtsPpcym4Qo"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 8544397056296617904
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -584,7 +560,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 52097195662351320
+                "fingerprint": "007bb2d40cac1c9a"
               }
             }
           }
@@ -671,7 +647,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 5972617269481463190
+                    "fingerprint": "fad700abd2287768"
                   }
                 }
               ],
@@ -682,15 +658,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hiy_avCWF_qP6dkP1cOSiAY"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 2216673640338135294
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -737,7 +705,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 52097195662351320
+                    "fingerprint": "007bb2d40cac1c9a"
                   }
                 }
               ],
@@ -748,15 +716,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hiy_arHgK5_-qtsPpcym4Qo"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 8544397056296617904
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -832,7 +792,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 17871321734042546753
+                "fingerprint": "d9f062ae94df36ed"
               }
             }
           ],
@@ -847,14 +807,6 @@
             "model": "gemini-2.5-flash-lite",
             "response_model": "gemini-2.5-flash-lite",
             "response_id": "hyy_aoTCBfKAmtkPhJzD0QQ"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 17554210450391269389
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -919,7 +871,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 17871321734042546753
+                "fingerprint": "d9f062ae94df36ed"
               }
             }
           }
@@ -1006,7 +958,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 5972617269481463190
+                    "fingerprint": "fad700abd2287768"
                   }
                 }
               ],
@@ -1017,15 +969,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hiy_avCWF_qP6dkP1cOSiAY"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 2216673640338135294
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1072,7 +1016,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 52097195662351320
+                    "fingerprint": "007bb2d40cac1c9a"
                   }
                 }
               ],
@@ -1083,15 +1027,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hiy_arHgK5_-qtsPpcym4Qo"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 8544397056296617904
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1138,7 +1074,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 17871321734042546753
+                    "fingerprint": "d9f062ae94df36ed"
                   }
                 }
               ],
@@ -1149,15 +1085,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hyy_aoTCBfKAmtkPhJzD0QQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 17554210450391269389
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1233,7 +1161,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 11771969717567849654
+                "fingerprint": "cc9e4650009bbe90"
               }
             }
           ],
@@ -1248,14 +1176,6 @@
             "model": "gemini-2.5-flash-lite",
             "response_model": "gemini-2.5-flash-lite",
             "response_id": "hyy_atHMIKbK_uMPk77P4AE"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 5920312885323051270
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1320,7 +1240,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 11771969717567849654
+                "fingerprint": "cc9e4650009bbe90"
               }
             }
           }
@@ -1407,7 +1327,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 5972617269481463190
+                    "fingerprint": "fad700abd2287768"
                   }
                 }
               ],
@@ -1418,15 +1338,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hiy_avCWF_qP6dkP1cOSiAY"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 2216673640338135294
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1473,7 +1385,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 52097195662351320
+                    "fingerprint": "007bb2d40cac1c9a"
                   }
                 }
               ],
@@ -1484,15 +1396,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hiy_arHgK5_-qtsPpcym4Qo"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 8544397056296617904
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1539,7 +1443,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 17871321734042546753
+                    "fingerprint": "d9f062ae94df36ed"
                   }
                 }
               ],
@@ -1550,15 +1454,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hyy_aoTCBfKAmtkPhJzD0QQ"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 17554210450391269389
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1605,7 +1501,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 11771969717567849654
+                    "fingerprint": "cc9e4650009bbe90"
                   }
                 }
               ],
@@ -1616,15 +1512,7 @@
                 "response_model": "gemini-2.5-flash-lite",
                 "response_id": "hyy_atHMIKbK_uMPk77P4AE"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 5920312885323051270
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1687,7 +1575,7 @@
                 "item": {
                   "text": "checkpoint-complete"
                 },
-                "fingerprint": 6033222713521759663
+                "fingerprint": "2e3d3d4a66aba08f"
               }
             }
           ],
@@ -1702,13 +1590,6 @@
             "model": "gemini-2.5-flash-lite",
             "response_model": "gemini-2.5-flash-lite",
             "response_id": "hyy_au6COO6tmtkP0tqY4A0"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 8754285088019305819
           },
           "finish_reason": "stop",
           "raw": {
@@ -1759,7 +1640,7 @@
                 "item": {
                   "text": "checkpoint-complete"
                 },
-                "fingerprint": 6033222713521759663
+                "fingerprint": "2e3d3d4a66aba08f"
               }
             }
           }

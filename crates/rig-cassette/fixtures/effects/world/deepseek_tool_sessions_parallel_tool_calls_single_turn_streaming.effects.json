@@ -31,7 +31,7 @@
         }
       },
       {
-        "batch": 21,
+        "batch": 22,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -39,23 +39,7 @@
         }
       },
       {
-        "batch": 22,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 23,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 24,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -127,14 +111,6 @@
         }
       },
       {
-        "batch": 33,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 34,
         "id": 3,
         "kind": {
@@ -167,7 +143,7 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 39,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -175,7 +151,31 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 40,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 41,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -318,7 +318,7 @@
                   "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
                   "type": "function"
                 },
-                "fingerprint": 15426571931565347090
+                "fingerprint": "3237b9622b0f44d5"
               }
             },
             {
@@ -339,7 +339,7 @@
                   "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
                   "type": "function"
                 },
-                "fingerprint": 18176752993973443208
+                "fingerprint": "cf5901ad32e18751"
               }
             }
           ],
@@ -355,31 +355,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "8ac58a85-95ad-4ed9-a88c-92b2ff7835d8"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15491808611799200479
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -444,7 +419,7 @@
                   "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
                   "type": "function"
                 },
-                "fingerprint": 15426571931565347090
+                "fingerprint": "3237b9622b0f44d5"
               }
             }
           }
@@ -488,7 +463,7 @@
                   "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
                   "type": "function"
                 },
-                "fingerprint": 18176752993973443208
+                "fingerprint": "cf5901ad32e18751"
               }
             }
           }
@@ -594,7 +569,7 @@
                       "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
                       "type": "function"
                     },
-                    "fingerprint": 15426571931565347090
+                    "fingerprint": "3237b9622b0f44d5"
                   }
                 },
                 {
@@ -615,7 +590,7 @@
                       "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
                       "type": "function"
                     },
-                    "fingerprint": 18176752993973443208
+                    "fingerprint": "cf5901ad32e18751"
                   }
                 }
               ],
@@ -626,32 +601,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "8ac58a85-95ad-4ed9-a88c-92b2ff7835d8"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 15491808611799200479
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -740,13 +690,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "bdcfae32-d2d3-46b0-b1eb-a264328fabcf"
-          },
-          "native": {
-            "item": {
-              "content": "The harbor label is crimson-harbor and the orchard label is silver-orchard.",
-              "role": "assistant"
-            },
-            "fingerprint": 12264389468973431916
           },
           "finish_reason": "stop",
           "raw": {

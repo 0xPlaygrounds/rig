@@ -211,14 +211,6 @@
             "response_model": "gemini-2.5-flash",
             "response_id": "oHizavC1EsejqtsPtJ_XwA0"
           },
-          "native": {
-            "item": {
-              "finishMessage": "Malformed function call: tool",
-              "finishReason": "MALFORMED_FUNCTION_CALL",
-              "index": 0
-            },
-            "fingerprint": 675868731199239589
-          },
           "finish_reason": {
             "other": "MALFORMED_FUNCTION_CALL"
           },

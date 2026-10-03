@@ -219,13 +219,6 @@
             "response_model": "deepseek-flash",
             "response_id": "094dc69a-1292-4304-952d-562cd10b5b17"
           },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.",
-              "role": "assistant"
-            },
-            "fingerprint": 5690862242114292130
-          },
           "finish_reason": "length",
           "raw": {
             "usage": {

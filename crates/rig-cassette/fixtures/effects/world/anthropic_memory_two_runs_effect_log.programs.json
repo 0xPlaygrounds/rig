@@ -203,7 +203,7 @@
                     "text": "ready.",
                     "type": "text"
                   },
-                  "fingerprint": 7622115463999594536
+                  "fingerprint": "6e6a093ada329f96"
                 }
               }
             ],
@@ -215,8 +215,7 @@
                 "response_model": "claude-sonnet-4-6",
                 "response_id": "msg_011CfLcbZqv7bCT9zUdJJYKm"
               },
-              "stop": "stop",
-              "native": null
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -244,7 +243,7 @@
                       "text": "ready.",
                       "type": "text"
                     },
-                    "fingerprint": 7622115463999594536
+                    "fingerprint": "6e6a093ada329f96"
                   }
                 }
               ],
@@ -310,8 +309,7 @@
               "response_model": "claude-sonnet-4-6",
               "response_id": "msg_011CfLcbZqv7bCT9zUdJJYKm"
             },
-            "stop": "stop",
-            "native": null
+            "stop": "stop"
           }
         },
         {
@@ -324,7 +322,7 @@
                   "text": "ready.",
                   "type": "text"
                 },
-                "fingerprint": 7622115463999594536
+                "fingerprint": "6e6a093ada329f96"
               }
             }
           }

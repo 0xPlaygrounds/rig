@@ -164,7 +164,7 @@
                     "name": "add"
                   }
                 },
-                "fingerprint": 8975351853811734159
+                "fingerprint": "f5a095034c79f7b3"
               }
             }
           ],
@@ -179,14 +179,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "LzC_as6CKIXRz7IP4bHQ2AI"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 14133290258368346733
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -302,7 +294,7 @@
                         "name": "add"
                       }
                     },
-                    "fingerprint": 8975351853811734159
+                    "fingerprint": "f5a095034c79f7b3"
                   }
                 }
               ],
@@ -313,15 +305,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "LzC_as6CKIXRz7IP4bHQ2AI"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 14133290258368346733
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -391,7 +375,7 @@
                 "item": {
                   "text": "The sum of 2 and 3 is 5."
                 },
-                "fingerprint": 4656840733352130147
+                "fingerprint": "04268375e36733b1"
               }
             }
           ],
@@ -406,13 +390,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "MDC_avn1DvXpz7IP0qaj4Qs"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 4369851839156171253
           },
           "finish_reason": "stop",
           "raw": {

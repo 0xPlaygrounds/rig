@@ -234,15 +234,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
               },
-              "stop": "stop",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
-              }
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -280,14 +272,6 @@
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
-              },
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "refusal": null,
-                  "role": "assistant"
-                },
-                "fingerprint": 5329546866666182096
               },
               "finish_reason": "stop",
               "raw": {
@@ -348,15 +332,7 @@
               "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
               "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
             },
-            "stop": "stop",
-            "native": {
-              "item": {
-                "content": "ready",
-                "refusal": null,
-                "role": "assistant"
-              },
-              "fingerprint": 5329546866666182096
-            }
+            "stop": "stop"
           }
         },
         {

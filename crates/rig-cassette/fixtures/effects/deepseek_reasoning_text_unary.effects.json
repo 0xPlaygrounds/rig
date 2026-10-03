@@ -75,7 +75,7 @@
                 "item": {
                   "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Need maybe mention Rust systems programming language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like buffer overflows/use-after-free cause crashes/security vulnerabilities. Two sentences. Ensure factual. Final only."
                 },
-                "fingerprint": 1260216439603117962
+                "fingerprint": "39b6b449ec5b6cdf"
               }
             },
             {
@@ -96,14 +96,6 @@
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
             "response_id": "7103451f-124d-4d64-8d94-9cb30f34ffbb"
-          },
-          "native": {
-            "item": {
-              "content": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to prevent memory errors without a garbage collector. Memory safety matters because bugs like use-after-free, buffer overflows, and data races can cause crashes, unpredictable behavior, and serious security vulnerabilities.",
-              "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Need maybe mention Rust systems programming language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like buffer overflows/use-after-free cause crashes/security vulnerabilities. Two sentences. Ensure factual. Final only.",
-              "role": "assistant"
-            },
-            "fingerprint": 11733646608335240855
           },
           "finish_reason": "stop",
           "raw": {

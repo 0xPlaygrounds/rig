@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -104,7 +104,7 @@
                   "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n",
                   "thought": true
                 },
-                "fingerprint": 12619708297940678394
+                "fingerprint": "c9823f9ce800e9f7"
               }
             },
             {
@@ -115,7 +115,7 @@
                   "text": "",
                   "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
                 },
-                "fingerprint": 15231446177470289575
+                "fingerprint": "aa942b59467fb28d"
               }
             }
           ],
@@ -131,13 +131,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "0q-yaua_B6Cdz7IPi4_soQw"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "MAX_TOKENS"
-            },
-            "fingerprint": 13540164920297928776
           },
           "finish_reason": "length",
           "raw": {
@@ -189,7 +182,7 @@
                   "text": "**Exploring Rust's Memory Model**\n\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\n\n\n",
                   "thought": true
                 },
-                "fingerprint": 12619708297940678394
+                "fingerprint": "c9823f9ce800e9f7"
               }
             }
           }
@@ -215,7 +208,7 @@
                   "text": "",
                   "thoughtSignature": "ErMBCrABAWkUfRMynI70ZZnysfIfMorx06xbClI9Upjx1MJefLInOBtSyeHdJUPiKszUcAC1OHuitaWFzA2F8DUbYfQYHbU6Gpo3xvxUkApnzdYymmVwns7IJ9jSmpmel7jU5SWuMIleor7b8qhp+Un6s7AV6eQVD7VaUZOmfcUpqPzphlCXPAeCSdSAl3g5X3/hOyjYd/y3gQOoGDJJIEM1wEAVIEG+TMEZUjl1VxGRKeDy52Y="
                 },
-                "fingerprint": 15231446177470289575
+                "fingerprint": "aa942b59467fb28d"
               }
             }
           }

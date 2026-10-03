@@ -141,7 +141,7 @@
                   "id": "call_5bTaAoyWUPcI0f12bgh2zweb",
                   "type": "function"
                 },
-                "fingerprint": 7583440987752350036
+                "fingerprint": "09036929d237c0ff"
               }
             }
           ],
@@ -159,25 +159,6 @@
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
             "response_id": "gen-1790978387-vpOOa0M2Dr9RruEROFQJ"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"street\":\"123 Main St\",\"city\":\"Springfield\",\"state\":\"IL\",\"zip_code\":\"62701\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_5bTaAoyWUPcI0f12bgh2zweb",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 13498385878581400526
           },
           "finish_reason": "tool_calls",
           "raw": {

@@ -80,7 +80,7 @@
                   "text": "The dominant non-background color is **bright red**.",
                   "type": "text"
                 },
-                "fingerprint": 12330449253093814802
+                "fingerprint": "74399dee01316488"
               }
             }
           ],
@@ -105,11 +105,11 @@
               "output_tokens": 14,
               "input_tokens": 47,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
@@ -179,7 +179,7 @@
                   "text": "The dominant non-background color is **bright red**.",
                   "type": "text"
                 },
-                "fingerprint": 12330449253093814802
+                "fingerprint": "74399dee01316488"
               }
             }
           }

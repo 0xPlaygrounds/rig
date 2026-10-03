@@ -127,7 +127,7 @@
                   "id": "call_00_nnqw1McgLwfS7HiJr8t63543",
                   "type": "function"
                 },
-                "fingerprint": 13495484702170417714
+                "fingerprint": "55209c0f6a6c7373"
               }
             }
           ],
@@ -143,23 +143,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "65406f57-f586-4852-a5cf-49952e6cbebc"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "",
-                    "name": "file_report"
-                  },
-                  "id": "call_00_nnqw1McgLwfS7HiJr8t63543",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15685390947338604374
           },
           "finish_reason": "length",
           "raw": {

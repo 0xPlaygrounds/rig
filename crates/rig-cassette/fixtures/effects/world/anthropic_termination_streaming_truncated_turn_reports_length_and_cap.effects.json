@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -97,7 +97,7 @@
                   "text": "alpha\nbr",
                   "type": "text"
                 },
-                "fingerprint": 15781426286551714411
+                "fingerprint": "750a1414f22fd69f"
               }
             }
           ],
@@ -122,11 +122,11 @@
               "output_tokens": 3,
               "input_tokens": 40,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "max_tokens",
             "message_id": "msg_011CfLcgVBWGwo2XNRaensrm",
@@ -172,7 +172,7 @@
                   "text": "alpha\nbr",
                   "type": "text"
                 },
-                "fingerprint": 15781426286551714411
+                "fingerprint": "750a1414f22fd69f"
               }
             }
           }

@@ -50,6 +50,121 @@ use rig_test_support::history_survival::{
 /// as stale so exemptions cannot outlive the behavior they excuse.
 const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
     (
+        "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "anthropic/corpus_shaping/tool_choice_none_on_committed_output.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "anthropic/long_run_caching/dynamic_tools_30.yaml",
+        "signature",
+        "the request patch changes the tools on turn 11, and Anthropic binds thinking to them, so turns made under the old tools replay as another model's (rule R8, #2703)",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "gemini/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "thought_signature",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "gemini/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_chat/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_chat/shaping_tool_choice_none_on_committed_output.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "encrypted_content",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "reasoning_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_tool_choice_none_on_committed_output.yaml",
+        "encrypted_content",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_tool_choice_none_on_committed_output.yaml",
+        "reasoning_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_tool_choice_none_on_committed_output.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "encrypted_content",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "reasoning_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/tool_then_followup_text.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "venice/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "venice/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
         "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
         "tool_call_id",
         "the cell's repair hook renames the call from `sum_values` to `add` by design, \
@@ -106,6 +221,70 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
 /// other than as recorded. `(cassette path suffix, reason)`, reported as
 /// stale once it stops matching a real difference.
 const VERBATIM_EXEMPT: &[(&str, &str)] = &[
+    (
+        "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "anthropic/corpus_shaping/tool_choice_none_on_committed_output.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "anthropic/long_run_caching/dynamic_tools_30.yaml",
+        "the request patch changes the tools on turn 11, and Anthropic binds thinking to them, so turns made under the old tools replay as another model's (rule R8, #2703)",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "gemini/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_chat/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_chat/shaping_tool_choice_none_on_committed_output.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_tool_choice_none_on_committed_output.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/tool_then_followup_text.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "venice/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "venice/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
     (
         "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
         "the repair hook renames the call, and an edited block replays from its canonical fields",

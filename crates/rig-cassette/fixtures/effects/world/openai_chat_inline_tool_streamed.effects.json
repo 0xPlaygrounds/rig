@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 17,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,17 +10,25 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 19,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 25,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -28,7 +36,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -44,7 +52,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -60,7 +68,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -84,7 +92,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -92,7 +100,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -124,7 +132,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -132,15 +140,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -148,27 +148,11 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 42,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 44,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 44,
+        "batch": 43,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -317,7 +301,7 @@
                   "id": "call_4tS95A0fQqvwI2LkSF30upcF",
                   "type": "function"
                 },
-                "fingerprint": 1304875150761955167
+                "fingerprint": "8a64930f0641cd8e"
               }
             }
           ],
@@ -334,24 +318,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeF2j9xKomcgVNbJLt67zQSjxuEv"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\":17,\"y\":25}",
-                    "name": "add"
-                  },
-                  "id": "call_4tS95A0fQqvwI2LkSF30upcF",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 1350201901476881757
           },
           "provider_request_id": "req_6a2dbb554d324b09bdcebb50579b6a6d",
           "finish_reason": "tool_calls",
@@ -427,7 +393,7 @@
                   "id": "call_4tS95A0fQqvwI2LkSF30upcF",
                   "type": "function"
                 },
-                "fingerprint": 1304875150761955167
+                "fingerprint": "8a64930f0641cd8e"
               }
             }
           }
@@ -519,7 +485,7 @@
                       "id": "call_4tS95A0fQqvwI2LkSF30upcF",
                       "type": "function"
                     },
-                    "fingerprint": 1304875150761955167
+                    "fingerprint": "8a64930f0641cd8e"
                   }
                 }
               ],
@@ -530,25 +496,7 @@
                 "response_model": "gpt-5-mini-2025-08-07",
                 "response_id": "chatcmpl-EUeF2j9xKomcgVNbJLt67zQSjxuEv"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": null,
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\":17,\"y\":25}",
-                        "name": "add"
-                      },
-                      "id": "call_4tS95A0fQqvwI2LkSF30upcF",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 1350201901476881757
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -623,14 +571,6 @@
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
             "response_id": "chatcmpl-EUeF46U2RxSPpVlo3WM8NTknx87u0"
-          },
-          "native": {
-            "item": {
-              "content": "The image's dominant non-background color is red, and 17 + 25 = 42.",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 8730386798519053917
           },
           "provider_request_id": "req_9ef46ae04ffa4b3aa796e71b0ba2d20f",
           "finish_reason": "stop",

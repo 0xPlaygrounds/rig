@@ -250,7 +250,7 @@
                   },
                   "thoughtSignature": "CuUCAWkUfRNT3ras5OyzMji1G2W66FGccG1uUckdBXdSyf2YhA3rKobNyBwaz/cR07jgpGKfLkE+C+fnfQkU6zjF8XPm5KLP2BgU2y3KQ+t179G3NvGTyjD30yUPVZndyOuVGgT/07GlMY2qz3cgKBmlTLy2w5e4RlHExoRFjWVuK4guJvt7wMdrhMwlaAiA4kv8Z5EWDvM8v7fD13d8wPYFC/DKMkSL9mxlKLWMOWnQZAW4qFbGxC8nhGih+xpVFJsjZINpJwTexTZUwIjglLpbZVaEYSBoy7tkgMKX0ZFWFjPk4xOSq3sQwQMHLDecboFQ9+WOSM0lxoaoEsywVitPXeuSRByEitym1z0mXVgXmfLfqHFY/Su1QwgPZwGFHEyTjWUb8vOierpKIN1oxBDECpkgCPhtq4cTaDYqxIugVPf/tDDBmm88a4h7EUI0nFt/xoaWhyTRI6ALNVxkVTb7RQLusyx7"
                 },
-                "fingerprint": 11458928828666990232
+                "fingerprint": "28cfe94395520fb2"
               }
             }
           ],
@@ -266,14 +266,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "kQ_Aapn9L_3Qz7IPzsL02AM"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 10994275357189674524
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -449,7 +441,7 @@
                       },
                       "thoughtSignature": "CuUCAWkUfRNT3ras5OyzMji1G2W66FGccG1uUckdBXdSyf2YhA3rKobNyBwaz/cR07jgpGKfLkE+C+fnfQkU6zjF8XPm5KLP2BgU2y3KQ+t179G3NvGTyjD30yUPVZndyOuVGgT/07GlMY2qz3cgKBmlTLy2w5e4RlHExoRFjWVuK4guJvt7wMdrhMwlaAiA4kv8Z5EWDvM8v7fD13d8wPYFC/DKMkSL9mxlKLWMOWnQZAW4qFbGxC8nhGih+xpVFJsjZINpJwTexTZUwIjglLpbZVaEYSBoy7tkgMKX0ZFWFjPk4xOSq3sQwQMHLDecboFQ9+WOSM0lxoaoEsywVitPXeuSRByEitym1z0mXVgXmfLfqHFY/Su1QwgPZwGFHEyTjWUb8vOierpKIN1oxBDECpkgCPhtq4cTaDYqxIugVPf/tDDBmm88a4h7EUI0nFt/xoaWhyTRI6ALNVxkVTb7RQLusyx7"
                     },
-                    "fingerprint": 11458928828666990232
+                    "fingerprint": "28cfe94395520fb2"
                   }
                 }
               ],
@@ -460,15 +452,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "kQ_Aapn9L_3Qz7IPzsL02AM"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 10994275357189674524
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -535,7 +519,7 @@
                 "item": {
                   "text": "42"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],
@@ -550,13 +534,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "kw_Aap68CJjVz7IPgc7LiQg"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

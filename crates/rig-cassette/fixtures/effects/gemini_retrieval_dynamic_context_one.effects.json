@@ -116,7 +116,7 @@
                 "item": {
                   "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
                 },
-                "fingerprint": 3105953242091332720
+                "fingerprint": "e562f4b78afe6f1a"
               }
             }
           ],
@@ -132,13 +132,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "oQ_AarKkNcukmtkP0dbS8Qc"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 10308843102601499360
           },
           "finish_reason": "stop",
           "raw": {

@@ -80,7 +80,7 @@
                 "item": {
                   "text": "Hello. ZULU-99"
                 },
-                "fingerprint": 11277520815561679166
+                "fingerprint": "4cedd884ccf05690"
               }
             }
           ],
@@ -96,13 +96,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "pnizaue8HMLRz7IPnO6ciA0"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 1937213264124877946
           },
           "finish_reason": "stop",
           "raw": {

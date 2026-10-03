@@ -24,7 +24,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -177,7 +177,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12838903208384688606
+                "fingerprint": "ca4da2c9ffa69065"
               }
             }
           ],
@@ -202,11 +202,11 @@
               "output_tokens": 69,
               "input_tokens": 622,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
             "message_id": "msg_011CfciActncFEPY5FVLVJMt",
@@ -261,7 +261,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12838903208384688606
+                "fingerprint": "ca4da2c9ffa69065"
               }
             }
           }
@@ -349,7 +349,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 12838903208384688606
+                    "fingerprint": "ca4da2c9ffa69065"
                   }
                 }
               ],
@@ -425,7 +425,7 @@
                   "text": "25",
                   "type": "text"
                 },
-                "fingerprint": 3094961924234177110
+                "fingerprint": "be4c9c495feecf68"
               }
             }
           ],
@@ -450,11 +450,11 @@
               "output_tokens": 4,
               "input_tokens": 704,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfciAi8nwyw2LvbxMnYuJ",
@@ -492,7 +492,7 @@
                   "text": "25",
                   "type": "text"
                 },
-                "fingerprint": 3094961924234177110
+                "fingerprint": "be4c9c495feecf68"
               }
             }
           }

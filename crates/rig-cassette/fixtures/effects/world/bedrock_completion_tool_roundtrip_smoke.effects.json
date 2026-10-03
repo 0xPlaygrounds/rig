@@ -198,6 +198,19 @@
                   "x": 2,
                   "y": 5
                 }
+              },
+              "native": {
+                "item": {
+                  "toolUse": {
+                    "name": "subtract",
+                    "toolUseId": "tooluse_REDACTED_1",
+                    "input": {
+                      "x": 2,
+                      "y": 5
+                    }
+                  }
+                },
+                "fingerprint": "b4ca8484f60fc3b7"
               }
             }
           ],
@@ -313,6 +326,19 @@
                       "x": 2,
                       "y": 5
                     }
+                  },
+                  "native": {
+                    "item": {
+                      "toolUse": {
+                        "name": "subtract",
+                        "toolUseId": "tooluse_REDACTED_1",
+                        "input": {
+                          "x": 2,
+                          "y": 5
+                        }
+                      }
+                    },
+                    "fingerprint": "b4ca8484f60fc3b7"
                   }
                 }
               ],

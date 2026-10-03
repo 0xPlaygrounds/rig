@@ -147,7 +147,7 @@
                   "text": "ready.",
                   "thoughtSignature": "EoACCv0BAWkUfROeS4WoD3evdImZoVbey56tIyjzY5hvggnWJVrMqBg4gFAqcL/477VKXcxCpgI+zkkkW0i/S0XkoQJne6AMTFbiX+SNxJRraYgkAEE8hlcrPhWGTg6987ZBBGQsmqdRtCkaTP/EqKDUz1ryHFSlq/4vbnQSBOS9gqkAm3yMFL54FTr1+G+Or6lpoH7rRNTDnj/+cC0ceX03f5CE60oM7Z0I+S/2VM2IEOsNXTRBzKJB6/EH4Jm5wqBMobnzHC9EzHncpg5R1++6QQLxkYAy54rwRJ4wclMXWVJZPP4lYlAEfgBmlCevENWGq289br/6YuBhTpeG7DbE6g=="
                 },
-                "fingerprint": 7622115463999594536
+                "fingerprint": "6e6a093ada329f96"
               }
             }
           ],
@@ -163,13 +163,6 @@
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
             "response_id": "WK2yasChL7OLmtkPhf6S6Qg"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 3928977403987171332
           },
           "finish_reason": "stop",
           "raw": {

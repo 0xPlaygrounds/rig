@@ -159,7 +159,7 @@
                   "id": "call_bd6f1457695c4b74a2f8ec79",
                   "type": "function"
                 },
-                "fingerprint": 9806669670060321934
+                "fingerprint": "1062774fe3721187"
               }
             }
           ],
@@ -176,23 +176,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_8d3f49cf-9dcb-4e21-b481-e48f0be2289a"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_bd6f1457695c4b74a2f8ec79",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 5117496275592162466
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -319,7 +302,7 @@
                       "id": "call_bd6f1457695c4b74a2f8ec79",
                       "type": "function"
                     },
-                    "fingerprint": 9806669670060321934
+                    "fingerprint": "1062774fe3721187"
                   }
                 }
               ],
@@ -330,24 +313,7 @@
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_id": "resp_8d3f49cf-9dcb-4e21-b481-e48f0be2289a"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "refusal": null,
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_bd6f1457695c4b74a2f8ec79",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 5117496275592162466
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -424,14 +390,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_35054461-23d4-480b-83cd-5f1f61f8f790"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

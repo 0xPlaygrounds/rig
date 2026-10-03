@@ -203,7 +203,7 @@
                     "text": "ready.",
                     "type": "text"
                   },
-                  "fingerprint": 7622115463999594536
+                  "fingerprint": "6e6a093ada329f96"
                 }
               }
             ],
@@ -215,8 +215,7 @@
                 "response_model": "claude-sonnet-4-6",
                 "response_id": "msg_011CfLcbcSRmtBkgTuDADDu7"
               },
-              "stop": "stop",
-              "native": null
+              "stop": "stop"
             },
             "done": true,
             "usage_recorded": true,
@@ -244,7 +243,7 @@
                       "text": "ready.",
                       "type": "text"
                     },
-                    "fingerprint": 7622115463999594536
+                    "fingerprint": "6e6a093ada329f96"
                   }
                 }
               ],
@@ -269,11 +268,11 @@
                   "output_tokens": 5,
                   "input_tokens": 26,
                   "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
                   "cache_creation": {
-                    "ephemeral_5m_input_tokens": 0,
-                    "ephemeral_1h_input_tokens": 0
-                  },
-                  "cache_read_input_tokens": 0
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  }
                 },
                 "stop_reason": "end_turn",
                 "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
@@ -323,7 +322,7 @@
                         "text": "ready.",
                         "type": "text"
                       },
-                      "fingerprint": 7622115463999594536
+                      "fingerprint": "6e6a093ada329f96"
                     }
                   }
                 }
@@ -347,7 +346,7 @@
                         "text": "ready.",
                         "type": "text"
                       },
-                      "fingerprint": 7622115463999594536
+                      "fingerprint": "6e6a093ada329f96"
                     }
                   }
                 ],
@@ -372,11 +371,11 @@
                     "output_tokens": 5,
                     "input_tokens": 26,
                     "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
                     "cache_creation": {
-                      "ephemeral_5m_input_tokens": 0,
-                      "ephemeral_1h_input_tokens": 0
-                    },
-                    "cache_read_input_tokens": 0
+                      "ephemeral_1h_input_tokens": 0,
+                      "ephemeral_5m_input_tokens": 0
+                    }
                   },
                   "stop_reason": "end_turn",
                   "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
@@ -399,8 +398,7 @@
               "response_model": "claude-sonnet-4-6",
               "response_id": "msg_011CfLcbcSRmtBkgTuDADDu7"
             },
-            "stop": "stop",
-            "native": null
+            "stop": "stop"
           }
         },
         {
@@ -413,7 +411,7 @@
                   "text": "ready.",
                   "type": "text"
                 },
-                "fingerprint": 7622115463999594536
+                "fingerprint": "6e6a093ada329f96"
               }
             }
           }

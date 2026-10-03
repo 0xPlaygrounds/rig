@@ -228,14 +228,6 @@
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-ERDE4v7mhmtwZC79E6nsb2PutjIOD"
           },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
-              "refusal": null,
-              "role": "assistant"
-            },
-            "fingerprint": 6577276633744109340
-          },
           "provider_request_id": "req_8b2e0d7ef4b947689f97635eac54b684",
           "finish_reason": "length",
           "raw": {

@@ -138,7 +138,7 @@
                   "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
                   "thoughtSignature": "CrQCAWkUfRNeNkPnERD6Nm++LKibdYyHrRXBM44ZRiIjW62HBUjyVwmVVLY4RI6nn+3gghwsN0H+7Jsosp71jsOv69mqp1kSYhJ+J4ojPCgm+/x4ilGTwv7+56lPc67c65O7eLiqIYz0m1uepf/pPWm0v+xkRfoqkZgRYtg6PUwY8lZUc1utMsVJ0cnsBFz3bx0eouS+KdPo5ADJEUQzhlK6Rort0+uyAsM8z+FjgTFUZNYpzRDUesRLe6DkVdmQG+Pl+r0MfRT0Pip4tuXLjnZ8HRSJ+qiC2K9ImzVvcfb9yD/v864u2ZijG45W7UGS3uOPyIxuaAxqPShbMh+9uYt9AKI8j53OKGeUj2+9hlOta987Ji2gQYg1oSvqY1j8y5AOinLIVTUPh/Tb0grOTsxGN4eqdGw="
                 },
-                "fingerprint": 2867431395464160518
+                "fingerprint": "5aaa6c62525023ee"
               }
             }
           ],
@@ -154,13 +154,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "IRDAasqjPICoqtsP3L2PqQM"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 17347026209382671252
           },
           "finish_reason": "stop",
           "raw": {

@@ -214,7 +214,7 @@
                   },
                   "thoughtSignature": "CtECAWkUfRNjHbBSkzuQsfH1+0Oit465ow4hT6KfiF+ixc5Qd2BODRD2VQKRZUFJWHEUTGssFTzn7FHN5+F6jCQJutPpHRPchqw74AOTs4dvAZIUyEjPQGE6nfZhDpErlhpHyii24JckbWAGFcxiaYQvUdiGntsdfvVTsgHw0CzcxT15z4bKTpOzO3CWnnJtja2W+jLx0ZtN/D/qWgdiqVyYzmO42EjRMG5+LWwkeMYQlbigAICAlaaJKES9z0IcAFwEPx9FT2MBnRAbIiQmesAnTVTailMclnWxpi496oskjbuEL9CRJTCnnspYzoiW9QOtlhTPlKT7ObRhPLm08e5g2hW9VPYnB4xPRlMNqvPcZwa0DbQZv4mFY/9R6SgORN8TPv9HnXRihDbP6dOMhMKPSbxbSCn00igK4l8ou6AzJo6t53sc3td756vDFMFvBYuOWA=="
                 },
-                "fingerprint": 8902351908525368867
+                "fingerprint": "86e9b2386ec39947"
               }
             },
             {
@@ -239,7 +239,7 @@
                     "name": "subtract"
                   }
                 },
-                "fingerprint": 14679471216904567917
+                "fingerprint": "2734943daa373e97"
               }
             }
           ],
@@ -255,14 +255,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "cC2_atjCDYKfz7IPsvi8yA0"
-          },
-          "native": {
-            "item": {
-              "finishMessage": "Model generated function call(s).",
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 2696213893219151777
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -415,7 +407,7 @@
                       },
                       "thoughtSignature": "CtECAWkUfRNjHbBSkzuQsfH1+0Oit465ow4hT6KfiF+ixc5Qd2BODRD2VQKRZUFJWHEUTGssFTzn7FHN5+F6jCQJutPpHRPchqw74AOTs4dvAZIUyEjPQGE6nfZhDpErlhpHyii24JckbWAGFcxiaYQvUdiGntsdfvVTsgHw0CzcxT15z4bKTpOzO3CWnnJtja2W+jLx0ZtN/D/qWgdiqVyYzmO42EjRMG5+LWwkeMYQlbigAICAlaaJKES9z0IcAFwEPx9FT2MBnRAbIiQmesAnTVTailMclnWxpi496oskjbuEL9CRJTCnnspYzoiW9QOtlhTPlKT7ObRhPLm08e5g2hW9VPYnB4xPRlMNqvPcZwa0DbQZv4mFY/9R6SgORN8TPv9HnXRihDbP6dOMhMKPSbxbSCn00igK4l8ou6AzJo6t53sc3td756vDFMFvBYuOWA=="
                     },
-                    "fingerprint": 8902351908525368867
+                    "fingerprint": "86e9b2386ec39947"
                   }
                 },
                 {
@@ -440,7 +432,7 @@
                         "name": "subtract"
                       }
                     },
-                    "fingerprint": 14679471216904567917
+                    "fingerprint": "2734943daa373e97"
                   }
                 }
               ],
@@ -451,15 +443,7 @@
                 "response_model": "gemini-2.5-flash",
                 "response_id": "cC2_atjCDYKfz7IPsvi8yA0"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "finishMessage": "Model generated function call(s).",
-                  "finishReason": "STOP",
-                  "index": 0
-                },
-                "fingerprint": 2696213893219151777
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -557,7 +541,7 @@
                 "item": {
                   "text": "The sum of 12 and 8 is 20. The difference between 30 and 7 is 23."
                 },
-                "fingerprint": 11388165246717156688
+                "fingerprint": "3b0581208f768a5c"
               }
             }
           ],
@@ -572,13 +556,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "cS2_atnnFMrnz7IPh-PtwA0"
-          },
-          "native": {
-            "item": {
-              "finishReason": "STOP",
-              "index": 0
-            },
-            "fingerprint": 13688558598137693570
           },
           "finish_reason": "stop",
           "raw": {

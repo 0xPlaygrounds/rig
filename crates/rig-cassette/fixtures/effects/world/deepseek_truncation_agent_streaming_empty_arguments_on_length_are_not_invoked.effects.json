@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 15,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -135,7 +135,7 @@
                   "id": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630",
                   "type": "function"
                 },
-                "fingerprint": 1960685023739644336
+                "fingerprint": "ebbf59f80352454d"
               }
             }
           ],
@@ -151,23 +151,6 @@
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
             "response_id": "38ab9160-89fb-4c7d-9125-4ad998bdd1e0"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "",
-                    "name": "file_report"
-                  },
-                  "id": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 9288379018669364592
           },
           "finish_reason": "length",
           "raw": {
@@ -232,7 +215,7 @@
                   "id": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630",
                   "type": "function"
                 },
-                "fingerprint": 1960685023739644336
+                "fingerprint": "ebbf59f80352454d"
               }
             }
           }

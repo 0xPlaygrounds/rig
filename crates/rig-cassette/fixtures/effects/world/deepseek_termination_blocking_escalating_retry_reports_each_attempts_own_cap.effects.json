@@ -98,13 +98,6 @@
             "response_model": "deepseek-flash",
             "response_id": "1a2812bc-6d7d-46ac-b737-806ddb331484"
           },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.",
-              "role": "assistant"
-            },
-            "fingerprint": 5690862242114292130
-          },
           "finish_reason": "length",
           "raw": {
             "choices": [
@@ -192,13 +185,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "ba206055-416b-46d2-8b06-4719ff0ff99c"
-          },
-          "native": {
-            "item": {
-              "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup.",
-              "role": "assistant"
-            },
-            "fingerprint": 618153783423138705
           },
           "finish_reason": "stop",
           "raw": {

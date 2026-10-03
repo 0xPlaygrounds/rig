@@ -157,7 +157,7 @@
                   "id": "call_00_dI5lxxTfkIFjkzkAFGck0627",
                   "type": "function"
                 },
-                "fingerprint": 3821212247144538592
+                "fingerprint": "24d25952f24af589"
               }
             }
           ],
@@ -173,23 +173,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "297c1c3e-d4ab-4b49-9896-0eb55d0ae308"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"x\": 17, \"y\": 25}",
-                    "name": "add"
-                  },
-                  "id": "call_00_dI5lxxTfkIFjkzkAFGck0627",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 2752792680892459194
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -306,7 +289,7 @@
                       "id": "call_00_dI5lxxTfkIFjkzkAFGck0627",
                       "type": "function"
                     },
-                    "fingerprint": 3821212247144538592
+                    "fingerprint": "24d25952f24af589"
                   }
                 }
               ],
@@ -317,24 +300,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "297c1c3e-d4ab-4b49-9896-0eb55d0ae308"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{\"x\": 17, \"y\": 25}",
-                        "name": "add"
-                      },
-                      "id": "call_00_dI5lxxTfkIFjkzkAFGck0627",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 2752792680892459194
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -408,13 +374,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "8234ff0b-5865-46b1-adcd-4947c67c3e5c"
-          },
-          "native": {
-            "item": {
-              "content": "42",
-              "role": "assistant"
-            },
-            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

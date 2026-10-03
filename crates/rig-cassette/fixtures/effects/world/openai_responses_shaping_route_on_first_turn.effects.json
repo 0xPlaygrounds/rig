@@ -161,7 +161,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -185,7 +185,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2055060597528647562
+                "fingerprint": "153ba5e63c6ef37b"
               }
             }
           ],
@@ -391,7 +391,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -415,7 +415,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2055060597528647562
+                    "fingerprint": "153ba5e63c6ef37b"
                   }
                 }
               ],
@@ -503,7 +503,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],

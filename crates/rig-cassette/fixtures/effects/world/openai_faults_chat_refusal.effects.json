@@ -98,14 +98,6 @@
             "response_model": "gpt-4o",
             "response_id": "chatcmpl-1"
           },
-          "native": {
-            "item": {
-              "role": "assistant",
-              "content": null,
-              "refusal": "I'm sorry, I can't help."
-            },
-            "fingerprint": 17389623664404217912
-          },
           "finish_reason": "stop",
           "raw": {
             "usage": {

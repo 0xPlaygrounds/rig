@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 19,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 30,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 31,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -191,7 +191,7 @@
                   "id": "call_17pCkBjnpTnSsKKrbBhpyhAV",
                   "type": "function"
                 },
-                "fingerprint": 9488294246014257977
+                "fingerprint": "e8c6c6e4c413f8bc"
               }
             },
             {
@@ -214,7 +214,7 @@
                   "id": "call_yUAWbauOytR2vDmmy8C4lsAu",
                   "type": "function"
                 },
-                "fingerprint": 16744029961201640905
+                "fingerprint": "e04b37f50facac0e"
               }
             }
           ],
@@ -231,31 +231,6 @@
             "model": "gpt-4o-mini",
             "response_model": "gpt-4o-mini-2024-07-18",
             "response_id": "chatcmpl-ERDB0a0gprtyT14ffVeZUmxBBaB0b"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"value\": \"red\"}",
-                    "name": "alpha"
-                  },
-                  "id": "call_17pCkBjnpTnSsKKrbBhpyhAV",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{\"value\": \"blue\"}",
-                    "name": "beta"
-                  },
-                  "id": "call_yUAWbauOytR2vDmmy8C4lsAu",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 7654575345200469913
           },
           "provider_request_id": "req_322eff621c784055b54564a04ebce781",
           "finish_reason": "tool_calls",
@@ -330,7 +305,7 @@
                   "id": "call_17pCkBjnpTnSsKKrbBhpyhAV",
                   "type": "function"
                 },
-                "fingerprint": 9488294246014257977
+                "fingerprint": "e8c6c6e4c413f8bc"
               }
             }
           }
@@ -376,7 +351,7 @@
                   "id": "call_yUAWbauOytR2vDmmy8C4lsAu",
                   "type": "function"
                 },
-                "fingerprint": 16744029961201640905
+                "fingerprint": "e04b37f50facac0e"
               }
             }
           }

@@ -118,7 +118,7 @@
                   "id": "chatcmpl-tool-ad95dabd8fc097db",
                   "type": "function"
                 },
-                "fingerprint": 3943550388802205260
+                "fingerprint": "e3558d86f0332741"
               }
             }
           ],
@@ -135,23 +135,6 @@
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_id": "resp_e6ac2a0b-6334-4c6c-a075-65c00280c777"
-          },
-          "native": {
-            "item": {
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"category\": \"Technology\", \"summary\": \"A monthly gathering for Rust developers in Seattle to discuss projects, share knowledge, and network.\", \"title\": \"Seattle Rust Meetup\"}",
-                    "name": "final_result"
-                  },
-                  "id": "chatcmpl-tool-ad95dabd8fc097db",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 15633022164073968772
           },
           "finish_reason": "tool_calls",
           "raw": {

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 25,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,11 +10,19 @@
         }
       },
       {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -30,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -54,11 +62,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 32,
+        "batch": 34,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,7 +74,7 @@
         }
       },
       {
-        "batch": 33,
+        "batch": 36,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,7 +82,7 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 37,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -82,29 +90,37 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 39,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
-        "batch": 61,
+        "batch": 62,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 83,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 62,
+        "batch": 84,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 80,
+        "batch": 103,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -112,7 +128,7 @@
         }
       },
       {
-        "batch": 81,
+        "batch": 104,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -120,7 +136,7 @@
         }
       },
       {
-        "batch": 82,
+        "batch": 105,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -128,37 +144,29 @@
         }
       },
       {
-        "batch": 88,
+        "batch": 114,
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 101,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 111,
+        "batch": 125,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 113,
+        "batch": 127,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 131,
+        "batch": 145,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -166,7 +174,7 @@
         }
       },
       {
-        "batch": 132,
+        "batch": 146,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -174,7 +182,7 @@
         }
       },
       {
-        "batch": 133,
+        "batch": 147,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -182,67 +190,51 @@
         }
       },
       {
-        "batch": 136,
+        "batch": 157,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 141,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 152,
+        "batch": 168,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 153,
+        "batch": 169,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 175,
+        "batch": 194,
         "id": 6,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
-        "batch": 179,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 192,
+        "batch": 206,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 194,
+        "batch": 207,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 208,
+        "batch": 230,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -250,23 +242,7 @@
         }
       },
       {
-        "batch": 211,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 212,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 213,
+        "batch": 231,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -274,15 +250,7 @@
         }
       },
       {
-        "batch": 214,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 215,
+        "batch": 232,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -290,7 +258,7 @@
         }
       },
       {
-        "batch": 216,
+        "batch": 233,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -298,63 +266,7 @@
         }
       },
       {
-        "batch": 217,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 218,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 219,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 220,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 221,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 222,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 223,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 226,
+        "batch": 234,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -363,6 +275,94 @@
       },
       {
         "batch": 235,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 236,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 237,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 238,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 239,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 240,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 241,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 242,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 243,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 244,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 248,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 258,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -677,7 +677,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 14689008083079713927
+                "fingerprint": "4dc0d89a21f94af8"
               }
             },
             {
@@ -698,7 +698,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1058881456214831828
+                "fingerprint": "8e8a4e832281f6af"
               }
             }
           ],
@@ -1018,34 +1018,8 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
-              "native": {
-                "item": {
-                  "encrypted_content": "05mfGTsVDDmNL3wr8eKGNBy3VPt7DgOqg/WxghZgh8RgbRGpwvFhuIckkv6qwJot8gDhSLRwCKzKR7stfUC8gtsOCjaVKDq5NthRsd/a/HBCtOWjiEITu5dkbUM5ixp9aSqiVLirMcRBTIffug1wpHhNkk4D/ZnDGUj1s1NaFIS6SVbp6yQyeTL6u+f1qj8C0lVLrFdnEghsdR2uF8Qz4qs9LtRzTvDAhAJkI+nrARUIgEHJbWYZVw/e8PexAsiy88udn3YiB5S01uLgszKQwWY8zVYLjDuTftwUNZqdH0QGE9dq9G686R3wvyPZMgjiwEYPkywR6Fuy++IhluHe5xWu0HgIgXlzyQ7bYWAzZKkF/r356KE32seFBgPplLLMFAhiqNj5idhAMLC79LEXsnd/gwUNQyXXdjaF0AuMBfm/0ene50i806KhG6iLtuhv/7tLU5Kq41SOGVK7Wdta1GRVL3+O8EVdwS8weaVy8s1Xa0s6FuncPJGnS45jQkRPjIHB/eTONnyK/7VBGd31OuHeccsSiHrAsqI7zUeK3B85qlyxpbgCSxzHXGmiAk8Z4qhOSQ3VUNQ5aLY/sdPeTto09QPeq+hmlmK865p4allqd4Mh1Lm3HC0zg8D0Clwug5ZB7PNRpr6n5oi7jsCK27H/KDsBW+KyQzaTWEwunzHGuIDe6lVmFKqJ0y7RCz9UR+RguCYxg0VLHR1Hb38YpMQPbxdT8uSvBJSrbWbdkpk+QbvRmq/4YMHqvo7RDbl/2AjORGJVao5kj5bwpnuvVJv0PEmeCPRBl1sdOVx8jxQeDVS8FZjl4lG5D37iS8XQYG85LyvAHMJVdkXam2DxCdrL3VYNxBRmWGmWz04MQBYq8eQp3ivs9cNH0U23W9M30pQPGgvIpkb14Y4zjA0A5r10GTUvyq/HJGNO6WQS3MRRY+wsjFd50vcjUlsXW8b1e+kBtHQBYxBVE9FZ1vKRIpgBkFOrr3OrlfcGZ6DChW1SnpGzcEPjCXrfYzn4Q+YksP01ak4ftT/HBqLe+9/3OUToZn3ad2gQPaqjjmaBmkkUxOMLLdv08H14E7J0IhmwDXWRpTbWN972+dv7xmsME9W+1fXS4Yh7h4BQfqRSACVpY30JugSeNfOfvSj0mbxnTXnNP0mKhyj8bBiUQInJ52rwNCzHWYy5/pYirvWpaKrent5ZFn2yTmDTl59m6Xa5mPfjHCn0e0Sz4tyEow3n3FimrJBdL5MGpd1ioQfxhBG725SIJbCdJqABBeTt0oVDWTa/L41rVP3s64b7BB7j44h15Rhkk1S536IXJWQJXY9yjA2TZLkm5xPvAUxBOTBvX8iXSQ3WY/bnerbTNNDkikd+N8UVAtt5zVtRyOrV0QPHz8I94pTAyaUIzoQKMASH6rEoL30NVIEsBFlwykxbTWwpaMRnYEgLDqH0qoM3PfSLn2C9OR48nECCEGsqdS0hzw5BNhQ2ye+XZldbstO4GTJxeELyRn2xV5CKeYOf/i1GqidFMADJKew1QVOVkqzLAvvBUWBf77HWqM8cQ70WnV68eT3lDUxNM28NNKdy6BNCv0bLPo8XF8pmJh4ynDc9Pq99DTHcYAwJZ0Gld4cojcI6fMjd/w+iBDJvue+4jTRt7p/2lifxRGDp8ADXYVkQiMzZXyLEAWBuru9ujnp+fAWqLbNdFFnSMbNB1B++25R+p8zV4T1s1PrY4jzdAGieiX2n+Baq342d7cllNyF/m2rd2LzdvgBQiFUYmUwNBEhpS6fvZJZdw28nP3cK7e0XQ2a8GAEatMsQzXHALyloC+l0d+BVPQJnCVaiEjBOSiRH7YG2bp+UofeQSTZ4LGjpCEf+ptcJN6QIKomgeVMw6/KloZ0yqAcUIsP5+1/F+fBFba5JNiGliCs0Snr1ZSj1+qHItC7BKIORbjbMk3EeajPobiqjjkiYNACAFbexeD+Ev//lwo03R8aEKTGOmySSx0Me7PXuX91g6muR7eM4857u4Mms0UTAxjNgVR5aC1i97A",
-                  "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
-                  "status": "completed",
-                  "summary": [
-                    {
-                      "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
-                      "type": "summary_text"
-                    }
-                  ],
-                  "type": "reasoning"
-                },
-                "fingerprint": 14689008083079713927
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
-            "part": 2,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -1053,7 +1027,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 2,
+            "part": 1,
             "json": "{}"
           }
         },
@@ -1061,7 +1035,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 2,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1080,7 +1054,33 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1058881456214831828
+                "fingerprint": "8e8a4e832281f6af"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+              "native": {
+                "item": {
+                  "encrypted_content": "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",
+                  "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "4dc0d89a21f94af8"
               }
             }
           }
@@ -1159,7 +1159,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 14689008083079713927
+                    "fingerprint": "4dc0d89a21f94af8"
                   }
                 },
                 {
@@ -1180,7 +1180,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1058881456214831828
+                    "fingerprint": "8e8a4e832281f6af"
                   }
                 }
               ],
@@ -1346,7 +1346,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 6192271412375732631
+                "fingerprint": "42a4f32255709070"
               }
             },
             {
@@ -1384,7 +1384,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 8654680008573901541
+                "fingerprint": "1d1fa73b234e9196"
               }
             }
           ],
@@ -1632,34 +1632,8 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "The first tool call returned an empty OK result.",
-              "native": {
-                "item": {
-                  "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
-                  "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
-                  "status": "completed",
-                  "summary": [
-                    {
-                      "text": "The first tool call returned an empty OK result.",
-                      "type": "summary_text"
-                    }
-                  ],
-                  "type": "reasoning"
-                },
-                "fingerprint": 6192271412375732631
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
-            "part": 2,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -1667,7 +1641,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 2,
+            "part": 1,
             "json": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}"
           }
         },
@@ -1675,7 +1649,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 2,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1711,7 +1685,33 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 8654680008573901541
+                "fingerprint": "1d1fa73b234e9196"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "The first tool call returned an empty OK result.",
+              "native": {
+                "item": {
+                  "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
+                  "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "The first tool call returned an empty OK result.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "42a4f32255709070"
               }
             }
           }
@@ -1790,7 +1790,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 14689008083079713927
+                    "fingerprint": "4dc0d89a21f94af8"
                   }
                 },
                 {
@@ -1811,7 +1811,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1058881456214831828
+                    "fingerprint": "8e8a4e832281f6af"
                   }
                 }
               ],
@@ -1861,7 +1861,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 6192271412375732631
+                    "fingerprint": "42a4f32255709070"
                   }
                 },
                 {
@@ -1899,7 +1899,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8654680008573901541
+                    "fingerprint": "1d1fa73b234e9196"
                   }
                 }
               ],
@@ -2065,7 +2065,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 10092555462247041044
+                "fingerprint": "c47091a5d925b169"
               }
             },
             {
@@ -2094,7 +2094,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10350060004672450685
+                "fingerprint": "5f83e5ad00315028"
               }
             }
           ],
@@ -2342,34 +2342,8 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
-              "native": {
-                "item": {
-                  "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
-                  "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
-                  "status": "completed",
-                  "summary": [
-                    {
-                      "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
-                      "type": "summary_text"
-                    }
-                  ],
-                  "type": "reasoning"
-                },
-                "fingerprint": 10092555462247041044
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
-            "part": 2,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -2377,7 +2351,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 2,
+            "part": 1,
             "json": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
           }
         },
@@ -2385,7 +2359,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 2,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -2412,7 +2386,33 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10350060004672450685
+                "fingerprint": "5f83e5ad00315028"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+              "native": {
+                "item": {
+                  "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
+                  "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "c47091a5d925b169"
               }
             }
           }
@@ -2491,7 +2491,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 14689008083079713927
+                    "fingerprint": "4dc0d89a21f94af8"
                   }
                 },
                 {
@@ -2512,7 +2512,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1058881456214831828
+                    "fingerprint": "8e8a4e832281f6af"
                   }
                 }
               ],
@@ -2562,7 +2562,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 6192271412375732631
+                    "fingerprint": "42a4f32255709070"
                   }
                 },
                 {
@@ -2600,7 +2600,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8654680008573901541
+                    "fingerprint": "1d1fa73b234e9196"
                   }
                 }
               ],
@@ -2650,7 +2650,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 10092555462247041044
+                    "fingerprint": "c47091a5d925b169"
                   }
                 },
                 {
@@ -2679,7 +2679,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10350060004672450685
+                    "fingerprint": "5f83e5ad00315028"
                   }
                 }
               ],
@@ -2840,7 +2840,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -2863,7 +2863,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9733804691474563374
+                "fingerprint": "f7bcd7b7ec9296f3"
               }
             }
           ],
@@ -3075,36 +3075,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
-            "kind": "reasoning"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "",
-              "native": {
-                "item": {
-                  "encrypted_content": "OEFHrv2VQDrN8yRbIQLYajIvIxjprqr+Lzj0vR0wcvQtFbWg96B5Yp940JBKB2AZZmjxWyXzsIsA8KK7hcM/Wew8+icaqA3+j6CoibWTr1mjxe/6PYH79zYvQSbsZagwe67UyXotz/ZwIWhynbE51kJfY9NNz6jYDBBxXkKnwjpZojTfy/00hiA56G7rZs6H0RORWfivJ0jqg+cBceslCILZYPrWZL3KRMnpW5VsZQr/uSytMzgEXmowiYrv1DUa7FMoi7fReJQjhG5jM87wYbXQEscca3X/chX1oYlOA8/UDotmQLR63d+P4RVEq/L3SFMoCnXo2t7OURUcWHWWbJkDt6gbO4AuwQXfcKcmT4wfUaaYHXDOHvdE",
-                  "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
-                  "status": "completed",
-                  "summary": [],
-                  "type": "reasoning"
-                },
-                "fingerprint": 337210683625289162
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 2,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -3112,7 +3083,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 2,
+            "part": 1,
             "json": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
           }
         },
@@ -3120,7 +3091,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 2,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -3141,7 +3112,36 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9733804691474563374
+                "fingerprint": "f7bcd7b7ec9296f3"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "encrypted_content": "OEFHrv2VQDrN8yRbIQLYajIvIxjprqr+Lzj0vR0wcvQtFbWg96B5Yp940JBKB2AZZmjxWyXzsIsA8KK7hcM/Wew8+icaqA3+j6CoibWTr1mjxe/6PYH79zYvQSbsZagwe67UyXotz/ZwIWhynbE51kJfY9NNz6jYDBBxXkKnwjpZojTfy/00hiA56G7rZs6H0RORWfivJ0jqg+cBceslCILZYPrWZL3KRMnpW5VsZQr/uSytMzgEXmowiYrv1DUa7FMoi7fReJQjhG5jM87wYbXQEscca3X/chX1oYlOA8/UDotmQLR63d+P4RVEq/L3SFMoCnXo2t7OURUcWHWWbJkDt6gbO4AuwQXfcKcmT4wfUaaYHXDOHvdE",
+                  "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
+                  "status": "completed",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": "82b6ea64ef91009f"
               }
             }
           }
@@ -3220,7 +3220,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 14689008083079713927
+                    "fingerprint": "4dc0d89a21f94af8"
                   }
                 },
                 {
@@ -3241,7 +3241,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1058881456214831828
+                    "fingerprint": "8e8a4e832281f6af"
                   }
                 }
               ],
@@ -3291,7 +3291,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 6192271412375732631
+                    "fingerprint": "42a4f32255709070"
                   }
                 },
                 {
@@ -3329,7 +3329,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8654680008573901541
+                    "fingerprint": "1d1fa73b234e9196"
                   }
                 }
               ],
@@ -3379,7 +3379,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 10092555462247041044
+                    "fingerprint": "c47091a5d925b169"
                   }
                 },
                 {
@@ -3408,7 +3408,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10350060004672450685
+                    "fingerprint": "5f83e5ad00315028"
                   }
                 }
               ],
@@ -3453,7 +3453,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 337210683625289162
+                    "fingerprint": "82b6ea64ef91009f"
                   }
                 },
                 {
@@ -3476,7 +3476,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9733804691474563374
+                    "fingerprint": "f7bcd7b7ec9296f3"
                   }
                 }
               ],
@@ -3637,7 +3637,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 337210683625289162
+                "fingerprint": "82b6ea64ef91009f"
               }
             },
             {
@@ -3658,7 +3658,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 1218011299984180513
+                "fingerprint": "3be1b00e116d4cb7"
               }
             }
           ],
@@ -3876,35 +3876,6 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
-            "kind": "reasoning"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "",
-              "native": {
-                "item": {
-                  "encrypted_content": "DhMyEysUazeAV26cJsUPojmdHaA8Q44cppinQkn1A5Jwg6DviG1Civ68B9UywnW1zOY4xEUZxjrvKQX0O9RIe984fYtlubF/zWIOExqTuGU0PnJSkzSAyL0Pia7mkWuAEaZwiy20N6e470C+t8fMq+j1uzfgIXQo7FcBfsEdhUYZb6aQStyCW8Caick",
-                  "id": "rs_ec67783a-e3de-9f07-b74c-be0908503aae",
-                  "status": "completed",
-                  "summary": [],
-                  "type": "reasoning"
-                },
-                "fingerprint": 337210683625289162
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
             "part": 1,
             "kind": "text"
           }
@@ -4092,7 +4063,36 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 1218011299984180513
+                "fingerprint": "3be1b00e116d4cb7"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "",
+              "native": {
+                "item": {
+                  "encrypted_content": "DhMyEysUazeAV26cJsUPojmdHaA8Q44cppinQkn1A5Jwg6DviG1Civ68B9UywnW1zOY4xEUZxjrvKQX0O9RIe984fYtlubF/zWIOExqTuGU0PnJSkzSAyL0Pia7mkWuAEaZwiy20N6e470C+t8fMq+j1uzfgIXQo7FcBfsEdhUYZb6aQStyCW8Caick",
+                  "id": "rs_ec67783a-e3de-9f07-b74c-be0908503aae",
+                  "status": "completed",
+                  "summary": [],
+                  "type": "reasoning"
+                },
+                "fingerprint": "82b6ea64ef91009f"
               }
             }
           }

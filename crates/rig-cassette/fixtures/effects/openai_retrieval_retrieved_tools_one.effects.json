@@ -203,7 +203,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15869826707034173477
+                "fingerprint": "55112b80bc9e4fba"
               }
             }
           ],
@@ -436,7 +436,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15869826707034173477
+                    "fingerprint": "55112b80bc9e4fba"
                   }
                 }
               ],
@@ -520,7 +520,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10728865193441065857
+                "fingerprint": "23f07d1922e80d53"
               }
             }
           ],

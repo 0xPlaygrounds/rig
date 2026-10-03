@@ -174,13 +174,13 @@
                   "text": "I'll start by adding 17 and 25 using the add tool!",
                   "type": "text"
                 },
-                "fingerprint": 3577733087959972326
+                "fingerprint": "a7502ff3afa3c35c"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01CBuM9hZZj7bDXF2Vjyb73d"
+                "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
               },
               "function": {
                 "name": "add",
@@ -194,7 +194,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01CBuM9hZZj7bDXF2Vjyb73d",
+                  "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -202,7 +202,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 8154382538458520242
+                "fingerprint": "810a6a72371b04c2"
               }
             }
           ],
@@ -218,9 +218,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfci9v1eCseKucGfZME2R"
+            "response_id": "msg_011CfezBn9Z4SCipr9e2y7jw"
           },
-          "provider_request_id": "req_011Cfci9ukXLYSvLfZTvt6sM",
+          "provider_request_id": "req_011CfezBmphgs86Z5qWBvW4d",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -233,7 +233,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01CBuM9hZZj7bDXF2Vjyb73d",
+                "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -243,7 +243,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfci9v1eCseKucGfZME2R",
+            "id": "msg_011CfezBn9Z4SCipr9e2y7jw",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -325,13 +325,13 @@
                       "text": "I'll start by adding 17 and 25 using the add tool!",
                       "type": "text"
                     },
-                    "fingerprint": 3577733087959972326
+                    "fingerprint": "a7502ff3afa3c35c"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01CBuM9hZZj7bDXF2Vjyb73d"
+                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
                   },
                   "function": {
                     "name": "add",
@@ -345,7 +345,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01CBuM9hZZj7bDXF2Vjyb73d",
+                      "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -353,7 +353,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 8154382538458520242
+                    "fingerprint": "810a6a72371b04c2"
                   }
                 }
               ],
@@ -362,7 +362,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011Cfci9v1eCseKucGfZME2R"
+                "response_id": "msg_011CfezBn9Z4SCipr9e2y7jw"
               },
               "stop": "tool_use"
             },
@@ -372,7 +372,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01CBuM9hZZj7bDXF2Vjyb73d"
+                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
                   },
                   "name": "add",
                   "content": [
@@ -446,20 +446,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sum is **42**! Now I'll use that result to build the event object.",
+              "text": "The sum is 42! Now I'll use that result to build the final event object.",
               "native": {
                 "item": {
-                  "text": "The sum is **42**! Now I'll use that result to build the event object.",
+                  "text": "The sum is 42! Now I'll use that result to build the final event object.",
                   "type": "text"
                 },
-                "fingerprint": 17986372690443952200
+                "fingerprint": "60202e8396410f4a"
               }
             }
           ],
           "usage": {
-            "input_tokens": 894,
+            "input_tokens": 839,
             "output_tokens": 28,
-            "total_tokens": 922,
+            "total_tokens": 867,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -468,20 +468,20 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciA24HVxawKZAEw4413"
+            "response_id": "msg_011CfezBtPM5SCqdfFHAddHK"
           },
-          "provider_request_id": "req_011CfciA1jScHz4vQHQgbEAW",
+          "provider_request_id": "req_011CfezBt1WpL7N132GmEbEt",
           "finish_reason": "stop",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "The sum is **42**! Now I'll use that result to build the event object.",
+                "text": "The sum is 42! Now I'll use that result to build the final event object.",
                 "type": "text"
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfciA24HVxawKZAEw4413",
+            "id": "msg_011CfezBtPM5SCqdfFHAddHK",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -496,7 +496,7 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 894,
+              "input_tokens": 839,
               "output_tokens": 28,
               "service_tier": "standard"
             }
@@ -538,13 +538,13 @@
                       "text": "I'll start by adding 17 and 25 using the add tool!",
                       "type": "text"
                     },
-                    "fingerprint": 3577733087959972326
+                    "fingerprint": "a7502ff3afa3c35c"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01CBuM9hZZj7bDXF2Vjyb73d"
+                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
                   },
                   "function": {
                     "name": "add",
@@ -558,7 +558,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01CBuM9hZZj7bDXF2Vjyb73d",
+                      "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -566,7 +566,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 8154382538458520242
+                    "fingerprint": "810a6a72371b04c2"
                   }
                 }
               ],
@@ -575,7 +575,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011Cfci9v1eCseKucGfZME2R"
+                "response_id": "msg_011CfezBn9Z4SCipr9e2y7jw"
               },
               "stop": "tool_use"
             },
@@ -585,7 +585,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01CBuM9hZZj7bDXF2Vjyb73d"
+                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
                   },
                   "name": "add",
                   "content": [
@@ -602,13 +602,13 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The sum is **42**! Now I'll use that result to build the event object.",
+                  "text": "The sum is 42! Now I'll use that result to build the final event object.",
                   "native": {
                     "item": {
-                      "text": "The sum is **42**! Now I'll use that result to build the event object.",
+                      "text": "The sum is 42! Now I'll use that result to build the final event object.",
                       "type": "text"
                     },
-                    "fingerprint": 17986372690443952200
+                    "fingerprint": "60202e8396410f4a"
                   }
                 }
               ],
@@ -617,7 +617,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfciA24HVxawKZAEw4413"
+                "response_id": "msg_011CfezBtPM5SCqdfFHAddHK"
               },
               "stop": "stop"
             },
@@ -691,15 +691,26 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "Of course! Let me call the `final_result` tool now with the structured event object.",
+              "native": {
+                "item": {
+                  "text": "Of course! Let me call the `final_result` tool now with the structured event object.",
+                  "type": "text"
+                },
+                "fingerprint": "04e448938a4d101f"
+              }
+            },
+            {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01YVaJeXmawWuRLcK2zjYXdn"
+                "provider": "toolu_01WTdH4t3MfVCHSrJwNz4Wtn"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "category": "Technology",
-                  "summary": "Join us for the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
+                  "summary": "Join us for the Seattle Rust Meetup! 17 + 25 = 42 attendees are expected for an evening of Rust programming talks, demos, and networking.",
                   "title": "Rust Meetup Seattle"
                 }
               },
@@ -708,23 +719,23 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01YVaJeXmawWuRLcK2zjYXdn",
+                  "id": "toolu_01WTdH4t3MfVCHSrJwNz4Wtn",
                   "input": {
                     "category": "Technology",
-                    "summary": "Join us for the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
+                    "summary": "Join us for the Seattle Rust Meetup! 17 + 25 = 42 attendees are expected for an evening of Rust programming talks, demos, and networking.",
                     "title": "Rust Meetup Seattle"
                   },
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": 4512389863989970439
+                "fingerprint": "314cbf3511f2dcca"
               }
             }
           ],
           "usage": {
             "input_tokens": 946,
-            "output_tokens": 117,
-            "total_tokens": 1063,
+            "output_tokens": 151,
+            "total_tokens": 1097,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -733,21 +744,25 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciA7esyQNyUNaihcoLY"
+            "response_id": "msg_011CfezByUSM8CYxki8o8f2k"
           },
-          "provider_request_id": "req_011CfciA7JoHLZ11qGHmeQc5",
+          "provider_request_id": "req_011CfezBy7MAuT8axSXhG3Bv",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
             "content": [
               {
+                "text": "Of course! Let me call the `final_result` tool now with the structured event object.",
+                "type": "text"
+              },
+              {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01YVaJeXmawWuRLcK2zjYXdn",
+                "id": "toolu_01WTdH4t3MfVCHSrJwNz4Wtn",
                 "input": {
                   "category": "Technology",
-                  "summary": "Join us for the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
+                  "summary": "Join us for the Seattle Rust Meetup! 17 + 25 = 42 attendees are expected for an evening of Rust programming talks, demos, and networking.",
                   "title": "Rust Meetup Seattle"
                 },
                 "name": "final_result",
@@ -755,7 +770,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfciA7esyQNyUNaihcoLY",
+            "id": "msg_011CfezByUSM8CYxki8o8f2k",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -771,7 +786,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 946,
-              "output_tokens": 117,
+              "output_tokens": 151,
               "service_tier": "standard"
             }
           }

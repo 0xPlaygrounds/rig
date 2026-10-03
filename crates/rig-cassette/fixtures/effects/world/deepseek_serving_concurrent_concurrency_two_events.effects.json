@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,24 +10,72 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 8,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 8,
         "id": 2,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 12,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 13,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 15,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 16,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 17,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -67,7 +115,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -75,7 +123,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -83,7 +131,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -99,91 +147,11 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 27,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 28,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 30,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 32,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 35,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
+        "batch": 26,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -321,7 +289,7 @@
                   "id": "call_00_kmi8K8e2XFhhJL6n0ndQ1170",
                   "type": "function"
                 },
-                "fingerprint": 15673252044947555533
+                "fingerprint": "69e749cc56eb5150"
               }
             },
             {
@@ -342,7 +310,7 @@
                   "id": "call_01_tvfyLqvEOapTNt0kevEq9191",
                   "type": "function"
                 },
-                "fingerprint": 6900195771218001983
+                "fingerprint": "1f377e8e74a2ea16"
               }
             }
           ],
@@ -358,31 +326,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "f4ae5cf4-335c-4859-b430-8381bcea5dec"
-          },
-          "native": {
-            "item": {
-              "content": "",
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_harbor_label"
-                  },
-                  "id": "call_00_kmi8K8e2XFhhJL6n0ndQ1170",
-                  "type": "function"
-                },
-                {
-                  "function": {
-                    "arguments": "{}",
-                    "name": "lookup_orchard_label"
-                  },
-                  "id": "call_01_tvfyLqvEOapTNt0kevEq9191",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 10310319488816566341
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -447,7 +390,7 @@
                   "id": "call_00_kmi8K8e2XFhhJL6n0ndQ1170",
                   "type": "function"
                 },
-                "fingerprint": 15673252044947555533
+                "fingerprint": "69e749cc56eb5150"
               }
             }
           }
@@ -491,7 +434,7 @@
                   "id": "call_01_tvfyLqvEOapTNt0kevEq9191",
                   "type": "function"
                 },
-                "fingerprint": 6900195771218001983
+                "fingerprint": "1f377e8e74a2ea16"
               }
             }
           }
@@ -597,7 +540,7 @@
                       "id": "call_00_kmi8K8e2XFhhJL6n0ndQ1170",
                       "type": "function"
                     },
-                    "fingerprint": 15673252044947555533
+                    "fingerprint": "69e749cc56eb5150"
                   }
                 },
                 {
@@ -618,7 +561,7 @@
                       "id": "call_01_tvfyLqvEOapTNt0kevEq9191",
                       "type": "function"
                     },
-                    "fingerprint": 6900195771218001983
+                    "fingerprint": "1f377e8e74a2ea16"
                   }
                 }
               ],
@@ -629,32 +572,7 @@
                 "response_model": "deepseek-flash",
                 "response_id": "f4ae5cf4-335c-4859-b430-8381bcea5dec"
               },
-              "stop": "tool_use",
-              "native": {
-                "item": {
-                  "content": "",
-                  "role": "assistant",
-                  "tool_calls": [
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_harbor_label"
-                      },
-                      "id": "call_00_kmi8K8e2XFhhJL6n0ndQ1170",
-                      "type": "function"
-                    },
-                    {
-                      "function": {
-                        "arguments": "{}",
-                        "name": "lookup_orchard_label"
-                      },
-                      "id": "call_01_tvfyLqvEOapTNt0kevEq9191",
-                      "type": "function"
-                    }
-                  ]
-                },
-                "fingerprint": 10310319488816566341
-              }
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -738,13 +656,6 @@
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
             "response_id": "509da4ca-a4f9-4e43-b139-381a3810ba8c"
-          },
-          "native": {
-            "item": {
-              "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard.\"",
-              "role": "assistant"
-            },
-            "fingerprint": 17690890759645413468
           },
           "finish_reason": "stop",
           "raw": {

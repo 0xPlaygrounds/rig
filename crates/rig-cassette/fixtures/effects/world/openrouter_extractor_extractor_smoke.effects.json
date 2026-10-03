@@ -121,7 +121,7 @@
                   "id": "call_fv3ubVl9yrU9F9Q6VolXP8K0",
                   "type": "function"
                 },
-                "fingerprint": 16716601818366475136
+                "fingerprint": "f86fdd42084383c1"
               }
             }
           ],
@@ -139,25 +139,6 @@
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
             "response_id": "gen-1790152491-ffd2TiEqpdMcAvMq2asP"
-          },
-          "native": {
-            "item": {
-              "content": null,
-              "reasoning": null,
-              "refusal": null,
-              "role": "assistant",
-              "tool_calls": [
-                {
-                  "function": {
-                    "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
-                    "name": "submit"
-                  },
-                  "id": "call_fv3ubVl9yrU9F9Q6VolXP8K0",
-                  "type": "function"
-                }
-              ]
-            },
-            "fingerprint": 17346955310255002778
           },
           "finish_reason": "tool_calls",
           "raw": {

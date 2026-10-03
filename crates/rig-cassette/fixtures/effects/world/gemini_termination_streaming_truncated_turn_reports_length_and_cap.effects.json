@@ -110,7 +110,7 @@
                 "item": {
                   "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
                 },
-                "fingerprint": 11568383327230518152
+                "fingerprint": "864e8eeb8e7710a2"
               }
             }
           ],
@@ -125,13 +125,6 @@
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
             "response_id": "qXizarW1Iof7qtsP-L2FkAU"
-          },
-          "native": {
-            "item": {
-              "index": 0,
-              "finishReason": "MAX_TOKENS"
-            },
-            "fingerprint": 11793810135226508192
           },
           "finish_reason": "length",
           "raw": {
@@ -198,7 +191,7 @@
                 "item": {
                   "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
                 },
-                "fingerprint": 11568383327230518152
+                "fingerprint": "864e8eeb8e7710a2"
               }
             }
           }
