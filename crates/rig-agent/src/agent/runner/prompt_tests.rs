@@ -597,14 +597,22 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
             .expect("deserialize");
     assert!(is_empty_assistant_turn(&restored));
 
-    let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
+    // An empty block holding a current provider item carries data; one whose
+    // item no longer matches it (an edit) replays as nothing, so it is empty.
+    let annotated =
+        vec![AssistantContent::text("").with_native(serde_json::json!({"signature": "sig"}))];
+    let restored: Vec<AssistantContent> =
+        serde_json::from_value(serde_json::to_value(&annotated).expect("serialize"))
+            .expect("deserialize annotated");
+    assert!(
+        !is_empty_assistant_turn(&restored),
+        "an annotated empty block carries data: {restored:?}"
+    );
+    let stale: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
         {"type": "text", "text": "", "native": {"item": {"signature": "sig"}, "fingerprint": "0000000000000000"}}
     ]))
-    .expect("deserialize annotated");
-    assert!(
-        !is_empty_assistant_turn(&annotated),
-        "an annotated empty block carries data: {annotated:?}"
-    );
+    .expect("deserialize stale");
+    assert!(is_empty_assistant_turn(&stale), "{stale:?}");
 }
 
 #[test]

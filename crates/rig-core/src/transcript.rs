@@ -168,15 +168,11 @@ pub fn invalid_call_feedback(
         .collect()
 }
 
-/// Whether a generated assistant turn is empty: no parts, or exactly one
-/// empty text part with no provider item. An empty turn must not enter
-/// history.
+/// Whether a generated assistant turn is empty: every part is blank
+/// ([`AssistantContent::is_blank`], the rule replay drops parts by). An
+/// empty turn must not enter history.
 pub fn is_empty_assistant_turn(content: &[AssistantContent]) -> bool {
-    match content {
-        [] => true,
-        [AssistantContent::Text(text)] => text.text.is_empty() && text.native.is_none(),
-        _ => false,
-    }
+    content.iter().all(AssistantContent::is_blank)
 }
 
 /// The text parts of an assistant turn, concatenated.

@@ -22,8 +22,6 @@ use rig_core::message::{
 };
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 
-use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
-
 /// Detect unknown payloads containing assistant content that assembly would lose:
 /// tagged assistant blocks or text with a malformed provider item.
 fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
@@ -120,28 +118,16 @@ impl PartialStreamedTurn {
     ) -> Option<(Message, Message)> {
         // Preserve call IDs so synthetic results correlate with their diagnostic calls.
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
-
-        let mut retry_results = self
-            .pending_tool_calls
-            .iter()
-            .map(|tool_call| {
-                tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.function.name.clone(),
-                    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-                )
-            })
-            .collect::<Vec<_>>();
-        retry_results.push(tool_result_message(
-            invalid_tool_call.id,
-            invalid_tool_call.function.name,
-            feedback,
-        ));
-
-        let user_message = Message::User {
-            content: retry_results,
+        let Message::Assistant(turn) = &assistant_message else {
+            return None;
         };
-
+        let user_message = Message::User {
+            content: rig_core::transcript::invalid_call_feedback(
+                &turn.content,
+                &invalid_tool_call.id,
+                &feedback,
+            ),
+        };
         Some((assistant_message, user_message))
     }
 }
