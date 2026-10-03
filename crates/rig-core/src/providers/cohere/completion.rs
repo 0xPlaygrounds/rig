@@ -23,16 +23,22 @@ use serde::{Deserialize, Serialize};
 pub(crate) const PROVIDER_NAME: &str = "cohere";
 
 /// The whole `/v2/chat` reply. Only `message` and `finish_reason` build the
-/// turn; the usage stays as Cohere sent it, read by `usage_of`.
+/// turn; an `id` that is not a string is unreported, and the usage stays as
+/// Cohere sent it, read by `usage_of`.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_id")]
     pub id: String,
     pub finish_reason: FinishReason,
     /// The assistant message, as Cohere sent it.
     pub message: serde_json::Value,
     #[serde(default)]
     pub usage: Option<serde_json::Value>,
+}
+
+fn lenient_id<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let id = serde_json::Value::deserialize(deserializer)?;
+    Ok(id.as_str().map(str::to_owned).unwrap_or_default())
 }
 
 impl CompletionResponse {
@@ -372,24 +378,17 @@ fn user_messages(
 }
 
 /// An image as the URL Cohere reads: its URL, or a data URL of its base64
-/// data.
+/// data. [`Chat`](super::Chat)'s `encodes` names these forms, so the adapter
+/// hands over no other.
 fn image_url(image: message::Image) -> Result<String, message::MessageError> {
     use message::{DocumentSourceKind, MimeType};
-    match image.data {
-        DocumentSourceKind::Url(url) => Ok(url),
-        DocumentSourceKind::Base64(data) => {
-            let media_type = image.media_type.ok_or_else(|| {
-                message::MessageError::ConversionError(
-                    "a base64 image needs a media type to build its data URL".to_owned(),
-                )
-            })?;
+    match (image.data, image.media_type) {
+        (DocumentSourceKind::Url(url), _) => Ok(url),
+        (DocumentSourceKind::Base64(data), Some(media_type)) => {
             Ok(format!("data:{};base64,{data}", media_type.to_mime_type()))
         }
-        DocumentSourceKind::Raw(_)
-        | DocumentSourceKind::FileId(_)
-        | DocumentSourceKind::String(_)
-        | DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
-            "Cohere reads an image by URL or as base64 data".to_owned(),
+        _ => Err(message::MessageError::ConversionError(
+            "Cohere reads an image by URL or as base64 data of a named type".to_owned(),
         )),
     }
 }

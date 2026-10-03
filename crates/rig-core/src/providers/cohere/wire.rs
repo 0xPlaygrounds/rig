@@ -185,6 +185,19 @@ impl crate::completion::ReplayTarget for Chat {
             ..crate::completion::Accepts::TEXT
         }
     }
+
+    /// Cohere reads an image by URL or as base64 data of a named type, and
+    /// no audio, video or document in a message.
+    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+        use crate::message::DocumentSourceKind;
+        matches!(
+            media,
+            crate::completion::Media::Image(image, _)
+                if matches!(image.data, DocumentSourceKind::Url(_))
+                    || (matches!(image.data, DocumentSourceKind::Base64(_))
+                        && image.media_type.is_some())
+        )
+    }
 }
 
 /// Default retrieval role for embeddings of stored document chunks.

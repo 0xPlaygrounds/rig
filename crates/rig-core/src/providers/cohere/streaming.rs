@@ -250,8 +250,9 @@ impl ChatDecoder {
                 merge_fields(&mut self.message, &fragment);
             }
             StreamingEvent::ToolCallStart { index, delta } => {
-                // A call ends the content before it, so content that follows
-                // the call is a later block.
+                // A call ends the plan and the content before it, so content
+                // that follows the call is a later block.
+                self.close_plan(out)?;
                 for content in self.content.open() {
                     self.close_content(content, out)?;
                 }
@@ -278,13 +279,15 @@ impl ChatDecoder {
     }
 
     /// Open content item `index` as `item` states it: text, thinking, or an
-    /// item kind rig does not model, which replays as it came.
+    /// item kind rig does not model, which replays as it came. It ends the
+    /// plan before it.
     fn open_content(
         &mut self,
         index: usize,
         item: serde_json::Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        self.close_plan(out)?;
         let block = match item.get("type").and_then(Value::as_str) {
             Some("text") => Block::Text,
             Some("thinking") => Block::Reasoning { redacted: false },
@@ -300,6 +303,19 @@ impl ChatDecoder {
         self.content
             .start(index, Value::Object(serde_json::Map::new()));
         self.content_fragment(index, item, out)
+    }
+
+    /// Close the tool plan's reasoning, holding its field.
+    fn close_plan(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        if let Some(index) = self.plan.take() {
+            let mut plan = serde_json::Map::new();
+            if let Some(text) = self.message.get("tool_plan") {
+                plan.insert("tool_plan".to_owned(), text.clone());
+            }
+            out.edit(index, |item| *item = Value::Object(plan))?;
+            out.finish(index)?;
+        }
+        Ok(())
     }
 
     /// The writer index content item `index` currently extends.
@@ -475,14 +491,7 @@ impl ChatDecoder {
         mut out: Out<'_, Completion>,
         streamed: bool,
     ) -> Result<Flow, ProviderError> {
-        if let Some(index) = self.plan.take() {
-            let mut plan = serde_json::Map::new();
-            if let Some(text) = self.message.get("tool_plan") {
-                plan.insert("tool_plan".to_owned(), text.clone());
-            }
-            out.edit(index, |item| *item = Value::Object(plan))?;
-            out.finish(index)?;
-        }
+        self.close_plan(&mut out)?;
         for index in self.tool_calls.open() {
             self.close_call(index, &mut out)?;
         }

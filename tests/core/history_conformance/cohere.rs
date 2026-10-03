@@ -110,7 +110,11 @@ impl HistoryFixture for CohereHistory {
     }
 
     fn model(&self) -> &'static str {
-        "command-a-reasoning-08-2025"
+        "command-a-vision-07-2025"
+    }
+
+    fn text_only_model(&self) -> Option<&'static str> {
+        Some("command-a-reasoning-08-2025")
     }
 
     fn other_model(&self) -> &'static str {
@@ -195,7 +199,12 @@ impl HistoryFixture for CohereHistory {
         Some(Ablation {
             document: json!({"id": "msg_1", "finish_reason": "TOOL_CALL", "message": message,
                 "usage": usage()}),
-            required: &["/finish_reason", "/message"],
+            required: &[
+                "/finish_reason",
+                "/message",
+                "/message/content/*/text",
+                "/message/content/*/thinking",
+            ],
             frames: |document| vec![event(document)],
         })
     }
