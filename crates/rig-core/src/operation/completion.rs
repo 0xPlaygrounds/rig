@@ -76,7 +76,10 @@ impl Operation for Completion {
             .replay
             .is_some_and(|target| target.binds_context(model))
         {
-            origin.context = Some(crate::completion::history::context_of(request));
+            origin.context = call
+                .wire
+                .replay
+                .map(|target| crate::completion::history::context_of(request, target, model));
         }
         Turn {
             span,
@@ -128,7 +131,11 @@ impl Operation for Completion {
             tools: stored
                 || target.declares_tools(&request)
                     && !matches!(request.tool_choice, Some(crate::message::ToolChoice::None)),
-            context: Some(crate::completion::history::context_of(&request)),
+            context: Some(crate::completion::history::context_of(
+                &request,
+                target,
+                request.model.as_deref().unwrap_or(target.model()),
+            )),
         };
         request.chat_history =
             crate::completion::history::adapt_for(&request.chat_history, target, &shape);

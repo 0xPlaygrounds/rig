@@ -1295,9 +1295,37 @@ fn a_blank_leading_system_message_leaves_the_context_unchanged() {
         ..crate::completion::CompletionRequest::new("q")
     };
     assert_eq!(
-        context_of(&request(vec![Message::user("q")])),
-        context_of(&request(vec![Message::system(" "), Message::user("q")]))
+        context_of(&request(vec![Message::user("q")]), &TARGET, "model-a"),
+        context_of(
+            &request(vec![Message::system(" "), Message::user("q")]),
+            &TARGET,
+            "model-a"
+        )
     );
+}
+
+#[test]
+fn the_context_is_the_same_before_and_after_adapt() {
+    let history = vec![
+        Message::system("be brief"),
+        Message::system(" "),
+        Message::user("q"),
+        turn(Some(same()), vec![AssistantContent::text("a")]),
+        Message::system("steer"),
+        Message::user("next"),
+    ];
+    let request = |history: Vec<Message>| crate::completion::CompletionRequest {
+        chat_history: history,
+        ..crate::completion::CompletionRequest::new("q")
+    };
+    let targets: [&dyn ReplayTarget; 2] = [&TARGET, &LeadingSystemOnly];
+    for target in targets {
+        assert_eq!(
+            context_of(&request(history.clone()), target, "model-a"),
+            context_of(&request(adapt(&history, target)), target, "model-a"),
+            "{target:?}"
+        );
+    }
 }
 
 #[derive(Debug)]

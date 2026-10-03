@@ -215,6 +215,16 @@ pub struct Native {
     pub fingerprint: Fingerprint,
 }
 
+/// A block's stored `native`, or `None` when it cannot be read, such as one
+/// fingerprinted by an earlier projection: the block then loads with its
+/// canonical fields and replays from them.
+pub(crate) fn lenient<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Native>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| Native::deserialize(value).ok()))
+}
+
 /// A provider item with no canonical meaning, such as a hosted-tool step or
 /// a compaction record. Only the API that produced it reads it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

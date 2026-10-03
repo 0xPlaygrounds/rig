@@ -1143,6 +1143,15 @@ impl crate::completion::ReplayTarget for Chat {
         self.provider.dialect.quirks.states_finish_reason
     }
 
+    fn mid_conversation_system(&self, _model: &str) -> bool {
+        self.provider.dialect.quirks.mid_conversation_system
+    }
+
+    /// In array mode a result's parts go as an array.
+    fn result_parts(&self, _model: &str) -> bool {
+        self.tool_result_array_content
+    }
+
     /// A Claude model whose thinking binds to the request's tools and
     /// system prompt binds it through OpenRouter too, which spells it
     /// `anthropic/claude-opus-5.5`.

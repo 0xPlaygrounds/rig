@@ -329,3 +329,49 @@ async fn an_empty_id_is_no_id() {
     assert_eq!(response.response_id(), None);
     assert_eq!(response.model(), None);
 }
+
+/// Text the model was still writing is part of what a stream delivered,
+/// although its part has not ended; a call that has not ended is not.
+#[test]
+fn delivered_content_keeps_a_text_part_still_open() {
+    let items = Transcript::parse_prefix(serde_json::json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 0, "text": "before call"}},
+        {"item": "event", "value": {"event": "start", "part": 1, "kind": "tool_call"}},
+        {"item": "event", "value": {"event": "arguments", "part": 1, "json": "{}"}},
+    ]))
+    .expect("a stream prefix in order")
+    .into_items();
+    assert_eq!(
+        delivered(&items),
+        vec![AssistantContent::text("before call")]
+    );
+}
+
+/// A part still open cuts what a stream delivered: what ended after it keeps
+/// no provider item, so a call never replays without the reasoning it
+/// follows.
+#[test]
+fn delivered_blocks_after_an_unfinished_part_keep_no_provider_item() {
+    let text = AssistantContent::text("hi").with_native(serde_json::json!({"id": "msg_1"}));
+    let stream = |reasoning: bool| {
+        let mut events = Vec::new();
+        if reasoning {
+            events.push(serde_json::json!(
+                {"item": "event", "value": {"event": "start", "part": 0, "kind": "reasoning"}}
+            ));
+        }
+        let part = events.len();
+        events.push(serde_json::json!(
+            {"item": "event", "value": {"event": "start", "part": part, "kind": "text"}}
+        ));
+        events.push(serde_json::json!(
+            {"item": "event", "value": {"event": "end", "part": part, "content": text}}
+        ));
+        Transcript::parse_prefix(serde_json::Value::Array(events))
+            .expect("a stream prefix in order")
+            .into_items()
+    };
+    assert_eq!(delivered(&stream(false)), vec![text.clone()]);
+    assert_eq!(delivered(&stream(true)), vec![AssistantContent::text("hi")]);
+}

@@ -173,8 +173,11 @@ fn a_result_is_a_string_or_its_parts() {
     let array = body_on(&wire().with_tool_result_array_content(), with_tool(history));
     assert_eq!(
         array["messages"][2]["content"],
-        json!([{"type": "text", "text": "first\n{\"status\":\"ok\"}"}]),
-        "the adapter joined the texts for a model that reads no multimodal result: {array}"
+        json!([
+            {"type": "text", "text": "first"},
+            {"type": "text", "text": "{\"status\":\"ok\"}"}
+        ]),
+        "array mode keeps each part (#2201): {array}"
     );
 
     let image = ToolResultContent::image_base64("iVBORw0KGgo=", Some(ImageMediaType::PNG), None);

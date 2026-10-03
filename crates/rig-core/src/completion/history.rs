@@ -245,6 +245,14 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         let _ = model;
         true
     }
+
+    /// Whether `model` reads a tool result as several parts. When it reads
+    /// neither parts nor result images, [`adapt`] joins a result's text
+    /// parts into one.
+    fn result_parts(&self, model: &str) -> bool {
+        let _ = model;
+        false
+    }
 }
 
 /// Which side of a hosted-tool pair an opaque item is.
@@ -375,23 +383,34 @@ impl Default for Request<'_> {
 }
 
 /// The fingerprint of `request`'s tool definitions, by name, and of its
-/// leading system messages: what a context-bound item was made under.
+/// system prompt as [`adapt`] sends it to `model` on `target`: what a
+/// context-bound item was made under. The prompt is the leading non-blank
+/// system messages, or every one when the target folds them into one, so
+/// the request before `adapt` and after it give the same fingerprint.
 pub(crate) fn context_of(
     request: &crate::completion::CompletionRequest,
+    target: &dyn ReplayTarget,
+    model: &str,
 ) -> crate::message::Fingerprint {
     let mut tools: Vec<_> = request.tools.iter().collect();
     tools.sort_by(|left, right| left.name.cmp(&right.name));
     let raw = raw_tools(request);
-    // The leading system messages as `adapt` sends them: blank ones go.
-    let system: Vec<&str> = request
+    let folds = !target.mid_conversation_system(model);
+    let mut system: Vec<&str> = request
         .chat_history
         .iter()
         .map_while(|message| match message {
-            Message::System { content } => Some(content.as_str()),
-            Message::User { .. } | Message::Assistant(_) => None,
+            Message::System { content } => Some(Some(content.as_str())),
+            Message::User { .. } | Message::Assistant(_) => folds.then_some(None),
         })
+        .flatten()
         .filter(|content| !content.trim().is_empty())
         .collect();
+    let joined;
+    if folds && system.len() > 1 {
+        joined = system.join("\n\n");
+        system = vec![joined.as_str()];
+    }
     let mut fields = vec![serde_json::json!("context"), serde_json::json!(tools)];
     fields.push(serde_json::json!(system));
     if !raw.is_empty() {
@@ -843,7 +862,8 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
                     result.call = id;
                 }
                 result.content = result_images(result.content, form, &mut attached);
-                result.content = result_text_parts(result.content, form.accepts, result.is_error);
+                let parts = form.accepts.tool_result_images || form.target.result_parts(form.model);
+                result.content = result_text_parts(result.content, parts, result.is_error);
                 if form.accepts.tools {
                     shaped.push(UserContent::ToolResult(result));
                 } else {
@@ -878,11 +898,11 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
 pub const NO_TOOL_OUTPUT: &str = "(no tool output)";
 
 /// `content` of a result that has nothing to say, said plainly, and joined
-/// into one text when the model reads no multimodal results: Gemini 2
-/// rejects a result of several parts (pi `google-shared.js`).
+/// into one text unless the model reads several `parts`: Gemini 2 rejects a
+/// result of several parts (pi `google-shared.js`).
 fn result_text_parts(
     content: Vec<ToolResultContent>,
-    accepts: Accepts,
+    parts: bool,
     is_error: bool,
 ) -> Vec<ToolResultContent> {
     let blank = content.iter().all(|part| match part {
@@ -901,7 +921,7 @@ fn result_text_parts(
         .iter()
         .filter(|part| !matches!(part, ToolResultContent::Image(_)))
         .count();
-    if accepts.tool_result_images || texts < 2 {
+    if parts || texts < 2 {
         return content;
     }
     let mut joined: Vec<String> = Vec::new();

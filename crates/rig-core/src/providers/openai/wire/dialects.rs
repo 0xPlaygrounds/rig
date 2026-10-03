@@ -256,6 +256,8 @@ pub const MISTRAL: Dialect = Dialect {
         // Mistral rejects `stream_options` and reports usage on its final
         // chunk regardless.
         stream_include_usage: false,
+        // Mistral reads one optional system message, before the conversation.
+        mid_conversation_system: false,
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",

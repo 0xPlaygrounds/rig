@@ -114,3 +114,22 @@ fn a_rig_issued_call_id_fingerprints_the_same_on_every_decode() {
     assert_ne!(first, second, "each decode issues its own id");
     assert_eq!(first.fingerprint(), second.fingerprint());
 }
+
+#[test]
+fn a_stored_item_that_cannot_be_read_loads_as_no_item() {
+    for fingerprint in [json!(1234), json!("not hex"), json!(null)] {
+        let block: AssistantContent = serde_json::from_value(json!({
+            "type": "text",
+            "text": "hi",
+            "native": {"item": {"id": "msg_1"}, "fingerprint": fingerprint}
+        }))
+        .expect("the block loads");
+        assert_eq!(block, AssistantContent::text("hi"), "{fingerprint}");
+    }
+    let current = AssistantContent::text("hi").with_native(json!({"id": "msg_1"}));
+    let stored = serde_json::to_value(&current).expect("serializes");
+    assert_eq!(
+        serde_json::from_value::<AssistantContent>(stored).expect("loads"),
+        current
+    );
+}

@@ -279,7 +279,11 @@ pub struct Reasoning {
     #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
     pub redacted: bool,
     /// The provider item this block was decoded from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "native::lenient"
+    )]
     pub native: Option<Native>,
 }
 
@@ -373,7 +377,11 @@ pub struct ToolCall {
     /// Function name and JSON arguments requested by the model.
     pub function: ToolFunction,
     /// The provider item this call was decoded from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "native::lenient"
+    )]
     pub native: Option<Native>,
 }
 
@@ -533,7 +541,11 @@ pub struct Text {
     /// Text content.
     pub text: String,
     /// The provider item this block was decoded from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "native::lenient"
+    )]
     pub native: Option<Native>,
 }
 
@@ -572,7 +584,11 @@ pub struct Image {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
     /// The provider item this image was decoded from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "native::lenient"
+    )]
     pub native: Option<Native>,
 }
 

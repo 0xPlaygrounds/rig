@@ -333,7 +333,7 @@ pub const TESTS: &[(&str, &str, &str)] = &[
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
-        "a_done_item_that_contradicts_its_deltas_is_not_kept",
+        "a_done_item_that_contradicts_its_deltas_states_the_block",
         "review: Responses block text and native disagree",
     ),
     (

@@ -1,5 +1,5 @@
 use super::*;
-use rig_core::streaming::{Item, PartKind, StreamEvent};
+use rig_core::streaming::{Item, StreamEvent};
 
 /// Return the successful item count before the first error, or the full length.
 /// The first error's item position equals the number of preceding successful items.
@@ -10,69 +10,6 @@ pub(super) fn validation_len(stream: &BusStreamed) -> usize {
         .map_or(stream.events.len(), |(position, _)| {
             (*position).min(stream.events.len())
         })
-}
-
-/// The assistant content `items` delivered, in start order: every part that
-/// ended, and the text still open where the stream stands (a text part the
-/// model was writing when the prefix was cut is part of it). Reasoning still
-/// open is not yet whole, so it is left out. As in the core's partial reply,
-/// parts from the first one that has not ended on keep no provider item, and
-/// the flag says whether that cut was made, so a block added after them
-/// drops its item too.
-pub(super) fn delivered_prefix(items: &[Item<StreamEvent>]) -> (Vec<AssistantContent>, bool) {
-    let mut parts: Vec<Option<AssistantContent>> = Vec::new();
-    let mut open_text: std::collections::BTreeMap<usize, String> = Default::default();
-    for item in items {
-        match item {
-            Item::Event(StreamEvent::Start { kind, .. }) => {
-                if *kind == PartKind::Text {
-                    open_text.insert(parts.len(), String::new());
-                }
-                parts.push(None);
-            }
-            Item::Event(StreamEvent::Text { part, text }) => {
-                if let Some(open) = open_text.get_mut(&part.index()) {
-                    open.push_str(text);
-                }
-            }
-            Item::Event(StreamEvent::End { part, content }) => {
-                open_text.remove(&part.index());
-                if let Some(slot) = parts.get_mut(part.index()) {
-                    *slot = Some(content.clone());
-                }
-            }
-            _ => {}
-        }
-    }
-    let first_open = parts.iter().position(Option::is_none);
-    let prefix = parts
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, part)| {
-            let part = part.or_else(|| {
-                open_text
-                    .remove(&index)
-                    .filter(|text| !text.is_empty())
-                    .map(AssistantContent::text)
-            })?;
-            Some(match first_open {
-                Some(first) if index >= first => canonical(part),
-                _ => part,
-            })
-        })
-        .collect();
-    (prefix, first_open.is_some())
-}
-
-/// `part` without its provider item, an opaque item no longer replaying.
-fn canonical(part: AssistantContent) -> AssistantContent {
-    match part {
-        AssistantContent::Opaque(opaque) => AssistantContent::Opaque(rig_core::message::Opaque {
-            replay: false,
-            ..opaque
-        }),
-        part => part.canonical(),
-    }
 }
 
 /// Publish invalid tool calls from real delivered prefixes, before EOF.
@@ -150,7 +87,10 @@ pub fn discover_streamed_invalid_calls(
             if pending.iter().any(|(_, pending, _)| pending.id == call.id) {
                 continue;
             }
-            let (mut prefix, cut) = delivered_prefix(items.get(..index).unwrap_or_default());
+            // The prefix up to and with this call, folded as the core folds a
+            // partial reply.
+            let mut prefix =
+                rig_core::streaming::delivered(items.get(..=index).unwrap_or_default());
             // Earlier repairs/ignores already took effect in the driver's
             // view, even while native execution waits for the final outcome.
             for (_, pending, resolution) in &pending {
@@ -171,12 +111,6 @@ pub fn discover_streamed_invalid_calls(
                     _ => {}
                 }
             }
-            let call_block = AssistantContent::ToolCall(call.clone());
-            prefix.push(if cut {
-                canonical(call_block)
-            } else {
-                call_block
-            });
             commands.spawn((
                 InvalidCall {
                     id: call.id.clone(),
@@ -192,6 +126,3 @@ pub fn discover_streamed_invalid_calls(
         }
     }
 }
-
-#[cfg(test)]
-mod tests;
