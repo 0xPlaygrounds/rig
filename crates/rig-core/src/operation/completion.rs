@@ -979,8 +979,8 @@ impl<'id> Out<'id, Completion> {
     /// does not replay. Empty text and reasoning are dropped, and so is a
     /// call with no name. A call's arguments are read by
     /// [`ToolFunction::parse`], so malformed ones never fail the reply; a
-    /// call that never got an id gets one rig issues, and a reused provider
-    /// call id is [`ProviderError::DuplicateCallId`].
+    /// call that never got an id, or reuses one an earlier call took, gets
+    /// one rig issues.
     pub fn close(&mut self, index: usize) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
