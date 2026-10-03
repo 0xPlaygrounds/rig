@@ -77,11 +77,41 @@ pub(crate) fn streamed(
     decode(&Converse::new(model), Mode::Streaming, frames)
 }
 
-/// The events of a whole reply holding `content`, as the decoder restates it.
+/// The events of a whole reply holding `content`, as Converse streams it.
 pub(crate) fn events(content: &[Value], stop_reason: &str) -> Vec<Value> {
     let mut events = vec![json!({ "messageStart": { "role": "assistant" } })];
     for (index, block) in content.iter().enumerate() {
-        events.extend(restated(index, block));
+        let (kind, body) = member(block).expect("a block");
+        let without = |field: &str| {
+            let mut body = body.clone();
+            body.as_object_mut().expect("an object").shift_remove(field);
+            json!({ kind: body })
+        };
+        match kind {
+            "text" => events.push(delta(index, block.clone())),
+            "citationsContent" => {
+                for part in body.arr("content") {
+                    events.push(delta(index, json!({ "text": part["text"] })));
+                }
+                for citation in body.arr("citations") {
+                    events.push(delta(index, json!({ "citation": citation })));
+                }
+            }
+            "reasoningContent" => {
+                let body = body.get("reasoningText").unwrap_or(body);
+                events.push(delta(index, json!({ "reasoningContent": body })));
+            }
+            "toolUse" => {
+                events.push(start(index, without("input")));
+                let input = body["input"].to_string();
+                events.push(delta(index, json!({ "toolUse": { "input": input } })));
+            }
+            "toolResult" => {
+                events.push(start(index, without("content")));
+                events.push(delta(index, json!({ "toolResult": body["content"] })));
+            }
+            _ => events.push(start(index, block.clone())),
+        }
         events.push(stop(index));
     }
     events.extend(ended(stop_reason));

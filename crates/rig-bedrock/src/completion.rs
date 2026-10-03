@@ -326,16 +326,11 @@ impl ReplayTarget for Converse {
 
     /// Converse tool-use ids match `[a-zA-Z0-9_-]{1,64}`.
     fn normalize_tool_call_id(&self, id: &str, _model: &str, _source: Option<&Origin>) -> String {
-        id.chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .take(64)
-            .collect()
+        let id = id.replace(
+            |c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-',
+            "_",
+        );
+        id.chars().take(64).collect()
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {
@@ -399,11 +394,8 @@ impl Transport<Converse> for BedrockRuntime {
                 while let Some(chunk) = capture::chunk(&mut body).await {
                     bytes.extend(chunk?);
                 }
-                let Ok(document) = serde_json::from_slice::<Value>(&bytes) else {
-                    return Ok(Opened::failed(ProviderError::Response(
-                        "Converse sent a reply that is not JSON".to_owned(),
-                    )));
-                };
+                let document: Value = serde_json::from_slice(&bytes)
+                    .map_err(|error| ProviderError::Json(error.into()))?;
                 let frames = futures::stream::iter([Ok(ConverseFrame::Whole(document.clone()))]);
                 return Ok(Opened::new(frames)
                     .with_request_id(request_id)

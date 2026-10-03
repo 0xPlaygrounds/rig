@@ -64,9 +64,10 @@ impl StreamState {
             .u64("contentBlockIndex")
             .and_then(|index| usize::try_from(index).ok())
             .unwrap_or(0);
+        let part = |key| payload.get(key).unwrap_or(&Value::Null);
         match kind {
-            "contentBlockStart" => self.start(out, index, payload.get("start"))?,
-            "contentBlockDelta" => self.delta(out, index, payload.get("delta"))?,
+            "contentBlockStart" => self.start(out, index, part("start"))?,
+            "contentBlockDelta" => self.delta(out, index, part("delta"))?,
             "contentBlockStop" => self.stop(out, index, None)?,
             "messageStop" => self.reason = payload.str("stopReason").map(str::to_owned),
             // The writer closes every block still open as incomplete.
@@ -90,12 +91,11 @@ impl StreamState {
         &mut self,
         out: &mut Out<'_, Completion>,
         index: usize,
-        start: Option<&Value>,
+        start: &Value,
     ) -> Result<(), ProviderError> {
-        let Some((kind, body)) = start.and_then(member) else {
+        let Some((kind, body)) = member(start) else {
             return Ok(());
         };
-        let item = json!({ kind: body });
         let open = match kind {
             // A call that never names its tool is dropped at its end, since
             // nothing can answer it.
@@ -106,7 +106,7 @@ impl StreamState {
                     arguments: None,
                 };
                 out.fragment(Some(index), fragment)?;
-                out.edit(index, |slot| *slot = item)?;
+                out.edit(index, |slot| start.clone_into(slot))?;
                 Open::Call
             }
             "image" if let Some(media_type) = media_type(body.str("format")) => {
@@ -122,7 +122,7 @@ impl StreamState {
             // not replay.
             kind => {
                 let replay = kind != "image";
-                out.open(index, Block::Opaque { replay }, item)?;
+                out.open(index, Block::Opaque { replay }, start.clone())?;
                 if kind == "toolUse" {
                     Open::Hosted
                 } else {
@@ -135,33 +135,26 @@ impl StreamState {
     }
 
     /// One delta: its text, reasoning or arguments go out as they arrive,
-    /// and it merges into the block's Converse JSON.
+    /// and it merges into the block's JSON.
     fn delta(
         &mut self,
         out: &mut Out<'_, Completion>,
         index: usize,
-        delta: Option<&Value>,
+        delta: &Value,
     ) -> Result<(), ProviderError> {
-        let Some((kind, body)) = delta.and_then(member) else {
+        let Some((kind, body)) = member(delta) else {
             return Ok(());
         };
         let redacted = body.get("redactedContent");
         if !self.open.contains_key(&index) {
-            let (block, item, open) = match kind {
-                "text" | "citation" => (
-                    Block::Text,
-                    json!({ "citationsContent": { "content": [{ "text": "" }], "citations": [] } }),
-                    Open::Text,
-                ),
-                "reasoningContent" => (
-                    Block::Reasoning {
-                        redacted: redacted.is_some(),
-                    },
-                    json!({ "reasoningContent": { "reasoningText": { "text": "" } } }),
-                    Open::Reasoning,
-                ),
+            let (block, open) = match kind {
+                "text" | "citation" => (Block::Text, Open::Text),
+                "reasoningContent" => {
+                    let redacted = redacted.is_some();
+                    (Block::Reasoning { redacted }, Open::Reasoning)
+                }
                 "toolUse" => {
-                    self.start(out, index, Some(&json!({ "toolUse": {} })))?;
+                    self.start(out, index, &json!({ "toolUse": {} }))?;
                     return self.delta(out, index, delta);
                 }
                 kind => {
@@ -169,50 +162,51 @@ impl StreamState {
                     return Ok(());
                 }
             };
-            out.open(index, block, item)?;
+            out.open(index, block, Value::Null)?;
             self.open.insert(index, open);
-        }
-        let text = body.as_str().or_else(|| body.str("text"));
-        match (kind, self.open.get(&index), text) {
-            ("text", Some(Open::Text), Some(text))
-            | ("reasoningContent", Some(Open::Reasoning), Some(text)) => out.push(index, text)?,
-            ("toolUse", Some(Open::Call), _) => {
-                let arguments = body.str("input");
-                let fragment = CallFragment {
-                    id: None,
-                    name: None,
-                    arguments,
-                };
-                out.fragment(Some(index), fragment)?;
-            }
-            ("image", Some(Open::Image), _) => {
-                if let Some(data) = body.at("/source/bytes").and_then(Value::as_str) {
-                    out.push(index, data)?;
-                }
-            }
-            _ => {}
         }
         // Redacted bytes are kept as their chunks and encoded once whole:
         // base64 of each chunk would not concatenate.
-        let (pointer, delta) = match kind {
-            "text" => ("/citationsContent/content/0", json!({ "text": body })),
-            "citation" => ("/citationsContent", json!({ "citations": [body] })),
-            "reasoningContent" if redacted.is_some() => (
-                "/reasoningContent",
-                json!({ "redactedContent": [redacted] }),
-            ),
-            "reasoningContent" => ("/reasoningContent/reasoningText", body.clone()),
-            "toolUse" => ("/toolUse", body.clone()),
-            "toolResult" => ("/toolResult", json!({ "content": body })),
-            "image" => return Ok(()),
-            kind => {
+        let open = self.open.get(&index);
+        if let (Some(text), Some(Open::Text | Open::Reasoning)) =
+            (body.as_str().or_else(|| body.str("text")), open)
+        {
+            out.push(index, text)?;
+        }
+        let (pointer, merged) = match (kind, open) {
+            ("text", Some(Open::Text)) => ("", json!({ "text": body })),
+            ("citation", Some(Open::Text)) => ("", json!({ "citations": [body] })),
+            ("reasoningContent", Some(Open::Reasoning)) => match redacted {
+                Some(chunk) => ("", json!({ "redactedContent": [chunk] })),
+                None => ("", body.clone()),
+            },
+            ("toolUse", Some(open @ (Open::Call | Open::Hosted))) => {
+                if matches!(open, Open::Call) {
+                    let arguments = body.str("input");
+                    let fragment = CallFragment {
+                        id: None,
+                        name: None,
+                        arguments,
+                    };
+                    out.fragment(Some(index), fragment)?;
+                }
+                ("/toolUse", body.clone())
+            }
+            ("toolResult", Some(Open::Opaque)) => ("/toolResult", json!({ "content": body })),
+            ("image", Some(Open::Image)) => {
+                if let Some(data) = body.at("/source/bytes").and_then(Value::as_str) {
+                    out.push(index, data)?;
+                }
+                return Ok(());
+            }
+            (kind, _) => {
                 skip(kind);
                 return Ok(());
             }
         };
         out.edit(index, |item| {
-            if let (Some(at), Value::Object(delta)) = (item.pointer_mut(pointer), &delta) {
-                merge(at, delta);
+            if let (Some(at), Value::Object(merged)) = (item.pointer_mut(pointer), &merged) {
+                merge(at, merged);
             }
         })
     }
@@ -228,33 +222,34 @@ impl StreamState {
         let Some(open) = self.open.remove(&index) else {
             return Ok(());
         };
+        let call = matches!(open, Open::Call | Open::Hosted);
         out.edit(index, |item| {
-            let kept = match open {
-                Open::Text => item
-                    .at("/citationsContent/citations")
-                    .and_then(Value::as_array)
-                    .is_some_and(|citations| !citations.is_empty()),
+            let built = match open {
+                Open::Text => (!item.arr("citations").is_empty()).then(|| {
+                    let content = [json!({ "text": item.get("text") })];
+                    json!({ "citationsContent": { "content": content, "citations": item.get("citations") } })
+                }),
                 // Unsigned reasoning keeps no item: it is rebuilt from its
                 // text, as text for a family that rejects unsigned reasoning.
-                Open::Reasoning => {
-                    if let Some(Value::Object(reasoning)) = item.get_mut("reasoningContent")
-                        && let Some(Value::Array(chunks)) = reasoning.get("redactedContent")
-                    {
+                Open::Reasoning => match (item.get("redactedContent"), item.str("signature")) {
+                    (Some(chunks), _) => {
                         let bytes: Vec<u8> = chunks
-                            .iter()
+                            .as_array()
+                            .into_iter()
+                            .flatten()
                             .filter_map(|chunk| BASE64_STANDARD.decode(chunk.as_str()?).ok())
                             .flatten()
                             .collect();
-                        reasoning.clear();
-                        reasoning.insert(
-                            "redactedContent".to_owned(),
-                            json!(BASE64_STANDARD.encode(bytes)),
-                        );
+                        let redacted = BASE64_STANDARD.encode(bytes);
+                        Some(json!({ "reasoningContent": { "redactedContent": redacted } }))
                     }
-                    item.at("/reasoningContent/reasoningText/signature")
-                        .is_some_and(Value::is_string)
-                        || item.at("/reasoningContent/redactedContent").is_some()
-                }
+                    (None, Some(signature)) => {
+                        let text = item.str("text").unwrap_or_default();
+                        let reasoning = json!({ "text": text, "signature": signature });
+                        Some(json!({ "reasoningContent": { "reasoningText": reasoning } }))
+                    }
+                    (None, None) => None,
+                },
                 // Converse takes a JSON object as a tool's input; a call's
                 // input is the one its arguments were read from.
                 Open::Call | Open::Hosted => {
@@ -267,24 +262,19 @@ impl StreamState {
                         .ok()
                         .filter(Value::is_object)
                         .or_else(|| matches!(open, Open::Hosted).then(|| json!({})));
-                    let kept = input.is_some();
-                    if let (Some(Value::Object(call)), Some(input)) =
-                        (item.get_mut("toolUse"), input)
-                    {
-                        call.insert("input".to_owned(), input);
-                    }
-                    kept
+                    input.and_then(|input| {
+                        let mut call = item.get("toolUse")?.clone();
+                        merge(&mut call, &Map::from_iter([("input".to_owned(), input)]));
+                        Some(json!({ "toolUse": call }))
+                    })
                 }
-                Open::Image => false,
-                Open::Opaque => true,
+                Open::Image => None,
+                Open::Opaque => Some(item.clone()),
             };
-            match (kept, whole) {
-                (false, _) => *item = Value::Null,
-                (true, Some(whole)) if !matches!(open, Open::Call | Open::Hosted) => {
-                    whole.clone_into(item);
-                }
-                (true, _) => {}
-            }
+            *item = match (built, whole) {
+                (Some(_), Some(whole)) if !call => whole.clone(),
+                (built, _) => built.unwrap_or_default(),
+            };
         })?;
         out.finish(index)
     }
@@ -299,57 +289,63 @@ impl StreamState {
             .at("/output/message")
             .map_or(&[][..], |message| message.arr("content"));
         for (index, block) in content.iter().enumerate() {
-            for event in restated(index, block) {
-                self.event(&event, &mut out)?;
+            let Some((kind, body)) = member(block) else {
+                continue;
+            };
+            // A started block's streamed field arrives as its delta.
+            let (started, deltas) = match kind {
+                "text" => (None, vec![json!({ "text": body })]),
+                "citationsContent" => {
+                    let text = body
+                        .arr("content")
+                        .iter()
+                        .map(|part| json!({ "text": part.get("text") }));
+                    let cited = body
+                        .arr("citations")
+                        .iter()
+                        .map(|citation| json!({ "citation": citation }));
+                    (None, text.chain(cited).collect())
+                }
+                "reasoningContent" => {
+                    let reasoning = body.get("reasoningText").unwrap_or(body);
+                    (None, vec![json!({ "reasoningContent": reasoning })])
+                }
+                "toolUse" => {
+                    let input = body.get("input").map(Value::to_string);
+                    (
+                        Some("input"),
+                        vec![json!({ "toolUse": { "input": input } })],
+                    )
+                }
+                "toolResult" => (
+                    Some("content"),
+                    vec![json!({ "toolResult": body.get("content") })],
+                ),
+                "image" => (
+                    Some("source"),
+                    vec![json!({ "image": { "source": body.get("source") } })],
+                ),
+                _ => (Some(""), Vec::new()),
+            };
+            if let Some(field) = started {
+                let mut opened = body.clone();
+                if let Value::Object(fields) = &mut opened {
+                    fields.shift_remove(field);
+                }
+                self.start(&mut out, index, &json!({ kind: opened }))?;
+            }
+            for delta in &deltas {
+                self.delta(&mut out, index, delta)?;
             }
             self.stop(&mut out, index, Some(block))?;
         }
         self.reason = document.str("stopReason").map(str::to_owned);
         let end = json!({ "metadata": { "usage": document.get("usage") } });
-        match self.event(&end, &mut out)? {
-            Some(end) => Ok(out.end(end)),
-            None => Ok(Flow::More),
-        }
+        Ok(match self.event(&end, &mut out)? {
+            Some(end) => out.end(end),
+            None => Flow::More,
+        })
     }
-}
-
-/// The stream events of the whole block at `index`, its stop aside.
-fn restated(index: usize, block: &Value) -> Vec<Value> {
-    let delta = |delta: Value| json!({ "contentBlockDelta": { "contentBlockIndex": index, "delta": delta } });
-    let start = |start: Value| json!({ "contentBlockStart": { "contentBlockIndex": index, "start": start } });
-    let Some((kind, body)) = member(block) else {
-        return Vec::new();
-    };
-    // A started block's streamed field arrives as its delta.
-    let (field, streamed) = match kind {
-        "text" => return vec![delta(json!({ "text": body }))],
-        "citationsContent" => {
-            let content = body.arr("content").iter();
-            let text = content.map(|part| delta(json!({ "text": part.get("text") })));
-            let citations = body.arr("citations").iter();
-            let citations = citations.map(|citation| delta(json!({ "citation": citation })));
-            return text.chain(citations).collect();
-        }
-        "reasoningContent" => {
-            let body = body.get("reasoningText").unwrap_or(body);
-            return vec![delta(json!({ "reasoningContent": body }))];
-        }
-        "toolUse" => {
-            let input = body.get("input").map(Value::to_string);
-            ("input", json!({ "toolUse": { "input": input } }))
-        }
-        "toolResult" => ("content", json!({ "toolResult": body.get("content") })),
-        "image" => (
-            "source",
-            json!({ "image": { "source": body.get("source") } }),
-        ),
-        _ => return vec![start(block.clone())],
-    };
-    let mut opened = body.clone();
-    if let Value::Object(fields) = &mut opened {
-        fields.shift_remove(field);
-    }
-    vec![start(json!({ kind: opened })), delta(streamed)]
 }
 
 /// The image type a Converse image `format` names.

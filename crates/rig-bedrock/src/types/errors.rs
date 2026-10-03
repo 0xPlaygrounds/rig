@@ -36,10 +36,8 @@ pub(crate) fn sdk_error<E: ProvideErrorMetadata>(
 /// Converts an exception Bedrock sent mid-stream, `{"<type>": <payload>}`
 /// as its event-stream message states it. The type names the code.
 pub(crate) fn exception(kind: &str, payload: &serde_json::Value) -> ProviderError {
-    let mut code = kind.to_owned();
-    if let Some(first) = code.get_mut(..1) {
-        first.make_ascii_uppercase();
-    }
+    let (first, rest) = kind.split_at_checked(1).unwrap_or_default();
+    let code = first.to_ascii_uppercase() + rest;
     let message = payload.str("message").or_else(|| payload.str("Message"));
     reply(
         message.map(str::to_owned),
