@@ -283,7 +283,7 @@ pub const TESTS: &[(&str, &str, &str)] = &[
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
-        "thinking_made_under_other_tools_replays_as_another_models",
+        "a_binding_model_replays_its_thinking_and_asks_for_drop_block",
         "#2703 (Opus 5.5 thinking bound to its tools)",
     ),
     (
