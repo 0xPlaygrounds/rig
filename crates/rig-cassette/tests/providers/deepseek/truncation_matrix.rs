@@ -371,6 +371,7 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
 }
 
 #[tokio::test]
+#[ignore = "deepseek-v4-flash now writes text first and spends the 16-token budget before any call, even for the original request bytes (3 live attempts, 2026-10-03)"]
 async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length";

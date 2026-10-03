@@ -802,9 +802,6 @@ fn chat_projection(provider: &str, message: &Value) -> Value {
     if provider == "deepseek" {
         out.entry("reasoning_content").or_insert_with(|| "".into());
     }
-    if provider == "deepseek" || provider == "mistral" {
-        out.entry("content").or_insert_with(|| "".into());
-    }
     Value::Object(out)
 }
 

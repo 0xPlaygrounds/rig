@@ -115,18 +115,107 @@
         "stream": false
       },
       "outcome": {
-        "Err": {
-          "kind": "provider_response",
-          "retryable": false,
-          "message": "ProviderResponseError: status 404 Not Found: {\"message\":\"Request did not match any route or mock\",\"actual_method\":\"POST\",\"actual_path\":\"/chat/completions\",\"actual_query\":null,\"actual_query_params\":[],\"required_headers\":[],\"missing_required_headers\":[],\"actual_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"You are an AI assistant whose purpose is to extract structured data from the provided text.\\\\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\\\\nUse the `submit` function to submit the structured data.\\\\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\\\\n                \\\",\\\"type\\\":\\\"text\\\"}],\\\"role\\\":\\\"system\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"I'm looking at a property that migh...\",\"candidates\":[{\"index\":0,\"consumed\":false,\"method_matches\":true,\"path_matches\":true,\"query_matches\":true,\"expected_query_params\":[],\"headers_match\":true,\"required_headers_match\":true,\"body_matches\":false,\"expected_method\":\"POST\",\"expected_path\":\"/chat/completions\",\"expected_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are an AI assistant whose purpose is to extract structured data from the provided text.\\\\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\\\\nUse the `submit` function to submit the structured data.\\\\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\\\\n                \\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"I'm looking at a property that might be interesting.\\\\nThe address is ...\"}]}",
-          "code": null,
-          "http_status": 404,
-          "refusal": false,
-          "source_chain": [],
-          "provider_response": {
-            "status": 404,
-            "body": "{\"message\":\"Request did not match any route or mock\",\"actual_method\":\"POST\",\"actual_path\":\"/chat/completions\",\"actual_query\":null,\"actual_query_params\":[],\"required_headers\":[],\"missing_required_headers\":[],\"actual_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"You are an AI assistant whose purpose is to extract structured data from the provided text.\\\\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\\\\nUse the `submit` function to submit the structured data.\\\\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\\\\n                \\\",\\\"type\\\":\\\"text\\\"}],\\\"role\\\":\\\"system\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"I'm looking at a property that migh...\",\"candidates\":[{\"index\":0,\"consumed\":false,\"method_matches\":true,\"path_matches\":true,\"query_matches\":true,\"expected_query_params\":[],\"headers_match\":true,\"required_headers_match\":true,\"body_matches\":false,\"expected_method\":\"POST\",\"expected_path\":\"/chat/completions\",\"expected_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are an AI assistant whose purpose is to extract structured data from the provided text.\\\\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\\\\nUse the `submit` function to submit the structured data.\\\\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\\\\n                \\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"I'm looking at a property that might be interesting.\\\\nThe address is ...\"}]}",
-            "provider_request_id": null
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "text": "Simple extraction task. Street: 123 Main St, City: Springfield, State: IL, Zip: 62701.",
+              "native": {
+                "item": {
+                  "reasoning_content": "Simple extraction task. Street: 123 Main St, City: Springfield, State: IL, Zip: 62701."
+                },
+                "fingerprint": "7c3a4ad1f801158f"
+              }
+            },
+            {
+              "type": "text",
+              "text": "I'll extract the address components from the text."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_jsr9C4RE3UcBY0JM74Yy6482"
+              },
+              "function": {
+                "name": "submit",
+                "arguments": {
+                  "street": "123 Main St",
+                  "city": "Springfield",
+                  "state": "IL",
+                  "zip_code": "62701"
+                }
+              },
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_00_jsr9C4RE3UcBY0JM74Yy6482",
+                  "type": "function"
+                },
+                "fingerprint": "bab5b31e603527cb"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 458,
+            "output_tokens": 124,
+            "total_tokens": 582,
+            "cached_input_tokens": 256,
+            "reasoning_tokens": 25
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "33321644-709c-426a-b70f-5dd2d0216d0b"
+          },
+          "finish_reason": "tool_calls",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "I'll extract the address components from the text.",
+                  "reasoning_content": "Simple extraction task. Street: 123 Main St, City: Springfield, State: IL, Zip: 62701.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_00_jsr9C4RE3UcBY0JM74Yy6482",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "33321644-709c-426a-b70f-5dd2d0216d0b",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 124,
+              "completion_tokens_details": {
+                "reasoning_tokens": 25
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 202,
+              "prompt_tokens": 458,
+              "prompt_tokens_details": {
+                "cached_tokens": 256
+              },
+              "total_tokens": 582
+            }
           }
         }
       },
