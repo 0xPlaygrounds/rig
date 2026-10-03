@@ -331,7 +331,7 @@ fn a_step_the_stream_never_stopped_keeps_no_provider_item() {
 fn a_resumed_turn_replays_to_its_model_as_the_same_model() {
     let thought = json!({"type": "thought", "signature": "c2lnX3Jlc3VtZQ=="});
     let output = text_step("done");
-    let resume = config().interaction("int_1");
+    let resume = super::InteractionResume::new(config(), "int_1");
     let streamed = [
         event(json!({"event_type": "interaction.created",
             "interaction": {"id": "int_1", "model": MODEL, "status": "in_progress"}})),

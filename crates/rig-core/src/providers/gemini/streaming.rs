@@ -13,7 +13,7 @@
 use serde_json::{Map, Value};
 
 use super::completion::blocked_prompt_error;
-use super::completion::gemini_api_types::{map_google_finish_reason, usage_of};
+use super::completion::{map_google_finish_reason, usage_of};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, DocumentSourceKind, Image, MediaType, MimeType, ToolName};
@@ -118,13 +118,15 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         }
         // The candidates, their content and its parts hold every block and
         // the finish, so a wrongly typed one fails the reply.
-        let candidate = match data.get("candidates") {
-            None | Some(Value::Null) => return Ok(Flow::More),
-            Some(Value::Array(candidates)) => match candidates.first() {
-                None => return Ok(Flow::More),
-                Some(candidate @ Value::Object(_)) => candidate,
-                Some(_) => return Err(malformed("a candidate that is not an object")),
-            },
+        let candidate = match data
+            .get("candidates")
+            .map(|candidates| (candidates, candidates.get(0)))
+        {
+            None | Some((Value::Null, _) | (Value::Array(_), None)) => return Ok(Flow::More),
+            Some((Value::Array(_), Some(candidate @ Value::Object(_)))) => candidate,
+            Some((Value::Array(_), Some(_))) => {
+                return Err(malformed("a candidate that is not an object"));
+            }
             Some(_) => return Err(malformed("candidates that are not a list")),
         };
         // Last one wins: an intermediate `finishReason` is superseded by the
@@ -153,20 +155,12 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             Some(_) => return Err(malformed("candidate parts that are not a list")),
         }
         // A failure is final: nothing after it is read.
-        let failed = self
-            .finish
-            .as_deref()
-            .map(map_google_finish_reason)
-            .is_some_and(|reason| {
-                !matches!(
-                    reason,
-                    crate::completion::FinishReason::Stop | crate::completion::FinishReason::Length
-                )
-            });
-        if failed && candidate.get("finishReason").is_some() {
-            return self.end(out);
+        use crate::completion::FinishReason::{Length, Stop};
+        let reason = self.finish.as_deref().map(map_google_finish_reason);
+        match (reason, candidate.get("finishReason")) {
+            (None | Some(Stop | Length), _) | (_, None) => Ok(Flow::More),
+            _ => self.end(out),
         }
-        Ok(Flow::More)
     }
 
     /// Gemini ends a reply at EOF, not at its first finish reason: a
@@ -187,29 +181,18 @@ impl GenerateContentDecoder {
         let usage = self.usage.as_ref().map(usage_of).unwrap_or_default();
         let model = self.model_version.take();
         let response_id = self.response_id.take();
-        let raw = self.raw.take().unwrap_or_else(|| {
-            let mut raw = Map::from_iter([
-                (
-                    "usage_metadata".to_owned(),
-                    self.usage
-                        .take()
-                        .unwrap_or_else(|| Value::Object(Map::new())),
-                ),
-                ("finish_reason".to_owned(), Value::String(reason.clone())),
-            ]);
-            let optional = [
-                ("finish_message", self.finish_message.take()),
-                ("model_version", model.clone()),
-                ("response_id", response_id.clone()),
-            ];
-            for (key, value) in optional {
-                if let Some(value) = value {
-                    raw.insert(key.to_owned(), Value::String(value));
-                }
-            }
-            Value::Object(raw)
+        let summary = serde_json::json!({
+            "usage_metadata": self.usage.take().unwrap_or_else(|| Value::Object(Map::new())),
+            "finish_reason": reason,
+            "finish_message": self.finish_message.take(),
+            "model_version": model,
+            "response_id": response_id,
         });
-        out.raw(raw);
+        let Value::Object(mut summary) = summary else {
+            return Err(malformed("a reply"));
+        };
+        summary.retain(|_, value| !value.is_null());
+        out.raw(self.raw.take().unwrap_or(Value::Object(summary)));
         Ok(out.end(Finish {
             usage,
             reason: Some(map_google_finish_reason(&reason)),
@@ -221,10 +204,9 @@ impl GenerateContentDecoder {
 
     /// Finish the open text or thought run: Gemini states each part whole.
     fn close(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        match self.open.take() {
-            Some((index, _)) => out.finish(index),
-            None => Ok(()),
-        }
+        self.open
+            .take()
+            .map_or(Ok(()), |(index, _)| out.finish(index))
     }
 
     /// Write a block at a fresh index, closing the run before it. A text or
@@ -246,11 +228,8 @@ impl GenerateContentDecoder {
         };
         out.open(index, block, item)?;
         out.push(index, text)?;
-        match run {
-            Some(thought) => self.open = Some((index, thought)),
-            None => out.finish(index)?,
-        }
-        Ok(())
+        self.open = run.map(|thought| (index, thought));
+        self.open.map_or_else(|| out.finish(index), |_| Ok(()))
     }
 
     /// Write one part of the candidate's content. A part this decoder does
@@ -275,13 +254,13 @@ impl GenerateContentDecoder {
                     out.push(index, text)?;
                     out.edit(index, |item| merge_part(item, &part))
                 }
-                _ => {
-                    let block = match thought {
-                        true => Block::Reasoning { redacted: false },
-                        false => Block::Text,
-                    };
-                    self.open(block, part.clone(), text, out)
-                }
+                _ if thought => self.open(
+                    Block::Reasoning { redacted: false },
+                    part.clone(),
+                    text,
+                    out,
+                ),
+                _ => self.open(Block::Text, part.clone(), text, out),
             };
         }
         if let Some(call) = part.obj("functionCall") {
@@ -294,15 +273,9 @@ impl GenerateContentDecoder {
             // Proto3 JSON leaves out an empty `args` Struct.
             let args = call
                 .get("args")
-                .cloned()
-                .unwrap_or_else(|| Value::Object(Map::new()));
+                .map_or_else(|| "{}".to_owned(), Value::to_string);
             let id = CallId::from_wire(call.get("id").and_then(Value::as_str).unwrap_or_default());
-            return self.open(
-                Block::Call { id, name },
-                part.clone(),
-                &args.to_string(),
-                out,
-            );
+            return self.open(Block::Call { id, name }, part.clone(), &args, out);
         }
         if !thought
             && let (Some(mime_type), Some(data)) =
@@ -318,12 +291,8 @@ impl GenerateContentDecoder {
             };
             return self.open(Block::Image(image), part.clone(), "", out);
         }
-        let data = fields.keys().any(|key| {
-            !matches!(
-                key.as_str(),
-                "thought" | "thoughtSignature" | "partMetadata"
-            )
-        });
+        let bare = ["thought", "thoughtSignature", "partMetadata"];
+        let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
         if !data && let (Some(signature), Some((index, _))) = (signature, self.open) {
             return out.edit(index, |item| {
                 if let Some(item) = item.as_object_mut() {
@@ -357,26 +326,25 @@ impl GenerateContentDecoder {
             return;
         };
         if let Some(usage) = reply.get("usageMetadata").filter(|usage| usage.is_object()) {
-            sink.emit(AdapterEvent::Usage {
-                usage: AdapterUsage {
-                    input_tokens: usage.u64("promptTokenCount"),
-                    output_tokens: usage.u64("candidatesTokenCount"),
-                    total_tokens: usage.u64("totalTokenCount"),
-                    cached_input_tokens: usage.u64("cachedContentTokenCount"),
-                    reasoning_tokens: usage.u64("thoughtsTokenCount"),
-                    tool_input_tokens: usage.u64("toolUsePromptTokenCount"),
-                },
-            });
+            let count = |key: &str| usage.u64(key);
+            let usage = AdapterUsage {
+                input_tokens: count("promptTokenCount"),
+                output_tokens: count("candidatesTokenCount"),
+                total_tokens: count("totalTokenCount"),
+                cached_input_tokens: count("cachedContentTokenCount"),
+                reasoning_tokens: count("thoughtsTokenCount"),
+                tool_input_tokens: count("toolUsePromptTokenCount"),
+            };
+            sink.emit(AdapterEvent::Usage { usage });
         }
         let candidate = reply.arr("candidates").first().unwrap_or(&Value::Null);
         let scrub = |value: Option<&str>| value.map(|value| sink.scrub(value));
+        let block = reply
+            .at("/promptFeedback/blockReason")
+            .and_then(Value::as_str);
         let verdict = AdapterVerdict {
             finish_reason: scrub(candidate.str("finishReason")),
-            block_reason: scrub(
-                reply
-                    .at("/promptFeedback/blockReason")
-                    .and_then(Value::as_str),
-            ),
+            block_reason: scrub(block),
             detail: scrub(candidate.str("finishMessage")),
             model: scrub(reply.str("modelVersion")),
         };

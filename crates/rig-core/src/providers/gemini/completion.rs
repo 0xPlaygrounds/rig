@@ -41,6 +41,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use serde_json::{Map, Value, json};
 
+pub use super::cached_content::with_cached_content;
 use crate::completion::{Accepts, CompletionRequest, Media, Place, Replay, ReplayTarget};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
@@ -357,7 +358,9 @@ pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
 /// contents. `additional_params` is merged into the body: its `tools` add
 /// to the request's, its `generationConfig` is the base the typed fields
 /// override, and a `cachedContent` handle is checked as
-/// [`GenerateContent::with_cached_content`] checks one.
+/// [`GenerateContent::with_cached_content`] checks one. The fields Gemini's
+/// request shape leaves unset are sent as `null`, as recorded requests
+/// spell them.
 ///
 /// # Errors
 ///
@@ -368,22 +371,12 @@ pub fn request_body(
     target: &dyn ReplayTarget,
     model: &str,
 ) -> Result<Map<String, Value>, EncodeError> {
-    let CompletionRequest {
-        chat_history,
-        tools,
-        temperature,
-        max_tokens,
-        tool_choice,
-        additional_params,
-        output_schema,
-        ..
-    } = request;
-    let mut params = match additional_params {
+    let mut params = match request.additional_params {
         None | Some(Value::Null) => Map::new(),
         Some(Value::Object(params)) => params,
         Some(other) => return Err(invalid("additional_params", "an object", &other)),
     };
-    let mut extra_tools = match params.shift_remove("tools") {
+    let extra_tools = match params.shift_remove("tools") {
         None => Vec::new(),
         Some(Value::Array(tools)) => tools,
         Some(other) => return Err(invalid("additional_params.tools", "a list", &other)),
@@ -407,95 +400,68 @@ pub fn request_body(
         Some(Value::Object(config)) => Some(config),
         Some(other) => return Err(invalid("generationConfig", "an object", &other)),
     };
-    if let Some(schema) = output_schema {
-        let config = config.get_or_insert_default();
-        config.insert("responseMimeType".into(), json!("application/json"));
-        config.insert("responseJsonSchema".into(), schema.to_value());
+    let schema = request.output_schema.map(|schema| schema.to_value());
+    let mime = schema.as_ref().map(|_| json!("application/json"));
+    let (temperature, max_tokens) = (
+        request.temperature.map(Value::from),
+        request.max_tokens.map(Value::from),
+    );
+    let typed = [
+        ("responseMimeType", mime),
+        ("responseJsonSchema", schema),
+        ("temperature", temperature),
+    ];
+    for (key, value) in typed.into_iter().chain([("maxOutputTokens", max_tokens)]) {
+        if let Some(value) = value {
+            config.get_or_insert_default().insert(key.to_owned(), value);
+        }
     }
-    if let Some(temperature) = temperature {
-        config
-            .get_or_insert_default()
-            .insert("temperature".into(), json!(temperature));
+    let (mut system, mut history) = (Vec::new(), Vec::new());
+    for message in request.chat_history {
+        match message {
+            Message::System { content } if content.is_empty() => {}
+            Message::System { content } => system.push(text_part(content)),
+            message => history.push(message),
+        }
     }
-    if let Some(max_tokens) = max_tokens {
-        config
-            .get_or_insert_default()
-            .insert("maxOutputTokens".into(), json!(max_tokens));
-    }
-    let (system, history): (Vec<Message>, Vec<Message>) = chat_history
-        .into_iter()
-        .partition(|message| matches!(message, Message::System { .. }));
-    let system: Vec<Value> = system
-        .into_iter()
-        .filter_map(|message| match message {
-            Message::System { content } if !content.is_empty() => Some(text_part(content)),
-            _ => None,
-        })
-        .collect();
     // Gemini rejects a field set twice, and merges a tool choice set twice,
     // which unions the allowed functions.
-    if !system.is_empty()
-        && let Some(spelling) = present(&params, &SYSTEM_INSTRUCTION)
-    {
-        return Err(EncodeError::request(format!(
-            "a Gemini request set the system instruction twice: as a preamble or system \
-             message and as `additional_params.{spelling}`. Set it one way or the other"
-        )));
-    }
-    if tool_choice.is_some()
-        && let Some(spelling) = present(&params, &TOOL_CONFIG)
-    {
-        return Err(EncodeError::request(format!(
-            "a Gemini request set the tool choice twice: as `tool_choice` and as \
-             `additional_params.{spelling}`, which Gemini merges. Set it one way or the other"
-        )));
-    }
-    let mut declared = Vec::with_capacity(tools.len());
-    for tool in tools {
-        let mut declaration = json!({ "name": tool.name, "description": tool.description });
-        let parameters = tool_parameters_to_schema(tool.parameters).map_err(|error| {
-            let reason = std::error::Error::source(&error)
-                .map_or_else(|| error.to_string(), ToString::to_string);
-            EncodeError::request(format!(
-                "Tool '{}' could not be converted to a schema: {reason}",
-                tool.name
-            ))
-        })?;
-        if let (Some(parameters), Some(declaration)) = (parameters, declaration.as_object_mut()) {
-            declaration.insert("parameters".into(), parameters);
+    let preamble = "system instruction twice: as a preamble or system message";
+    let choice = "tool choice twice: as `tool_choice`, which Gemini merges,";
+    let twice = [
+        (!system.is_empty(), &SYSTEM_INSTRUCTION, preamble),
+        (request.tool_choice.is_some(), &TOOL_CONFIG, choice),
+    ];
+    for (set, spellings, what) in twice {
+        if let (true, Some(spelling)) = (set, present(&params, spellings)) {
+            return Err(EncodeError::request(format!(
+                "a Gemini request set the {what} and as `additional_params.{spelling}`. Set it \
+                 one way or the other"
+            )));
         }
-        declared.push(declaration);
     }
-    let mut all_tools = Vec::new();
-    if !declared.is_empty() {
-        all_tools.push(json!({ "functionDeclarations": declared, "codeExecution": null }));
-    }
-    all_tools.append(&mut extra_tools);
-    let mut body = Map::from_iter([
+    let declared = request
+        .tools
+        .into_iter()
+        .map(declaration)
+        .collect::<Result<Vec<_>, _>>()?;
+    let declared = (!declared.is_empty())
+        .then(|| json!({ "functionDeclarations": declared, "codeExecution": null }));
+    let tools: Vec<Value> = declared.into_iter().chain(extra_tools).collect();
+    let contents = Value::Array(contents(history, target, model)?);
+    let system = (!system.is_empty()).then(|| json!({ "parts": system, "role": "model" }));
+    let tool_config = request.tool_choice.map_or(Value::Null, calling_config);
+    let mut body = object([
+        ("contents", Some(contents)),
         (
-            "contents".to_owned(),
-            Value::Array(contents(history, target, model)?),
+            "generationConfig",
+            Some(config.map_or(Value::Null, Value::Object)),
         ),
-        (
-            "generationConfig".to_owned(),
-            config.map_or(Value::Null, Value::Object),
-        ),
-        ("safetySettings".to_owned(), Value::Null),
-        (
-            "toolConfig".to_owned(),
-            tool_choice.map_or(Value::Null, calling_config),
-        ),
-        (
-            "systemInstruction".to_owned(),
-            match system.is_empty() {
-                true => Value::Null,
-                false => json!({ "parts": system, "role": "model" }),
-            },
-        ),
+        ("safetySettings", Some(Value::Null)),
+        ("toolConfig", Some(tool_config)),
+        ("systemInstruction", Some(system.unwrap_or(Value::Null))),
+        ("tools", (!tools.is_empty()).then_some(Value::Array(tools))),
     ]);
-    if !all_tools.is_empty() {
-        body.insert("tools".to_owned(), Value::Array(all_tools));
-    }
     body.extend(params);
     for name in handles {
         with_cached_content(&mut body, &name)?;
@@ -503,95 +469,60 @@ pub fn request_body(
     Ok(body)
 }
 
+/// A tool as its function declaration.
+fn declaration(tool: crate::completion::ToolDefinition) -> Result<Value, EncodeError> {
+    let parameters = tool_parameters_to_schema(tool.parameters).map_err(|error| {
+        let reason = std::error::Error::source(&error)
+            .map_or_else(|| error.to_string(), ToString::to_string);
+        EncodeError::request(format!(
+            "Tool '{}' could not be converted to a schema: {reason}",
+            tool.name
+        ))
+    })?;
+    let (name, description) = (Some(json!(tool.name)), Some(json!(tool.description)));
+    Ok(Value::Object(object([
+        ("name", name),
+        ("description", description),
+        ("parameters", parameters),
+    ])))
+}
+
+/// An object of the entries that are set.
+fn object<const N: usize>(entries: [(&str, Option<Value>); N]) -> Map<String, Value> {
+    let entries = entries.into_iter();
+    entries
+        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+        .collect()
+}
+
 fn invalid(field: &str, expected: &str, got: &Value) -> EncodeError {
     EncodeError::request(format!("Gemini `{field}` should be {expected}, got {got}"))
 }
 
 /// Proto3 JSON accepts both lowerCamelCase and original proto field names.
-const SYSTEM_INSTRUCTION: [&str; 2] = ["systemInstruction", "system_instruction"];
-const TOOL_CONFIG: [&str; 2] = ["toolConfig", "tool_config"];
+pub(super) const SYSTEM_INSTRUCTION: [&str; 2] = ["systemInstruction", "system_instruction"];
+pub(super) const TOOL_CONFIG: [&str; 2] = ["toolConfig", "tool_config"];
 const CACHED_CONTENT: [&str; 2] = ["cachedContent", "cached_content"];
 
 /// The first of `spellings` set to a value other than `null` in `body`.
-fn present<'a>(body: &Map<String, Value>, spellings: &[&'a str]) -> Option<&'a str> {
-    spellings
-        .iter()
-        .find(|spelling| body.get(**spelling).is_some_and(|value| !value.is_null()))
-        .copied()
+pub(super) fn present<'a>(body: &Map<String, Value>, spellings: &[&'a str]) -> Option<&'a str> {
+    let set = |spelling: &&&str| body.get(**spelling).is_some_and(|value| !value.is_null());
+    spellings.iter().find(set).copied()
 }
 
 /// The `functionCallingConfig` of `choice`.
 fn calling_config(choice: ToolChoice) -> Value {
-    let config = match choice {
-        ToolChoice::Auto => json!({ "mode": "AUTO" }),
-        ToolChoice::None => json!({ "mode": "NONE" }),
-        ToolChoice::Required => json!({ "mode": "ANY" }),
-        ToolChoice::Specific { function_names } => {
-            json!({ "mode": "ANY", "allowed_function_names": function_names })
-        }
+    let (mode, names) = match choice {
+        ToolChoice::Auto => ("AUTO", None),
+        ToolChoice::None => ("NONE", None),
+        ToolChoice::Required => ("ANY", None),
+        ToolChoice::Specific { function_names } => ("ANY", Some(json!(function_names))),
     };
+    let config = object([
+        ("mode", Some(json!(mode))),
+        ("allowed_function_names", names),
+    ]);
     json!({ "functionCallingConfig": config })
-}
-
-/// Set `name`, a `cachedContents/<id>` handle, as the prefix `body` reads.
-///
-/// # Errors
-///
-/// When `name` is not a handle, `body` names another one, or it sets a
-/// system instruction, tools or a tool choice, which the cache owns.
-pub fn with_cached_content(body: &mut Map<String, Value>, name: &str) -> Result<(), EncodeError> {
-    if !name.starts_with("cachedContents/") {
-        return Err(EncodeError::request(format!(
-            "gemini cached content handle should look like `cachedContents/<id>`, got `{name}`"
-        )));
-    }
-    if let Some(existing) = body.get("cachedContent").and_then(Value::as_str)
-        && existing != name
-    {
-        return Err(EncodeError::request(format!(
-            "a Gemini request set cached content twice, to `{existing}` and `{name}`: set it \
-             one way or the other"
-        )));
-    }
-    let mut conflicts = Vec::new();
-    if present(body, &SYSTEM_INSTRUCTION).is_some() {
-        conflicts.push("a system instruction (preamble)");
-    }
-    if present(body, &["tools"]).is_some() {
-        conflicts.push("tools");
-    }
-    if present(body, &TOOL_CONFIG).is_some() {
-        conflicts.push("a tool choice");
-    }
-    if !conflicts.is_empty() {
-        let tools = body
-            .get("tools")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten();
-        let declares_functions = tools.into_iter().any(|tool| {
-            ["functionDeclarations", "function_declarations"]
-                .iter()
-                .any(|spelling| !tool.arr(spelling).is_empty())
-        });
-        // Cached function declarations need caller-side dispatch; hosted
-        // tools run on Gemini's side.
-        let caveat = if declares_functions {
-            " Function declarations in a cache are declarations only: an `Agent` dispatches \
-             only tools it advertised, so a cached function tool runs only when you drive \
-             `GenerateContent` yourself. Hosted tools such as `codeExecution` are fine to cache."
-        } else {
-            ""
-        };
-        return Err(EncodeError::request(format!(
-            "a Gemini request using cached content `{name}` also set {}. The cached content \
-             owns the system instruction, tools and tool choice of every request that uses \
-             it: move them into the cache, or drop the cache handle.{caveat}",
-            conflicts.join(" and ")
-        )));
-    }
-    body.insert("cachedContent".to_owned(), Value::String(name.to_owned()));
-    Ok(())
 }
 
 /// The Gemini contents for `history`, a history without system messages,
@@ -607,38 +538,46 @@ fn contents(
 ) -> Result<Vec<Value>, EncodeError> {
     let ids = WireIds::for_target(&history, target, model);
     let with_ids = requires_tool_call_id(model);
-    let content = |role: &str, parts: Vec<Value>| json!({ "parts": parts, "role": role });
     let mut contents = Vec::with_capacity(history.len());
+    let mut push = |role: &str, parts: Vec<Value>| {
+        if !parts.is_empty() || role == "model" {
+            contents.push(json!({ "parts": parts, "role": role }));
+        }
+    };
     for message in history {
         match message {
-            Message::System { content: text } => {
-                contents.push(content("user", vec![text_part(text)]))
-            }
-            Message::User { content: parts } => {
+            Message::System { content } => push("user", vec![text_part(content)]),
+            Message::User { content } => {
                 let mut run = Vec::new();
                 let mut responses = false;
-                for part in parts {
-                    let response = matches!(part, UserContent::ToolResult(_));
-                    if response != responses && !run.is_empty() {
-                        contents.push(content("user", std::mem::take(&mut run)));
-                    }
-                    responses = response;
+                for part in content {
                     let id = match &part {
-                        UserContent::ToolResult(result) if with_ids => ids.of(&result.call),
+                        UserContent::ToolResult(result) => {
+                            Some(ids.of(&result.call).filter(|_| with_ids))
+                        }
                         _ => None,
                     };
-                    run.push(user_part(part, id)?);
+                    if id.is_some() != responses {
+                        push("user", std::mem::take(&mut run));
+                    }
+                    responses = id.is_some();
+                    run.push(user_part(part, id.flatten())?);
                 }
-                if !run.is_empty() {
-                    contents.push(content("user", run));
-                }
+                push("user", run);
             }
             Message::Assistant(turn) => {
-                let mut parts = Vec::with_capacity(turn.content.len());
-                for block in &turn.content {
-                    parts.extend(assistant_part(block, target, &ids, model)?);
-                }
-                contents.push(content("model", parts));
+                let parts = turn
+                    .content
+                    .iter()
+                    .map(|block| assistant_part(block, target, &ids, model));
+                push(
+                    "model",
+                    parts
+                        .collect::<Result<Vec<_>, _>>()?
+                        .into_iter()
+                        .flatten()
+                        .collect(),
+                );
             }
         }
     }
@@ -659,52 +598,41 @@ fn mime<M: MimeType>(media_type: Option<M>) -> Option<String> {
 /// Each wire's `encodes` refuses every other form, so the adapter passes
 /// none.
 pub(super) fn carried(source: Source, verbatim: bool) -> Result<(bool, String), EncodeError> {
+    use base64::Engine as _;
     match source {
         Source::Url(uri) => Ok((true, uri)),
         Source::Base64(data) => Ok((false, data)),
         Source::String(data) if verbatim => Ok((false, data)),
-        Source::String(data) => Ok((
-            false,
-            base64::Engine::encode(&base64::prelude::BASE64_STANDARD, data),
-        )),
+        Source::String(data) => Ok((false, base64::prelude::BASE64_STANDARD.encode(data))),
         _ => Err(EncodeError::request(
             "Gemini cannot receive this media in its form",
         )),
     }
 }
 
-/// `source` of `mime_type` as GenerateContent part data: file data by URI,
-/// or inline data, which needs a media type.
+/// `source` of `mime_type` as GenerateContent part data, file data by URI
+/// or inline data, which needs a media type; a whole `part` is marked as no
+/// thought.
 fn media(
     mime_type: Option<String>,
     source: Source,
     string_is_data: bool,
+    part: bool,
 ) -> Result<Value, EncodeError> {
     let (uri, data) = carried(source, string_is_data)?;
-    Ok(match (uri, mime_type) {
-        (true, mime_type) => json!({ "fileData": { "mimeType": mime_type, "fileUri": data } }),
-        (false, Some(mime_type)) => {
-            json!({ "inlineData": { "mimeType": mime_type, "data": data } })
-        }
+    let data = match (uri, mime_type) {
+        (true, mime) => ("fileData", json!({ "mimeType": mime, "fileUri": data })),
+        (false, Some(mime)) => ("inlineData", json!({ "mimeType": mime, "data": data })),
         (false, None) => {
             return Err(EncodeError::request(
                 "Gemini cannot receive media without its type",
             ));
         }
-    })
-}
-
-/// [`media`] as a whole part.
-fn media_part(
-    mime_type: Option<String>,
-    source: Source,
-    string_is_data: bool,
-) -> Result<Value, EncodeError> {
-    let mut part = media(mime_type, source, string_is_data)?;
-    if let Some(part) = part.as_object_mut() {
-        part.insert("thought".into(), Value::Bool(false));
-    }
-    Ok(part)
+    };
+    Ok(Value::Object(object([
+        (data.0, Some(data.1)),
+        ("thought", part.then_some(Value::Bool(false))),
+    ])))
 }
 
 /// A user part as Gemini takes it. A function response carries `id`, its
@@ -716,20 +644,15 @@ fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> 
     Ok(match part {
         UserContent::Text(text) => text_part(text.text),
         UserContent::ToolResult(result) => {
-            let mut values = Vec::new();
-            let mut parts = Vec::new();
+            let (mut values, mut parts) = (Vec::new(), Vec::new());
             for item in result.content {
                 match item {
                     ToolResultContent::Text(text) => values.push(Value::String(text.text)),
                     ToolResultContent::Json { value } => values.push(value),
                     ToolResultContent::Image(image) => {
-                        parts.push(media(mime(image.media_type), image.data, true)?);
+                        parts.push(media(mime(image.media_type), image.data, true, false)?);
                     }
                 }
-            }
-            let mut response = Map::from_iter([("name".to_owned(), json!(result.name))]);
-            if let Some(id) = id {
-                response.insert("id".to_owned(), json!(id));
             }
             let key = if result.is_error { "error" } else { "result" };
             let value = match values.len() {
@@ -737,25 +660,25 @@ fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> 
                 1 => values.pop(),
                 _ => Some(Value::Array(values)),
             };
-            if let Some(value) = value {
-                response.insert("response".to_owned(), json!({ key: value }));
-            }
-            if !parts.is_empty() {
-                response.insert("parts".to_owned(), Value::Array(parts));
-            }
+            let response = object([
+                ("name", Some(json!(result.name))),
+                ("id", id.map(Value::from)),
+                ("response", value.map(|value| json!({ key: value }))),
+                ("parts", (!parts.is_empty()).then_some(Value::Array(parts))),
+            ]);
             json!({ "functionResponse": response, "thought": false })
         }
-        UserContent::Image(image) => media_part(mime(image.media_type), image.data, true)?,
+        UserContent::Image(image) => media(mime(image.media_type), image.data, true, true)?,
         // A text document goes as text, so that RAG context reads as prose.
         UserContent::Document(document) => match (document.media_type, document.data) {
             (Some(media_type), Source::String(text)) if media_type != DocumentMediaType::PDF => {
                 text_part(text)
             }
-            (media_type, data) => media_part(mime(media_type), data, true)?,
+            (media_type, data) => media(mime(media_type), data, true, true)?,
         },
-        UserContent::Audio(audio) => media_part(mime(audio.media_type), audio.data, false)?,
+        UserContent::Audio(audio) => media(mime(audio.media_type), audio.data, false, true)?,
         UserContent::Video(video) => {
-            let mut part = media_part(mime(video.media_type), video.data, false)?;
+            let mut part = media(mime(video.media_type), video.data, false, true)?;
             if let (Some(Value::Object(extra)), Some(part)) =
                 (video.additional_params, part.as_object_mut())
             {
@@ -782,7 +705,7 @@ fn assistant_part(
     if let Replay::Item(item) = block.replay(target, ids) {
         let mut item = item.into_owned();
         if let Some(part) = item.as_object_mut() {
-            if !with_ids && let Some(Value::Object(call)) = part.get_mut("functionCall") {
+            if let (false, Some(Value::Object(call))) = (with_ids, part.get_mut("functionCall")) {
                 call.shift_remove("id");
             }
             // Gemini rejects the whole request over a signature that is
@@ -790,7 +713,7 @@ fn assistant_part(
             if part
                 .get("thoughtSignature")
                 .and_then(Value::as_str)
-                .is_some_and(|sig| !is_base64(sig))
+                .is_some_and(|signature| !is_base64(signature))
             {
                 part.shift_remove("thoughtSignature");
             }
@@ -808,25 +731,23 @@ fn assistant_part(
             json!({ "thought": true, "text": reasoning.text })
         }
         AssistantContent::ToolCall(call) => {
-            let mut function_call =
-                json!({ "name": call.function.name, "args": call.function.arguments });
-            if let (true, Some(id), Some(fields)) =
-                (with_ids, ids.of(&call.id), function_call.as_object_mut())
-            {
-                fields.insert("id".to_owned(), json!(id));
-            }
-            let mut part = json!({ "functionCall": function_call });
-            if let (true, Some(part)) = (gemini_3_or_later(model), part.as_object_mut()) {
-                part.insert(
-                    "thoughtSignature".into(),
-                    json!("skip_thought_signature_validator"),
-                );
-            }
-            part
+            let id = ids.of(&call.id).filter(|_| with_ids).map(Value::from);
+            let name = Some(json!(call.function.name));
+            let args = Some(json!(call.function.arguments));
+            let signature =
+                gemini_3_or_later(model).then(|| json!("skip_thought_signature_validator"));
+            let call = Value::Object(object([("name", name), ("args", args), ("id", id)]));
+            Value::Object(object([
+                ("functionCall", Some(call)),
+                ("thoughtSignature", signature),
+            ]))
         }
-        AssistantContent::Image(image) => {
-            media_part(mime(image.media_type.clone()), image.data.clone(), true)?
-        }
+        AssistantContent::Image(image) => media(
+            mime(image.media_type.clone()),
+            image.data.clone(),
+            true,
+            true,
+        )?,
         AssistantContent::Opaque(opaque) => opaque.item.clone(),
     }))
 }
@@ -834,26 +755,24 @@ fn assistant_part(
 /// Whether `text` is padded standard base64.
 fn is_base64(text: &str) -> bool {
     let body = text.trim_end_matches('=');
+    let alphabet = |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/');
     !body.is_empty()
         && text.len().is_multiple_of(4)
         && text.len() - body.len() <= 2
-        && body
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/'))
+        && body.bytes().all(alphabet)
 }
 
 /// Convert a specified prompt block reason into a provider error with its
 /// safety ratings. `feedback` is the reply's `promptFeedback` JSON, read
 /// leniently. Content refusals are final; `OTHER` and unknown reasons are
-/// transient.
+/// transient. The zero value names no block: Gemini spells it
+/// `BLOCK_REASON_`, Vertex AI `BLOCKED_REASON_`.
 pub(crate) fn blocked_prompt_error(feedback: &Value) -> Option<ProviderError> {
     let reason = match feedback.get("blockReason")? {
         Value::String(reason) => reason.clone(),
         Value::Number(number) => format!("BLOCK_REASON_{number}"),
         _ => return None,
     };
-    // The zero value names no block. Gemini spells it `BLOCK_REASON_`,
-    // Vertex AI `BLOCKED_REASON_`.
     if matches!(
         reason.as_str(),
         "BLOCK_REASON_UNSPECIFIED" | "BLOCKED_REASON_UNSPECIFIED"
@@ -865,17 +784,15 @@ pub(crate) fn blocked_prompt_error(feedback: &Value) -> Option<ProviderError> {
         Some(other) => other.to_string(),
         None => "<unset>".to_owned(),
     };
-    let ratings: Vec<String> = feedback
-        .arr("safetyRatings")
-        .iter()
-        .map(|rating| {
-            format!(
-                "{}={}",
-                spelled(rating.get("category")),
-                spelled(rating.get("probability"))
-            )
-        })
-        .collect();
+    let ratings = feedback.arr("safetyRatings").iter();
+    let ratings = ratings.map(|rating| {
+        format!(
+            "{}={}",
+            spelled(rating.get("category")),
+            spelled(rating.get("probability"))
+        )
+    });
+    let ratings: Vec<String> = ratings.collect();
     let ratings = match ratings.is_empty() {
         true => String::new(),
         false => format!(", safety_ratings=[{}]", ratings.join(", ")),
@@ -898,10 +815,9 @@ pub(crate) fn blocked_prompt_error(feedback: &Value) -> Option<ProviderError> {
 /// When the schema is not an object or a reference does not resolve.
 pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Value>, EncodeError> {
     if parameters.is_null() || parameters == json!({"type": "object", "properties": {}}) {
-        Ok(None)
-    } else {
-        schema(parameters).map(Some)
+        return Ok(None);
     }
+    schema(parameters).map(Some)
 }
 
 /// `value`, a JSON Schema, as the OpenAPI subset Gemini reads: references
@@ -910,127 +826,91 @@ pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Value>, Enc
 /// string items, which Gemini requires.
 fn schema(value: Value) -> Result<Value, EncodeError> {
     const COMPOSITIONS: [&str; 3] = ["anyOf", "oneOf", "allOf"];
+    let own = |schema: &Value| match schema.get("type") {
+        Some(Value::String(name)) => Some(name.clone()),
+        Some(Value::Array(names)) => {
+            let mut names = names.iter().filter_map(Value::as_str);
+            let first = names.clone().next();
+            names
+                .find(|name| *name != "null")
+                .or(first)
+                .map(str::to_owned)
+        }
+        _ => None,
+    };
+    let is_null = |schema: &Value| schema.is_object() && own(schema).as_deref() == Some("null");
+    let shape = |schema: &Value| match (schema.get("properties"), schema.get("enum")) {
+        (Some(_), _) => Some("object".to_owned()),
+        (None, Some(_)) => Some("string".to_owned()),
+        (None, None) => None,
+    };
+    let nullable = |schema: &Value| {
+        schema.bool("nullable") == Some(true)
+            || schema.arr("type").contains(&json!("null"))
+            || COMPOSITIONS
+                .iter()
+                .any(|key| schema.arr(key).iter().any(is_null))
+    };
     let value = flatten_schema(value)?;
-    let Some(object) = value.as_object() else {
+    if !value.is_object() {
         return Err(EncodeError::request("Expected a JSON object for Schema"));
+    }
+    let alternatives = COMPOSITIONS.iter().flat_map(|key| value.arr(key));
+    let alternatives: Vec<&Value> = alternatives
+        .filter(|alt| alt.is_object() && !is_null(alt))
+        .collect();
+    let composed = alternatives.first().copied();
+    let source = match (value.get("properties"), composed) {
+        (None, Some(composed)) => composed,
+        _ => &value,
     };
-    let alternatives = |key: &str| {
-        object
-            .get(key)
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_object)
-            .filter(|alternative| !is_null(alternative))
-    };
-    let composed = COMPOSITIONS.iter().find_map(|key| alternatives(key).next());
-    let source = match object.contains_key("properties") {
-        true => object,
-        false => composed.unwrap_or(object),
-    };
-    let kind = object
-        .get("type")
-        .and_then(type_name)
+    let kind = own(&value)
         .or_else(|| {
-            COMPOSITIONS.iter().find_map(|key| {
-                alternatives(key).find_map(|alternative| {
-                    alternative
-                        .get("type")
-                        .and_then(type_name)
-                        .or_else(|| shape_type(alternative))
-                })
-            })
+            alternatives
+                .iter()
+                .find_map(|alt| own(alt).or_else(|| shape(alt)))
         })
-        .or_else(|| shape_type(object))
+        .or_else(|| shape(&value))
         .unwrap_or_default();
-    let get = |key: &str| object.get(key).or_else(|| source.get(key));
-    fn strings(value: Option<&Value>) -> Option<Vec<&str>> {
-        Some(
+    let get = |key: &str| value.get(key).or_else(|| source.get(key));
+    let strings = |value: Option<&Value>| {
+        Some(json!(
             value?
                 .as_array()?
                 .iter()
                 .filter_map(Value::as_str)
-                .collect(),
-        )
-    }
-    let mut schema = Map::from_iter([("type".to_owned(), json!(kind))]);
-    for key in ["format", "description"] {
-        if let Some(text) = get(key).and_then(Value::as_str) {
-            schema.insert(key.to_owned(), json!(text));
-        }
-    }
-    if nullable(object) || composed.is_some_and(nullable) {
-        schema.insert("nullable".to_owned(), Value::Bool(true));
-    }
-    if let Some(values) = strings(get("enum")) {
-        schema.insert("enum".to_owned(), json!(values));
-    }
-    for key in ["maxItems", "minItems"] {
-        if let Some(count) = object.get(key).and_then(Value::as_i64) {
-            schema.insert(key.to_owned(), json!(count as i32));
-        }
-    }
-    if let Some(properties) = source.get("properties").and_then(Value::as_object) {
-        // Sorted, so the bytes and the cache prefix they key stay stable.
-        let properties: std::collections::BTreeMap<&String, Value> = properties
-            .iter()
-            .filter_map(|(name, value)| Some((name, self::schema(value.clone()).ok()?)))
-            .collect();
-        schema.insert("properties".to_owned(), json!(properties));
-    }
-    if let Some(required) = strings(source.get("required")) {
-        schema.insert("required".to_owned(), json!(required));
-    }
+                .collect::<Vec<_>>()
+        ))
+    };
+    let text = |key: &str| get(key).and_then(Value::as_str).map(Value::from);
+    let count = |key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_i64)
+            .map(|count| json!(count as i32))
+    };
+    // Properties sorted, so the bytes and the cache prefix they key stay stable.
+    let properties = source.obj("properties").map(|properties| {
+        let properties = properties.iter();
+        let properties =
+            properties.filter_map(|(name, value)| Some((name, self::schema(value.clone()).ok()?)));
+        json!(properties.collect::<std::collections::BTreeMap<_, _>>())
+    });
     let items = get("items").and_then(|items| self::schema(items.clone()).ok());
-    if let Some(items) = items.or_else(|| (kind == "array").then(|| json!({ "type": "string" }))) {
-        schema.insert("items".to_owned(), items);
-    }
-    Ok(Value::Object(schema))
-}
-
-/// The type a schema's `type` names: the string, or in a list the first
-/// name other than `null`.
-fn type_name(value: &Value) -> Option<String> {
-    if let Some(name) = value.as_str() {
-        return Some(name.to_owned());
-    }
-    let names: Vec<&str> = value.as_array()?.iter().filter_map(Value::as_str).collect();
-    names
-        .iter()
-        .find(|name| **name != "null")
-        .or(names.first())
-        .map(|name| (*name).to_owned())
-}
-
-fn is_null(schema: &Map<String, Value>) -> bool {
-    schema.get("type").and_then(type_name).as_deref() == Some("null")
-}
-
-fn shape_type(schema: &Map<String, Value>) -> Option<String> {
-    if schema.contains_key("properties") {
-        Some("object".to_owned())
-    } else if schema.contains_key("enum") {
-        Some("string".to_owned())
-    } else {
-        None
-    }
-}
-
-fn nullable(schema: &Map<String, Value>) -> bool {
-    schema
-        .get("nullable")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-        || schema
-            .get("type")
-            .and_then(Value::as_array)
-            .is_some_and(|names| names.iter().any(|name| name.as_str() == Some("null")))
-        || ["anyOf", "oneOf", "allOf"].iter().any(|key| {
-            schema
-                .get(*key)
-                .and_then(Value::as_array)
-                .is_some_and(|items| items.iter().filter_map(Value::as_object).any(is_null))
-        })
+    let items = items.or_else(|| (kind == "array").then(|| json!({ "type": "string" })));
+    let nullable = nullable(&value) || composed.is_some_and(nullable);
+    Ok(Value::Object(object([
+        ("type", Some(json!(kind))),
+        ("format", text("format")),
+        ("description", text("description")),
+        ("nullable", nullable.then_some(Value::Bool(true))),
+        ("enum", strings(get("enum"))),
+        ("maxItems", count("maxItems")),
+        ("minItems", count("minItems")),
+        ("properties", properties),
+        ("required", strings(source.get("required"))),
+        ("items", items),
+    ])))
 }
 
 /// Inline references from `$defs` or `definitions` and remove those sections.
@@ -1042,17 +922,41 @@ fn nullable(schema: &Map<String, Value>) -> bool {
 /// For a non-object definitions section, a reference path other than
 /// `#/$defs/` or `#/definitions/`, or a missing definition.
 pub fn flatten_schema(mut schema: Value) -> Result<Value, EncodeError> {
-    let Some(defs) = schema
+    fn resolve(value: &mut Value, defs: &Map<String, Value>) -> Result<(), EncodeError> {
+        match value {
+            Value::Object(object) => match object.get("$ref").and_then(Value::as_str) {
+                Some(reference) => {
+                    let missing = |what: &str| EncodeError::request(format!("{what}: {reference}"));
+                    let name = reference
+                        .strip_prefix("#/$defs/")
+                        .or_else(|| reference.strip_prefix("#/definitions/"));
+                    let name = name.ok_or_else(|| missing("Unsupported reference format"))?;
+                    let mut resolved = defs
+                        .get(name)
+                        .cloned()
+                        .ok_or_else(|| missing("Reference not found"))?;
+                    resolve(&mut resolved, defs)?;
+                    *value = resolved;
+                    Ok(())
+                }
+                None => object
+                    .values_mut()
+                    .try_for_each(|value| resolve(value, defs)),
+            },
+            Value::Array(items) => items.iter_mut().try_for_each(|value| resolve(value, defs)),
+            _ => Ok(()),
+        }
+    }
+    let defs = schema
         .as_object()
-        .and_then(|object| object.get("$defs").or_else(|| object.get("definitions")))
-        .cloned()
-    else {
+        .and_then(|object| object.get("$defs").or_else(|| object.get("definitions")));
+    let Some(defs) = defs.cloned() else {
         return Ok(schema);
     };
-    let Some(defs) = defs.as_object() else {
+    let Value::Object(defs) = defs else {
         return Err(EncodeError::request("$defs must be an object"));
     };
-    resolve_refs(&mut schema, defs)?;
+    resolve(&mut schema, &defs)?;
     if let Some(object) = schema.as_object_mut() {
         object.shift_remove("$defs");
         object.shift_remove("definitions");
@@ -1060,223 +964,53 @@ pub fn flatten_schema(mut schema: Value) -> Result<Value, EncodeError> {
     Ok(schema)
 }
 
-fn resolve_refs(value: &mut Value, defs: &Map<String, Value>) -> Result<(), EncodeError> {
-    match value {
-        Value::Object(object) => {
-            if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
-                let name = reference
-                    .strip_prefix("#/$defs/")
-                    .or_else(|| reference.strip_prefix("#/definitions/"))
-                    .ok_or_else(|| {
-                        EncodeError::request(format!("Unsupported reference format: {reference}"))
-                    })?;
-                let mut resolved = defs.get(name).cloned().ok_or_else(|| {
-                    EncodeError::request(format!("Reference not found: {reference}"))
-                })?;
-                resolve_refs(&mut resolved, defs)?;
-                *value = resolved;
-                return Ok(());
-            }
-            object
-                .values_mut()
-                .try_for_each(|value| resolve_refs(value, defs))
-        }
-        Value::Array(items) => items
-            .iter_mut()
-            .try_for_each(|value| resolve_refs(value, defs)),
-        _ => Ok(()),
+/// Map a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.
+/// `STOP` is a stop (a tool use when the turn holds calls) and `MAX_TOKENS`
+/// a length stop. Every other reason, documented or not, is a failure: the
+/// content filters as
+/// [`ContentFilter`](crate::completion::FinishReason::ContentFilter), the
+/// rest as [`Other`](crate::completion::FinishReason::Other) with the
+/// reason's name.
+pub fn map_google_finish_reason(wire_name: &str) -> crate::completion::FinishReason {
+    use crate::completion::FinishReason;
+    match wire_name {
+        "STOP" => FinishReason::Stop,
+        "MAX_TOKENS" => FinishReason::Length,
+        "SAFETY"
+        | "BLOCKLIST"
+        | "PROHIBITED_CONTENT"
+        | "SPII"
+        | "IMAGE_SAFETY"
+        | "IMAGE_PROHIBITED_CONTENT"
+        | "MODEL_ARMOR" => FinishReason::ContentFilter,
+        other => FinishReason::Other(other.to_owned()),
     }
 }
 
-/// The configuration types a Gemini request's `additional_params` takes,
-/// and the readers of Gemini's finish reasons and usage.
-pub mod gemini_api_types {
-    use serde::{Deserialize, Serialize};
-    use serde_json::Value;
-
-    /// The `additional_params` of a Gemini request.
-    #[derive(Debug, Deserialize, Serialize, Default)]
-    #[serde(rename_all = "camelCase")]
-    pub struct AdditionalParameters {
-        /// Change your Gemini request configuration.
-        pub generation_config: Option<GenerationConfig>,
-        /// Any additional parameters that you want.
-        #[serde(flatten, skip_serializing_if = "Option::is_none")]
-        pub additional_params: Option<Value>,
-    }
-
-    impl AdditionalParameters {
-        /// These parameters with `cfg` as the generation config.
-        pub fn with_config(mut self, cfg: GenerationConfig) -> Self {
-            self.generation_config = Some(cfg);
-            self
-        }
-
-        /// These parameters with `params` merged into the request.
-        pub fn with_params(mut self, params: Value) -> Self {
-            self.additional_params = Some(params);
-            self
-        }
-    }
-
-    /// Model generation options from the [Gemini API](https://ai.google.dev/api/generate-content#generationconfig).
-    /// Supported fields depend on the model. All fields default to `None` and
-    /// are omitted when unset, preserving provider defaults.
-    #[derive(Debug, Default, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct GenerationConfig {
-        /// Up to five stop sequences.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub stop_sequences: Option<Vec<String>>,
-        /// Output MIME type: `text/plain` by default, `application/json` for JSON.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_mime_type: Option<String>,
-        /// OpenAPI-subset output schema.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_schema: Option<Value>,
-        /// The legacy spelling of `response_json_schema`.
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            rename = "_responseJsonSchema"
-        )]
-        pub _response_json_schema: Option<Value>,
-        /// A standard JSON Schema for the output; excludes `response_schema`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_json_schema: Option<Value>,
-        /// Number of generated responses to return; only 1 is supported.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub candidate_count: Option<i32>,
-        /// Maximum output tokens per candidate.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub max_output_tokens: Option<u64>,
-        /// Sampling temperature in `[0.0, 2.0]`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub temperature: Option<f64>,
-        /// Maximum cumulative token probability for nucleus sampling.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub top_p: Option<f64>,
-        /// Maximum number of likely tokens considered for sampling.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub top_k: Option<i32>,
-        /// Penalty for tokens already present in the response.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub presence_penalty: Option<f64>,
-        /// Penalty scaled by each token's frequency in the response.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub frequency_penalty: Option<f64>,
-        /// Whether to return log probabilities.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_logprobs: Option<bool>,
-        /// Top log probabilities per step, with `response_logprobs`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub logprobs: Option<i32>,
-        /// Configuration for thinking.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thinking_config: Option<ThinkingConfig>,
-        /// Response modalities of multimodal output models.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_modalities: Option<Vec<ResponseModality>>,
-        /// Image output configuration.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub image_config: Option<ImageConfig>,
-    }
-
-    /// Response modalities supported by Gemini multimodal output models.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum ResponseModality {
-        Text,
-        Image,
-        Audio,
-    }
-
-    /// Thinking depth level for Gemini 3 models.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-    #[serde(rename_all = "snake_case")]
-    pub enum ThinkingLevel {
-        Minimal,
-        Low,
-        Medium,
-        High,
-    }
-
-    /// Configuration for the model's thinking. `thinking_budget` (Gemini
-    /// 2.5) and `thinking_level` (Gemini 3) are mutually exclusive.
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ThinkingConfig {
-        /// Token budget for thinking, 0 to 32768.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thinking_budget: Option<u32>,
-        /// Thinking depth level.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thinking_level: Option<ThinkingLevel>,
-        /// Whether the response includes summaries of the model's reasoning.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub include_thoughts: Option<bool>,
-    }
-
-    /// Image output configuration.
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ImageConfig {
-        /// The output aspect ratio, such as `16:9`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub aspect_ratio: Option<String>,
-        /// The output size, such as `2K`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub image_size: Option<String>,
-    }
-
-    /// Map a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.
-    /// `STOP` is a stop (a tool use when the turn holds calls) and
-    /// `MAX_TOKENS` a length stop. Every other reason, documented or not, is
-    /// a failure: the content filters as
-    /// [`ContentFilter`](crate::completion::FinishReason::ContentFilter),
-    /// the rest as [`Other`](crate::completion::FinishReason::Other) with
-    /// the reason's name.
-    pub fn map_google_finish_reason(wire_name: &str) -> crate::completion::FinishReason {
-        use crate::completion::FinishReason;
-        match wire_name {
-            "STOP" => FinishReason::Stop,
-            "MAX_TOKENS" => FinishReason::Length,
-            "SAFETY"
-            | "BLOCKLIST"
-            | "PROHIBITED_CONTENT"
-            | "SPII"
-            | "IMAGE_SAFETY"
-            | "IMAGE_PROHIBITED_CONTENT"
-            | "MODEL_ARMOR" => FinishReason::ContentFilter,
-            other => FinishReason::Other(other.to_owned()),
-        }
-    }
-
-    /// Rig's usage for a `usageMetadata` document, read leniently: a count
-    /// that is absent or not a non-negative integer is unreported, and no
-    /// other field is read, so usage never fails a reply. Rig's input is the
-    /// prompt plus the tool-use prompt, its output the candidates plus the
-    /// thoughts, and its total their sum. A count Gemini leaves out is zero
-    /// in those sums, as its JSON omits zeros. The REST, Vertex AI and gRPC
-    /// wires all read usage here.
-    pub fn usage_of(usage: &Value) -> crate::completion::Usage {
-        let count = |key: &str| usage.get(key).and_then(Value::as_u64);
-        let tool_use = count("toolUsePromptTokenCount");
-        let input = count("promptTokenCount")
-            .unwrap_or(0)
-            .saturating_add(tool_use.unwrap_or(0));
-        let thoughts = count("thoughtsTokenCount");
-        let output = count("candidatesTokenCount")
-            .unwrap_or(0)
-            .saturating_add(thoughts.unwrap_or(0));
-        crate::completion::Usage {
-            input_tokens: Some(input),
-            output_tokens: Some(output),
-            cached_input_tokens: count("cachedContentTokenCount"),
-            reasoning_tokens: thoughts,
-            tool_use_prompt_tokens: tool_use,
-            total_tokens: Some(input.saturating_add(output)),
-            cache_creation_input_tokens: None,
-        }
+/// Rig's usage for a `usageMetadata` document, read leniently: a count that
+/// is absent or not a non-negative integer is unreported, and no other field
+/// is read, so usage never fails a reply. Rig's input is the prompt plus the
+/// tool-use prompt, its output the candidates plus the thoughts, and its
+/// total their sum. A count Gemini leaves out is zero in those sums, as its
+/// JSON omits zeros. The REST, Vertex AI and gRPC wires all read usage here.
+pub fn usage_of(usage: &Value) -> crate::completion::Usage {
+    let count = |key: &str| usage.get(key).and_then(Value::as_u64);
+    let tool_use = count("toolUsePromptTokenCount");
+    let thoughts = count("thoughtsTokenCount");
+    let input = count("promptTokenCount")
+        .unwrap_or(0)
+        .saturating_add(tool_use.unwrap_or(0));
+    let output = count("candidatesTokenCount")
+        .unwrap_or(0)
+        .saturating_add(thoughts.unwrap_or(0));
+    crate::completion::Usage {
+        input_tokens: Some(input),
+        output_tokens: Some(output),
+        cached_input_tokens: count("cachedContentTokenCount"),
+        reasoning_tokens: thoughts,
+        tool_use_prompt_tokens: tool_use,
+        total_tokens: Some(input.saturating_add(output)),
+        cache_creation_input_tokens: None,
     }
 }
 

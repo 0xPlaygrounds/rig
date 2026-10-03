@@ -5,8 +5,7 @@
 use anyhow::Result;
 use rig::message::{Message, UserContent, Video};
 use rig::prelude::*;
-use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
-use rig::providers::gemini::{self, Gemini, completion::gemini_api_types::GenerationConfig};
+use rig::providers::gemini::{self, Gemini};
 use serde_json::json;
 
 const MODEL: &str = gemini::completion::GEMINI_2_5_PRO_EXP_03_25;
@@ -25,22 +24,20 @@ fn build_video_prompt() -> Result<Message> {
     })
 }
 
-fn build_additional_params() -> Result<serde_json::Value> {
-    let generation_config = GenerationConfig {
-        top_k: Some(1),
-        top_p: Some(0.95),
-        candidate_count: Some(1),
-        ..Default::default()
-    };
-    Ok(serde_json::to_value(
-        AdditionalParameters::default().with_config(generation_config),
-    )?)
+fn build_additional_params() -> serde_json::Value {
+    json!({
+        "generationConfig": {
+            "candidateCount": 1,
+            "topP": 0.95,
+            "topK": 1
+        }
+    })
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Gemini::from_env()?;
-    let additional_params = build_additional_params()?;
+    let additional_params = build_additional_params();
     let agent = AgentBuilder::new(client.completion(MODEL))
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)

@@ -1,5 +1,4 @@
 use crate::message;
-use crate::providers::gemini::completion::gemini_api_types::{map_google_finish_reason, usage_of};
 
 use super::*;
 use serde_json::json;

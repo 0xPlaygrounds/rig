@@ -2,7 +2,6 @@ use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::providers::gemini::Gemini;
-use rig::providers::gemini::interactions_api::{AgentConfig, ThinkingSummaries};
 use rig::streaming::{Item, StreamEvent};
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -36,7 +35,7 @@ fn deep_research_request(
     agent: impl Into<String>,
     prompt: impl Into<String>,
     stream: bool,
-) -> Result<CompletionRequest> {
+) -> CompletionRequest {
     // Deep Research is selected by `agent`, which suppresses `model` in the
     // outgoing body — matching the official Gemini Deep Research examples.
     let mut params = serde_json::Map::from_iter([
@@ -49,13 +48,11 @@ fn deep_research_request(
         // Research streams; otherwise a stream may only include final text.
         params.insert(
             "agent_config".to_owned(),
-            serde_json::to_value(AgentConfig::DeepResearch {
-                thinking_summaries: Some(ThinkingSummaries::Auto),
-            })?,
+            json!({ "type": "deep-research", "thinking_summaries": "auto" }),
         );
     }
 
-    Ok(CompletionRequest::new(prompt.into()).additional_params(serde_json::Value::Object(params)))
+    CompletionRequest::new(prompt.into()).additional_params(serde_json::Value::Object(params))
 }
 
 /// The text items of a model output step's `content`, one per line.
@@ -188,7 +185,7 @@ async fn main() -> Result<()> {
     let agent = deep_research_agent();
     let gemini = Gemini::from_env()?;
 
-    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
+    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming);
     // The wire that opens an interaction, built once for either surface.
     let interactions = gemini.interactions(agent.as_str());
 

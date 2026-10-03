@@ -4,7 +4,6 @@ use futures::StreamExt;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
-use rig::providers::gemini::interactions_api::{AdditionalParameters, Tool};
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
@@ -53,13 +52,10 @@ async fn basic_interaction_returns_id() {
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
-            let params = AdditionalParameters {
-                store: Some(true),
-                ..Default::default()
-            };
+            let params = serde_json::json!({ "store": true });
             let request = CompletionRequest::new("Give me two fun facts about hummingbirds.")
                 .preamble("Be concise.")
-                .additional_params(serde_json::to_value(params).expect("params should serialize"));
+                .additional_params(params);
             let response = model
                 .call(request)
                 .await
@@ -96,13 +92,7 @@ async fn followup_with_previous_interaction_id() {
             let initial = model
                 .call(
                     CompletionRequest::new("Give me one short fact about hummingbirds.")
-                        .additional_params(
-                            serde_json::to_value(AdditionalParameters {
-                                store: Some(true),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        ),
+                        .additional_params(serde_json::json!({ "store": true })),
                 )
                 .await
                 .expect("initial completion should succeed");
@@ -118,11 +108,7 @@ async fn followup_with_previous_interaction_id() {
             let followup = model
                 .call(
                     CompletionRequest::new("Now answer with a short analogy.").additional_params(
-                        serde_json::to_value(AdditionalParameters {
-                            previous_interaction_id: Some(interaction_id),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),
+                        serde_json::json!({ "previous_interaction_id": interaction_id }),
                     ),
                 )
                 .await
@@ -147,11 +133,7 @@ async fn google_search_tool_interaction() {
             let response = model
                 .call(
                     CompletionRequest::new("Who won the Euro 2024 tournament?").additional_params(
-                        serde_json::to_value(AdditionalParameters {
-                            tools: Some(vec![Tool::GoogleSearch]),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),
+                        serde_json::json!({ "tools": [{ "type": "google_search" }] }),
                     ),
                 )
                 .await
@@ -195,13 +177,7 @@ async fn tool_result_roundtrip() {
                     CompletionRequest::new("Use the add tool to sum 7 and 11.")
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(
-                            serde_json::to_value(AdditionalParameters {
-                                store: Some(true),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        ),
+                        .additional_params(serde_json::json!({ "store": true })),
                 )
                 .await
                 .expect("tool call completion should succeed");
@@ -225,11 +201,7 @@ async fn tool_result_roundtrip() {
                         vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
                     )))
                     .additional_params(
-                        serde_json::to_value(AdditionalParameters {
-                            previous_interaction_id: Some(interaction_id),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),
+                        serde_json::json!({ "previous_interaction_id": interaction_id }),
                     ),
                 )
                 .await
@@ -320,13 +292,10 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
-            let params = AdditionalParameters {
-                store: Some(true),
-                ..Default::default()
-            };
+            let params = serde_json::json!({ "store": true });
             let request = CompletionRequest::new("Give me two fun facts about hummingbirds.")
                 .preamble("Be concise.")
-                .additional_params(serde_json::to_value(params).expect("params should serialize"));
+                .additional_params(params);
 
             let response = model
                 .call(request)
@@ -371,12 +340,7 @@ fn code_execution_request() -> CompletionRequest {
         "Use code execution to compute the sum of the first 50 prime numbers, then state it.",
     )
     .additional_params(
-        serde_json::to_value(AdditionalParameters {
-            tools: Some(vec![Tool::CodeExecution]),
-            store: Some(false),
-            ..Default::default()
-        })
-        .expect("params should serialize"),
+        serde_json::json!({ "store": false, "tools": [{ "type": "code_execution" }] }),
     )
 }
 

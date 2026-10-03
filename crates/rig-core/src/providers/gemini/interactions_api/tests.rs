@@ -315,27 +315,6 @@ async fn test_response_function_call_mapping() {
     assert_eq!(response.usage.total_tokens, Some(12));
 }
 
-#[test]
-fn test_google_search_tool_serialization() {
-    let tool = Tool::GoogleSearch;
-    let value = serde_json::to_value(tool).expect("tool should serialize");
-    assert_eq!(value, json!({ "type": "google_search" }));
-}
-
-#[test]
-fn test_url_context_tool_serialization() {
-    let tool = Tool::UrlContext;
-    let value = serde_json::to_value(tool).expect("tool should serialize");
-    assert_eq!(value, json!({ "type": "url_context" }));
-}
-
-#[test]
-fn test_code_execution_tool_serialization() {
-    let tool = Tool::CodeExecution;
-    let value = serde_json::to_value(tool).expect("tool should serialize");
-    assert_eq!(value, json!({ "type": "code_execution" }));
-}
-
 /// Hosted-tool steps (a search, a URL fetch, code execution) decode as
 /// opaque blocks holding the step verbatim, in step order, and replay.
 #[tokio::test]
@@ -930,8 +909,7 @@ fn the_interactions_wire_keeps_its_span_names() {
 fn one_interaction_is_polled_unary_and_resumed_streamed() {
     let gemini = crate::providers::gemini::GeminiConfig::new("test-key");
 
-    let poll = gemini
-        .interaction("v1_REDACTED_1")
+    let poll = InteractionResume::new(gemini.clone(), "v1_REDACTED_1")
         .encode(probe(), Mode::Unary)
         .expect("the poll request encodes");
     assert_eq!(sole(&poll).method(), http::Method::GET);
@@ -949,8 +927,8 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
         Some("test-key")
     );
 
-    let resumed = gemini
-        .interaction_resumed("v1_REDACTED_1", Some("42"))
+    let resumed = InteractionResume::new(gemini.clone(), "v1_REDACTED_1")
+        .after_event("42")
         .encode(probe(), Mode::Streaming)
         .expect("the resume request encodes");
     assert_eq!(sole(&resumed).method(), http::Method::GET);
@@ -966,8 +944,7 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
 
     // Resuming without a cursor asks for the stream from its beginning,
     // which is the API's own default and what the client layer sent.
-    let from_start = gemini
-        .interaction_resumed("v1_REDACTED_1", None)
+    let from_start = InteractionResume::new(gemini, "v1_REDACTED_1")
         .encode(probe(), Mode::Streaming)
         .expect("the resume request encodes");
     assert_eq!(sole(&from_start).uri().query(), Some("stream=true&alt=sse"));
@@ -979,7 +956,10 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
 #[tokio::test]
 async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
     let response = crate::driver::Model::new(
-        crate::providers::gemini::GeminiConfig::new("test-key").interaction("v1_REDACTED_1"),
+        InteractionResume::new(
+            crate::providers::gemini::GeminiConfig::new("test-key"),
+            "v1_REDACTED_1",
+        ),
         RecordingHttpClient::new(UNARY_INTERACTION),
     )
     .call(probe())

@@ -26,7 +26,6 @@ use crate::wire::{Descriptor, Mode};
 
 /// Streaming helpers for the Interactions API.
 pub mod streaming;
-pub use interactions_api_types::*;
 
 /// Gemini provider name used in normalized records and telemetry.
 pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
@@ -350,11 +349,9 @@ pub(crate) fn create_request_body(
             ));
         }
     };
-    if body
-        .get("response_format")
-        .is_some_and(|format| !format.is_null())
-        && body.get("response_mime_type").is_none_or(Value::is_null)
-    {
+    let set = |key: &str| body.get(key).is_some_and(|value| !value.is_null());
+    let agent = set("agent");
+    if set("response_format") && !set("response_mime_type") {
         return Err(EncodeError::request(
             "response_mime_type is required when response_format is set",
         ));
@@ -363,22 +360,20 @@ pub(crate) fn create_request_body(
         Some(Value::Object(config)) => config,
         _ => Map::new(),
     };
-    if let Some(temperature) = request.temperature {
-        config.insert("temperature".to_owned(), json!(temperature));
-    }
-    if let Some(max_tokens) = request.max_tokens {
-        config.insert("max_output_tokens".to_owned(), json!(max_tokens));
-    }
-    if let Some(choice) = request.tool_choice {
-        let choice = match choice {
-            Choice::Auto => json!("auto"),
-            Choice::None => json!("none"),
-            Choice::Required => json!("any"),
-            Choice::Specific { function_names } => {
-                json!({ "allowed_tools": { "mode": "validated", "tools": function_names } })
-            }
-        };
-        config.insert("tool_choice".to_owned(), choice);
+    let choice = request.tool_choice.map(|choice| match choice {
+        Choice::Auto => json!("auto"),
+        Choice::None => json!("none"),
+        Choice::Required => json!("any"),
+        Choice::Specific { function_names } => {
+            json!({ "allowed_tools": { "mode": "validated", "tools": function_names } })
+        }
+    });
+    let temperature = ("temperature", request.temperature.map(Value::from));
+    let max_tokens = ("max_output_tokens", request.max_tokens.map(Value::from));
+    for (key, value) in [temperature, max_tokens, ("tool_choice", choice)] {
+        if let Some(value) = value {
+            config.insert(key.to_owned(), value);
+        }
     }
     config.retain(|_, value| !value.is_null());
     if !config.is_empty() {
@@ -395,21 +390,17 @@ pub(crate) fn create_request_body(
     if !tools.is_empty() {
         body.insert("tools".to_owned(), Value::Array(tools));
     }
-    let (system, history): (Vec<Message>, Vec<Message>) = request
-        .chat_history
-        .into_iter()
-        .partition(|message| matches!(message, Message::System { .. }));
-    let system: Vec<String> = system
-        .into_iter()
-        .filter_map(|message| match message {
-            Message::System { content } => Some(content),
-            _ => None,
-        })
-        .collect();
+    let (mut system, mut history) = (Vec::new(), Vec::new());
+    for message in request.chat_history {
+        match message {
+            Message::System { content } => system.push(content),
+            message => history.push(message),
+        }
+    }
     if !system.is_empty() {
         body.insert("system_instruction".to_owned(), json!(system.join("\n\n")));
     }
-    if body.get("agent").is_none_or(Value::is_null) {
+    if !agent {
         body.shift_remove("agent_config");
         body.insert("model".to_owned(), json!(model));
     }
@@ -592,186 +583,6 @@ fn assistant_step(
         }
     }
     Ok(Some(step))
-}
-
-/// The configuration types an Interactions request's `additional_params`
-/// takes.
-///
-/// ```
-/// use rig_core::providers::gemini::interactions_api::{AdditionalParameters, ThinkingLevel, GenerationConfig};
-///
-/// let params = AdditionalParameters {
-///     generation_config: Some(GenerationConfig {
-///         thinking_level: Some(ThinkingLevel::Low),
-///         ..GenerationConfig::default()
-///     }),
-///     ..AdditionalParameters::default()
-/// };
-/// assert!(serde_json::to_value(params).is_ok());
-/// ```
-pub mod interactions_api_types {
-    use serde::{Deserialize, Serialize};
-    use serde_json::Value;
-
-    /// Optional parameters for creating an interaction.
-    #[derive(Debug, Deserialize, Serialize, Default, Clone)]
-    #[serde(rename_all = "snake_case")]
-    pub struct AdditionalParameters {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub agent: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub agent_config: Option<AgentConfig>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub background: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub generation_config: Option<GenerationConfig>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub previous_interaction_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_modalities: Option<Vec<ResponseModality>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_format: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub store: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub stream: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub system_instruction: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub tools: Option<Vec<Tool>>,
-        #[serde(flatten, skip_serializing_if = "Option::is_none")]
-        pub additional_params: Option<Value>,
-    }
-
-    /// Response modalities supported by the model.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "snake_case")]
-    pub enum ResponseModality {
-        Text,
-        Image,
-        Audio,
-    }
-
-    /// Thinking depth hint for generation.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "snake_case")]
-    pub enum ThinkingLevel {
-        Minimal,
-        Low,
-        Medium,
-        High,
-    }
-
-    /// Thinking summary behavior.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "snake_case")]
-    pub enum ThinkingSummaries {
-        Auto,
-        None,
-    }
-
-    /// Generation configuration for the Interactions API.
-    #[derive(Clone, Debug, Deserialize, Serialize, Default)]
-    #[serde(rename_all = "snake_case")]
-    pub struct GenerationConfig {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub temperature: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub top_p: Option<f64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub seed: Option<u64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub stop_sequences: Option<Vec<String>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub tool_choice: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thinking_level: Option<ThinkingLevel>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thinking_summaries: Option<ThinkingSummaries>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub max_output_tokens: Option<u64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub speech_config: Option<Value>,
-    }
-
-    /// Allowed tools for tool selection.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct AllowedTools {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mode: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub tools: Option<Vec<String>>,
-    }
-
-    /// Tool definition for Interactions API.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(tag = "type", rename_all = "snake_case")]
-    pub enum Tool {
-        Function(FunctionTool),
-        GoogleSearch,
-        CodeExecution,
-        UrlContext,
-        ComputerUse(ComputerUseTool),
-        McpServer(McpServerTool),
-        FileSearch(FileSearchTool),
-    }
-
-    /// Function tool definition.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FunctionTool {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub description: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub parameters: Option<Value>,
-    }
-
-    /// Computer use tool configuration.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ComputerUseTool {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub environment: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub excluded_predefined_functions: Option<Vec<String>>,
-    }
-
-    /// MCP server tool configuration.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct McpServerTool {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub url: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub headers: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub allowed_tools: Option<AllowedTools>,
-    }
-
-    /// File search tool configuration.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FileSearchTool {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub file_search_store_names: Option<Vec<String>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub top_k: Option<u64>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub metadata_filter: Option<String>,
-    }
-
-    /// Agent configuration for Interactions API.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(tag = "type", rename_all = "kebab-case")]
-    pub enum AgentConfig {
-        Dynamic,
-        DeepResearch {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            thinking_summaries: Option<ThinkingSummaries>,
-        },
-    }
 }
 
 #[cfg(test)]

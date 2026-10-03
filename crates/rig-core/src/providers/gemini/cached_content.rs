@@ -24,6 +24,7 @@ use serde_json::{Value, json};
 
 use crate::error::EncodeError;
 use crate::error::ProviderError;
+use crate::json_utils::Lenient;
 use crate::operation::Whole;
 use crate::providers::internal::{
     wire::{classify_or, classify_untyped_line},
@@ -376,6 +377,73 @@ impl CachedContents {
         let path = with_query_pairs(CACHED_CONTENTS_PATH, &pairs);
         http::Request::get(self.provider.uri(&path)).body(Body::empty())
     }
+}
+
+/// Set `name`, a `cachedContents/<id>` handle, as the prefix `body` reads.
+///
+/// # Errors
+///
+/// When `name` is not a handle, `body` names another one, or it sets a
+/// system instruction, tools or a tool choice, which the cache owns.
+pub fn with_cached_content(
+    body: &mut serde_json::Map<String, Value>,
+    name: &str,
+) -> Result<(), EncodeError> {
+    let fail = |message: String| Err(EncodeError::request(message));
+    if !name.starts_with("cachedContents/") {
+        return fail(format!(
+            "gemini cached content handle should look like `cachedContents/<id>`, got `{name}`"
+        ));
+    }
+    if let Some(existing) = body
+        .get("cachedContent")
+        .and_then(Value::as_str)
+        .filter(|existing| *existing != name)
+    {
+        return fail(format!(
+            "a Gemini request set cached content twice, to `{existing}` and `{name}`: set it \
+             one way or the other"
+        ));
+    }
+    let conflicts: Vec<&str> = [
+        (
+            &super::completion::SYSTEM_INSTRUCTION[..],
+            "a system instruction (preamble)",
+        ),
+        (&["tools"][..], "tools"),
+        (&super::completion::TOOL_CONFIG[..], "a tool choice"),
+    ]
+    .into_iter()
+    .filter_map(|(spellings, what)| super::completion::present(body, spellings).map(|_| what))
+    .collect();
+    if conflicts.is_empty() {
+        body.insert("cachedContent".to_owned(), Value::String(name.to_owned()));
+        return Ok(());
+    }
+    // Cached function declarations need caller-side dispatch; hosted tools
+    // run on Gemini's side.
+    let tools = body
+        .get("tools")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    let declares_functions = tools.iter().any(|tool| {
+        !tool.arr("functionDeclarations").is_empty()
+            || !tool.arr("function_declarations").is_empty()
+    });
+    let caveat = match declares_functions {
+        true => {
+            " Function declarations in a cache are declarations only: an `Agent` dispatches \
+             only tools it advertised, so a cached function tool runs only when you drive \
+             `GenerateContent` yourself. Hosted tools such as `codeExecution` are fine to cache."
+        }
+        false => "",
+    };
+    fail(format!(
+        "a Gemini request using cached content `{name}` also set {}. The cached content owns \
+         the system instruction, tools and tool choice of every request that uses it: move \
+         them into the cache, or drop the cache handle.{caveat}",
+        conflicts.join(" and ")
+    ))
 }
 
 impl super::GeminiConfig {

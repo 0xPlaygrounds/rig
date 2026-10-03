@@ -75,7 +75,7 @@ impl Gemini {
     /// its stream. A unary call fetches the current resource; the caller
     /// controls repeated polling.
     pub fn interaction(&self, interaction_id: impl Into<String>) -> Model<InteractionResume> {
-        self.model(self.config.interaction(interaction_id))
+        self.model(InteractionResume::new(self.config.clone(), interaction_id))
     }
 
     /// [`Self::interaction`], resuming a streamed read after the last event
@@ -85,10 +85,11 @@ impl Gemini {
         interaction_id: impl Into<String>,
         last_event_id: Option<&str>,
     ) -> Model<InteractionResume> {
-        self.model(
-            self.config
-                .interaction_resumed(interaction_id, last_event_id),
-        )
+        let wire = InteractionResume::new(self.config.clone(), interaction_id);
+        self.model(match last_event_id {
+            Some(last_event_id) => wire.after_event(last_event_id),
+            None => wire,
+        })
     }
 
     /// The models this API key can use, every page followed.

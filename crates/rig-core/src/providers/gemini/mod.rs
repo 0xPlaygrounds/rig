@@ -108,61 +108,6 @@ impl GeminiConfig {
     pub(crate) fn interactions(&self, model: impl Into<String>) -> interactions_api::Interactions {
         interactions_api::Interactions::new(self.clone(), model)
     }
-
-    /// The `batchEmbedContents` embedding wire. `ndims` defaults from the
-    /// model identifier.
-    pub(crate) fn embedding(
-        &self,
-        model: impl Into<String>,
-        ndims: Option<usize>,
-    ) -> embedding::Embeddings {
-        embedding::Embeddings::new(self.clone(), model, ndims)
-    }
-
-    /// The audio transcription wire.
-    pub(crate) fn transcription(&self, model: impl Into<String>) -> transcription::Transcriptions {
-        transcription::Transcriptions::new(self.clone(), model)
-    }
-
-    /// The image generation wire.
-    #[cfg(feature = "image")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
-    pub(crate) fn image_generation(&self, model: impl Into<String>) -> image_generation::Images {
-        image_generation::Images::new(self.clone(), model)
-    }
-
-    /// The GenerateContent model-listing wire.
-    pub(crate) fn models(&self) -> model_listing::Models {
-        model_listing::Models::new(self.clone())
-    }
-
-    /// The credential-check wire.
-    pub(crate) fn verify(&self) -> model_listing::VerifyKey {
-        model_listing::VerifyKey::new(self.clone())
-    }
-
-    /// Build a wire to retrieve an existing interaction or resume its stream.
-    /// Unary reads fetch the current resource; callers control repeated polling.
-    pub(crate) fn interaction(
-        &self,
-        interaction_id: impl Into<String>,
-    ) -> interactions_api::InteractionResume {
-        interactions_api::InteractionResume::new(self.clone(), interaction_id)
-    }
-
-    /// [`Self::interaction`], resuming a streamed read after the last event
-    /// the consumer saw.
-    pub(crate) fn interaction_resumed(
-        &self,
-        interaction_id: impl Into<String>,
-        last_event_id: Option<&str>,
-    ) -> interactions_api::InteractionResume {
-        let wire = self.interaction(interaction_id);
-        match last_event_id {
-            Some(last_event_id) => wire.after_event(last_event_id),
-            None => wire,
-        }
-    }
 }
 
 #[cfg(test)]

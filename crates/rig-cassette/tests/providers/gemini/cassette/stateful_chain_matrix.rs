@@ -22,7 +22,6 @@ use rig::message::{
 use rig::message::{ToolCall, ToolResultContent};
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
-use rig::providers::gemini::interactions_api::AdditionalParameters;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -344,13 +343,12 @@ async fn interactions_chain_with_tool_call() {
             };
             deleting_interactions(&client, &stored, async {
                 let model = client.clone().interactions(INTERACTIONS_MODEL);
-                let params = |previous: Option<String>| {
-                    serde_json::to_value(AdditionalParameters {
-                        store: Some(true),
-                        previous_interaction_id: previous,
-                        ..Default::default()
-                    })
-                    .expect("params serialize")
+                let params = |previous: Option<String>| match previous {
+                    Some(previous) => serde_json::json!({
+                        "previous_interaction_id": previous,
+                        "store": true
+                    }),
+                    None => serde_json::json!({ "store": true }),
                 };
 
                 let first = model

@@ -3,7 +3,7 @@ use std::path::Path;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use serde_json::{Map, Value, json};
 
-use super::completion::gemini_api_types::{GenerationConfig, usage_of};
+use super::completion::usage_of;
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::operation::Transcription;
@@ -21,14 +21,19 @@ const TRANSCRIPTION_PREAMBLE: &str =
 fn transcription_body(
     request: transcription::TranscriptionRequest,
 ) -> Result<Vec<u8>, EncodeError> {
-    let additional_params = request
-        .additional_params
-        .unwrap_or_else(|| Value::Object(Map::new()));
-    let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
+    let mut generation_config = match request.additional_params {
+        None | Some(Value::Null) => Map::new(),
+        Some(Value::Object(config)) => config,
+        Some(other) => {
+            return Err(EncodeError::request(format!(
+                "Gemini transcription `additional_params` should be an object, got {other}"
+            )));
+        }
+    };
     // A temperature named on the request outranks one carried inside
     // `additional_params`.
     if let Some(temp) = request.temperature {
-        generation_config.temperature = Some(temp);
+        generation_config.insert("temperature".to_owned(), Value::from(temp));
     }
     // The request supplies no explicit MIME type, so infer it from the filename.
     let mime_type = mime_guess::from_path(Path::new(&request.filename))
@@ -162,6 +167,13 @@ pub fn transcript_of(reply: &Value) -> Result<transcription::TranscriptionRespon
         usage: reply.get("usageMetadata").map(usage_of).unwrap_or_default(),
         ..transcription::TranscriptionResponse::new(parts.concat())
     })
+}
+
+impl super::GeminiConfig {
+    /// The audio transcription wire.
+    pub(crate) fn transcription(&self, model: impl Into<String>) -> Transcriptions {
+        Transcriptions::new(self.clone(), model)
+    }
 }
 
 #[cfg(test)]

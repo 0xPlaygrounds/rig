@@ -16,10 +16,6 @@ use rig::completion::FinishReason;
 use rig::message::{AssistantContent, Reasoning, ToolCall, ToolResultContent, UserContent};
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
-};
-use rig::providers::gemini::interactions_api;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
@@ -142,15 +138,9 @@ fn signature(content: &AssistantContent) -> Option<&str> {
 /// record present, finish reason normalized to `Length`, partial text kept.
 #[tokio::test]
 async fn max_tokens_truncation_normalizes_to_length() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: Some(0),
-            thinking_level: None,
-            include_thoughts: None,
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/max_tokens_truncation",
         |client| async move {
@@ -158,9 +148,7 @@ async fn max_tokens_truncation_normalizes_to_length() {
             let request =
                 CompletionRequest::new("Write a 200-word story about a lighthouse keeper.")
                     .max_tokens(24)
-                    .additional_params(
-                        serde_json::to_value(params).expect("params should serialize"),
-                    );
+                    .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -233,15 +221,11 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
 /// must not erase or duplicate the preceding unsigned thought deltas.
 #[tokio::test]
 async fn thinking_stream_aggregates_all_reasoning_text() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::High),
-            include_thoughts: Some(true),
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": {
+            "thinkingConfig": { "thinkingLevel": "high", "includeThoughts": true }
+        }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/thinking_stream",
         |client| async move {
@@ -251,7 +235,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                      Think it through carefully step by step, then answer with just the number.",
                 )
                 .additional_params(
-                    serde_json::to_value(params).expect("params should serialize"),
+                    params,
                 );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -322,15 +306,11 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
 /// F1b thinking/tool boundary, pinned on real traffic).
 #[tokio::test]
 async fn thinking_and_tool_call_interleave_as_discrete_parts() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::Medium),
-            include_thoughts: Some(true),
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": {
+            "thinkingConfig": { "thinkingLevel": "medium", "includeThoughts": true }
+        }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/thinking_then_tool_call",
         |client| async move {
@@ -344,7 +324,7 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
             )
             .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
-            .additional_params(serde_json::to_value(params).expect("params should serialize"));
+            .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -397,15 +377,9 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
 /// distinct parts with the ids the stream reported.
 #[tokio::test]
 async fn parallel_function_calls_stay_distinct() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: Some(0),
-            thinking_level: None,
-            include_thoughts: None,
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/parallel_function_calls",
         |client| async move {
@@ -418,7 +392,7 @@ async fn parallel_function_calls_stay_distinct() {
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .tool(rig::tool::tool_definition(&BetaSignal))
-            .additional_params(serde_json::to_value(params).expect("params should serialize"));
+            .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -478,21 +452,15 @@ async fn parallel_function_calls_stay_distinct() {
 /// exactly as streamed.
 #[tokio::test]
 async fn stop_finish_reason_normalizes_on_text_turn() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: Some(0),
-            thinking_level: None,
-            include_thoughts: None,
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/stop_finish_reason",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = CompletionRequest::new("Reply with one short sentence about volcanoes.")
-                .additional_params(serde_json::to_value(params).expect("params should serialize"));
+                .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -521,16 +489,13 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                      Think it through, then answer with just the number.",
                 )
                 .additional_params(
-                    serde_json::to_value(interactions_api::AdditionalParameters {
-                        generation_config: Some(interactions_api::GenerationConfig {
-                            thinking_level: Some(interactions_api::ThinkingLevel::Medium),
-                            thinking_summaries: Some(interactions_api::ThinkingSummaries::Auto),
-                            ..Default::default()
-                        }),
-                        store: Some(true),
-                        ..Default::default()
-                    })
-                    .expect("params should serialize"),
+                    serde_json::json!({
+                        "generation_config": {
+                            "thinking_level": "medium",
+                            "thinking_summaries": "auto"
+                        },
+                        "store": true
+                    }),
                 );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -643,13 +608,7 @@ async fn interactions_requires_action_roundtrip() {
                         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(
-                            serde_json::to_value(interactions_api::AdditionalParameters {
-                                store: Some(true),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        ),
+                        .additional_params(serde_json::json!({ "store": true })),
                 )
                 .await
                 .expect("tool-required interaction should succeed");
@@ -713,11 +672,7 @@ async fn interactions_requires_action_roundtrip() {
                         vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
                     )))
                     .additional_params(
-                        serde_json::to_value(interactions_api::AdditionalParameters {
-                            previous_interaction_id: Some(interaction_id),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),
+                        serde_json::json!({ "previous_interaction_id": interaction_id }),
                     ),
                 )
                 .await
@@ -767,11 +722,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                 .tool(rig::tool::tool_definition(&crate::support::Adder))
                 .tool_choice(ToolChoice::Required)
                 .additional_params(
-                    serde_json::to_value(interactions_api::AdditionalParameters {
-                        store: Some(true),
-                        ..Default::default()
-                    })
-                    .expect("params should serialize"),
+                    serde_json::json!({ "store": true }),
                 );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -863,18 +814,13 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                 "How many positive integers n < 100 are divisible by 6 but not by 9? \
                      Think it through, then answer with just the number.",
             )
-            .additional_params(
-                serde_json::to_value(interactions_api::AdditionalParameters {
-                    generation_config: Some(interactions_api::GenerationConfig {
-                        thinking_level: Some(interactions_api::ThinkingLevel::Medium),
-                        thinking_summaries: Some(interactions_api::ThinkingSummaries::None),
-                        ..Default::default()
-                    }),
-                    store: Some(true),
-                    ..Default::default()
-                })
-                .expect("params should serialize"),
-            );
+            .additional_params(serde_json::json!({
+                "generation_config": {
+                    "thinking_level": "medium",
+                    "thinking_summaries": "none"
+                },
+                "store": true
+            }));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");

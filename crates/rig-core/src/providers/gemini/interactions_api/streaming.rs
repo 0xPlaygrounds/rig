@@ -90,12 +90,11 @@ enum Open {
 pub fn usage_of(usage: &Value) -> Usage {
     let tool_use = usage.u64("total_tool_use_tokens");
     let thoughts = usage.u64("total_thought_tokens");
-    let input_tokens = usage
-        .u64("total_input_tokens")
-        .map(|input| input + tool_use.unwrap_or(0));
-    let output_tokens = usage
-        .u64("total_output_tokens")
-        .map(|output| output + thoughts.unwrap_or(0));
+    let add = |key: &str, more: Option<u64>| usage.u64(key).map(|count| count + more.unwrap_or(0));
+    let (input_tokens, output_tokens) = (
+        add("total_input_tokens", tool_use),
+        add("total_output_tokens", thoughts),
+    );
     Usage {
         input_tokens,
         output_tokens,
@@ -365,10 +364,8 @@ fn ending(status: Option<&str>, errors: &[Value]) -> (Option<FinishReason>, Opti
         .iter()
         .filter_map(|error| error.str("message"))
         .collect();
-    let detail = match messages.is_empty() {
-        true => String::new(),
-        false => format!(": {}", messages.join("; ")),
-    };
+    let detail = (!messages.is_empty()).then(|| format!(": {}", messages.join("; ")));
+    let detail = detail.unwrap_or_default();
     let other = |status: &str| Some(FinishReason::Other(status.to_owned()));
     match status {
         Some("completed") => (Some(FinishReason::Stop), None),
@@ -393,16 +390,17 @@ fn call_fields(
     step: &Value,
     out: &mut Out<'_, Completion>,
 ) -> Result<(), ProviderError> {
-    let fragment = CallFragment {
-        id: step.str("id"),
-        name: step.str("name"),
-        arguments: None,
-    };
-    out.fragment(Some(index), fragment)?;
-    match step.get("arguments") {
-        Some(arguments) => out.announce(index, arguments.clone()),
-        None => Ok(()),
-    }
+    let (id, name) = (step.str("id"), step.str("name"));
+    out.fragment(
+        Some(index),
+        CallFragment {
+            id,
+            name,
+            arguments: None,
+        },
+    )?;
+    step.get("arguments")
+        .map_or(Ok(()), |arguments| out.announce(index, arguments.clone()))
 }
 
 /// EOF without `interaction.completed` is truncation, not successful

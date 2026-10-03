@@ -75,6 +75,18 @@ fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderErr
     })
 }
 
+impl super::GeminiConfig {
+    /// The GenerateContent model-listing wire.
+    pub(crate) fn models(&self) -> Models {
+        Models::new(self.clone())
+    }
+
+    /// The credential-check wire.
+    pub(crate) fn verify(&self) -> VerifyKey {
+        VerifyKey::new(self.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

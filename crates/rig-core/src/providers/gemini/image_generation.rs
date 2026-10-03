@@ -9,7 +9,7 @@
 //! # }
 //! ```
 
-use super::completion::gemini_api_types::usage_of;
+use super::completion::usage_of;
 use crate::error::{EncodeError, ProviderError};
 use crate::image_generation;
 use crate::image_generation::ImageGenerationRequest;
@@ -180,6 +180,13 @@ impl<'id> Decoder<'id, ImageGeneration> for ImagesDecoder {
         out: Out<'id, ImageGeneration>,
     ) -> Result<Flow, ProviderError> {
         Ok(out.end(image_of(&event)?))
+    }
+}
+
+impl super::GeminiConfig {
+    /// The image generation wire.
+    pub(crate) fn image_generation(&self, model: impl Into<String>) -> Images {
+        Images::new(self.clone(), model)
     }
 }
 

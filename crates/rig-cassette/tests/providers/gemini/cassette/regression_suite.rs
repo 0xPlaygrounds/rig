@@ -5,9 +5,6 @@
 
 use rig::agent::OutputMode;
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
-};
 use rig_agent::test_utils::decode_structured_output;
 
 use super::super::support::assert_recorded_sampling_fields;
@@ -213,21 +210,20 @@ async fn thinking_config_without_max_tokens_sends_no_sampling_fields() {
     super::super::support::with_gemini_cassette(
         "regression/thinking_config_without_max_tokens",
         |client| async move {
-            let config = GenerationConfig {
-                thinking_config: Some(ThinkingConfig {
-                    thinking_budget: None,
-                    thinking_level: Some(ThinkingLevel::Low),
-                    include_thoughts: Some(true),
-                }),
-                ..Default::default()
-            };
-            let params = AdditionalParameters::default().with_config(config);
+            let params = serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": {
+                        "thinkingLevel": "low",
+                        "includeThoughts": true
+                    }
+                }
+            });
 
             let agent = rig::AgentBuilder::new(
                 client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
             )
             .preamble(STREAMING_PREAMBLE)
-            .additional_params(serde_json::to_value(params).expect("params should serialize"))
+            .additional_params(params)
             // Again no `.max_tokens(...)`: the thinking budget is the only
             // generation setting this caller asked for.
             .build();
