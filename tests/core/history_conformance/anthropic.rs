@@ -6,10 +6,8 @@ use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig_core::providers::anthropic::{ANTHROPIC, AnthropicConfig, Dialect, Messages};
-use rig_core::test_utils::history_conformance::{
-    Ablation, Ending, HistoryFixture, Shape, http_body,
-};
 use rig_core::wire::{Mode, Wire, WireFrame};
+use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Value, json};
 
 /// A Messages-format dialect's side of the suite.
@@ -264,7 +262,7 @@ impl HistoryFixture for MessagesHistory {
     }
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "anthropic",
     fixture: ANTHROPIC_HISTORY,
 }

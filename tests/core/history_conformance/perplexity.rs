@@ -29,7 +29,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     has_items: false,
 };
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "perplexity",
     fixture: FIXTURE,
 }

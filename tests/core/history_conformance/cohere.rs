@@ -6,10 +6,8 @@ use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, AssistantMessage};
 use rig_core::providers::cohere::{Chat, CohereConfig};
-use rig_core::test_utils::history_conformance::{
-    Ablation, Ending, HistoryFixture, Shape, http_body,
-};
 use rig_core::wire::{Mode, Wire, WireFrame};
+use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Map, Value, json};
 
 pub struct CohereHistory;
@@ -254,7 +252,7 @@ impl HistoryFixture for CohereHistory {
     }
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "cohere",
     fixture: CohereHistory,
 }

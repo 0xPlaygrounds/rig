@@ -1,0 +1,17 @@
+[package]
+name = "rig-history-conformance"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "The history conformance suite every completion wire runs."
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rig-core = { path = "../../crates/rig-core", default-features = false, features = ["test-utils"] }
+base64.workspace = true
+serde_json.workspace = true

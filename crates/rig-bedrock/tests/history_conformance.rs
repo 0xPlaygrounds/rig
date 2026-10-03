@@ -28,8 +28,8 @@ use rig_bedrock::completion::{
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Model, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::test_utils::history_conformance::{Ablation, Ending, HistoryFixture, Shape};
 use rig_core::wire::{Mode, Wire};
+use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape};
 use serde_json::{Value, json};
 
 /// One canned HTTP exchange: the reply it gives, and the request it got.
@@ -535,7 +535,7 @@ impl HistoryFixture for BedrockHistory {
 }
 
 mod claude {
-    rig_core::history_conformance_suite! {
+    rig_history_conformance::history_conformance_suite! {
         wire: "bedrock_claude",
         fixture: super::BedrockHistory {
             model: super::CLAUDE,
@@ -546,7 +546,7 @@ mod claude {
 }
 
 mod nova {
-    rig_core::history_conformance_suite! {
+    rig_history_conformance::history_conformance_suite! {
         wire: "bedrock_nova",
         fixture: super::BedrockHistory {
             model: super::AMAZON_NOVA_PRO,

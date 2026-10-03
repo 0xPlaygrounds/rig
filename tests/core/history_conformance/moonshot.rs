@@ -40,7 +40,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     has_items: true,
 };
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "moonshot",
     fixture: FIXTURE,
 }

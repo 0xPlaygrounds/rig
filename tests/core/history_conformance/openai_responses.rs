@@ -8,10 +8,8 @@ use rig_core::error::EncodeError;
 use rig_core::operation::Completion;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::wire::Responses;
-use rig_core::test_utils::history_conformance::{
-    Ablation, Ending, HistoryFixture, Shape, http_body,
-};
 use rig_core::wire::{Encoded, Mode, Wire, WireFrame};
+use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Value, json};
 
 /// One Responses wire or dialect: how to build it for a model, and the
@@ -409,7 +407,7 @@ pub fn openai(model: &str) -> Responses {
     Responses::new(OpenAIConfig::new("test-key"), model)
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "openai_responses",
     fixture: ResponsesHistory {
         wire: openai,

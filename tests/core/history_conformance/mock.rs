@@ -4,9 +4,9 @@
 use rig_core::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, Message, Opaque, Origin, Reasoning, Text};
-use rig_core::test_utils::history_conformance::{Ending, HistoryFixture, Shape, decode};
 use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent, mock_final};
 use rig_core::wire::{Mode, Wire};
+use rig_history_conformance::{Ending, HistoryFixture, Shape, decode};
 use serde_json::{Value, json};
 
 pub struct MockHistory;
@@ -174,7 +174,7 @@ impl HistoryFixture for MockHistory {
     }
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "mock",
     fixture: MockHistory,
 }

@@ -10,7 +10,7 @@ fn wire(model: &str) -> CopilotWire {
     Copilot::new("tid=test;exp=0").completion(model).wire
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "copilot",
     fixture: ResponsesHistory {
         wire,

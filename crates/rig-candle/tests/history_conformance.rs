@@ -11,8 +11,8 @@ use rig_candle::{
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::{CallId, Reasoning, ToolCall, ToolFunction, ToolName};
-use rig_core::test_utils::history_conformance::{Ending, HistoryFixture, Shape};
 use rig_core::wire::{Mode, Wire};
+use rig_history_conformance::{Ending, HistoryFixture, Shape};
 use serde_json::Value;
 
 struct CandleHistory;
@@ -116,7 +116,7 @@ impl HistoryFixture for CandleHistory {
     }
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "candle",
     fixture: CandleHistory,
 }

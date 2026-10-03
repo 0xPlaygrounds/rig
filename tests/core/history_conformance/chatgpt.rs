@@ -14,7 +14,7 @@ fn wire(model: &str) -> Responses {
     )
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "chatgpt",
     fixture: ResponsesHistory {
         wire,

@@ -31,6 +31,7 @@ tonic-prost-build = { workspace = true }
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
+rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
 anyhow = { workspace = true }
 rig-agent.workspace = true
 rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [

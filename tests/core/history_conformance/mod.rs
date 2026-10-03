@@ -1,6 +1,6 @@
 //! The history conformance suites of the wires whose crates this binary
 //! links: one module per wire, each expanding
-//! `rig_core::history_conformance_suite!`. The registry
+//! `rig_history_conformance::history_conformance_suite!`. The registry
 //! (`history_conformance_registry.rs`) reads [`SUITE_WIRES`], built from the
 //! `HISTORY_WIRE` constant each expanded suite emits, so disabling a suite
 //! is a compile error rather than a shrinking test count.

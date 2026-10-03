@@ -10399,6 +10399,7 @@ dependencies = [
  "rig-fastembed",
  "rig-gemini-grpc",
  "rig-helixdb",
+ "rig-history-conformance",
  "rig-lancedb",
  "rig-memory",
  "rig-milvus",
@@ -10475,6 +10476,7 @@ dependencies = [
  "rig-agent",
  "rig-core",
  "rig-derive",
+ "rig-history-conformance",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10495,6 +10497,7 @@ dependencies = [
  "image",
  "rig-agent",
  "rig-core",
+ "rig-history-conformance",
  "safetensors",
  "serde",
  "serde_json",
@@ -10682,6 +10685,7 @@ dependencies = [
  "protoc-bin-vendored",
  "rig-agent",
  "rig-core",
+ "rig-history-conformance",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -10704,6 +10708,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "rig-history-conformance"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "rig-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -11048,6 +11061,7 @@ dependencies = [
  "rig-agent",
  "rig-core",
  "rig-ecs",
+ "rig-history-conformance",
  "schemars 1.2.1",
  "serde",
  "serde_json",

@@ -17,7 +17,7 @@ pub const MOONSHOT_HISTORY: MessagesHistory = MessagesHistory {
     hosted: false,
 };
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "anthropic_moonshot",
     fixture: MOONSHOT_HISTORY,
 }

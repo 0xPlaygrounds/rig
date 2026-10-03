@@ -7,8 +7,8 @@
 use google_cloud_aiplatform_v1::model::GenerateContentResponse;
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
-use rig_core::test_utils::history_conformance::{Ablation, Ending, HistoryFixture, Shape};
 use rig_core::wire::{Mode, Wire};
+use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape};
 use rig_vertexai::completion::GenerateContent;
 use serde_json::{Value, json};
 
@@ -184,7 +184,7 @@ fn fitted(value: &mut Value, typed: &Value) {
     }
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "vertexai",
     fixture: VertexHistory,
 }

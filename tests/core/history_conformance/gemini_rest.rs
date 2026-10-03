@@ -7,10 +7,8 @@ use rig_core::error::EncodeError;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::gemini::completion::gemini_api_types::FAILURE_FINISHES;
-use rig_core::test_utils::history_conformance::{
-    Ablation, Ending, HistoryFixture, Shape, http_body,
-};
 use rig_core::wire::{Mode, Wire, WireFrame};
+use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Value, json};
 
 pub struct GeminiRestHistory;
@@ -177,7 +175,7 @@ impl HistoryFixture for GeminiRestHistory {
     }
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "gemini_rest",
     fixture: GeminiRestHistory,
 }

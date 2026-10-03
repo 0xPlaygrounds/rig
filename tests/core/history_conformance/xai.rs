@@ -10,7 +10,7 @@ fn wire(model: &str) -> Responses {
     Responses::new(OpenAIConfig::with_key(&xai::DIALECT, "test-key"), model)
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "xai",
     fixture: ResponsesHistory {
         wire,

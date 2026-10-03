@@ -114,6 +114,7 @@ members = [
     "xtask",
     "test-support/service-tests",
     "test-support/rig-test-support",
+    "test-support/rig-history-conformance",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the
@@ -148,6 +149,7 @@ default-members = [
     "crates/rig-gemini-grpc",
     "test-support/service-tests",
     "test-support/rig-test-support",
+    "test-support/rig-history-conformance",
     # The design record's Frozen API programs: clippy and the full test
     # lane compile them.
     "examples/frozen_api",
@@ -424,6 +426,7 @@ rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.43.0", optiona
 
 [dev-dependencies]
 rig-test-support = { path = "test-support/rig-test-support" }
+rig-history-conformance = { path = "test-support/rig-history-conformance" }
 # The facade's tests use the recorder directly, whatever `cassette` is set to.
 rig-cassette = { path = "crates/rig-cassette", default-features = false, features = ["agent"] }
 bevy_app = { workspace = true }

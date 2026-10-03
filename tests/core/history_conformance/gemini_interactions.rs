@@ -7,10 +7,8 @@ use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, AssistantMessage};
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::interactions_api::Interactions;
-use rig_core::test_utils::history_conformance::{
-    Ablation, Ending, HistoryFixture, Shape, http_body,
-};
 use rig_core::wire::{Mode, Wire, WireFrame};
+use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Value, json};
 
 pub struct InteractionsHistory;
@@ -321,7 +319,7 @@ impl HistoryFixture for InteractionsHistory {
     }
 }
 
-rig_core::history_conformance_suite! {
+rig_history_conformance::history_conformance_suite! {
     wire: "gemini_interactions",
     fixture: InteractionsHistory,
 }

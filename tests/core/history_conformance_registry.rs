@@ -1,5 +1,5 @@
 //! Workspace registry for the history conformance suite: every wire in
-//! [`HISTORY_WIRES`](rig_core::test_utils::history_conformance::HISTORY_WIRES)
+//! [`HISTORY_WIRES`](rig_history_conformance::HISTORY_WIRES)
 //! must expand `history_conformance_suite!`, or CI fails. Suites compiled
 //! into this binary are linked through
 //! [`SUITE_WIRES`](super::history_conformance::SUITE_WIRES); the ones that
@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use rig_core::test_utils::history_conformance::{HISTORY_WIRES, TESTS};
+use rig_history_conformance::{HISTORY_WIRES, TESTS};
 
 use super::{history_conformance, verification_checks};
 

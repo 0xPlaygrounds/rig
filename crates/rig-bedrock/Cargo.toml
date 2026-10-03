@@ -33,6 +33,7 @@ tracing = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
+rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
 anyhow = { workspace = true }
 # Harness signal: rig-core's sequence laws panic (not just log) in this
 # crate's own tests.
