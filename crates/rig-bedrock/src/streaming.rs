@@ -420,8 +420,7 @@ fn usage(usage: &Value) -> Usage {
         total_tokens: Some(input.saturating_add(output)),
         cached_input_tokens: cache_read,
         cache_creation_input_tokens: cache_write,
-        tool_use_prompt_tokens: None,
-        reasoning_tokens: None,
+        ..Usage::default()
     }
 }
 
