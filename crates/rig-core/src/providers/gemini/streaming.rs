@@ -306,7 +306,8 @@ fn finish_name(reason: &Value) -> Option<String> {
 impl GenerateContentDecoder {
     /// Write one part of the candidate's content as its block. A part this
     /// decoder does not model, or one missing the fields its block needs,
-    /// is kept as an opaque item that replays.
+    /// is kept as an opaque item that replays; one with no data is kept as
+    /// one that does not.
     fn part(&mut self, part: Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         let Value::Object(fields) = &part else {
             let index = out.fresh_index();
@@ -359,11 +360,20 @@ impl GenerateContentDecoder {
             };
             return out.content(AssistantContent::Image(image).with_native(part));
         }
+        // A part with no data, as one of a kind the gRPC proto does not
+        // declare arrives, is not an answer and has nothing to send back.
+        let data = fields.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "thought" | "thoughtSignature" | "partMetadata"
+            )
+        });
         // Hosted code execution alone is not an answer.
-        self.delivered |=
-            !fields.contains_key("executableCode") && !fields.contains_key("codeExecutionResult");
+        self.delivered |= data
+            && !fields.contains_key("executableCode")
+            && !fields.contains_key("codeExecutionResult");
         let index = out.fresh_index();
-        out.whole(index, Block::Opaque { replay: true }, part, "")
+        out.whole(index, Block::Opaque { replay: data }, part, "")
     }
 
     pub(crate) fn is_analysis_only(frame: &WireFrame) -> bool {

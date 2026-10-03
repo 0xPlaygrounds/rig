@@ -573,3 +573,39 @@ fn a_blocked_prompt_is_a_refusal_on_grpc() {
         "{message}"
     );
 }
+
+/// A part of a kind the proto does not declare arrives with no data, its
+/// signature alone. The turn replays to the same model without it, never
+/// as a part with no data.
+#[test]
+fn a_part_of_an_undeclared_kind_never_replays_without_data() {
+    use rig_core::message::Message;
+    let signed = proto::Part {
+        data: None,
+        thought_signature: b"sig".to_vec(),
+        ..Default::default()
+    };
+    let response = complete(response(
+        vec![signed, text_part("answer")],
+        proto::candidate::FinishReason::Stop as i32,
+    ))
+    .expect("the reply decodes");
+    let history = vec![
+        Message::user("q"),
+        Message::Assistant(response.continued(response.choice.clone())),
+    ];
+    let wire = crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH);
+    let mut request = rig_core::completion::CompletionRequest::new("next");
+    request.chat_history = rig_core::completion::adapt(&history, &wire);
+    let request =
+        crate::completion::create_grpc_request(crate::completion::GEMINI_2_5_FLASH, request)
+            .expect("the history encodes");
+    let parts: Vec<_> = request.contents.iter().flat_map(|c| &c.parts).collect();
+    assert!(parts.iter().all(|part| part.data.is_some()), "{parts:?}");
+    assert!(
+        parts
+            .iter()
+            .any(|part| part.data == Some(proto::part::Data::Text("answer".to_owned()))),
+        "{parts:?}"
+    );
+}
