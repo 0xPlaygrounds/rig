@@ -119,11 +119,15 @@ impl Operation for Completion {
         // rules apply to them and no encoder places them.
         request.chat_history = request.chat_history_with_documents();
         request.documents.clear();
+        let stored = target.continues_stored(&request);
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
-            stored: target.continues_stored(&request),
-            tools: target.declares_tools(&request)
-                && !matches!(request.tool_choice, Some(crate::message::ToolChoice::None)),
+            stored,
+            // A conversation the provider stores holds its own tools, so a
+            // continuation that declares none still calls them.
+            tools: stored
+                || target.declares_tools(&request)
+                    && !matches!(request.tool_choice, Some(crate::message::ToolChoice::None)),
             context: Some(crate::completion::history::context_of(&request)),
         };
         request.chat_history =
@@ -1015,7 +1019,10 @@ fn emit(items: &mut Items, event: StreamEvent) {
 /// item's string of that key, an array extends the item's array, and any
 /// other value replaces the key. A delta kind rig has never seen still
 /// lands in the item.
-fn merge_delta(item: &mut serde_json::Value, delta: &serde_json::Map<String, serde_json::Value>) {
+pub(crate) fn merge(
+    item: &mut serde_json::Value,
+    delta: &serde_json::Map<String, serde_json::Value>,
+) {
     use serde_json::Value;
     if !item.is_object() {
         *item = Value::Object(serde_json::Map::new());
@@ -1107,7 +1114,7 @@ impl<'id> Out<'id, Completion> {
         index: usize,
         delta: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<(), ProviderError> {
-        merge_delta(&mut self.lock().fold.draft(index)?.item, delta);
+        merge(&mut self.lock().fold.draft(index)?.item, delta);
         Ok(())
     }
 

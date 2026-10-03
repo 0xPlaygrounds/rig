@@ -593,12 +593,14 @@ fn assistant(
                     block => block,
                 }
             };
+            // Keys sorted, so the text is the same however the provider
+            // ordered the arguments.
             let block = match block {
                 AssistantContent::ToolCall(call) if !accepts.tools => {
                     AssistantContent::Text(Text::new(format!(
                         "[called tool {} with {}]",
                         call.function.name,
-                        call.function.arguments_value()
+                        crate::json_utils::to_canonical_string(&call.function.arguments_value())
                     )))
                 }
                 block => block,
