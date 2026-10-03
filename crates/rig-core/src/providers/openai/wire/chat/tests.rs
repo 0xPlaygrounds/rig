@@ -215,10 +215,10 @@ fn the_mode_decides_the_reply_framing() {
     );
 }
 
-/// `[DONE]` is a modeled event, not a transport filter: a stream whose only
-/// terminal signal is the sentinel still produces the terminal record.
+/// `[DONE]` before any finish reason fails the turn, as pi's
+/// `openai-completions` throws: the provider never said the turn ended.
 #[tokio::test]
-async fn the_done_sentinel_emits_the_deferred_terminal() {
+async fn the_done_sentinel_without_a_finish_fails() {
     const BODY: &str = concat!(
         "data: {\"object\":\"chat.completion.chunk\",\"id\":\"chatcmpl-1\",",
         "\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n",
@@ -232,19 +232,11 @@ async fn the_done_sentinel_emits_the_deferred_terminal() {
     );
     let mut response = bound.stream(prompt("hi")).expect("the stream opens");
     while response.next().await.is_some() {}
-    let folded = response
+    let error = response
         .finish()
         .await
-        .expect("the stream produced a terminal record");
-
-    assert_eq!(
-        folded.choice.first().map(AssistantContent::canonical),
-        Some(AssistantContent::text("hi"))
-    );
-    // No chunk reported a reason, so the record carries none — the sentinel
-    // is the completion signal, not a fabricated `stop`.
-    assert_eq!(folded.finish_reason(), None);
-    assert_eq!(folded.response_id(), Some("chatcmpl-1"));
+        .expect_err("a stream the provider never finished has no response");
+    assert!(matches!(error, ProviderError::Truncated), "{error:?}");
 }
 
 /// A stream that reaches EOF with neither `[DONE]` nor a finish reason is
@@ -1315,8 +1307,8 @@ fn a_streamed_reasoning_detail_keeps_its_id_format_and_kind() {
     assert_eq!(item["reasoning"], "Weighing it up");
 }
 
-/// A stream's annotations and audio reach the turn: its text block keeps
-/// them, and so does the message the next request sends back.
+/// A stream's annotations and audio reach the turn: its text block holds
+/// the audio's id, and the next request sends the text and the id back.
 #[test]
 fn streamed_annotations_and_audio_survive() {
     use crate::wire::Mode;
@@ -1338,15 +1330,14 @@ fn streamed_annotations_and_audio_survive() {
     ];
     let response = crate::test_utils::history::decode(&wire(), Mode::Streaming, frames)
         .expect("the reply decodes");
-    let [
-        AssistantContent::Text(text),
-        AssistantContent::Opaque(audio),
-    ] = response.choice.as_slice()
-    else {
-        panic!("a text block and the audio: {:?}", response.choice);
+    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("a text block holding the audio: {:?}", response.choice);
     };
     assert_eq!(text.text, "See rig.rs");
-    assert_eq!(audio.item, serde_json::json!({"audio": {"id": "audio_1"}}));
+    assert_eq!(
+        AssistantContent::Text(text.clone()).native_item(),
+        Some(&serde_json::json!({"audio": {"id": "audio_1"}}))
+    );
     // The message keeps every field for display.
     let message = response.head().native.expect("the message");
     assert_eq!(
@@ -1533,15 +1524,18 @@ fn malformed_and_unknown_calls_are_never_dropped_silently() {
         response.choice
     );
 
-    let numeric = vec![delta_chunk(
-        serde_json::json!({"content": 42}),
-        Some("stop"),
-    )];
-    assert!(crate::test_utils::history::decode(&wire, Mode::Streaming, numeric).is_err());
+    // Content of no content type is read leniently, as nothing.
+    let numeric = vec![
+        delta_chunk(serde_json::json!({"content": 42}), Some("stop")),
+        crate::wire::WireFrame::Text("[DONE]".to_owned()),
+    ];
+    let response = crate::test_utils::history::decode(&wire, Mode::Streaming, numeric)
+        .expect("a reply with numeric content decodes");
+    assert!(response.choice.is_empty(), "{:?}", response.choice);
 }
 
-/// A streamed reply that is only audio keeps the audio in a block of its
-/// own, so the turn reaches history and replays it.
+/// A reply that is only audio is its transcript, holding the audio, so the
+/// turn reaches history and replays it.
 #[test]
 fn an_audio_only_reply_keeps_its_audio() {
     use crate::wire::Mode;
@@ -1566,8 +1560,9 @@ fn an_audio_only_reply_keeps_its_audio() {
         let response = crate::test_utils::history::decode(&wire(), mode, frames)
             .expect("an audio reply decodes");
         assert!(
-            matches!(response.choice.as_slice(), [AssistantContent::Opaque(opaque)]
-                if opaque.replay && opaque.item["audio"]["id"] == "audio_1"),
+            matches!(response.choice.as_slice(), [block @ AssistantContent::Text(text)]
+                if text.text == "hi"
+                    && block.native_item() == Some(&serde_json::json!({"audio": {"id": "audio_1"}}))),
             "{mode:?}: {:?}",
             response.choice
         );

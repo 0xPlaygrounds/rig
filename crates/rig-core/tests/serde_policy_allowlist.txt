@@ -77,4 +77,3 @@ rig-bedrock/src/streaming.rs | let input = serde_json::from_str::<Value>(&input)
 # --- item-shaped decoders: typed views of classified frames ----------------
 # Each decoder keeps a classified frame as JSON so the provider's item survives
 # verbatim, then reads one field of it through its typed form.
-providers/openai/wire/chat.rs | let incoming = serde_json::from_value::<StreamingToolCall>(call.clone()) | Typed view of one tool-call fragment of a classified chunk; the fragment itself is merged into the call's provider item as sent.

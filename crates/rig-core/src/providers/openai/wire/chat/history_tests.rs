@@ -301,6 +301,7 @@ fn every_chat_finish_maps_and_failures_fail() {
     let wire = wire(&OPENROUTER, "openai/gpt-5-mini");
     for (finish, stop) in [
         ("stop", Some(StopReason::Stop)),
+        ("end", Some(StopReason::Stop)),
         ("length", Some(StopReason::Length)),
         ("max_tokens", Some(StopReason::Length)),
         ("model_length", Some(StopReason::Length)),
@@ -626,4 +627,97 @@ fn review_text_only_chat_dialect_models_get_placeholders() {
         wrong.is_empty(),
         "image_url sent to text-only models, or withheld from vision models: {wrong:?}"
     );
+}
+
+/// chatB H5 class: a part of a type the decoder does not expect never fails
+/// the reply. A streamed call with a `null` index and a numeric id is still
+/// the call, and object content is a content part.
+#[test]
+fn a_mistyped_part_never_fails_a_reply() {
+    let wire = wire(&OPENAI, "gpt-4.1-mini");
+    let frames = vec![
+        chunk(
+            json!({"role": "assistant", "content": {"type": "text", "text": "looking"}}),
+            None,
+        ),
+        chunk(
+            json!({"tool_calls": [{"index": null, "id": 42, "type": "function",
+                "function": {"name": "add", "arguments": "{\"x\":1}"}}]}),
+            Some("tool_calls"),
+        ),
+        WireFrame::Text("[DONE]".to_owned()),
+    ];
+    let response = decode(&wire, Mode::Streaming, frames).expect("the reply decodes");
+    let [
+        AssistantContent::Text(text),
+        AssistantContent::ToolCall(call),
+    ] = response.choice.as_slice()
+    else {
+        panic!("the text and the call: {:?}", response.choice);
+    };
+    assert_eq!(text.text, "looking");
+    assert_eq!(call.id.wire(), "42");
+    assert_eq!(call.function.arguments_value(), json!({"x": 1}));
+}
+
+/// chatB (audio): an answer's audio transcript is a text block whose native
+/// is the audio item, so the same model gets the audio back by its id with
+/// the transcript, and another model gets the transcript.
+#[test]
+fn an_answers_audio_transcript_is_text() {
+    let audio = json!({"id": "audio_1", "transcript": "hello there", "data": "UklG",
+        "expires_at": 1});
+    let modes = [
+        (
+            Mode::Unary,
+            vec![whole(
+                json!({"role": "assistant", "content": null, "audio": audio}),
+                "stop",
+            )],
+        ),
+        (
+            Mode::Streaming,
+            vec![
+                chunk(
+                    json!({"role": "assistant", "content": null,
+                        "audio": {"id": "audio_1", "transcript": "hello "}}),
+                    None,
+                ),
+                chunk(
+                    json!({"audio": {"transcript": "there", "data": "UklG", "expires_at": 1}}),
+                    Some("stop"),
+                ),
+                WireFrame::Text("[DONE]".to_owned()),
+            ],
+        ),
+    ];
+    let model = "gpt-4o-audio-preview";
+    for (mode, frames) in modes {
+        let response = decode(&wire(&OPENAI, model), mode, frames).expect("the reply decodes");
+        let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+            panic!(
+                "{mode:?}: the transcript is the one block: {:?}",
+                response.choice
+            );
+        };
+        assert_eq!(text.text, "hello there", "{mode:?}");
+        assert_eq!(
+            AssistantContent::Text(text.clone()).native_item(),
+            Some(&json!({"audio": {"id": "audio_1"}})),
+            "{mode:?}"
+        );
+        let history = vec![Message::user("hi"), Message::Assistant(turn_of(&response))];
+        let same = sent(&wire(&OPENAI, model), history.clone());
+        assert_eq!(
+            same["messages"][1],
+            json!({"role": "assistant", "content": "hello there", "audio": {"id": "audio_1"}}),
+            "{mode:?}"
+        );
+        let other = sent(&wire(&OPENAI, "gpt-4.1-mini"), history);
+        assert_eq!(
+            other["messages"][1],
+            json!({"role": "assistant", "content": "hello there"}),
+            "{mode:?}"
+        );
+    }
 }

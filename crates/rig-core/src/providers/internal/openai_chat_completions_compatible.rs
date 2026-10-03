@@ -44,7 +44,7 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<ProviderErro
 /// inventing a new reason surfaces it rather than reading as a natural stop.
 pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
     match reason {
-        "stop" => FinishReason::Stop,
+        "stop" | "end" => FinishReason::Stop,
         // Context-window exhaustion and output-budget exhaustion both truncate.
         "length" | "max_tokens" | "model_length" => FinishReason::Length,
         "tool_calls" | "function_call" => FinishReason::ToolCalls,

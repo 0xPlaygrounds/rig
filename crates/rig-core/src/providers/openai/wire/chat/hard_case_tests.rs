@@ -291,10 +291,11 @@ fn signature(detail: &str) -> String {
     )
 }
 
-/// The message's reasoning is one block, however its fields interleave the
-/// text: a signature that arrives after the answer still lands in it.
+/// A block closes when the next one starts, so a signature that arrives
+/// after the answer is reasoning of its own, and the message sent back
+/// holds the reasoning and the signature as one message did.
 #[tokio::test]
-async fn a_late_signature_signs_the_reasoning_text_interleaved() {
+async fn a_late_signature_is_reasoning_after_the_answer() {
     let (_, response) = stream(
         &OPENROUTER,
         &[
@@ -307,21 +308,33 @@ async fn a_late_signature_signs_the_reasoning_text_interleaved() {
     )
     .await;
     let response = response.expect("the reply folds");
-    let reasoning = reasoning_of(&response);
-    let [only] = &reasoning[..] else {
-        panic!("one reasoning part: {:?}", response.choice);
+    let [
+        AssistantContent::Reasoning(first),
+        AssistantContent::Text(answer),
+        AssistantContent::Reasoning(late),
+    ] = response.choice.as_slice()
+    else {
+        panic!(
+            "reasoning, the answer and the signature: {:?}",
+            response.choice
+        );
     };
-    assert_eq!(only.text, "thinking");
-    assert_eq!(
-        details_of(only),
-        json!([{"type": "reasoning.text", "text": "", "signature": "sig-late", "index": 0}])
-    );
-    assert!(
-        response
-            .choice
-            .iter()
-            .any(|block| block.canonical() == AssistantContent::text("answer"))
-    );
+    assert_eq!(first.text, "thinking");
+    assert_eq!(answer.text, "answer");
+    let signed =
+        json!([{"type": "reasoning.text", "text": "", "signature": "sig-late", "index": 0}]);
+    assert_eq!(details_of(late), signed);
+    let turn = crate::message::AssistantMessage {
+        content: response.choice.clone(),
+        ..response.head()
+    };
+    let Some(crate::providers::openai::completion::Message::Native(sent)) =
+        crate::providers::openai::completion::assistant_message(turn)
+    else {
+        panic!("a rebuilt message");
+    };
+    assert_eq!(sent["reasoning"], "thinking");
+    assert_eq!(sent["reasoning_details"], signed);
 }
 
 /// pi's merge: a second signature for the same detail fills nothing, as the

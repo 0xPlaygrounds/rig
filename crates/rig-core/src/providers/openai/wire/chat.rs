@@ -27,7 +27,7 @@ use crate::wire::{
 
 use super::dto::{
     ChatChoice, ChatFrame, StreamingCompletionResponse, StreamingToolCall, UsageCounts, delta_text,
-    merge_fields, open_once,
+    merge_fields,
 };
 use super::{BodyRewrite, OpenAIConfig, OutputCap};
 
@@ -1034,12 +1034,22 @@ impl CallKind {
     }
 }
 
+/// The kind of block a decoder is writing.
+#[derive(Clone, Copy, PartialEq)]
+enum Writing {
+    Text,
+    Reasoning,
+}
+
 /// The chat-completions decoder: one state machine for a whole reply and a
 /// stream of chunks. A whole reply is restated as the one chunk carrying
-/// its message. As pi's `openai-completions` decodes a message, its
-/// reasoning is one block, its text one block, and each tool call, image
-/// and unknown content part a block of its own; each block holds only its
-/// own item, and the assembled message is the turn's native, for display.
+/// its message. As pi's `openai-completions` decodes a message, a run of
+/// reasoning is a block, a run of text a block, and each tool call, image
+/// and unknown content part a block of its own. A block closes when the
+/// next one starts. An answer's audio transcript is its text when it has
+/// no other, and its first text block holds the audio's id. Each block
+/// holds only its own item, and the assembled message is the turn's native,
+/// for display.
 pub struct ChatDecoder {
     quirks: super::Quirks,
     /// The assistant message as assembled so far, without its tool calls.
@@ -1049,15 +1059,17 @@ pub struct ChatDecoder {
     calls: Vec<Option<serde_json::Value>>,
     /// The position in `calls` of the call open at each wire index.
     open_calls: std::collections::BTreeMap<usize, usize>,
-    /// The writer index of the reply's text.
-    text: Option<usize>,
-    /// The writer index of the reply's reasoning.
-    reasoning: Option<usize>,
-    /// The reasoning as its block's item will hold it: the field it arrived
-    /// in, or Mistral's thinking part, and its text.
+    /// The block being written, and its writer index.
+    writing: Option<(Writing, usize)>,
+    /// The reasoning block's item as it will hold it: the field its text
+    /// arrived in, or Mistral's thinking part, its text, and its own
+    /// `reasoning_details`.
     reasoning_field: Option<&'static str>,
     thinking_part: bool,
     reasoning_text: String,
+    reasoning_details: serde_json::Map<String, serde_json::Value>,
+    /// The id of the answer's audio.
+    audio_id: Option<serde_json::Value>,
     /// Whether any block opened.
     wrote: bool,
     final_usage: Option<serde_json::Value>,
@@ -1070,10 +1082,6 @@ pub struct ChatDecoder {
     additional_params: serde_json::Map<String, serde_json::Value>,
     /// Whether a finish reason established the turn complete.
     saw_terminal: bool,
-    /// Whether any frame decoded successfully. A bare `[DONE]` after only
-    /// parse failures must not dress the failure up as a default-usage
-    /// success.
-    saw_any_valid_frame: bool,
 }
 
 impl ChatDecoder {
@@ -1083,11 +1091,12 @@ impl ChatDecoder {
             message: serde_json::Map::new(),
             calls: Vec::new(),
             open_calls: std::collections::BTreeMap::new(),
-            text: None,
-            reasoning: None,
+            writing: None,
             reasoning_field: None,
             thinking_part: false,
             reasoning_text: String::new(),
+            reasoning_details: serde_json::Map::new(),
+            audio_id: None,
             wrote: false,
             final_usage: None,
             final_finish_reason: None,
@@ -1096,7 +1105,6 @@ impl ChatDecoder {
             logprobs: None,
             additional_params: serde_json::Map::new(),
             saw_terminal: false,
-            saw_any_valid_frame: false,
         }
     }
 
@@ -1128,7 +1136,6 @@ impl ChatDecoder {
 
     /// Absorb the metadata every frame carries, and take its primary choice.
     fn absorb(&mut self, frame: ChatFrame) -> Option<ChatChoice> {
-        self.saw_any_valid_frame = true;
         let ChatFrame {
             id,
             model,
@@ -1158,8 +1165,8 @@ impl ChatDecoder {
     }
 
     /// One delta of the assistant message: its reasoning, its text, its
-    /// content parts, images and tool calls reach their blocks, and every
-    /// field reaches the message.
+    /// content parts, its audio transcript, images and tool calls reach
+    /// their blocks, and every field reaches the message.
     fn delta(
         &mut self,
         mut delta: serde_json::Map<String, serde_json::Value>,
@@ -1173,34 +1180,39 @@ impl ChatDecoder {
                 .map(|text| (*key, text.to_owned()))
         });
         if let Some((key, text)) = reasoning {
+            self.write(Writing::Reasoning, &text, out)?;
             self.reasoning_field.get_or_insert(key);
-            self.reason(&text, out)?;
         }
-        if delta
-            .get(REASONING_DETAILS)
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|details| !details.is_empty())
+        if let Some(serde_json::Value::Array(details)) = delta.shift_remove(REASONING_DETAILS)
+            && !details.is_empty()
         {
-            self.reason("", out)?;
-        }
-        if let Some(serde_json::Value::Array(details)) = delta.shift_remove(REASONING_DETAILS) {
+            self.write(Writing::Reasoning, "", out)?;
+            merge_details(&mut self.reasoning_details, details.clone());
             merge_details(&mut self.message, details);
         }
+        let audio = delta.get("audio");
+        if let Some(id) = audio
+            .and_then(|audio| audio.get("id"))
+            .filter(|id| !id.is_null())
+        {
+            self.audio_id = Some(id.clone());
+        }
+        let transcript = audio
+            .and_then(|audio| audio.get("transcript"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned);
         match delta.get("content") {
             Some(serde_json::Value::Array(parts)) => {
                 for part in parts.clone() {
                     self.part(part, out)?;
                 }
             }
-            Some(serde_json::Value::String(_) | serde_json::Value::Null) | None => {
-                if let Some(text) = delta_text(&delta) {
-                    self.say(&text, out)?;
+            Some(part @ serde_json::Value::Object(_)) => self.part(part.clone(), out)?,
+            _ => {
+                if let Some(text) = delta_text(&delta).or(transcript) {
+                    self.write(Writing::Text, &text, out)?;
                 }
-            }
-            Some(content) => {
-                return Err(ProviderError::Response(format!(
-                    "malformed message content: {content}"
-                )));
             }
         }
         if let Some(serde_json::Value::Array(images)) = delta.get("images") {
@@ -1217,23 +1229,60 @@ impl ChatDecoder {
         Ok(())
     }
 
-    /// Append `text` to the reply's text block, opening it first.
-    fn say(&mut self, text: &str, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        let index = open_once(&mut self.text, Block::Text, out)?;
+    /// Append `text` to a block of kind `writing`, first closing the block
+    /// being written and opening a new one when that is of another kind.
+    fn write(
+        &mut self,
+        writing: Writing,
+        text: &str,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        let index = match self.writing {
+            Some((current, index)) if current == writing => index,
+            _ => {
+                self.close_writing(out)?;
+                let index = out.fresh_index();
+                let block = match writing {
+                    Writing::Reasoning => Block::Reasoning { redacted: false },
+                    Writing::Text => Block::Text,
+                };
+                out.open(index, block, serde_json::Value::Null)?;
+                self.writing = Some((writing, index));
+                index
+            }
+        };
         self.wrote = true;
+        if writing == Writing::Reasoning {
+            self.reasoning_text.push_str(text);
+        }
         out.push(index, text)
     }
 
-    /// Append `text` to the reply's reasoning block, opening it first.
-    fn reason(&mut self, text: &str, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        let index = open_once(
-            &mut self.reasoning,
-            Block::Reasoning { redacted: false },
-            out,
-        )?;
-        self.wrote = true;
-        self.reasoning_text.push_str(text);
-        out.push(index, text)
+    /// Close the block being written, holding its item: the reasoning's
+    /// field or thinking part and its details, or the audio's id.
+    fn close_writing(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        match self.writing.take() {
+            None => Ok(()),
+            Some((Writing::Text, index)) => match self.audio_id.take() {
+                Some(id) => out.finish_with(index, serde_json::json!({ "audio": { "id": id } })),
+                None => out.finish(index),
+            },
+            Some((Writing::Reasoning, index)) => {
+                let text = std::mem::take(&mut self.reasoning_text);
+                let mut item = serde_json::Map::new();
+                if std::mem::take(&mut self.thinking_part) {
+                    item.insert("type".to_owned(), "thinking".into());
+                    item.insert(
+                        "thinking".to_owned(),
+                        serde_json::json!([{"type": "text", "text": text}]),
+                    );
+                } else if let Some(field) = self.reasoning_field.take() {
+                    item.insert(field.to_owned(), text.into());
+                }
+                item.append(&mut self.reasoning_details);
+                out.finish_with(index, serde_json::Value::Object(item))
+            }
+        }
     }
 
     /// One content part, through [`Part::of`].
@@ -1244,13 +1293,15 @@ impl ChatDecoder {
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         match Part::of(&part) {
-            Part::Text(text) => self.say(&text, out),
+            Part::Text(text) => self.write(Writing::Text, &text, out),
             Part::Thinking(text) => {
+                self.write(Writing::Reasoning, &text, out)?;
                 self.thinking_part = true;
-                self.reason(&text, out)
+                Ok(())
             }
             Part::Image => self.image(part, out),
             Part::Unknown => {
+                self.close_writing(out)?;
                 self.wrote = true;
                 let index = out.fresh_index();
                 out.whole(index, Block::Opaque { replay: true }, part, "")
@@ -1292,6 +1343,7 @@ impl ChatDecoder {
                 String::new(),
             ),
         };
+        self.close_writing(out)?;
         self.wrote = true;
         let index = out.fresh_index();
         out.whole(index, Block::Image(image), part, &data)
@@ -1303,8 +1355,8 @@ impl ChatDecoder {
         mut call: serde_json::Value,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        let incoming = serde_json::from_value::<StreamingToolCall>(call.clone())
-            .map_err(|error| ProviderError::Response(format!("malformed tool call: {error}")))?;
+        self.close_writing(out)?;
+        let incoming = StreamingToolCall::read(&call);
         let index = incoming.index;
         let custom = call
             .pointer("/custom/name")
@@ -1439,6 +1491,10 @@ impl ChatDecoder {
             return Ok(());
         };
         self.delta(choice.delta, out)?;
+        // A finish states the message complete.
+        if self.final_finish_reason.is_some() {
+            self.close_writing(out)?;
+        }
         if matches!(self.final_finish_reason, Some(FinishReason::ToolCalls)) {
             self.close_calls(out)?;
         }
@@ -1472,7 +1528,6 @@ impl ChatDecoder {
                 }
             }
         }
-        let has_audio = message.get("audio").is_some_and(|audio| !audio.is_null());
         self.delta(message, &mut out)?;
         self.close_calls(&mut out)?;
         // Truncation or filtering can leave no visible content; retain its
@@ -1481,7 +1536,7 @@ impl ChatDecoder {
             .final_finish_reason
             .as_ref()
             .is_some_and(FinishReason::truncated_output);
-        if !self.wrote && !has_audio && !cut_short {
+        if !self.wrote && !cut_short {
             return Err(ProviderError::Response(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
@@ -1489,39 +1544,13 @@ impl ChatDecoder {
         self.end(out, false)
     }
 
-    /// Write the provider's end of the reply: the reasoning block closes
-    /// holding its item, the text block closes, an answer's audio is kept
-    /// by its id, and the message becomes the turn's native. A stream's
+    /// Write the provider's end of the reply: the block being written
+    /// closes, and the message becomes the turn's native. A stream's
     /// `raw` is the native terminal record the chunks built; a whole body's
     /// is the body itself, which the transport keeps.
     fn end(&mut self, mut out: Out<'_, Completion>, streamed: bool) -> Result<Flow, ProviderError> {
+        self.close_writing(&mut out)?;
         let mut message = std::mem::take(&mut self.message);
-        if let Some(index) = self.reasoning.take() {
-            let text = std::mem::take(&mut self.reasoning_text);
-            let mut item = serde_json::Map::new();
-            if self.thinking_part {
-                item.insert("type".to_owned(), "thinking".into());
-                item.insert(
-                    "thinking".to_owned(),
-                    serde_json::json!([{"type": "text", "text": text}]),
-                );
-            } else if let Some(field) = self.reasoning_field {
-                item.insert(field.to_owned(), text.into());
-            }
-            if let Some(details) = message.get(REASONING_DETAILS) {
-                item.insert(REASONING_DETAILS.to_owned(), details.clone());
-            }
-            out.finish_with(index, serde_json::Value::Object(item))?;
-        }
-        if let Some(index) = self.text.take() {
-            out.finish(index)?;
-        }
-        // OpenAI takes an answer's audio back by its id.
-        if let Some(id) = message.get("audio").and_then(|audio| audio.get("id")) {
-            let index = out.fresh_index();
-            let item = serde_json::json!({ "audio": { "id": id } });
-            out.whole(index, Block::Opaque { replay: true }, item, "")?;
-        }
         let calls: Vec<_> = self.calls.drain(..).flatten().collect();
         if !calls.is_empty() {
             message.insert("tool_calls".to_owned(), serde_json::Value::Array(calls));
@@ -1557,11 +1586,11 @@ impl ChatDecoder {
     /// the reply. Tool calls the provider fully delivered are content, so
     /// a length cut still flushes them.
     fn finish(&mut self, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
-        self.close_calls(&mut out)?;
-        // A bare terminator without valid content cannot establish success.
-        if !self.saw_any_valid_frame {
+        // A stream no finish reason ended was cut short.
+        if !self.saw_terminal {
             return Err(ProviderError::Truncated);
         }
+        self.close_calls(&mut out)?;
         self.end(out, true)
     }
 }
@@ -1659,13 +1688,8 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                 Ok(Flow::More)
             }
             ChatEvent::Whole(frame) => self.restate_whole(frame, out),
-            // `[DONE]` without a finish reason still ends the turn.
-            ChatEvent::Done => {
-                self.saw_terminal = true;
-                self.finish(out)
-            }
+            ChatEvent::Done => self.finish(out),
             ChatEvent::BareText(text) => {
-                self.saw_any_valid_frame = true;
                 self.saw_terminal = true;
                 let mut message = serde_json::Map::new();
                 message.insert("role".to_owned(), "assistant".into());
@@ -1680,9 +1704,6 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
     /// A stream that stops after a finish reason without `[DONE]` still
     /// ended: some dialects (Perplexity) never send the sentinel.
     fn eof(&mut self, out: Out<'id, Completion>) -> Result<Flow, ProviderError> {
-        if !self.saw_terminal {
-            return Err(ProviderError::Truncated);
-        }
         self.finish(out)
     }
 }

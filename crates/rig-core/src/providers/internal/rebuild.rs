@@ -49,10 +49,17 @@ impl Rebuilt {
             let item = block.native_item().cloned();
             let part = item.clone().filter(|item| item.get("type").is_some());
             match block {
-                AssistantContent::Text(text) => rebuilt.pieces.push(Piece::Text {
-                    text: text.text.clone(),
-                    part,
-                }),
+                AssistantContent::Text(text) => {
+                    rebuilt.pieces.push(Piece::Text {
+                        text: text.text.clone(),
+                        part: part.clone(),
+                    });
+                    // A text item that is message fields (an answer's audio)
+                    // goes beside the text.
+                    if part.is_none() {
+                        rebuilt.pieces.extend(item.map(Piece::Opaque));
+                    }
+                }
                 AssistantContent::Reasoning(reasoning) => {
                     let mut field = None;
                     if let (None, Some(Value::Object(item))) = (&part, item) {

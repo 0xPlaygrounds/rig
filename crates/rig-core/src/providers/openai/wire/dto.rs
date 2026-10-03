@@ -7,29 +7,50 @@ use crate::json_utils;
 use crate::providers::openai::completion::Usage;
 
 /// A streamed tool-call fragment's function half.
-#[derive(Default, Deserialize, Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub(crate) struct StreamingFunction {
     pub(crate) name: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "crate::json_utils::deserialize_json_string_or_value"
-    )]
     pub(crate) arguments: Option<String>,
 }
 
 /// One streamed tool-call fragment.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct StreamingToolCall {
-    // Optional in several compatible dialects (e.g. Mistral); missing means
-    // a single in-flight tool call.
-    #[serde(default)]
     pub(crate) index: usize,
     pub(crate) id: Option<String>,
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub(crate) function: StreamingFunction,
 }
 
 impl StreamingToolCall {
+    /// The fragment `call` states, read leniently: an `index` that is not
+    /// an integer is a single in-flight call's 0, a numeric `id` is its
+    /// digits, and arguments that are not a string are their JSON text.
+    pub(crate) fn read(call: &serde_json::Value) -> Self {
+        use serde_json::Value;
+        Self {
+            index: call
+                .get("index")
+                .and_then(Value::as_u64)
+                .and_then(|index| usize::try_from(index).ok())
+                .unwrap_or(0),
+            id: match call.get("id") {
+                Some(Value::String(id)) => Some(id.clone()),
+                Some(id @ Value::Number(_)) => Some(id.to_string()),
+                _ => None,
+            },
+            function: StreamingFunction {
+                name: call
+                    .pointer("/function/name")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                arguments: match call.pointer("/function/arguments") {
+                    None | Some(Value::Null) => None,
+                    Some(arguments) => Some(json_utils::value_to_json_string(arguments)),
+                },
+            },
+        }
+    }
+
     fn has_nonempty_name(&self) -> bool {
         self.function
             .name
@@ -361,29 +382,41 @@ impl UsageCounts {
     }
 }
 
-/// One choice of a chat-completions frame, in either reply's shape.
+/// A field of a reply read leniently: a value of another type is absent,
+/// so no one field fails a reply.
+fn lenient<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    Ok(T::deserialize(serde_json::Value::deserialize(deserializer)?).unwrap_or_default())
+}
+
+/// One choice of a chat-completions frame, in either reply's shape. Every
+/// field is read [`lenient`]ly.
 #[derive(Deserialize, Debug)]
 pub struct ChatChoice {
     /// The streamed shape's fragment, kept as the provider sent it. Defaulted
     /// because a choice on the wire is not guaranteed to carry one: Azure
     /// prepends a `prompt_filter_results` chunk (delta-less choice) to every
     /// stream when content filtering is enabled.
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
+    #[serde(default, deserialize_with = "lenient")]
     pub(crate) delta: serde_json::Map<String, serde_json::Value>,
     /// The unary shape's whole assistant message, as the provider sent it.
     /// Absent on a streamed frame; present exactly when this frame is the
     /// unary reply.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub(crate) message: Option<serde_json::Map<String, serde_json::Value>>,
+    #[serde(default, deserialize_with = "lenient")]
     pub(crate) finish_reason: Option<FinishReason>,
     /// Upstream provider spelling forwarded by gateways such as OpenRouter.
     /// Direct providers omit it.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub(crate) native_finish_reason: Option<String>,
     /// Which candidate this belongs to when the caller asked for `n > 1`.
     /// Optional because providers streaming a single candidate may omit it;
     /// absent is read as candidate 0.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub(crate) index: Option<usize>,
     /// Per-token probabilities, kept as the provider sent them: compatible
     /// services extend the object independently.
@@ -391,11 +424,16 @@ pub struct ChatChoice {
     pub(crate) logprobs: Option<serde_json::Value>,
 }
 
-/// One frame of the chat-completions wire.
+/// One frame of the chat-completions wire, read [`lenient`]ly but for its
+/// `choices`.
 #[derive(Deserialize, Debug)]
 pub struct ChatFrame {
+    #[serde(default, deserialize_with = "lenient")]
     pub(crate) id: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
     pub(crate) model: Option<String>,
+    /// The one field a frame is built from, so a value of another type is
+    /// a defect of the frame.
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub(crate) choices: Vec<ChatChoice>,
     /// The usage object as the provider sent it, read by [`UsageCounts`].
