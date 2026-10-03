@@ -15,10 +15,10 @@ fn body_of(
         model,
     );
     let encoded = wire.encode(request, Mode::Unary)?;
-    let rig::wire::Body::Bytes(bytes) = encoded.request.body() else {
-        panic!("a Responses body is JSON");
-    };
-    Ok(serde_json::from_slice(bytes)?)
+    match encoded.request.body() {
+        rig::wire::Body::Bytes(bytes) => Ok(serde_json::from_slice(bytes)?),
+        _ => Err(rig::error::EncodeError::request("a Responses body is JSON")),
+    }
 }
 
 /// `message` as the input items of a request to OpenAI.
