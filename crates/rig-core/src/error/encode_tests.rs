@@ -99,15 +99,6 @@ fn provider_encode_failures_classify_as_request_building() {
         .tool_choice(ToolChoice::Specific {
             function_names: vec![crate::message::ToolName::new("f").expect("tool name")],
         });
-    let unflattenable_schema = CompletionRequest::new("hi").tool(ToolDefinition {
-        name: crate::message::ToolName::new("f").expect("tool name"),
-        description: "d".into(),
-        parameters: json!({
-            "type": "object",
-            "$defs": 5,
-            "properties": {"a": {"$ref": "#/$defs/x"}},
-        }),
-    });
     let cases = [
         (
             "openai chat",
@@ -224,15 +215,6 @@ fn provider_encode_failures_classify_as_request_building() {
             "gemini verify",
             failure(gemini.verify().encode((), Mode::Unary)),
             "RequestError: invalid uri character",
-        ),
-        (
-            "gemini tool schema",
-            failure(
-                GeminiConfig::new("k")
-                    .completion("gemini-2.5-flash")
-                    .encode(unflattenable_schema, Mode::Unary),
-            ),
-            "RequestError: Tool 'f' could not be converted to a schema: $defs must be an object",
         ),
         (
             "cohere embed",

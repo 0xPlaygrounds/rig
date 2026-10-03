@@ -1639,16 +1639,16 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Okay, let's see. The user wants to know if they should pack an umbrella or sunscreen based on the current weather in Tokyo.\n\nFirst, I checked the get_weather tool result. The weather is 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. So it's sunny but with light clouds. Sunscreen is usually needed when it's sunny, even with light clouds. Umbrellas are for rain, but the description here says \"sunny with light clouds\" and no mention of rain. The wind is NW at 8 mph, which isn't strong enough to bring rain. Humidity is 45%, which is a bit low for rain. So probably no rain expected. Therefore, they should pack sunscreen because it's sunny. No need for umbrella here.\n\nWait, the user asked to answer in one sentence without calling any tool. So I need to phrase it concisely. Let me check again. The tool result says \"sunny with light clouds\" so the main thing is sun. So answer is to pack sunscreen. Yeah, that's it.\n</think>\n\nBased on the current sunny conditions with light clouds in Tokyo, you should pack sunscreen but not an umbrella.",
+        "text": "Okay, let's see. The user wants to know if they should pack an umbrella or sunscreen based on the weather in Tokyo. I already called the get_weather tool and got the results: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW.\n\nFirst, I need to interpret the weather conditions. It's sunny with light clouds. So, there's some sun, but light clouds might mean less rain. The humidity is 45%, which is moderate. The wind is 8 mph from the northwest, which probably isn't a lot.\n\nFor an umbrella: Usually, umbrellas are for rain. If there's light clouds but no mention of rain, maybe it's not necessary. The description says \"sunny with light clouds,\" so maybe it's not raining. So probably no need for an umbrella.\n\nSunscreen: Since it's sunny, there's a lot of sun, so sunscreen is likely needed. The light clouds might not block the sun much, so sunscreen would be a good idea.\n\nThe user is asking to choose between umbrella or sunscreen. The weather report doesn't mention rain, just light clouds and sunny. So they should pack sunscreen, not an umbrella. Need to phrase it in one sentence.\n</think>\n\nBased on Tokyo's current weather of sunny with light clouds, you should pack sunscreen but not an umbrella.",
         "native": null
       }
     ],
     "usage": {
-      "input_tokens": 613,
-      "output_tokens": 254,
-      "total_tokens": 867
+      "input_tokens": 464,
+      "output_tokens": 283,
+      "total_tokens": 747
     },
-    "response_id": "chatcmpl-319",
+    "response_id": "chatcmpl-271",
     "finish_reason": "stop",
     "model": "qwen3:4b",
     "provider_request_id": null,
@@ -1658,20 +1658,20 @@
           "finish_reason": "stop",
           "index": 0,
           "message": {
-            "content": "Okay, let's see. The user wants to know if they should pack an umbrella or sunscreen based on the current weather in Tokyo.\n\nFirst, I checked the get_weather tool result. The weather is 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. So it's sunny but with light clouds. Sunscreen is usually needed when it's sunny, even with light clouds. Umbrellas are for rain, but the description here says \"sunny with light clouds\" and no mention of rain. The wind is NW at 8 mph, which isn't strong enough to bring rain. Humidity is 45%, which is a bit low for rain. So probably no rain expected. Therefore, they should pack sunscreen because it's sunny. No need for umbrella here.\n\nWait, the user asked to answer in one sentence without calling any tool. So I need to phrase it concisely. Let me check again. The tool result says \"sunny with light clouds\" so the main thing is sun. So answer is to pack sunscreen. Yeah, that's it.\n</think>\n\nBased on the current sunny conditions with light clouds in Tokyo, you should pack sunscreen but not an umbrella.",
+            "content": "Okay, let's see. The user wants to know if they should pack an umbrella or sunscreen based on the weather in Tokyo. I already called the get_weather tool and got the results: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW.\n\nFirst, I need to interpret the weather conditions. It's sunny with light clouds. So, there's some sun, but light clouds might mean less rain. The humidity is 45%, which is moderate. The wind is 8 mph from the northwest, which probably isn't a lot.\n\nFor an umbrella: Usually, umbrellas are for rain. If there's light clouds but no mention of rain, maybe it's not necessary. The description says \"sunny with light clouds,\" so maybe it's not raining. So probably no need for an umbrella.\n\nSunscreen: Since it's sunny, there's a lot of sun, so sunscreen is likely needed. The light clouds might not block the sun much, so sunscreen would be a good idea.\n\nThe user is asking to choose between umbrella or sunscreen. The weather report doesn't mention rain, just light clouds and sunny. So they should pack sunscreen, not an umbrella. Need to phrase it in one sentence.\n</think>\n\nBased on Tokyo's current weather of sunny with light clouds, you should pack sunscreen but not an umbrella.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-319",
+      "id": "chatcmpl-271",
       "model": "qwen3:4b",
       "object": "chat.completion",
       "system_fingerprint": "fp_ollama",
       "usage": {
-        "completion_tokens": 254,
-        "prompt_tokens": 613,
-        "total_tokens": 867
+        "completion_tokens": 283,
+        "prompt_tokens": 464,
+        "total_tokens": 747
       }
     }
   },

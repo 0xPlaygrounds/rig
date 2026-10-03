@@ -471,7 +471,7 @@ pub fn request_body(
         .tools
         .into_iter()
         .map(declaration)
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Vec<_>>();
     let declared = (!declared.is_empty())
         .then(|| json!({ "functionDeclarations": declared, "codeExecution": null }));
     let tools: Vec<Value> = declared.into_iter().chain(extra_tools).collect();
@@ -496,22 +496,16 @@ pub fn request_body(
     Ok(body)
 }
 
-/// A tool as its function declaration.
-fn declaration(tool: crate::completion::ToolDefinition) -> Result<Value, EncodeError> {
-    let parameters = tool_parameters_to_schema(tool.parameters).map_err(|error| {
-        let reason = std::error::Error::source(&error)
-            .map_or_else(|| error.to_string(), ToString::to_string);
-        EncodeError::request(format!(
-            "Tool '{}' could not be converted to a schema: {reason}",
-            tool.name
-        ))
-    })?;
-    let (name, description) = (Some(json!(tool.name)), Some(json!(tool.description)));
-    Ok(Value::Object(object([
-        ("name", name),
-        ("description", description),
-        ("parameters", parameters),
-    ])))
+/// A tool as its function declaration: its JSON Schema goes as
+/// `parametersJsonSchema`, which reads full JSON Schema, as pi sends it. A
+/// tool with no schema declares none.
+fn declaration(tool: crate::completion::ToolDefinition) -> Value {
+    let parameters = (!tool.parameters.is_null()).then_some(tool.parameters);
+    Value::Object(object([
+        ("name", Some(json!(tool.name))),
+        ("description", Some(json!(tool.description))),
+        ("parametersJsonSchema", parameters),
+    ]))
 }
 
 /// An object of the entries that are set.
@@ -833,163 +827,6 @@ pub(crate) fn blocked_prompt_error(feedback: &Value) -> Option<ProviderError> {
         | "JAILBREAK" => error.with_refusal(true),
         _ => error.with_transient(Some(true)),
     }))
-}
-
-/// `parameters`, a tool's JSON Schema, as the schema Gemini's `parameters`
-/// reads, or `None` for a tool that takes no arguments.
-///
-/// # Errors
-///
-/// When the schema is not an object or a reference does not resolve.
-pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Value>, EncodeError> {
-    if parameters.is_null() || parameters == json!({"type": "object", "properties": {}}) {
-        return Ok(None);
-    }
-    schema(parameters).map(Some)
-}
-
-/// `value`, a JSON Schema, as the OpenAPI subset Gemini reads: references
-/// inlined, the type inferred from a composition or the keys present, a
-/// union with `null` as `nullable`, and an array without `items` given
-/// string items, which Gemini requires.
-fn schema(value: Value) -> Result<Value, EncodeError> {
-    const COMPOSITIONS: [&str; 3] = ["anyOf", "oneOf", "allOf"];
-    let own = |schema: &Value| match schema.get("type") {
-        Some(Value::String(name)) => Some(name.clone()),
-        Some(Value::Array(names)) => {
-            let mut names = names.iter().filter_map(Value::as_str);
-            let first = names.clone().next();
-            names
-                .find(|name| *name != "null")
-                .or(first)
-                .map(str::to_owned)
-        }
-        _ => None,
-    };
-    let is_null = |schema: &Value| schema.is_object() && own(schema).as_deref() == Some("null");
-    let shape = |schema: &Value| match (schema.get("properties"), schema.get("enum")) {
-        (Some(_), _) => Some("object".to_owned()),
-        (None, Some(_)) => Some("string".to_owned()),
-        (None, None) => None,
-    };
-    let nullable = |schema: &Value| {
-        schema.bool("nullable") == Some(true)
-            || schema.arr("type").contains(&json!("null"))
-            || COMPOSITIONS
-                .iter()
-                .any(|key| schema.arr(key).iter().any(is_null))
-    };
-    let value = flatten_schema(value)?;
-    if !value.is_object() {
-        return Err(EncodeError::request("Expected a JSON object for Schema"));
-    }
-    let alternatives = COMPOSITIONS.iter().flat_map(|key| value.arr(key));
-    let alternatives: Vec<&Value> = alternatives
-        .filter(|alt| alt.is_object() && !is_null(alt))
-        .collect();
-    let composed = alternatives.first().copied();
-    let source = match (value.get("properties"), composed) {
-        (None, Some(composed)) => composed,
-        _ => &value,
-    };
-    let kind = own(&value)
-        .or_else(|| {
-            alternatives
-                .iter()
-                .find_map(|alt| own(alt).or_else(|| shape(alt)))
-        })
-        .or_else(|| shape(&value))
-        .unwrap_or_default();
-    let get = |key: &str| value.get(key).or_else(|| source.get(key));
-    let strings = |value: Option<&Value>| {
-        Some(json!(
-            value?
-                .as_array()?
-                .iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-        ))
-    };
-    let text = |key: &str| get(key).and_then(Value::as_str).map(Value::from);
-    let count = |key: &str| {
-        value
-            .get(key)
-            .and_then(Value::as_i64)
-            .map(|count| json!(count as i32))
-    };
-    // Properties sorted, so the bytes and the cache prefix they key stay stable.
-    let properties = source.obj("properties").map(|properties| {
-        let properties = properties.iter();
-        let properties =
-            properties.filter_map(|(name, value)| Some((name, self::schema(value.clone()).ok()?)));
-        json!(properties.collect::<std::collections::BTreeMap<_, _>>())
-    });
-    let items = get("items").and_then(|items| self::schema(items.clone()).ok());
-    let items = items.or_else(|| (kind == "array").then(|| json!({ "type": "string" })));
-    let nullable = nullable(&value) || composed.is_some_and(nullable);
-    Ok(Value::Object(object([
-        ("type", Some(json!(kind))),
-        ("format", text("format")),
-        ("description", text("description")),
-        ("nullable", nullable.then_some(Value::Bool(true))),
-        ("enum", strings(get("enum"))),
-        ("maxItems", count("maxItems")),
-        ("minItems", count("minItems")),
-        ("properties", properties),
-        ("required", strings(source.get("required"))),
-        ("items", items),
-    ])))
-}
-
-/// Inline references from `$defs` or `definitions` and remove those sections.
-/// Return unchanged input if neither section exists. Callers must supply
-/// acyclic references.
-///
-/// # Errors
-///
-/// For a non-object definitions section, a reference path other than
-/// `#/$defs/` or `#/definitions/`, or a missing definition.
-pub fn flatten_schema(mut schema: Value) -> Result<Value, EncodeError> {
-    fn resolve(value: &mut Value, defs: &Map<String, Value>) -> Result<(), EncodeError> {
-        match value {
-            Value::Object(object) => match object.get("$ref").and_then(Value::as_str) {
-                Some(reference) => {
-                    let missing = |what: &str| EncodeError::request(format!("{what}: {reference}"));
-                    let name = reference
-                        .strip_prefix("#/$defs/")
-                        .or_else(|| reference.strip_prefix("#/definitions/"));
-                    let name = name.ok_or_else(|| missing("Unsupported reference format"))?;
-                    let mut resolved = defs
-                        .get(name)
-                        .cloned()
-                        .ok_or_else(|| missing("Reference not found"))?;
-                    resolve(&mut resolved, defs)?;
-                    *value = resolved;
-                    Ok(())
-                }
-                None => object
-                    .values_mut()
-                    .try_for_each(|value| resolve(value, defs)),
-            },
-            Value::Array(items) => items.iter_mut().try_for_each(|value| resolve(value, defs)),
-            _ => Ok(()),
-        }
-    }
-    let defs = schema
-        .as_object()
-        .and_then(|object| object.get("$defs").or_else(|| object.get("definitions")));
-    let Some(defs) = defs.cloned() else {
-        return Ok(schema);
-    };
-    let Value::Object(defs) = defs else {
-        return Err(EncodeError::request("$defs must be an object"));
-    };
-    resolve(&mut schema, &defs)?;
-    if let Some(object) = schema.as_object_mut() {
-        object.shift_remove("$defs");
-        object.shift_remove("definitions");
-    }
-    Ok(schema)
 }
 
 /// Map a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.

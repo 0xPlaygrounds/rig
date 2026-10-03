@@ -212,7 +212,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CuoCAWkUfRPJgw2Nccs7IUxciuV4r9z48DCRZMb0HfqoCh+QptyU4NvXAASflcdIPCXoBplzJk4b4N4Oo3JZvxR2UOAIAPKXaEBDObXk4yI7CJHLIXEjjXwgSBPZLJQjhZv6OUcCE6xx/+xjQ0WnFiN4ZZ0cYreFbAM6zu9+SNfhzX9VC5jy6FBM0WIcknIIgpBhdP7oMmAgDE2Mht0Raju/9yPPKW+Ek+IYXlckfFJAqkn39eFyQWHOCZR6iU7ON67jw4aU3m+s2AwNVTKhtTp3F+TcFoeO8RE8ucJz5voNj7eLTAorRpL+VFcU92MYegkwPeU7+XlCTJtANtxcV60UVwR7dchkcTGTe6Hy9W/vaWaossL83jYv2jJT8i9QyPLSY7+Est8aRVtWQmNROqtONRaFc3sjrpQdyjN0Z+OyfLZOvmRuQ69FR/NR3C2EI0FgQGy3Agv9npiQog6EBM1VNb9hhRXLo8/y8Bk="
+                  "thoughtSignature": "Cp4DAWkUfROhoo5CfyK7HWonJL78L6gQ75tKaCrVVw9X9B7mtYEIslQdCnCCyGVbZsuKjLRDvKjZMmv/Nv7HTzp095odiwMxST2GS0Ro4zKm2EtFGhKndXrBBemix1zP6VE9XVU10zZ2anQSuMy56f7BaijE02F2RZUS4u3xKSR4n8Kj2szguXj8oWO0ROCb6IZ2H72Lmotwa5o3dJG6yA4VF2GGtlPN21hOQvyTrxbxoUi72QXZiCbmqHzwpqRLPpS/gfrsoVi90NEsc86CGlqIuC/QLe15n0n8tt3aYihEq8uvskal+/Ol6yxLYQ4+/iURQWq7qz4LT0XpunTZ1dn3Ylyh586ubOZ254uyBL+gRSI0VoK4xM+UzhrjPeHd/5Yt347CMiM5xcG2j3bSQ7rXc5+99dgiukgNo9DM4oqzZQWHajhXgwwoKZPdcghIdu74UzWNb9zH4eE1hzgjYYY0sL0fUE1c9Uq8wBxSxYgvr647x5lyG/HyabYlSqkhcSg4uB9wMTAgvrIJEbMtufgcDMBUZLhmDV4QVXNLgr0f"
                 },
                 "fingerprint": "757a5022dc1c62cd"
               }
@@ -245,16 +245,16 @@
           ],
           "usage": {
             "input_tokens": 193,
-            "output_tokens": 116,
-            "total_tokens": 309,
-            "reasoning_tokens": 79
+            "output_tokens": 145,
+            "total_tokens": 338,
+            "reasoning_tokens": 108
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "yCm_atqQD_j6qtsP3uuC8AU"
+            "response_id": "BQTBauOAOvisz7IP-LDkoA4"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -270,7 +270,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CuoCAWkUfRPJgw2Nccs7IUxciuV4r9z48DCRZMb0HfqoCh+QptyU4NvXAASflcdIPCXoBplzJk4b4N4Oo3JZvxR2UOAIAPKXaEBDObXk4yI7CJHLIXEjjXwgSBPZLJQjhZv6OUcCE6xx/+xjQ0WnFiN4ZZ0cYreFbAM6zu9+SNfhzX9VC5jy6FBM0WIcknIIgpBhdP7oMmAgDE2Mht0Raju/9yPPKW+Ek+IYXlckfFJAqkn39eFyQWHOCZR6iU7ON67jw4aU3m+s2AwNVTKhtTp3F+TcFoeO8RE8ucJz5voNj7eLTAorRpL+VFcU92MYegkwPeU7+XlCTJtANtxcV60UVwR7dchkcTGTe6Hy9W/vaWaossL83jYv2jJT8i9QyPLSY7+Est8aRVtWQmNROqtONRaFc3sjrpQdyjN0Z+OyfLZOvmRuQ69FR/NR3C2EI0FgQGy3Agv9npiQog6EBM1VNb9hhRXLo8/y8Bk="
+                      "thoughtSignature": "Cp4DAWkUfROhoo5CfyK7HWonJL78L6gQ75tKaCrVVw9X9B7mtYEIslQdCnCCyGVbZsuKjLRDvKjZMmv/Nv7HTzp095odiwMxST2GS0Ro4zKm2EtFGhKndXrBBemix1zP6VE9XVU10zZ2anQSuMy56f7BaijE02F2RZUS4u3xKSR4n8Kj2szguXj8oWO0ROCb6IZ2H72Lmotwa5o3dJG6yA4VF2GGtlPN21hOQvyTrxbxoUi72QXZiCbmqHzwpqRLPpS/gfrsoVi90NEsc86CGlqIuC/QLe15n0n8tt3aYihEq8uvskal+/Ol6yxLYQ4+/iURQWq7qz4LT0XpunTZ1dn3Ylyh586ubOZ254uyBL+gRSI0VoK4xM+UzhrjPeHd/5Yt347CMiM5xcG2j3bSQ7rXc5+99dgiukgNo9DM4oqzZQWHajhXgwwoKZPdcghIdu74UzWNb9zH4eE1hzgjYYY0sL0fUE1c9Uq8wBxSxYgvr647x5lyG/HyabYlSqkhcSg4uB9wMTAgvrIJEbMtufgcDMBUZLhmDV4QVXNLgr0f"
                     },
                     {
                       "functionCall": {
@@ -290,7 +290,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "yCm_atqQD_j6qtsP3uuC8AU",
+            "responseId": "BQTBauOAOvisz7IP-LDkoA4",
             "usageMetadata": {
               "candidatesTokenCount": 37,
               "promptTokenCount": 193,
@@ -301,8 +301,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 79,
-              "totalTokenCount": 309
+              "thoughtsTokenCount": 108,
+              "totalTokenCount": 338
             }
           }
         }
@@ -405,7 +405,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CuoCAWkUfRPJgw2Nccs7IUxciuV4r9z48DCRZMb0HfqoCh+QptyU4NvXAASflcdIPCXoBplzJk4b4N4Oo3JZvxR2UOAIAPKXaEBDObXk4yI7CJHLIXEjjXwgSBPZLJQjhZv6OUcCE6xx/+xjQ0WnFiN4ZZ0cYreFbAM6zu9+SNfhzX9VC5jy6FBM0WIcknIIgpBhdP7oMmAgDE2Mht0Raju/9yPPKW+Ek+IYXlckfFJAqkn39eFyQWHOCZR6iU7ON67jw4aU3m+s2AwNVTKhtTp3F+TcFoeO8RE8ucJz5voNj7eLTAorRpL+VFcU92MYegkwPeU7+XlCTJtANtxcV60UVwR7dchkcTGTe6Hy9W/vaWaossL83jYv2jJT8i9QyPLSY7+Est8aRVtWQmNROqtONRaFc3sjrpQdyjN0Z+OyfLZOvmRuQ69FR/NR3C2EI0FgQGy3Agv9npiQog6EBM1VNb9hhRXLo8/y8Bk="
+                      "thoughtSignature": "Cp4DAWkUfROhoo5CfyK7HWonJL78L6gQ75tKaCrVVw9X9B7mtYEIslQdCnCCyGVbZsuKjLRDvKjZMmv/Nv7HTzp095odiwMxST2GS0Ro4zKm2EtFGhKndXrBBemix1zP6VE9XVU10zZ2anQSuMy56f7BaijE02F2RZUS4u3xKSR4n8Kj2szguXj8oWO0ROCb6IZ2H72Lmotwa5o3dJG6yA4VF2GGtlPN21hOQvyTrxbxoUi72QXZiCbmqHzwpqRLPpS/gfrsoVi90NEsc86CGlqIuC/QLe15n0n8tt3aYihEq8uvskal+/Ol6yxLYQ4+/iURQWq7qz4LT0XpunTZ1dn3Ylyh586ubOZ254uyBL+gRSI0VoK4xM+UzhrjPeHd/5Yt347CMiM5xcG2j3bSQ7rXc5+99dgiukgNo9DM4oqzZQWHajhXgwwoKZPdcghIdu74UzWNb9zH4eE1hzgjYYY0sL0fUE1c9Uq8wBxSxYgvr647x5lyG/HyabYlSqkhcSg4uB9wMTAgvrIJEbMtufgcDMBUZLhmDV4QVXNLgr0f"
                     },
                     "fingerprint": "757a5022dc1c62cd"
                   }
@@ -441,7 +441,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "yCm_atqQD_j6qtsP3uuC8AU"
+                "response_id": "BQTBauOAOvisz7IP-LDkoA4"
               },
               "stop": "tool_use"
             },
@@ -536,26 +536,28 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sum of 3 and 4 is 7. The difference of 10 and 2 is 8.",
+              "text": "7\n8",
               "native": {
                 "item": {
-                  "text": "The sum of 3 and 4 is 7. The difference of 10 and 2 is 8."
+                  "text": "7\n8",
+                  "thoughtSignature": "CsIBAWkUfRPXh+xIAse+aEeJgMgTpFzlXf3BIeNipYb5dRDPtY5V66vXNCDjUMAbD7f2TIBLTHE3FM1Sz9LyXn65bWBFv4NwrKR4zmb3SwyErTjzqhV4tOdaur4KoCRA1t/iC8VoV5SZxHdx1RLm0HW7WFmNzQ2Lv98q1V50cKGIhCfYlxASLM0t0lnEggN7VoQbWJQQtjSFbcaMW/FtXvKBhRE0dGZ2yNAcrn0eQvxOwJ1+ZujChyYeg8xowOdKak8PMKM="
                 },
-                "fingerprint": "905ed02c701fcc14"
+                "fingerprint": "da4f8e14f564e9cc"
               }
             }
           ],
           "usage": {
             "input_tokens": 254,
-            "output_tokens": 25,
-            "total_tokens": 279
+            "output_tokens": 56,
+            "total_tokens": 310,
+            "reasoning_tokens": 53
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "ySm_at2jCJ_-qtsPpcym4Qo"
+            "response_id": "BgTBatWFO-boz7IPwPj4MA"
           },
           "finish_reason": "stop",
           "raw": {
@@ -564,7 +566,8 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The sum of 3 and 4 is 7. The difference of 10 and 2 is 8."
+                      "text": "7\n8",
+                      "thoughtSignature": "CsIBAWkUfRPXh+xIAse+aEeJgMgTpFzlXf3BIeNipYb5dRDPtY5V66vXNCDjUMAbD7f2TIBLTHE3FM1Sz9LyXn65bWBFv4NwrKR4zmb3SwyErTjzqhV4tOdaur4KoCRA1t/iC8VoV5SZxHdx1RLm0HW7WFmNzQ2Lv98q1V50cKGIhCfYlxASLM0t0lnEggN7VoQbWJQQtjSFbcaMW/FtXvKBhRE0dGZ2yNAcrn0eQvxOwJ1+ZujChyYeg8xowOdKak8PMKM="
                     }
                   ],
                   "role": "model"
@@ -574,9 +577,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "ySm_at2jCJ_-qtsPpcym4Qo",
+            "responseId": "BgTBatWFO-boz7IPwPj4MA",
             "usageMetadata": {
-              "candidatesTokenCount": 25,
+              "candidatesTokenCount": 3,
               "promptTokenCount": 254,
               "promptTokensDetails": [
                 {
@@ -585,7 +588,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 279
+              "thoughtsTokenCount": 53,
+              "totalTokenCount": 310
             }
           }
         }

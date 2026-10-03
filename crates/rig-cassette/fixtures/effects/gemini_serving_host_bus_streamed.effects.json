@@ -111,7 +111,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_80374"
+                "provider": "call_1665787"
               },
               "function": {
                 "name": "add",
@@ -127,12 +127,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_80374",
+                    "id": "call_1665787",
                     "name": "add"
                   },
-                  "thoughtSignature": "EtICCs8CAWkUfRNbrZ9GlnIhEAMB/6raZeZeXaCMQnTIGo2KjIxAwcGhmxv7bwbUHdRa9kkX7eTKtRq0dVMTcJhQDTne0O7ZEERoDvwsoECc0+7DnafHvSlw1jkzT3KQnYRlLp6azaLl4IA+LPs64O77eqDvApbGMNt0B/rIvrJQX+AqkcbWBSBG2hitWVfBd6Yg/r9e43BiAypZyh4GciD6s/x1Jf7oJlf/ZBPw2XPBT/Qb9JzKNcvTbovESrtMumpEWh3l/Ze3S8MN0Dwe6qEOUWYGLvlLEkRPfxJ1xhveUM3YZkqD1tzCixSb/HrJdpCDn3VUfPNVlwN4m+sJLaHoINIW4vg5Ff0XmEf/MsL8SOrH+kr2QOM+7sFchnFOOPA8KPbBEQRKInRY9Qy5Geg5otwg86+Fizd67N1UAGU0Dl8x5xlQjJ+/entz/QOKKqDc7pc="
+                  "thoughtSignature": "EtICCs8CAWkUfRPvL0MPcq8TCjZlmAPkMv0ei3vzRE0ZOamBk0Z9i8vQKLQxQwAS+HzT0g3FJ6o64NeTCuzgou+ZopJUYL8Hrnb58MjixA7xJprWdehXYYL9f5M/XgpHf7o+sNN+lIYf6wAIogoPsD95APVFqhdH3C485o3OfIDxkI1gOA7w0aSleW56tNLfF6+jlnn1OrW5zxxS4F2tHPC+ssl8DnyQ4MPypEy76uJaCfSLUXBvF8J9dGteRxqr0qzoC3USfGK35b3rb4sLqDoL3cslRhuUknCaluDeTykEHRKH7CijbJqjnx8G+iYGJzYk7p2GMIl0uBaT8peyYaV9TTtDS5BXsZ8jT9+DoVteabCvRUTKbaK8h3lJ9l191MPYQPJCUk+JaeEbLuBi9j1sqCidiDVsIYv2d9iAWy+gyPhDgKXwS7Bfkdmm2Lx74/dDZ2o="
                 },
-                "fingerprint": "85e6f2bca5ba0b1b"
+                "fingerprint": "d9dfb739af5e154f"
               }
             }
           ],
@@ -147,7 +147,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "XCy_at-IEKjJ_uMP97OLYQ"
+            "response_id": "AwzBaqOaK4WKmtkPj7yF6AE"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -166,7 +166,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "XCy_at-IEKjJ_uMP97OLYQ"
+            "response_id": "AwzBaqOaK4WKmtkPj7yF6AE"
           }
         }
       },
@@ -195,7 +195,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_80374"
+                "provider": "call_1665787"
               },
               "function": {
                 "name": "add",
@@ -211,12 +211,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_80374",
+                    "id": "call_1665787",
                     "name": "add"
                   },
-                  "thoughtSignature": "EtICCs8CAWkUfRNbrZ9GlnIhEAMB/6raZeZeXaCMQnTIGo2KjIxAwcGhmxv7bwbUHdRa9kkX7eTKtRq0dVMTcJhQDTne0O7ZEERoDvwsoECc0+7DnafHvSlw1jkzT3KQnYRlLp6azaLl4IA+LPs64O77eqDvApbGMNt0B/rIvrJQX+AqkcbWBSBG2hitWVfBd6Yg/r9e43BiAypZyh4GciD6s/x1Jf7oJlf/ZBPw2XPBT/Qb9JzKNcvTbovESrtMumpEWh3l/Ze3S8MN0Dwe6qEOUWYGLvlLEkRPfxJ1xhveUM3YZkqD1tzCixSb/HrJdpCDn3VUfPNVlwN4m+sJLaHoINIW4vg5Ff0XmEf/MsL8SOrH+kr2QOM+7sFchnFOOPA8KPbBEQRKInRY9Qy5Geg5otwg86+Fizd67N1UAGU0Dl8x5xlQjJ+/entz/QOKKqDc7pc="
+                  "thoughtSignature": "EtICCs8CAWkUfRPvL0MPcq8TCjZlmAPkMv0ei3vzRE0ZOamBk0Z9i8vQKLQxQwAS+HzT0g3FJ6o64NeTCuzgou+ZopJUYL8Hrnb58MjixA7xJprWdehXYYL9f5M/XgpHf7o+sNN+lIYf6wAIogoPsD95APVFqhdH3C485o3OfIDxkI1gOA7w0aSleW56tNLfF6+jlnn1OrW5zxxS4F2tHPC+ssl8DnyQ4MPypEy76uJaCfSLUXBvF8J9dGteRxqr0qzoC3USfGK35b3rb4sLqDoL3cslRhuUknCaluDeTykEHRKH7CijbJqjnx8G+iYGJzYk7p2GMIl0uBaT8peyYaV9TTtDS5BXsZ8jT9+DoVteabCvRUTKbaK8h3lJ9l191MPYQPJCUk+JaeEbLuBi9j1sqCidiDVsIYv2d9iAWy+gyPhDgKXwS7Bfkdmm2Lx74/dDZ2o="
                 },
-                "fingerprint": "85e6f2bca5ba0b1b"
+                "fingerprint": "d9dfb739af5e154f"
               }
             }
           }
@@ -280,7 +280,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_80374"
+                    "provider": "call_1665787"
                   },
                   "function": {
                     "name": "add",
@@ -296,12 +296,12 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_80374",
+                        "id": "call_1665787",
                         "name": "add"
                       },
-                      "thoughtSignature": "EtICCs8CAWkUfRNbrZ9GlnIhEAMB/6raZeZeXaCMQnTIGo2KjIxAwcGhmxv7bwbUHdRa9kkX7eTKtRq0dVMTcJhQDTne0O7ZEERoDvwsoECc0+7DnafHvSlw1jkzT3KQnYRlLp6azaLl4IA+LPs64O77eqDvApbGMNt0B/rIvrJQX+AqkcbWBSBG2hitWVfBd6Yg/r9e43BiAypZyh4GciD6s/x1Jf7oJlf/ZBPw2XPBT/Qb9JzKNcvTbovESrtMumpEWh3l/Ze3S8MN0Dwe6qEOUWYGLvlLEkRPfxJ1xhveUM3YZkqD1tzCixSb/HrJdpCDn3VUfPNVlwN4m+sJLaHoINIW4vg5Ff0XmEf/MsL8SOrH+kr2QOM+7sFchnFOOPA8KPbBEQRKInRY9Qy5Geg5otwg86+Fizd67N1UAGU0Dl8x5xlQjJ+/entz/QOKKqDc7pc="
+                      "thoughtSignature": "EtICCs8CAWkUfRPvL0MPcq8TCjZlmAPkMv0ei3vzRE0ZOamBk0Z9i8vQKLQxQwAS+HzT0g3FJ6o64NeTCuzgou+ZopJUYL8Hrnb58MjixA7xJprWdehXYYL9f5M/XgpHf7o+sNN+lIYf6wAIogoPsD95APVFqhdH3C485o3OfIDxkI1gOA7w0aSleW56tNLfF6+jlnn1OrW5zxxS4F2tHPC+ssl8DnyQ4MPypEy76uJaCfSLUXBvF8J9dGteRxqr0qzoC3USfGK35b3rb4sLqDoL3cslRhuUknCaluDeTykEHRKH7CijbJqjnx8G+iYGJzYk7p2GMIl0uBaT8peyYaV9TTtDS5BXsZ8jT9+DoVteabCvRUTKbaK8h3lJ9l191MPYQPJCUk+JaeEbLuBi9j1sqCidiDVsIYv2d9iAWy+gyPhDgKXwS7Bfkdmm2Lx74/dDZ2o="
                     },
-                    "fingerprint": "85e6f2bca5ba0b1b"
+                    "fingerprint": "d9dfb739af5e154f"
                   }
                 }
               ],
@@ -310,7 +310,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-3-flash-preview",
                 "response_model": "gemini-3-flash-preview",
-                "response_id": "XCy_at-IEKjJ_uMP97OLYQ"
+                "response_id": "AwzBaqOaK4WKmtkPj7yF6AE"
               },
               "stop": "tool_use"
             },
@@ -320,7 +320,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_80374"
+                    "provider": "call_1665787"
                   },
                   "name": "add",
                   "content": [
@@ -375,7 +375,7 @@
               "native": {
                 "item": {
                   "text": "42",
-                  "thoughtSignature": "Eq0BCqoBAWkUfRP60RB5jitrlTmL+WH7lU8grb1ZBGtvPEBxKn1SRaSVEq0ZIm7w3sov7YD1a6a6ioGdhZDmjIB00buxM6Dan8+k1MmdF2FXhUKCj+/2zS0AF77csQ4okq0V6JFK45Zwh2+0htzhfQdbPZMwXB9QrTdpzS/ZYEoZYfI2CTyaMUAu5Beuw/r/T4l5NkJUsMbP8EgRLBt87+x3b90vUZJv98cbzm89gvM="
+                  "thoughtSignature": "Eq0BCqoBAWkUfRMN0Ry9i0UURBttLYkpQlO+E3V/KsA77FuZe8OIJv2VBM5kjukB81cEMYrA5umbqfZ1YpEIwtYSVM7CZI5aFv/B9kl9ElHLC9k+MMXjc5wQhfMR2tVss1BSkeKSQf9kCFG42xzhOaG2IXIjjDG0KMIS9PwXXyAwJIZixLqmK6+WHvJOwlBdZ9LSIJrKmw64VO4EdqObDWJux2Up5IsYR8CnXJtbPRU="
                 },
                 "fingerprint": "23f07d1922e80d53"
               }
@@ -392,7 +392,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "XSy_ao-cB5_-qtsPpcym4Qo"
+            "response_id": "BAzBaof1Jcz6qtsP6_DnsA0"
           },
           "finish_reason": "stop",
           "raw": {
@@ -411,7 +411,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "XSy_ao-cB5_-qtsPpcym4Qo"
+            "response_id": "BAzBaof1Jcz6qtsP6_DnsA0"
           }
         }
       },
@@ -443,7 +443,7 @@
               "native": {
                 "item": {
                   "text": "42",
-                  "thoughtSignature": "Eq0BCqoBAWkUfRP60RB5jitrlTmL+WH7lU8grb1ZBGtvPEBxKn1SRaSVEq0ZIm7w3sov7YD1a6a6ioGdhZDmjIB00buxM6Dan8+k1MmdF2FXhUKCj+/2zS0AF77csQ4okq0V6JFK45Zwh2+0htzhfQdbPZMwXB9QrTdpzS/ZYEoZYfI2CTyaMUAu5Beuw/r/T4l5NkJUsMbP8EgRLBt87+x3b90vUZJv98cbzm89gvM="
+                  "thoughtSignature": "Eq0BCqoBAWkUfRMN0Ry9i0UURBttLYkpQlO+E3V/KsA77FuZe8OIJv2VBM5kjukB81cEMYrA5umbqfZ1YpEIwtYSVM7CZI5aFv/B9kl9ElHLC9k+MMXjc5wQhfMR2tVss1BSkeKSQf9kCFG42xzhOaG2IXIjjDG0KMIS9PwXXyAwJIZixLqmK6+WHvJOwlBdZ9LSIJrKmw64VO4EdqObDWJux2Up5IsYR8CnXJtbPRU="
                 },
                 "fingerprint": "23f07d1922e80d53"
               }

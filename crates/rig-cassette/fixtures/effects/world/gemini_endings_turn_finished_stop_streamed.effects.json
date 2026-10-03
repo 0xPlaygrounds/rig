@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -132,7 +132,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_195068"
+                "provider": "call_574044"
               },
               "function": {
                 "name": "add",
@@ -148,12 +148,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_195068",
+                    "id": "call_574044",
                     "name": "add"
                   },
-                  "thoughtSignature": "EtICCs8CAWkUfROK1saJBN6Y3nMq+lHmMK24dVSDDbnn5EzYEVHF+iGuP0qX7B6gCZLh35yQ9tzLpmJYFXBiL9ceueV15JdCcPB5wHNnYebxDvFh1SXE60aEseHF1WEKuBnjvPJGLRHV4jfvE0mxNzPHymm3F5EWwlhhGfuZXURDzvUfhmDIAzL07SzMhz5WJcPrIvJ1GD1o93Xn87AQxWVykOAj2MHs9aWGN0WrCBPuyVoZZR2g5Lr61R3U1ftpH8/oP1vmcRoRyoEG6dCn0yTy1fzJhOwxmAgUO1l8vIf+30uMwo3JUbBSCfw9TsvMsi+CBAN+YMooN0Pji5dAIVNJqHxl+JBxgdyNyYEh5UkTZry/OLZvUFX//55d/LZjSXzBH1m2o4D8neu2iwflJ3ss8Fnupxovp++l6ZYapfgFxjR+aSb58B2BUTf0AheviK9Pv0A="
+                  "thoughtSignature": "EtICCs8CAWkUfRPYOK6Zge/fiaVixfP88athwH3xA2xozAWg2l3+WjmhhkdHvKw8oXJ41M4Z3SpvMxKFItydXqnU85YQ5tsORN+Xvda2dsq9e8I3esgx1I7pasuWYOjt7OSlMeL669BFRIR/5/r3LhOU4j5v0QXOgN7qprePCnQbDtgFgJ3h6mYZi/AV6XS7AEjV4l5O7ZzWXhOmDzr6rXQICJCKEi/TNHVbQIfo1iLDxuS+TqvDNSXAcGE+ABY1Eyr7FaNkUeLhJuFOYa1Oyn2HYjmrQKGGIZ6od8MVTRmVBShD8yeKOEc/b4g40bmuWNUD3mJjyxBDOPJhDxYVHkpFY/C1Sa7a0CasS2JySyJhVsALNUsXfa/rV6j3OlZQMaLl7ljUELrMYF40zr6Htjxt4Tyq9SXVdOmEdb9DlFDLhxAzYmoNZh+OlkZWXa5GvpJnN7M="
                 },
-                "fingerprint": "9e82208f0dcfdb72"
+                "fingerprint": "6a62c04a007f40b5"
               }
             }
           ],
@@ -168,7 +168,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "UKyyarj2H7foz7IPt-_ZWQ"
+            "response_id": "5QrBapTJKradqtsPwsiMoQM"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -187,7 +187,7 @@
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "UKyyarj2H7foz7IPt-_ZWQ"
+            "response_id": "5QrBapTJKradqtsPwsiMoQM"
           }
         }
       },
@@ -216,7 +216,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_195068"
+                "provider": "call_574044"
               },
               "function": {
                 "name": "add",
@@ -232,12 +232,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_195068",
+                    "id": "call_574044",
                     "name": "add"
                   },
-                  "thoughtSignature": "EtICCs8CAWkUfROK1saJBN6Y3nMq+lHmMK24dVSDDbnn5EzYEVHF+iGuP0qX7B6gCZLh35yQ9tzLpmJYFXBiL9ceueV15JdCcPB5wHNnYebxDvFh1SXE60aEseHF1WEKuBnjvPJGLRHV4jfvE0mxNzPHymm3F5EWwlhhGfuZXURDzvUfhmDIAzL07SzMhz5WJcPrIvJ1GD1o93Xn87AQxWVykOAj2MHs9aWGN0WrCBPuyVoZZR2g5Lr61R3U1ftpH8/oP1vmcRoRyoEG6dCn0yTy1fzJhOwxmAgUO1l8vIf+30uMwo3JUbBSCfw9TsvMsi+CBAN+YMooN0Pji5dAIVNJqHxl+JBxgdyNyYEh5UkTZry/OLZvUFX//55d/LZjSXzBH1m2o4D8neu2iwflJ3ss8Fnupxovp++l6ZYapfgFxjR+aSb58B2BUTf0AheviK9Pv0A="
+                  "thoughtSignature": "EtICCs8CAWkUfRPYOK6Zge/fiaVixfP88athwH3xA2xozAWg2l3+WjmhhkdHvKw8oXJ41M4Z3SpvMxKFItydXqnU85YQ5tsORN+Xvda2dsq9e8I3esgx1I7pasuWYOjt7OSlMeL669BFRIR/5/r3LhOU4j5v0QXOgN7qprePCnQbDtgFgJ3h6mYZi/AV6XS7AEjV4l5O7ZzWXhOmDzr6rXQICJCKEi/TNHVbQIfo1iLDxuS+TqvDNSXAcGE+ABY1Eyr7FaNkUeLhJuFOYa1Oyn2HYjmrQKGGIZ6od8MVTRmVBShD8yeKOEc/b4g40bmuWNUD3mJjyxBDOPJhDxYVHkpFY/C1Sa7a0CasS2JySyJhVsALNUsXfa/rV6j3OlZQMaLl7ljUELrMYF40zr6Htjxt4Tyq9SXVdOmEdb9DlFDLhxAzYmoNZh+OlkZWXa5GvpJnN7M="
                 },
-                "fingerprint": "9e82208f0dcfdb72"
+                "fingerprint": "6a62c04a007f40b5"
               }
             }
           }

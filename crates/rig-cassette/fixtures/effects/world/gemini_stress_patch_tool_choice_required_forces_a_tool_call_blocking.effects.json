@@ -157,7 +157,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CvkBAWkUfRO3kFk8yK/6aT238r7fPMhsfMMlOcVK6CaItLJduYUL/1nCNVwJVyG5HWhaFTJsGKYKc/cVBBKK6MqSbg7V7/JqOtHK62s3oCTxmvCx516MbWbytpfnMPYhSwTMLyO8u87RS0l2gP3FJhdDx/nZAnVKmNWvLlCNWMW1/W1TxImscy4DglVYEHFE8TmJuUz9qQMHKxYbcdNVweQvLhD/J2JEPTifSE7iuSiodKjBr/vbcnFbagYJM+RgAg1Y8nDOjdJdSxxxEpo6hh4NS0TkgLZQDQjwypWG5qJJVjeQNFxWJE0yiW04SYIe46jlTiLQYp4SDtF9"
+                  "thoughtSignature": "CvkBAWkUfRO7uotby2jwRxWmmCI7VX1je5uDdB7JhFybbYnoTyNxr72Dvm4lPhhjkKaqiBl/VIv0JedfEoiLBxog5Bbm4NgdElsw/XhjLZmn48ZmLAGQjFPcYEC6hrnaJ6R3YTVbwiGA0n8plw4Zae1UYHA0SjRheyLkqaof2xLg3hj83P2j6+8xabbaV0pvJRLnK0muzYiSkilCW3mWYOFW1NcR+Z7cNHX2SRgYRgUkWTY78+qq7RlRajFaEqXK8TorBBoNA+DC4UepCndQg/BOY4deRy4ZLsTtWKRY7yTygXlhPL8OB5eWiDZkK2x5Syi/xL6p1wwMFjTr"
                 },
                 "fingerprint": "aeb2032f4d72696a"
               }
@@ -174,7 +174,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "eS2_aruFHZ-I6dkP7dGFsAo"
+            "response_id": "Xw3BapD7NearqtsP_LXm0AM"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -190,7 +190,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CvkBAWkUfRO3kFk8yK/6aT238r7fPMhsfMMlOcVK6CaItLJduYUL/1nCNVwJVyG5HWhaFTJsGKYKc/cVBBKK6MqSbg7V7/JqOtHK62s3oCTxmvCx516MbWbytpfnMPYhSwTMLyO8u87RS0l2gP3FJhdDx/nZAnVKmNWvLlCNWMW1/W1TxImscy4DglVYEHFE8TmJuUz9qQMHKxYbcdNVweQvLhD/J2JEPTifSE7iuSiodKjBr/vbcnFbagYJM+RgAg1Y8nDOjdJdSxxxEpo6hh4NS0TkgLZQDQjwypWG5qJJVjeQNFxWJE0yiW04SYIe46jlTiLQYp4SDtF9"
+                      "thoughtSignature": "CvkBAWkUfRO7uotby2jwRxWmmCI7VX1je5uDdB7JhFybbYnoTyNxr72Dvm4lPhhjkKaqiBl/VIv0JedfEoiLBxog5Bbm4NgdElsw/XhjLZmn48ZmLAGQjFPcYEC6hrnaJ6R3YTVbwiGA0n8plw4Zae1UYHA0SjRheyLkqaof2xLg3hj83P2j6+8xabbaV0pvJRLnK0muzYiSkilCW3mWYOFW1NcR+Z7cNHX2SRgYRgUkWTY78+qq7RlRajFaEqXK8TorBBoNA+DC4UepCndQg/BOY4deRy4ZLsTtWKRY7yTygXlhPL8OB5eWiDZkK2x5Syi/xL6p1wwMFjTr"
                     }
                   ],
                   "role": "model"
@@ -201,7 +201,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "eS2_aruFHZ-I6dkP7dGFsAo",
+            "responseId": "Xw3BapD7NearqtsP_LXm0AM",
             "usageMetadata": {
               "candidatesTokenCount": 20,
               "promptTokenCount": 77,
@@ -291,7 +291,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CvkBAWkUfRO3kFk8yK/6aT238r7fPMhsfMMlOcVK6CaItLJduYUL/1nCNVwJVyG5HWhaFTJsGKYKc/cVBBKK6MqSbg7V7/JqOtHK62s3oCTxmvCx516MbWbytpfnMPYhSwTMLyO8u87RS0l2gP3FJhdDx/nZAnVKmNWvLlCNWMW1/W1TxImscy4DglVYEHFE8TmJuUz9qQMHKxYbcdNVweQvLhD/J2JEPTifSE7iuSiodKjBr/vbcnFbagYJM+RgAg1Y8nDOjdJdSxxxEpo6hh4NS0TkgLZQDQjwypWG5qJJVjeQNFxWJE0yiW04SYIe46jlTiLQYp4SDtF9"
+                      "thoughtSignature": "CvkBAWkUfRO7uotby2jwRxWmmCI7VX1je5uDdB7JhFybbYnoTyNxr72Dvm4lPhhjkKaqiBl/VIv0JedfEoiLBxog5Bbm4NgdElsw/XhjLZmn48ZmLAGQjFPcYEC6hrnaJ6R3YTVbwiGA0n8plw4Zae1UYHA0SjRheyLkqaof2xLg3hj83P2j6+8xabbaV0pvJRLnK0muzYiSkilCW3mWYOFW1NcR+Z7cNHX2SRgYRgUkWTY78+qq7RlRajFaEqXK8TorBBoNA+DC4UepCndQg/BOY4deRy4ZLsTtWKRY7yTygXlhPL8OB5eWiDZkK2x5Syi/xL6p1wwMFjTr"
                     },
                     "fingerprint": "aeb2032f4d72696a"
                   }
@@ -302,7 +302,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "eS2_aruFHZ-I6dkP7dGFsAo"
+                "response_id": "Xw3BapD7NearqtsP_LXm0AM"
               },
               "stop": "tool_use"
             },
@@ -363,12 +363,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result is 42.",
+              "text": "The sum is 42.",
               "native": {
                 "item": {
-                  "text": "The result is 42."
+                  "text": "The sum is 42."
                 },
-                "fingerprint": "3846bbc9774ea8a1"
+                "fingerprint": "49621b5a3c297bc5"
               }
             }
           ],
@@ -382,7 +382,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "ei2_ao2AGraO6dkP8-DjqQo"
+            "response_id": "YA3Baq7CKKT5qtsPqPqImAI"
           },
           "finish_reason": "stop",
           "raw": {
@@ -391,7 +391,7 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The result is 42."
+                      "text": "The sum is 42."
                     }
                   ],
                   "role": "model"
@@ -401,7 +401,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "ei2_ao2AGraO6dkP8-DjqQo",
+            "responseId": "YA3Baq7CKKT5qtsPqPqImAI",
             "usageMetadata": {
               "candidatesTokenCount": 7,
               "promptTokenCount": 111,

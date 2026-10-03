@@ -150,7 +150,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
             "functionDeclarations": [{
                 "name": "lookup_weather",
                 "description": "look up the weather",
-                "parameters": {
+                "parametersJsonSchema": {
                     "type": "object",
                     "properties": {"city": {"type": "string"}},
                     "required": ["city"],

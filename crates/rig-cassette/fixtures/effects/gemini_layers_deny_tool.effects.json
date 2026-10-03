@@ -120,7 +120,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_484682"
+                "provider": "call_1637380"
               },
               "function": {
                 "name": "add",
@@ -136,12 +136,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_484682",
+                    "id": "call_1637380",
                     "name": "add"
                   },
-                  "thoughtSignature": "EqMCCqACAWkUfRPoHveVdfudiD9HhdC3S2FEsesYreAihIzHz5msieEAEv8L7dAzwoLUaDnj6+dAZ5AQ+D+QC/DYvhMxlw3VgfkdETrivCaLXzJEhILZmbY9yNN6dHuAlhnDYHVAgVks5AST3T9iBFSdJQQ2CC5K2sLC9Z3VofX6DGq8Vw9BwGVsbQnSA6rzypyjqcudd43ET/MlEd9fF5tBL+SI8bS2estnmb8Rwk2ovksaFR2gwygaqvMGPqbqhZspaylJfRexkIbvyklU7eosHSKObXL3RoAM4Ghx+Tfo9vy42A8e/lSH+Aq4vEksDZOJtvX/rSN3npaOPMvgWODiJa9RI03LSuXXD4Q1sBjSZ6GIHWSbK/gCIVRb6SJIJACXcMvv"
+                  "thoughtSignature": "EqMCCqACAWkUfRMBZRGCSDAoAXAQSmeMw6Q7J+GDHXtIl2GL1URsurOO3YHRPmqYFWIOkP9/cDzdMqNGuMRj4RRGml+frCnxXmPIx7HZ3kVUYmY5wm12P440nR3z7VssTqEgUvka4wHZqtYGWaKfccHD3CpaqmnDflgFrMJs5Wx0iYA1TIpvKNkKfSIkOTb6eh6nILiAWzkVEtYOvpOV/mf4Q9euNa10He8geOBk5/eiQiL2IqZYENGy3bew3EfCT2sG74s56MHF+Q2k7uf3H6jjamnmFH7s6yJ/qAmAVt8J4kzMHI3CpFdIuh5/NdRN5psqzhSyqqiuRRzLkT1jA+ZOMOVXwEtAX8/cD89DAbB60dsttvRLENQzu1nE7nsXUBUgA/1E"
                 },
-                "fingerprint": "53e87f6105c1b141"
+                "fingerprint": "17e3aa43f9360567"
               }
             }
           ],
@@ -156,7 +156,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "QQ_AaqLjO-qfz7IPoLWP6Qc"
+            "response_id": "ugvBasTYJJWHz7IP4YjYIA"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -170,10 +170,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_484682",
+                        "id": "call_1637380",
                         "name": "add"
                       },
-                      "thoughtSignature": "EqMCCqACAWkUfRPoHveVdfudiD9HhdC3S2FEsesYreAihIzHz5msieEAEv8L7dAzwoLUaDnj6+dAZ5AQ+D+QC/DYvhMxlw3VgfkdETrivCaLXzJEhILZmbY9yNN6dHuAlhnDYHVAgVks5AST3T9iBFSdJQQ2CC5K2sLC9Z3VofX6DGq8Vw9BwGVsbQnSA6rzypyjqcudd43ET/MlEd9fF5tBL+SI8bS2estnmb8Rwk2ovksaFR2gwygaqvMGPqbqhZspaylJfRexkIbvyklU7eosHSKObXL3RoAM4Ghx+Tfo9vy42A8e/lSH+Aq4vEksDZOJtvX/rSN3npaOPMvgWODiJa9RI03LSuXXD4Q1sBjSZ6GIHWSbK/gCIVRb6SJIJACXcMvv"
+                      "thoughtSignature": "EqMCCqACAWkUfRMBZRGCSDAoAXAQSmeMw6Q7J+GDHXtIl2GL1URsurOO3YHRPmqYFWIOkP9/cDzdMqNGuMRj4RRGml+frCnxXmPIx7HZ3kVUYmY5wm12P440nR3z7VssTqEgUvka4wHZqtYGWaKfccHD3CpaqmnDflgFrMJs5Wx0iYA1TIpvKNkKfSIkOTb6eh6nILiAWzkVEtYOvpOV/mf4Q9euNa10He8geOBk5/eiQiL2IqZYENGy3bew3EfCT2sG74s56MHF+Q2k7uf3H6jjamnmFH7s6yJ/qAmAVt8J4kzMHI3CpFdIuh5/NdRN5psqzhSyqqiuRRzLkT1jA+ZOMOVXwEtAX8/cD89DAbB60dsttvRLENQzu1nE7nsXUBUgA/1E"
                     }
                   ],
                   "role": "model"
@@ -184,7 +184,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "QQ_AaqLjO-qfz7IPoLWP6Qc",
+            "responseId": "ugvBasTYJJWHz7IP4YjYIA",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 120,
@@ -230,7 +230,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_484682"
+                    "provider": "call_1637380"
                   },
                   "function": {
                     "name": "add",
@@ -246,12 +246,12 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_484682",
+                        "id": "call_1637380",
                         "name": "add"
                       },
-                      "thoughtSignature": "EqMCCqACAWkUfRPoHveVdfudiD9HhdC3S2FEsesYreAihIzHz5msieEAEv8L7dAzwoLUaDnj6+dAZ5AQ+D+QC/DYvhMxlw3VgfkdETrivCaLXzJEhILZmbY9yNN6dHuAlhnDYHVAgVks5AST3T9iBFSdJQQ2CC5K2sLC9Z3VofX6DGq8Vw9BwGVsbQnSA6rzypyjqcudd43ET/MlEd9fF5tBL+SI8bS2estnmb8Rwk2ovksaFR2gwygaqvMGPqbqhZspaylJfRexkIbvyklU7eosHSKObXL3RoAM4Ghx+Tfo9vy42A8e/lSH+Aq4vEksDZOJtvX/rSN3npaOPMvgWODiJa9RI03LSuXXD4Q1sBjSZ6GIHWSbK/gCIVRb6SJIJACXcMvv"
+                      "thoughtSignature": "EqMCCqACAWkUfRMBZRGCSDAoAXAQSmeMw6Q7J+GDHXtIl2GL1URsurOO3YHRPmqYFWIOkP9/cDzdMqNGuMRj4RRGml+frCnxXmPIx7HZ3kVUYmY5wm12P440nR3z7VssTqEgUvka4wHZqtYGWaKfccHD3CpaqmnDflgFrMJs5Wx0iYA1TIpvKNkKfSIkOTb6eh6nILiAWzkVEtYOvpOV/mf4Q9euNa10He8geOBk5/eiQiL2IqZYENGy3bew3EfCT2sG74s56MHF+Q2k7uf3H6jjamnmFH7s6yJ/qAmAVt8J4kzMHI3CpFdIuh5/NdRN5psqzhSyqqiuRRzLkT1jA+ZOMOVXwEtAX8/cD89DAbB60dsttvRLENQzu1nE7nsXUBUgA/1E"
                     },
-                    "fingerprint": "53e87f6105c1b141"
+                    "fingerprint": "17e3aa43f9360567"
                   }
                 }
               ],
@@ -260,7 +260,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-3-flash-preview",
                 "response_model": "gemini-3-flash-preview",
-                "response_id": "QQ_AaqLjO-qfz7IPoLWP6Qc"
+                "response_id": "ugvBasTYJJWHz7IP4YjYIA"
               },
               "stop": "tool_use"
             },
@@ -270,7 +270,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_484682"
+                    "provider": "call_1637380"
                   },
                   "name": "add",
                   "content": [
@@ -326,7 +326,7 @@
               "native": {
                 "item": {
                   "text": "42",
-                  "thoughtSignature": "EuABCt0BAWkUfROUs4L5RBPvH438/Wmq+kDCsE0wM2If5xl+0Z06QlbtO12f8wgeYbr79yH0yL1o0HVCVOb8CcyfWIqc3eNbxc65VWkWuC4FwPYWKDQ65zQo3iQgEwuFOdI8yDumnRp5OzRm81qZQ26ICuCq8Owkmu/hNr/JHYOmhnK3KjCcdmSfM4FMTqx7SMQU5V336VDOL2vUC2i+vbUzGFdgxT7vvwUa8svM2FFzdR3Hg83NtXXMCWB7MXksZ33f85pbbA6xJfCLyGEcG7jZ/izm159N7Qg0Fn50F0S+Q0U="
+                  "thoughtSignature": "EuABCt0BAWkUfRPhdvcodvjJkv5DG1wIuoYTh7hU2GpKq1ki5AXx4GGKXm/QKJIhiS51DP0RhwibXcfEutCHDMfyOQeHRmAv2tmyi5HkDKhIr7OvjNoIZl9NURKQq442Af5vQKypS6oZB1MoxkVjsXJYqHVUcCRLSiWd6g8vs17uOEbOlKDj87/nrI8aGNrrU6iBcCUjQvz9GaPgtdFLKhosmoMwfkA4BHEWDGzRSrC+ZDG+2GomRXUlhipPpebXcw/WwD5oUag0UQ9DvPx9eJweIIqblQouH+LUGvfNOUryeBA="
                 },
                 "fingerprint": "23f07d1922e80d53"
               }
@@ -343,7 +343,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "Qw_AaseUAprWz7IP592FIQ"
+            "response_id": "uwvBasOWHJXjz7IPpf-EiQQ"
           },
           "finish_reason": "stop",
           "raw": {
@@ -353,7 +353,7 @@
                   "parts": [
                     {
                       "text": "42",
-                      "thoughtSignature": "EuABCt0BAWkUfROUs4L5RBPvH438/Wmq+kDCsE0wM2If5xl+0Z06QlbtO12f8wgeYbr79yH0yL1o0HVCVOb8CcyfWIqc3eNbxc65VWkWuC4FwPYWKDQ65zQo3iQgEwuFOdI8yDumnRp5OzRm81qZQ26ICuCq8Owkmu/hNr/JHYOmhnK3KjCcdmSfM4FMTqx7SMQU5V336VDOL2vUC2i+vbUzGFdgxT7vvwUa8svM2FFzdR3Hg83NtXXMCWB7MXksZ33f85pbbA6xJfCLyGEcG7jZ/izm159N7Qg0Fn50F0S+Q0U="
+                      "thoughtSignature": "EuABCt0BAWkUfRPhdvcodvjJkv5DG1wIuoYTh7hU2GpKq1ki5AXx4GGKXm/QKJIhiS51DP0RhwibXcfEutCHDMfyOQeHRmAv2tmyi5HkDKhIr7OvjNoIZl9NURKQq442Af5vQKypS6oZB1MoxkVjsXJYqHVUcCRLSiWd6g8vs17uOEbOlKDj87/nrI8aGNrrU6iBcCUjQvz9GaPgtdFLKhosmoMwfkA4BHEWDGzRSrC+ZDG+2GomRXUlhipPpebXcw/WwD5oUag0UQ9DvPx9eJweIIqblQouH+LUGvfNOUryeBA="
                     }
                   ],
                   "role": "model"
@@ -363,7 +363,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "Qw_AaseUAprWz7IP592FIQ",
+            "responseId": "uwvBasOWHJXjz7IPpf-EiQQ",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 215,

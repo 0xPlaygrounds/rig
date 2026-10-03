@@ -158,7 +158,7 @@
                     "args": {},
                     "name": "fetch_motto"
                   },
-                  "thoughtSignature": "CoMCAWkUfRN+sLm3YoAq76Cm0NXumE9PhyPwv8AzWZDhQMuMWkgFM8Ovdvp+h0g3sbr0g2y3n9tgiSzu8LAXKCW8CK8+eY2SiFIfEpRXAnXR7N2sF1Y25u/eVlOUpWuZtsHW2xsPDPCYA6fuzJMVmP/YEurgEq2T41a+5CyNZHHpj/Jlg4tfAUuvk9xctwAJMzt3YUqnQ12wDAvsMVq/JqCJsl+tEhuGUYHjqD3s3Gbbw6dYwbqBmM96EjXkJR0kz1D4mNPFqSAKA6T9WZ5YgNXVip622cIMcyPU9b7ps8a3/afzNC5p/YG+zKnTz41QO1kbpDLRAn6duE2413zStNzn5eoOyQ=="
+                  "thoughtSignature": "CoMCAWkUfRMRvp0IYFfUuIxQlT+toRPw0Qa/sUkj9kBwkSJt7gX86kxHrVyGGY0WfwPMeFTJA4dEbd0xgAMz/O8+hmUqzWwEMcO9gyOAei3AF3+MkpFlnpqT8NLfmKgUvPQJaEIwZRMxwPauhuzH2Z2Vj7FnoSyTORZw/osnVC51AVMvGCjgc5eW0sA5o45rXR5f5Jg0rtsM0Rh3UlAksoXK0/f8+QxL80XR9GBHIC0oih+cZcCfTyoWYxy5eNv0mgHOxtQJOF6xqAcR8GdZl//pS3MymSSuz2sWrF6056X92IadWGCgtMc5arqXP4LA+oomri7Kotu8WvNOGTz8h4+g6cBkXg=="
                 },
                 "fingerprint": "11b9de3b5e488ba4"
               }
@@ -194,7 +194,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "xSm_ap7TBvqP6dkP1cOSiAY"
+            "response_id": "AQTBauT8LPWgqtsPiPLz6QQ"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -207,7 +207,7 @@
                         "args": {},
                         "name": "fetch_motto"
                       },
-                      "thoughtSignature": "CoMCAWkUfRN+sLm3YoAq76Cm0NXumE9PhyPwv8AzWZDhQMuMWkgFM8Ovdvp+h0g3sbr0g2y3n9tgiSzu8LAXKCW8CK8+eY2SiFIfEpRXAnXR7N2sF1Y25u/eVlOUpWuZtsHW2xsPDPCYA6fuzJMVmP/YEurgEq2T41a+5CyNZHHpj/Jlg4tfAUuvk9xctwAJMzt3YUqnQ12wDAvsMVq/JqCJsl+tEhuGUYHjqD3s3Gbbw6dYwbqBmM96EjXkJR0kz1D4mNPFqSAKA6T9WZ5YgNXVip622cIMcyPU9b7ps8a3/afzNC5p/YG+zKnTz41QO1kbpDLRAn6duE2413zStNzn5eoOyQ=="
+                      "thoughtSignature": "CoMCAWkUfRMRvp0IYFfUuIxQlT+toRPw0Qa/sUkj9kBwkSJt7gX86kxHrVyGGY0WfwPMeFTJA4dEbd0xgAMz/O8+hmUqzWwEMcO9gyOAei3AF3+MkpFlnpqT8NLfmKgUvPQJaEIwZRMxwPauhuzH2Z2Vj7FnoSyTORZw/osnVC51AVMvGCjgc5eW0sA5o45rXR5f5Jg0rtsM0Rh3UlAksoXK0/f8+QxL80XR9GBHIC0oih+cZcCfTyoWYxy5eNv0mgHOxtQJOF6xqAcR8GdZl//pS3MymSSuz2sWrF6056X92IadWGCgtMc5arqXP4LA+oomri7Kotu8WvNOGTz8h4+g6cBkXg=="
                     },
                     {
                       "functionCall": {
@@ -224,7 +224,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "xSm_ap7TBvqP6dkP1cOSiAY",
+            "responseId": "AQTBauT8LPWgqtsPiPLz6QQ",
             "usageMetadata": {
               "candidatesTokenCount": 21,
               "promptTokenCount": 86,
@@ -336,7 +336,7 @@
                         "args": {},
                         "name": "fetch_motto"
                       },
-                      "thoughtSignature": "CoMCAWkUfRN+sLm3YoAq76Cm0NXumE9PhyPwv8AzWZDhQMuMWkgFM8Ovdvp+h0g3sbr0g2y3n9tgiSzu8LAXKCW8CK8+eY2SiFIfEpRXAnXR7N2sF1Y25u/eVlOUpWuZtsHW2xsPDPCYA6fuzJMVmP/YEurgEq2T41a+5CyNZHHpj/Jlg4tfAUuvk9xctwAJMzt3YUqnQ12wDAvsMVq/JqCJsl+tEhuGUYHjqD3s3Gbbw6dYwbqBmM96EjXkJR0kz1D4mNPFqSAKA6T9WZ5YgNXVip622cIMcyPU9b7ps8a3/afzNC5p/YG+zKnTz41QO1kbpDLRAn6duE2413zStNzn5eoOyQ=="
+                      "thoughtSignature": "CoMCAWkUfRMRvp0IYFfUuIxQlT+toRPw0Qa/sUkj9kBwkSJt7gX86kxHrVyGGY0WfwPMeFTJA4dEbd0xgAMz/O8+hmUqzWwEMcO9gyOAei3AF3+MkpFlnpqT8NLfmKgUvPQJaEIwZRMxwPauhuzH2Z2Vj7FnoSyTORZw/osnVC51AVMvGCjgc5eW0sA5o45rXR5f5Jg0rtsM0Rh3UlAksoXK0/f8+QxL80XR9GBHIC0oih+cZcCfTyoWYxy5eNv0mgHOxtQJOF6xqAcR8GdZl//pS3MymSSuz2sWrF6056X92IadWGCgtMc5arqXP4LA+oomri7Kotu8WvNOGTz8h4+g6cBkXg=="
                     },
                     "fingerprint": "11b9de3b5e488ba4"
                   }
@@ -366,7 +366,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "xSm_ap7TBvqP6dkP1cOSiAY"
+                "response_id": "AQTBauT8LPWgqtsPiPLz6QQ"
               },
               "stop": "tool_use"
             },
@@ -440,28 +440,28 @@
           "choice": [
             {
               "type": "text",
-              "text": "The workshop motto is 'steady hands, calm waters', and the service configuration for 'cassette-lab' allows for 3 maximum retries.",
+              "text": "The workshop motto is \"steady hands, calm waters\" and the service configuration for the \"cassette-lab\" includes a maximum of 3 retries.",
               "native": {
                 "item": {
-                  "text": "The workshop motto is 'steady hands, calm waters', and the service configuration for 'cassette-lab' allows for 3 maximum retries.",
-                  "thoughtSignature": "CogFAWkUfROO9BvEOH7k57fHcPzMckayv0tPtcQQdjcUqylaPOmmrQGfiymQl9Gul6ToDRhWG6l4E8cVPWJ+ZE8jZNVa72uBA9IpeAIgjdHJzpYcUqm+voVlZXSU53yz7ipMdocF0C+gvCjz5++ADHdyA1KVmnj1ZUf0f0CxFIKYp5OacagygcOnBH5VAQz2iCwmnlFcXOJHxHmYvrAYbkbL2O1BlJjX5G/NBVHo5qR/yH6NHjtE3S84znwDLMhbTWQQgIetT4rdidwPeEND9uTrE29GEMcmhYiu/a4hQ9FRQXjYbyXvj7w8P4yB2whvUAcf6H0SFSKZ1E9O6JgLNxjTEZtkPGWlKSEeUZUFzDugfcTVIDvxKDaK6rXfqxfbfhJGW45CRWDX3mBblH4Hj9gBRHjoIqyzyXsCRArL2aqSv1lkB6uJ5dqPSkbrDYkySqPRIbP4aircSR5eMFzTyvNMQoq9DOOKDim0yO5jG9XAdFq8epL/gCVLDAV3vyvunCHiLNrRWfKkQEin1Bp4+hjVr46e3t5oavOvJm/x9aHcB33HY6l3VhSsXiFr0ujV/VMDzdUA+8R8b/0xqymTRlfHlQahya49W2XA01qiISZUWLyKiHm+VOf6MMQer2qwdvjNApSQgi/2bh4/3bTPliuDqbb5/Agf83uy+u2+XJZTjYzCi9rUsdfchCMgxigKtQ/lxQx/1z4WugbLziI94H5KZLWQQ+UQQBeagGuZpyV04ijtWSj9yAsONeHz5+a+uYV6YlfnuLjkqyFLY4TtoP3P065Ri/LOqbaAlfubJn5kGTqlBqOspUYu5tQH3p9YqIfT/CQ9aA9lYDPCJBEjTsDs0EQjbTBZ5o07"
+                  "text": "The workshop motto is \"steady hands, calm waters\" and the service configuration for the \"cassette-lab\" includes a maximum of 3 retries.",
+                  "thoughtSignature": "CtwDAWkUfRPixupk6QZQjZ9HqVNZp6O2VDPp+nNRzjCPZgPbmbi6BDmCLlHVJN6nfZOJChl5p85qYORmzKDMYe2r4WG19AQzHemaB1WBKkoVPj89qQWbQ6a7gyhlMDLIU/qb2oQ8ZJ7mM/LnYUoOmZytsZdlAO9hPJxNGsQG3jQZtWJBGv0727DqIQxWNrU6eUGCZYxB0LlIHr3CPqLnRRAt9TdJKiUkf/Y7I7GVVc40OjNF8zzkWIrD8k+pViZ4jBnyyqevzLD2/o/jWSOhVo4UU4Wsna4MVMpCWceu2AgLIkmGZ1UhA2UomyoqvI6L3KupVq+BZGyeTDsutKZkgyB06hyCcvO/0Qw/h8KFb/rpiBvRC1ls6h+Qs6vBZAB1CkAhlbGEvUkCnwgTs3LNwimTVZgXunyTeyFSQcL98Rq4CV+o/BvvooglC8FUdZ5BcNhHfguZsfTH8Eu8zxpxa1pI7nko+sggZoSziiEaVF0VEUWXLWZO/z9hUu7/WNaaH+jkpck+h+t6qhC4gai2z5KCpB7bbqlA+ISSVJEUa6XBHHTvs5eHR4ZzEibl38Bp3tBtmJslK61TUPL8xUcIXk0BbYb3W+sMuEKn5vrEoWMQKA9d10AbU4l4taqbBgA="
                 },
-                "fingerprint": "93d3f8b3929737a3"
+                "fingerprint": "c07ab77aab18856a"
               }
             }
           ],
           "usage": {
             "input_tokens": 158,
-            "output_tokens": 205,
-            "total_tokens": 363,
-            "reasoning_tokens": 175
+            "output_tokens": 163,
+            "total_tokens": 321,
+            "reasoning_tokens": 131
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "xSm_aqG-L83lqtsPp_6iyQw"
+            "response_id": "AgTBao-eJpaGqtsPkODlsAM"
           },
           "finish_reason": "stop",
           "raw": {
@@ -470,8 +470,8 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The workshop motto is 'steady hands, calm waters', and the service configuration for 'cassette-lab' allows for 3 maximum retries.",
-                      "thoughtSignature": "CogFAWkUfROO9BvEOH7k57fHcPzMckayv0tPtcQQdjcUqylaPOmmrQGfiymQl9Gul6ToDRhWG6l4E8cVPWJ+ZE8jZNVa72uBA9IpeAIgjdHJzpYcUqm+voVlZXSU53yz7ipMdocF0C+gvCjz5++ADHdyA1KVmnj1ZUf0f0CxFIKYp5OacagygcOnBH5VAQz2iCwmnlFcXOJHxHmYvrAYbkbL2O1BlJjX5G/NBVHo5qR/yH6NHjtE3S84znwDLMhbTWQQgIetT4rdidwPeEND9uTrE29GEMcmhYiu/a4hQ9FRQXjYbyXvj7w8P4yB2whvUAcf6H0SFSKZ1E9O6JgLNxjTEZtkPGWlKSEeUZUFzDugfcTVIDvxKDaK6rXfqxfbfhJGW45CRWDX3mBblH4Hj9gBRHjoIqyzyXsCRArL2aqSv1lkB6uJ5dqPSkbrDYkySqPRIbP4aircSR5eMFzTyvNMQoq9DOOKDim0yO5jG9XAdFq8epL/gCVLDAV3vyvunCHiLNrRWfKkQEin1Bp4+hjVr46e3t5oavOvJm/x9aHcB33HY6l3VhSsXiFr0ujV/VMDzdUA+8R8b/0xqymTRlfHlQahya49W2XA01qiISZUWLyKiHm+VOf6MMQer2qwdvjNApSQgi/2bh4/3bTPliuDqbb5/Agf83uy+u2+XJZTjYzCi9rUsdfchCMgxigKtQ/lxQx/1z4WugbLziI94H5KZLWQQ+UQQBeagGuZpyV04ijtWSj9yAsONeHz5+a+uYV6YlfnuLjkqyFLY4TtoP3P065Ri/LOqbaAlfubJn5kGTqlBqOspUYu5tQH3p9YqIfT/CQ9aA9lYDPCJBEjTsDs0EQjbTBZ5o07"
+                      "text": "The workshop motto is \"steady hands, calm waters\" and the service configuration for the \"cassette-lab\" includes a maximum of 3 retries.",
+                      "thoughtSignature": "CtwDAWkUfRPixupk6QZQjZ9HqVNZp6O2VDPp+nNRzjCPZgPbmbi6BDmCLlHVJN6nfZOJChl5p85qYORmzKDMYe2r4WG19AQzHemaB1WBKkoVPj89qQWbQ6a7gyhlMDLIU/qb2oQ8ZJ7mM/LnYUoOmZytsZdlAO9hPJxNGsQG3jQZtWJBGv0727DqIQxWNrU6eUGCZYxB0LlIHr3CPqLnRRAt9TdJKiUkf/Y7I7GVVc40OjNF8zzkWIrD8k+pViZ4jBnyyqevzLD2/o/jWSOhVo4UU4Wsna4MVMpCWceu2AgLIkmGZ1UhA2UomyoqvI6L3KupVq+BZGyeTDsutKZkgyB06hyCcvO/0Qw/h8KFb/rpiBvRC1ls6h+Qs6vBZAB1CkAhlbGEvUkCnwgTs3LNwimTVZgXunyTeyFSQcL98Rq4CV+o/BvvooglC8FUdZ5BcNhHfguZsfTH8Eu8zxpxa1pI7nko+sggZoSziiEaVF0VEUWXLWZO/z9hUu7/WNaaH+jkpck+h+t6qhC4gai2z5KCpB7bbqlA+ISSVJEUa6XBHHTvs5eHR4ZzEibl38Bp3tBtmJslK61TUPL8xUcIXk0BbYb3W+sMuEKn5vrEoWMQKA9d10AbU4l4taqbBgA="
                     }
                   ],
                   "role": "model"
@@ -481,9 +481,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "xSm_aqG-L83lqtsPp_6iyQw",
+            "responseId": "AgTBao-eJpaGqtsPkODlsAM",
             "usageMetadata": {
-              "candidatesTokenCount": 30,
+              "candidatesTokenCount": 32,
               "promptTokenCount": 158,
               "promptTokensDetails": [
                 {
@@ -492,8 +492,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 175,
-              "totalTokenCount": 363
+              "thoughtsTokenCount": 131,
+              "totalTokenCount": 321
             }
           }
         }

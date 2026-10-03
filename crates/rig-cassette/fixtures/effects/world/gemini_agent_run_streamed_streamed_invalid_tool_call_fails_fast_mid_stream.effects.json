@@ -150,7 +150,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CiQBaRR9E3ZlI2OEjfms6ogtWu1I34VTqZqrp4hbk+F/51bxopsKSwFpFH0TkG1j3nfmpT4ok/XnHsjrWG1LtF00u6Cns3nupNQBdgH+Vm9zpgO7I9MssCrS8VbhFEQRtS3pJo6aXamxzupTpliEspsdJwp7AWkUfROXZs1AE4zGvsipWBG1Iq1EHy4ossdI7eNgCrkvuV9Nprhlvc7J9V3zfgNKW/0YCj2QkI7TmlFGXIoUyHaDDIh9GXXBC8r+BqRtqB0vtB03gJq//Ty0aMWCO0ymBR6StWdMaG6yMiNRENW/3eThOHay1FhGbQsx"
+                  "thoughtSignature": "CiQBaRR9E1IIohuUVl6A3pTFbIax1fmP76enTfDzJtby7DMWdq4KSwFpFH0TBNrg1GKTRwNPI0MQPAB01D+ywl19MsNBmHItsA2Qi+YUE6SkukdWGtdqe+R/ouiqcwuimVoUVeuBKhGGwt24HAFL0FfCnwp7AWkUfROszCcTa3lVRkM0dY1mvnmlPbzUViKmyZnOIr1/gkOoY+A6ZbycNINy3R7OJa9U7VhfnfeMN9dDPtIsO4KHtBFNCudHcFxzgemUPOMRxc/n9vdHp3+SLo9ls3cwYGPRWnihwix9JeyX/v+0dzN29GSNo5bM/EXE"
                 },
                 "fingerprint": "8aeaaea51d945ee2"
               }
@@ -167,7 +167,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "_auyasKLJ4ycz7IPuovk4Q8"
+            "response_id": "6wPBavOYBtWsqtsPpLKImAI"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -187,7 +187,7 @@
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "_auyasKLJ4ycz7IPuovk4Q8"
+            "response_id": "6wPBavOYBtWsqtsPpLKImAI"
           }
         }
       },
@@ -234,7 +234,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CiQBaRR9E3ZlI2OEjfms6ogtWu1I34VTqZqrp4hbk+F/51bxopsKSwFpFH0TkG1j3nfmpT4ok/XnHsjrWG1LtF00u6Cns3nupNQBdgH+Vm9zpgO7I9MssCrS8VbhFEQRtS3pJo6aXamxzupTpliEspsdJwp7AWkUfROXZs1AE4zGvsipWBG1Iq1EHy4ossdI7eNgCrkvuV9Nprhlvc7J9V3zfgNKW/0YCj2QkI7TmlFGXIoUyHaDDIh9GXXBC8r+BqRtqB0vtB03gJq//Ty0aMWCO0ymBR6StWdMaG6yMiNRENW/3eThOHay1FhGbQsx"
+                  "thoughtSignature": "CiQBaRR9E1IIohuUVl6A3pTFbIax1fmP76enTfDzJtby7DMWdq4KSwFpFH0TBNrg1GKTRwNPI0MQPAB01D+ywl19MsNBmHItsA2Qi+YUE6SkukdWGtdqe+R/ouiqcwuimVoUVeuBKhGGwt24HAFL0FfCnwp7AWkUfROszCcTa3lVRkM0dY1mvnmlPbzUViKmyZnOIr1/gkOoY+A6ZbycNINy3R7OJa9U7VhfnfeMN9dDPtIsO4KHtBFNCudHcFxzgemUPOMRxc/n9vdHp3+SLo9ls3cwYGPRWnihwix9JeyX/v+0dzN29GSNo5bM/EXE"
                 },
                 "fingerprint": "8aeaaea51d945ee2"
               }

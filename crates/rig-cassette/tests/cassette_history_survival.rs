@@ -301,7 +301,7 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
         "the same opt-in current-turn thought replay, across a checkpoint and resume",
     ),
     (
-        "gemini/reasoning_tool_roundtrip/nonstreaming.yaml",
+        "gemini/chat_history/chat_appends_reasoning_tool_turns_to_caller_history.yaml",
         "Gemini can split one thought across parts; both modes merge consecutive thought parts \
          into one block so a stream and a whole reply fold alike, and the block replays as one part",
     ),

@@ -78,19 +78,15 @@ fn pad() -> String {
 }
 
 fn probe_tool(name: &str) -> serde_json::Value {
-    let parameters = gemini::completion::tool_parameters_to_schema(serde_json::json!({
-        "type": "object",
-        "properties": { "topic": { "type": "string" } },
-        "required": ["topic"]
-    }))
-    .expect("probe tool schema should convert")
-    .expect("probe tool schema should not be empty");
-
     serde_json::json!({
         "functionDeclarations": [{
             "name": name,
             "description": "matrix probe tool",
-            "parameters": parameters,
+            "parametersJsonSchema": {
+                "type": "object",
+                "properties": { "topic": { "type": "string" } },
+                "required": ["topic"]
+            },
         }],
         "codeExecution": null,
     })

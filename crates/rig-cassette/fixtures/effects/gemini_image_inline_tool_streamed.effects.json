@@ -124,7 +124,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_111864"
+                "provider": "call_1083429"
               },
               "function": {
                 "name": "add",
@@ -140,27 +140,27 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_111864",
+                    "id": "call_1083429",
                     "name": "add"
                   },
-                  "thoughtSignature": "EoEFCv4EAWkUfROUt086tH0JS9l/GPgfQwrP1MUoy/2XXibPP1eW21QO+wO6sskYLJGHYKa7H0nx2ttfgW10jqgrIoGjR0W3giqYjIMYxwC+tWPiawRUwQnAlAFlkdVqDeuX7gNXm5paNjiR8ZNJWnBsHq5UXlnF3yoJ1wBhUrgIuLIO59OKHgWAvjoGTQKxZWJYCwlxpIZhxBRW0NU+3ETlDxTffBZna3EWkJwTg5RGi3sF7P8dZSD3QewyU33tRE+0VAi/O7tk4ILg+4LwOsZDE9Coqf1cqY/29bsJ4ezdmGR/1kdBjJXLHDP9KC0mcMU/p2Ar9eiNM8WQZmz7JvQCxSK9iRX1tFKFjIGhgOQKxjmmTZuXAHDn6gz39T4P0XOqRAZwJ7agP4WyP5r/qV8fWFtvKXrKmyXgVcyRHdUeEKEK1ppMZr929g9m8ctU5siU1bpuiqrbaVEdQxgEOMZwjU2CNeJDmLPyMQ8N9B7xm/1vbhmlqmqo+nj5/Ji+fXMkAqfIapjjAGwkBGyY1BbfpoyrQu6ZD+5AEEWhInL02EGE+BfhIdOHfy6OdJxxbGFoXULaNiTfrpcBdmf1rS8PxaRquiAiixuYfsOAddWasxBtcjV7nFsACRIkXS69aLWvTRduUKN8Jd9UNBcTZvwcSJ8MnvDKRB9hJgjmE6zYM8wAqNNq34EP5LoMD9Sd/vx68J9+rs2ntz56g1Sz7QDtRb4DuGtfhOF94Fio/eHMxl7EmdZ5pzRruH/zp+o6g+fElTLa15rFHSIdk/hxVwI0m1gvjyunyqPiUdzbvj+PPheYt6wwTCxr/9mMlBB66bkBQwhVG5RlbLSTq+nd8Mxeh4s="
+                  "thoughtSignature": "EpwFCpkFAWkUfRPFdbWHJOpE5HKNOBwTQtvuWdR92KGl5dXg/qcDYEU3NSuXIHdIfUdEL6xTwC/1zUkXqghuGzTUkx5BolYLhwd5OJILY36JGB+vYG7iaOVb3FDZhlQEhV+eRIjL9k+DbQDuPpJvnSMsawLh8Py7kpoyi6x4rwn5pYMvksoIVMQeho3YbJEFvL3Z2RlRST3Z+bBV1BYJ67gDddrF9iWP+b3v+qzqrhEuceBQYlDfQlsGLfzx2l4TjubGAwOrwz1Q3zwvlxOagUxqIp0AfUgENGOg4e4wV0RvCsVGMNwbVm8vlYmYeRAqeqkqAShJ0X2eTLTbSZAOx6W6hYcravPJrCyRl8x6wmG0Un7jEqmYttDKuc9OzU1254Sf4C3n6CnVDvqfw870AZfVYIRX57iRoNHvYcFLYJ+zishdnKPPQ3kEpXI+i2r0+1Un4LFiLVRoeBfS73stU57owJgtEF9mC/PTJqyl3gJaUEHxfG0E2IHyxYKI2Gdv1PETKG6SDr2yIux5qAPcZd+/bbR6T8usvTnwBBQ2hs+80YYU05zYTwuKb01wQkO5kgVHmo97K/4jrjaTQKWZreaIle43nT7WdUvZBjgcilbmjU7ue7i4wmGQHJEE2PeQULMn7jdPgPWsedyjT3EDctgwnO4uwYJsdPvQ8mnH75MNJifPuiMEvPBk55a5plocjQMCj8lS0o3JY7SuowvrMc7MpOywh1QXtfFRLyiDSvoGDaN8y/AS+A3nsLTewfAuDcZxqrdbqy38Fn8CCRcOoFdPlVT5qjRBwsJSrZ/o2vp9l+8QZbGqtL10k4YfRcMRqg0ihUf8sxylJPMUqndATPXFjfPeww3ndDPvUjy2a7sdKIQGCD7yi7sW/3ueio8="
                 },
-                "fingerprint": "b2bc6f8fcfec5782"
+                "fingerprint": "bcc12b5a17a42836"
               }
             }
           ],
           "usage": {
             "input_tokens": 1222,
-            "output_tokens": 139,
-            "total_tokens": 1361,
-            "reasoning_tokens": 121
+            "output_tokens": 143,
+            "total_tokens": 1365,
+            "reasoning_tokens": 125
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "kiy_aoTIN-6tmtkP0tqY4A0"
+            "response_id": "QgzBat-0Ca3Qz7IPhrivKQ"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -169,21 +169,21 @@
               "promptTokenCount": 1222,
               "promptTokensDetails": [
                 {
-                  "modality": "IMAGE",
-                  "tokenCount": 1089
-                },
-                {
                   "modality": "TEXT",
                   "tokenCount": 133
+                },
+                {
+                  "modality": "IMAGE",
+                  "tokenCount": 1089
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 121,
-              "totalTokenCount": 1361
+              "thoughtsTokenCount": 125,
+              "totalTokenCount": 1365
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "kiy_aoTIN-6tmtkP0tqY4A0"
+            "response_id": "QgzBat-0Ca3Qz7IPhrivKQ"
           }
         }
       },
@@ -212,7 +212,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_111864"
+                "provider": "call_1083429"
               },
               "function": {
                 "name": "add",
@@ -228,12 +228,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_111864",
+                    "id": "call_1083429",
                     "name": "add"
                   },
-                  "thoughtSignature": "EoEFCv4EAWkUfROUt086tH0JS9l/GPgfQwrP1MUoy/2XXibPP1eW21QO+wO6sskYLJGHYKa7H0nx2ttfgW10jqgrIoGjR0W3giqYjIMYxwC+tWPiawRUwQnAlAFlkdVqDeuX7gNXm5paNjiR8ZNJWnBsHq5UXlnF3yoJ1wBhUrgIuLIO59OKHgWAvjoGTQKxZWJYCwlxpIZhxBRW0NU+3ETlDxTffBZna3EWkJwTg5RGi3sF7P8dZSD3QewyU33tRE+0VAi/O7tk4ILg+4LwOsZDE9Coqf1cqY/29bsJ4ezdmGR/1kdBjJXLHDP9KC0mcMU/p2Ar9eiNM8WQZmz7JvQCxSK9iRX1tFKFjIGhgOQKxjmmTZuXAHDn6gz39T4P0XOqRAZwJ7agP4WyP5r/qV8fWFtvKXrKmyXgVcyRHdUeEKEK1ppMZr929g9m8ctU5siU1bpuiqrbaVEdQxgEOMZwjU2CNeJDmLPyMQ8N9B7xm/1vbhmlqmqo+nj5/Ji+fXMkAqfIapjjAGwkBGyY1BbfpoyrQu6ZD+5AEEWhInL02EGE+BfhIdOHfy6OdJxxbGFoXULaNiTfrpcBdmf1rS8PxaRquiAiixuYfsOAddWasxBtcjV7nFsACRIkXS69aLWvTRduUKN8Jd9UNBcTZvwcSJ8MnvDKRB9hJgjmE6zYM8wAqNNq34EP5LoMD9Sd/vx68J9+rs2ntz56g1Sz7QDtRb4DuGtfhOF94Fio/eHMxl7EmdZ5pzRruH/zp+o6g+fElTLa15rFHSIdk/hxVwI0m1gvjyunyqPiUdzbvj+PPheYt6wwTCxr/9mMlBB66bkBQwhVG5RlbLSTq+nd8Mxeh4s="
+                  "thoughtSignature": "EpwFCpkFAWkUfRPFdbWHJOpE5HKNOBwTQtvuWdR92KGl5dXg/qcDYEU3NSuXIHdIfUdEL6xTwC/1zUkXqghuGzTUkx5BolYLhwd5OJILY36JGB+vYG7iaOVb3FDZhlQEhV+eRIjL9k+DbQDuPpJvnSMsawLh8Py7kpoyi6x4rwn5pYMvksoIVMQeho3YbJEFvL3Z2RlRST3Z+bBV1BYJ67gDddrF9iWP+b3v+qzqrhEuceBQYlDfQlsGLfzx2l4TjubGAwOrwz1Q3zwvlxOagUxqIp0AfUgENGOg4e4wV0RvCsVGMNwbVm8vlYmYeRAqeqkqAShJ0X2eTLTbSZAOx6W6hYcravPJrCyRl8x6wmG0Un7jEqmYttDKuc9OzU1254Sf4C3n6CnVDvqfw870AZfVYIRX57iRoNHvYcFLYJ+zishdnKPPQ3kEpXI+i2r0+1Un4LFiLVRoeBfS73stU57owJgtEF9mC/PTJqyl3gJaUEHxfG0E2IHyxYKI2Gdv1PETKG6SDr2yIux5qAPcZd+/bbR6T8usvTnwBBQ2hs+80YYU05zYTwuKb01wQkO5kgVHmo97K/4jrjaTQKWZreaIle43nT7WdUvZBjgcilbmjU7ue7i4wmGQHJEE2PeQULMn7jdPgPWsedyjT3EDctgwnO4uwYJsdPvQ8mnH75MNJifPuiMEvPBk55a5plocjQMCj8lS0o3JY7SuowvrMc7MpOywh1QXtfFRLyiDSvoGDaN8y/AS+A3nsLTewfAuDcZxqrdbqy38Fn8CCRcOoFdPlVT5qjRBwsJSrZ/o2vp9l+8QZbGqtL10k4YfRcMRqg0ihUf8sxylJPMUqndATPXFjfPeww3ndDPvUjy2a7sdKIQGCD7yi7sW/3ueio8="
                 },
-                "fingerprint": "b2bc6f8fcfec5782"
+                "fingerprint": "bcc12b5a17a42836"
               }
             }
           }
@@ -305,7 +305,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_111864"
+                    "provider": "call_1083429"
                   },
                   "function": {
                     "name": "add",
@@ -321,12 +321,12 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_111864",
+                        "id": "call_1083429",
                         "name": "add"
                       },
-                      "thoughtSignature": "EoEFCv4EAWkUfROUt086tH0JS9l/GPgfQwrP1MUoy/2XXibPP1eW21QO+wO6sskYLJGHYKa7H0nx2ttfgW10jqgrIoGjR0W3giqYjIMYxwC+tWPiawRUwQnAlAFlkdVqDeuX7gNXm5paNjiR8ZNJWnBsHq5UXlnF3yoJ1wBhUrgIuLIO59OKHgWAvjoGTQKxZWJYCwlxpIZhxBRW0NU+3ETlDxTffBZna3EWkJwTg5RGi3sF7P8dZSD3QewyU33tRE+0VAi/O7tk4ILg+4LwOsZDE9Coqf1cqY/29bsJ4ezdmGR/1kdBjJXLHDP9KC0mcMU/p2Ar9eiNM8WQZmz7JvQCxSK9iRX1tFKFjIGhgOQKxjmmTZuXAHDn6gz39T4P0XOqRAZwJ7agP4WyP5r/qV8fWFtvKXrKmyXgVcyRHdUeEKEK1ppMZr929g9m8ctU5siU1bpuiqrbaVEdQxgEOMZwjU2CNeJDmLPyMQ8N9B7xm/1vbhmlqmqo+nj5/Ji+fXMkAqfIapjjAGwkBGyY1BbfpoyrQu6ZD+5AEEWhInL02EGE+BfhIdOHfy6OdJxxbGFoXULaNiTfrpcBdmf1rS8PxaRquiAiixuYfsOAddWasxBtcjV7nFsACRIkXS69aLWvTRduUKN8Jd9UNBcTZvwcSJ8MnvDKRB9hJgjmE6zYM8wAqNNq34EP5LoMD9Sd/vx68J9+rs2ntz56g1Sz7QDtRb4DuGtfhOF94Fio/eHMxl7EmdZ5pzRruH/zp+o6g+fElTLa15rFHSIdk/hxVwI0m1gvjyunyqPiUdzbvj+PPheYt6wwTCxr/9mMlBB66bkBQwhVG5RlbLSTq+nd8Mxeh4s="
+                      "thoughtSignature": "EpwFCpkFAWkUfRPFdbWHJOpE5HKNOBwTQtvuWdR92KGl5dXg/qcDYEU3NSuXIHdIfUdEL6xTwC/1zUkXqghuGzTUkx5BolYLhwd5OJILY36JGB+vYG7iaOVb3FDZhlQEhV+eRIjL9k+DbQDuPpJvnSMsawLh8Py7kpoyi6x4rwn5pYMvksoIVMQeho3YbJEFvL3Z2RlRST3Z+bBV1BYJ67gDddrF9iWP+b3v+qzqrhEuceBQYlDfQlsGLfzx2l4TjubGAwOrwz1Q3zwvlxOagUxqIp0AfUgENGOg4e4wV0RvCsVGMNwbVm8vlYmYeRAqeqkqAShJ0X2eTLTbSZAOx6W6hYcravPJrCyRl8x6wmG0Un7jEqmYttDKuc9OzU1254Sf4C3n6CnVDvqfw870AZfVYIRX57iRoNHvYcFLYJ+zishdnKPPQ3kEpXI+i2r0+1Un4LFiLVRoeBfS73stU57owJgtEF9mC/PTJqyl3gJaUEHxfG0E2IHyxYKI2Gdv1PETKG6SDr2yIux5qAPcZd+/bbR6T8usvTnwBBQ2hs+80YYU05zYTwuKb01wQkO5kgVHmo97K/4jrjaTQKWZreaIle43nT7WdUvZBjgcilbmjU7ue7i4wmGQHJEE2PeQULMn7jdPgPWsedyjT3EDctgwnO4uwYJsdPvQ8mnH75MNJifPuiMEvPBk55a5plocjQMCj8lS0o3JY7SuowvrMc7MpOywh1QXtfFRLyiDSvoGDaN8y/AS+A3nsLTewfAuDcZxqrdbqy38Fn8CCRcOoFdPlVT5qjRBwsJSrZ/o2vp9l+8QZbGqtL10k4YfRcMRqg0ihUf8sxylJPMUqndATPXFjfPeww3ndDPvUjy2a7sdKIQGCD7yi7sW/3ueio8="
                     },
-                    "fingerprint": "b2bc6f8fcfec5782"
+                    "fingerprint": "bcc12b5a17a42836"
                   }
                 }
               ],
@@ -335,7 +335,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-3-flash-preview",
                 "response_model": "gemini-3-flash-preview",
-                "response_id": "kiy_aoTIN-6tmtkP0tqY4A0"
+                "response_id": "QgzBat-0Ca3Qz7IPhrivKQ"
               },
               "stop": "tool_use"
             },
@@ -345,7 +345,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_111864"
+                    "provider": "call_1083429"
                   },
                   "name": "add",
                   "content": [
@@ -396,48 +396,48 @@
           "choice": [
             {
               "type": "text",
-              "text": "The image's dominant non-background color is red, and the sum is 42.",
+              "text": "The image's dominant color is red, and the sum is 42.",
               "native": {
                 "item": {
-                  "text": "The image's dominant non-background color is red, and the sum is 42."
+                  "text": "The image's dominant color is red, and the sum is 42."
                 },
-                "fingerprint": "db11f4336a6951e2"
+                "fingerprint": "36c0458441630a04"
               }
             }
           ],
           "usage": {
-            "input_tokens": 1372,
-            "output_tokens": 20,
-            "total_tokens": 1392
+            "input_tokens": 1376,
+            "output_tokens": 17,
+            "total_tokens": 1393
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "lCy_asLoFMKImtkP0L6SkAY"
+            "response_id": "RAzBapHyJN-dz7IP4vnR8Ac"
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "candidatesTokenCount": 20,
-              "promptTokenCount": 1372,
+              "candidatesTokenCount": 17,
+              "promptTokenCount": 1376,
               "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 287
+                },
                 {
                   "modality": "IMAGE",
                   "tokenCount": 1089
-                },
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 283
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 1392
+              "totalTokenCount": 1393
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "lCy_asLoFMKImtkP0L6SkAY"
+            "response_id": "RAzBapHyJN-dz7IP4vnR8Ac"
           }
         }
       },
@@ -463,7 +463,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "s dominant non-background color is red, and the sum is 42."
+            "text": "s dominant color is red, and the sum is 42."
           }
         },
         {
@@ -473,12 +473,12 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The image's dominant non-background color is red, and the sum is 42.",
+              "text": "The image's dominant color is red, and the sum is 42.",
               "native": {
                 "item": {
-                  "text": "The image's dominant non-background color is red, and the sum is 42."
+                  "text": "The image's dominant color is red, and the sum is 42."
                 },
-                "fingerprint": "db11f4336a6951e2"
+                "fingerprint": "36c0458441630a04"
               }
             }
           }

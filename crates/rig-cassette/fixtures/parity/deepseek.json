@@ -25521,29 +25521,29 @@
     "choice": [
       {
         "reasoning": {
-          "text": "The weather: 72F, sunny with light clouds, humidity 45%, wind 8 mph. Sunny — sunscreen. No rain mentioned. Answer in one sentence, no tool.",
+          "text": "The weather is sunny with light clouds, humidity 45%, no precipitation mentioned. So sunscreen is the recommendation. One sentence, no tool call.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "The weather: 72F, sunny with light clouds, humidity 45%, wind 8 mph. Sunny — sunscreen. No rain mentioned. Answer in one sentence, no tool."
+              "reasoning_content": "The weather is sunny with light clouds, humidity 45%, no precipitation mentioned. So sunscreen is the recommendation. One sentence, no tool call."
             },
-            "fingerprint": "c6ead9f3f49e889e"
+            "fingerprint": "c634eaa347569f15"
           }
         }
       },
       {
-        "text": "With sunny skies and low humidity in Tokyo, you should pack sunscreen rather than an umbrella.",
+        "text": "With sunny skies, light clouds, and no rain in the forecast for Tokyo, you should pack sunscreen rather than an umbrella.",
         "native": null
       }
     ],
     "usage": {
-      "input_tokens": 787,
-      "output_tokens": 56,
-      "total_tokens": 843,
-      "cached_input_tokens": 640,
-      "reasoning_tokens": 37
+      "input_tokens": 637,
+      "output_tokens": 55,
+      "total_tokens": 692,
+      "cached_input_tokens": 256,
+      "reasoning_tokens": 29
     },
-    "response_id": "14ba19ec-a737-4a64-affb-d64d1a169077",
+    "response_id": "669184f5-3ba4-43f7-9324-86c150cb2f6a",
     "finish_reason": "stop",
     "model": "deepseek-flash",
     "provider_request_id": null,
@@ -25554,29 +25554,29 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "With sunny skies and low humidity in Tokyo, you should pack sunscreen rather than an umbrella.",
-            "reasoning_content": "The weather: 72F, sunny with light clouds, humidity 45%, wind 8 mph. Sunny — sunscreen. No rain mentioned. Answer in one sentence, no tool.",
+            "content": "With sunny skies, light clouds, and no rain in the forecast for Tokyo, you should pack sunscreen rather than an umbrella.",
+            "reasoning_content": "The weather is sunny with light clouds, humidity 45%, no precipitation mentioned. So sunscreen is the recommendation. One sentence, no tool call.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "14ba19ec-a737-4a64-affb-d64d1a169077",
+      "id": "669184f5-3ba4-43f7-9324-86c150cb2f6a",
       "model": "deepseek-flash",
       "object": "chat.completion",
       "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
-        "completion_tokens": 56,
+        "completion_tokens": 55,
         "completion_tokens_details": {
-          "reasoning_tokens": 37
+          "reasoning_tokens": 29
         },
-        "prompt_cache_hit_tokens": 640,
-        "prompt_cache_miss_tokens": 147,
-        "prompt_tokens": 787,
+        "prompt_cache_hit_tokens": 256,
+        "prompt_cache_miss_tokens": 381,
+        "prompt_tokens": 637,
         "prompt_tokens_details": {
-          "cached_tokens": 640
+          "cached_tokens": 256
         },
-        "total_tokens": 843
+        "total_tokens": 692
       }
     }
   },

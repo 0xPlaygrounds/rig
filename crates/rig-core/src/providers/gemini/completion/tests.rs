@@ -475,180 +475,6 @@ async fn test_response_function_call_preserves_correlation_id() {
 }
 
 #[test]
-fn test_vec_schema_conversion() {
-    let schema_with_ref = json!({
-        "type": "array",
-        "items": {
-            "$ref": "#/$defs/Person"
-        },
-        "$defs": {
-            "Person": {
-                "type": "object",
-                "properties": {
-                    "first_name": {
-                        "type": ["string", "null"],
-                        "description": "The person's first name, if provided (null otherwise)"
-                    },
-                    "last_name": {
-                        "type": ["string", "null"],
-                        "description": "The person's last name, if provided (null otherwise)"
-                    },
-                    "job": {
-                        "type": ["string", "null"],
-                        "description": "The person's job, if provided (null otherwise)"
-                    }
-                },
-                "required": []
-            }
-        }
-    });
-
-    let schema = super::schema(schema_with_ref).expect("the schema converts");
-    assert_eq!(schema["type"], "array");
-    assert_eq!(
-        schema["items"]["type"], "object",
-        "Items should be object type"
-    );
-}
-
-#[test]
-fn test_object_schema() {
-    let simple_schema = json!({
-        "type": "object",
-        "properties": {
-            "name": {
-                "type": "string"
-            }
-        }
-    });
-
-    let schema = super::schema(simple_schema).unwrap();
-    assert_eq!(schema["type"], "object");
-    assert!(schema["properties"].is_object());
-}
-
-#[test]
-fn test_array_with_inline_items() {
-    let inline_schema = json!({
-        "type": "array",
-        "items": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                }
-            }
-        }
-    });
-
-    let schema = super::schema(inline_schema).unwrap();
-    assert_eq!(schema["type"], "array");
-    assert_eq!(schema["items"]["type"], "object");
-    assert!(schema["items"]["properties"].is_object());
-}
-
-#[test]
-fn test_flattened_schema() {
-    let ref_schema = json!({
-        "type": "array",
-        "items": {
-            "$ref": "#/$defs/Person"
-        },
-        "$defs": {
-            "Person": {
-                "type": "object",
-                "properties": {
-                    "name": { "type": "string" }
-                }
-            }
-        }
-    });
-
-    let flattened = flatten_schema(ref_schema).unwrap();
-    assert!(flattened.get("$defs").is_none(), "{flattened}");
-    let schema = super::schema(flattened).unwrap();
-
-    assert_eq!(schema["type"], "array");
-    assert_eq!(schema["items"]["type"], "object");
-    assert!(schema["items"]["properties"].is_object());
-}
-
-#[test]
-fn test_array_without_items_gets_default() {
-    let schema_json = json!({
-        "type": "object",
-        "properties": {
-            "service_ids": {
-                "type": "array",
-                "description": "A list of service IDs"
-            }
-        }
-    });
-
-    let schema = super::schema(schema_json).unwrap();
-    let service_ids = &schema["properties"]["service_ids"];
-    assert_eq!(service_ids["type"], "array");
-    assert_eq!(
-        service_ids["items"]["type"], "string",
-        "array schema missing items should get a default"
-    );
-}
-
-#[test]
-fn test_tool_parameters_to_schema_maps_no_arg_tool_to_none() {
-    let schema = tool_parameters_to_schema(json!({"type": "object", "properties": {}}))
-        .expect("schema conversion");
-
-    assert!(schema.is_none());
-}
-
-#[test]
-fn test_tool_parameters_to_schema_resolves_defs_ref() {
-    let schema_json = json!({
-        "type": "object",
-        "properties": {
-            "destination": { "$ref": "#/$defs/Destination" }
-        },
-        "required": ["destination"],
-        "$defs": {
-            "Destination": {
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" }
-                },
-                "required": ["city"]
-            }
-        }
-    });
-
-    let schema = tool_parameters_to_schema(schema_json)
-        .expect("schema conversion")
-        .expect("schema");
-    let destination = &schema["properties"]["destination"];
-
-    assert_eq!(destination["type"], "object");
-    assert_eq!(destination["required"], json!(["city"]));
-}
-
-#[test]
-fn test_tool_parameters_to_schema_handles_nullable_type_arrays() {
-    let schema_json = json!({
-        "type": "object",
-        "properties": {
-            "nickname": { "type": ["null", "string"] }
-        }
-    });
-
-    let schema = tool_parameters_to_schema(schema_json)
-        .expect("schema conversion")
-        .expect("schema");
-    let nickname = &schema["properties"]["nickname"];
-
-    assert_eq!(nickname["type"], "string");
-    assert_eq!(nickname["nullable"], true);
-}
-
-#[test]
 fn test_txt_document_conversion_to_text_part() {
     // Test that TXT documents are converted to plain text parts, not inline data
     use crate::message::{DocumentMediaType, UserContent};
@@ -2126,4 +1952,40 @@ fn tools_in_a_cache_or_additional_params_are_declared() {
     request.additional_params =
         Some(json!({"tools": [{"functionDeclarations": [{"name": "lookup"}]}]}));
     assert!(declares_tools(&request));
+}
+
+/// A tool's JSON Schema goes unchanged as `parametersJsonSchema`, as pi
+/// sends it: references, unions with `null` and `const` reach Gemini as
+/// written.
+#[test]
+fn a_tool_schema_goes_as_parameters_json_schema_unchanged() {
+    let parameters = json!({
+        "type": "object",
+        "$defs": {"unit": {"type": "string", "enum": ["c", "f"]}},
+        "properties": {
+            "city": {"type": "string"},
+            "unit": {"$ref": "#/$defs/unit"},
+            "days": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            "kind": {"const": "forecast"}
+        },
+        "required": ["city"]
+    });
+    let tool = |parameters: Value| crate::completion::ToolDefinition {
+        name: message::ToolName::new("weather").expect("a tool name"),
+        description: "the weather".to_owned(),
+        parameters,
+    };
+    let body = body_for(
+        CompletionRequest::new("q").tools(vec![tool(parameters.clone()), tool(Value::Null)]),
+        GEMINI_2_5_FLASH,
+    );
+    let declarations = &body["tools"][0]["functionDeclarations"];
+    assert_eq!(
+        declarations[0],
+        json!({"name": "weather", "description": "the weather", "parametersJsonSchema": parameters})
+    );
+    assert_eq!(
+        declarations[1],
+        json!({"name": "weather", "description": "the weather"})
+    );
 }

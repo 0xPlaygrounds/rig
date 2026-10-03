@@ -209,7 +209,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CrkCAWkUfRMcYm4CJoXnspbpp4Xl/ZCtmYRNx3eTGe2+lLDVCv+v9C9uR5T3LOXNq3Jr6OvE8HCGcsWwIdhHb4HU2fl266vahkPHrtlnKejCV1i7q9FesgfxzotWa2ZyuNltoU85oQKe6DOdCa2C7eRS7FDhe3NBXi7yKB/S75T+ZGR8b2PRpygSXoHC4qTPl21lVTOmgWwyNpvqH/W/o8Q6bDqvlTW1VsDb6XN9oURaOnsCyhfkXif0C/81uXCEhCICDmh40r3uSqY3Js17N+zu9gq6zT+o2jZfufnLCg9O7+QZfWQq2q7j7jUYspf3EHHXEq8dL3ozMnqmGuHr01nTPD8W6SCY8CrDoo4ihgX2eE8xI4+eGD9fsgxQqz5SB4lnZJdx7ovuMT0T2JNNt77Nt74n9kncugWfGA=="
+                  "thoughtSignature": "Cr0CAWkUfRNvT/xVl9VnPMv/862oE1PEcZwA7VEAcgjDUQKMZirtE5dSdlbAkzaaz7jiGR2UwVAG9rtsrHukA9hRS/y1gR7RKtniGnzzfx3DyjcTzxsokUoC1uGVUcakPyFtZHZ+rDMrlTku4YXbvRo5ozpFdGM0Sz1YK4O7vSWSQfTZvK8e5FOvDmxl4IfmskaGJzBcEbXL14y5iwHeVAkqXucEz682xRyey6PKU2L9IrK4LE1RfYb7Whkfj/HH99OWIS9YA8wMV37z/1YB3UsyW/9AAAVGw2LQmSOQ2Znn8axuha1OaCAhv1VxTeUkZULNQcx6YVbtm+2Q/L6JEFGODYfyHG+++L/xO0qr5kn1FbtN6YplK24FV4V0mi4AyD3GxaFYedEK9/i9DmUT4Yw763x+vT0DFjkW0W6szWs="
                 },
                 "fingerprint": "fa43fdeb79fe1f7a"
               }
@@ -217,16 +217,16 @@
           ],
           "usage": {
             "input_tokens": 110,
-            "output_tokens": 74,
-            "total_tokens": 184,
-            "reasoning_tokens": 56
+            "output_tokens": 83,
+            "total_tokens": 193,
+            "reasoning_tokens": 65
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "Yy2_ar7fEMrnz7IPh-PtwA0"
+            "response_id": "RA3BasyYKYWKmtkPj7yF6AE"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -242,7 +242,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CrkCAWkUfRMcYm4CJoXnspbpp4Xl/ZCtmYRNx3eTGe2+lLDVCv+v9C9uR5T3LOXNq3Jr6OvE8HCGcsWwIdhHb4HU2fl266vahkPHrtlnKejCV1i7q9FesgfxzotWa2ZyuNltoU85oQKe6DOdCa2C7eRS7FDhe3NBXi7yKB/S75T+ZGR8b2PRpygSXoHC4qTPl21lVTOmgWwyNpvqH/W/o8Q6bDqvlTW1VsDb6XN9oURaOnsCyhfkXif0C/81uXCEhCICDmh40r3uSqY3Js17N+zu9gq6zT+o2jZfufnLCg9O7+QZfWQq2q7j7jUYspf3EHHXEq8dL3ozMnqmGuHr01nTPD8W6SCY8CrDoo4ihgX2eE8xI4+eGD9fsgxQqz5SB4lnZJdx7ovuMT0T2JNNt77Nt74n9kncugWfGA=="
+                      "thoughtSignature": "Cr0CAWkUfRNvT/xVl9VnPMv/862oE1PEcZwA7VEAcgjDUQKMZirtE5dSdlbAkzaaz7jiGR2UwVAG9rtsrHukA9hRS/y1gR7RKtniGnzzfx3DyjcTzxsokUoC1uGVUcakPyFtZHZ+rDMrlTku4YXbvRo5ozpFdGM0Sz1YK4O7vSWSQfTZvK8e5FOvDmxl4IfmskaGJzBcEbXL14y5iwHeVAkqXucEz682xRyey6PKU2L9IrK4LE1RfYb7Whkfj/HH99OWIS9YA8wMV37z/1YB3UsyW/9AAAVGw2LQmSOQ2Znn8axuha1OaCAhv1VxTeUkZULNQcx6YVbtm+2Q/L6JEFGODYfyHG+++L/xO0qr5kn1FbtN6YplK24FV4V0mi4AyD3GxaFYedEK9/i9DmUT4Yw763x+vT0DFjkW0W6szWs="
                     }
                   ],
                   "role": "model"
@@ -253,7 +253,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "Yy2_ar7fEMrnz7IPh-PtwA0",
+            "responseId": "RA3BasyYKYWKmtkPj7yF6AE",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 110,
@@ -264,8 +264,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 56,
-              "totalTokenCount": 184
+              "thoughtsTokenCount": 65,
+              "totalTokenCount": 193
             }
           }
         }
@@ -343,7 +343,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CrkCAWkUfRMcYm4CJoXnspbpp4Xl/ZCtmYRNx3eTGe2+lLDVCv+v9C9uR5T3LOXNq3Jr6OvE8HCGcsWwIdhHb4HU2fl266vahkPHrtlnKejCV1i7q9FesgfxzotWa2ZyuNltoU85oQKe6DOdCa2C7eRS7FDhe3NBXi7yKB/S75T+ZGR8b2PRpygSXoHC4qTPl21lVTOmgWwyNpvqH/W/o8Q6bDqvlTW1VsDb6XN9oURaOnsCyhfkXif0C/81uXCEhCICDmh40r3uSqY3Js17N+zu9gq6zT+o2jZfufnLCg9O7+QZfWQq2q7j7jUYspf3EHHXEq8dL3ozMnqmGuHr01nTPD8W6SCY8CrDoo4ihgX2eE8xI4+eGD9fsgxQqz5SB4lnZJdx7ovuMT0T2JNNt77Nt74n9kncugWfGA=="
+                      "thoughtSignature": "Cr0CAWkUfRNvT/xVl9VnPMv/862oE1PEcZwA7VEAcgjDUQKMZirtE5dSdlbAkzaaz7jiGR2UwVAG9rtsrHukA9hRS/y1gR7RKtniGnzzfx3DyjcTzxsokUoC1uGVUcakPyFtZHZ+rDMrlTku4YXbvRo5ozpFdGM0Sz1YK4O7vSWSQfTZvK8e5FOvDmxl4IfmskaGJzBcEbXL14y5iwHeVAkqXucEz682xRyey6PKU2L9IrK4LE1RfYb7Whkfj/HH99OWIS9YA8wMV37z/1YB3UsyW/9AAAVGw2LQmSOQ2Znn8axuha1OaCAhv1VxTeUkZULNQcx6YVbtm+2Q/L6JEFGODYfyHG+++L/xO0qr5kn1FbtN6YplK24FV4V0mi4AyD3GxaFYedEK9/i9DmUT4Yw763x+vT0DFjkW0W6szWs="
                     },
                     "fingerprint": "fa43fdeb79fe1f7a"
                   }
@@ -354,7 +354,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "Yy2_ar7fEMrnz7IPh-PtwA0"
+                "response_id": "RA3BasyYKYWKmtkPj7yF6AE"
               },
               "stop": "tool_use"
             },
@@ -415,26 +415,26 @@
           "choice": [
             {
               "type": "text",
-              "text": "I can compute 6 + 2 = 8. I cannot compute 10 - 3 or 4 * 5 as I do not have the tools for subtraction or multiplication.",
+              "text": "I can compute 6 + 2 = 8. I cannot compute 10 - 3 or 4 * 5, as I do not have the tools to perform subtraction or multiplication.",
               "native": {
                 "item": {
-                  "text": "I can compute 6 + 2 = 8. I cannot compute 10 - 3 or 4 * 5 as I do not have the tools for subtraction or multiplication."
+                  "text": "I can compute 6 + 2 = 8. I cannot compute 10 - 3 or 4 * 5, as I do not have the tools to perform subtraction or multiplication."
                 },
-                "fingerprint": "9c319700b2f4787a"
+                "fingerprint": "a02a56c9fd166fdd"
               }
             }
           ],
           "usage": {
             "input_tokens": 141,
-            "output_tokens": 39,
-            "total_tokens": 180
+            "output_tokens": 41,
+            "total_tokens": 182
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "ZC2_aqbXG8brz7IP1IWO2A4"
+            "response_id": "RQ3Bas3PIdWgqtsP3OnBmQI"
           },
           "finish_reason": "stop",
           "raw": {
@@ -443,7 +443,7 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "I can compute 6 + 2 = 8. I cannot compute 10 - 3 or 4 * 5 as I do not have the tools for subtraction or multiplication."
+                      "text": "I can compute 6 + 2 = 8. I cannot compute 10 - 3 or 4 * 5, as I do not have the tools to perform subtraction or multiplication."
                     }
                   ],
                   "role": "model"
@@ -453,9 +453,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "ZC2_aqbXG8brz7IP1IWO2A4",
+            "responseId": "RQ3Bas3PIdWgqtsP3OnBmQI",
             "usageMetadata": {
-              "candidatesTokenCount": 39,
+              "candidatesTokenCount": 41,
               "promptTokenCount": 141,
               "promptTokensDetails": [
                 {
@@ -464,7 +464,7 @@
                 }
               ],
               "serviceTier": "standard",
-              "totalTokenCount": 180
+              "totalTokenCount": 182
             }
           }
         }

@@ -130,7 +130,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_226007"
+                "provider": "call_845921"
               },
               "function": {
                 "name": "add",
@@ -146,12 +146,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_226007",
+                    "id": "call_845921",
                     "name": "add"
                   },
-                  "thoughtSignature": "EnMKcQFpFH0TvBUKVq2siF0VJ+K7XNUUwi4e2/sBC15Oi3mQ0E842+74WeXUdyA0C3HF5iYJQYim4CuUo18LlGm+ZHjGawp5CXPnlqeN3iYwutpUl18hSSC0hyAacoeGWXoowvuObbaWTqPvfn0uLdekea+Q"
+                  "thoughtSignature": "EnMKcQFpFH0TV0eitce+Y2eptCRZNj1OkkvG7d0i+nQ35dVHD61QiqR0o5xKj6WeJhCVglcD4Qzg3zri0Mvp6vZyFunA3S1m5g0MlueDUtFq8jBGNKxkGjt7iB2KVLzdV6KQoQNdZo9s75uHbwR1M+EkQRLt"
                 },
-                "fingerprint": "03b1fda745156784"
+                "fingerprint": "6989b2ffeb2da2dc"
               }
             }
           ],
@@ -165,7 +165,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3.1-flash-lite-preview",
             "response_model": "gemini-3.1-flash-lite",
-            "response_id": "IS2_aqa7AZmKmtkP36Kc2Qc"
+            "response_id": "LQzBasLADpPVz7IP27v0iAM"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -179,10 +179,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_226007",
+                        "id": "call_845921",
                         "name": "add"
                       },
-                      "thoughtSignature": "EnMKcQFpFH0TvBUKVq2siF0VJ+K7XNUUwi4e2/sBC15Oi3mQ0E842+74WeXUdyA0C3HF5iYJQYim4CuUo18LlGm+ZHjGawp5CXPnlqeN3iYwutpUl18hSSC0hyAacoeGWXoowvuObbaWTqPvfn0uLdekea+Q"
+                      "thoughtSignature": "EnMKcQFpFH0TV0eitce+Y2eptCRZNj1OkkvG7d0i+nQ35dVHD61QiqR0o5xKj6WeJhCVglcD4Qzg3zri0Mvp6vZyFunA3S1m5g0MlueDUtFq8jBGNKxkGjt7iB2KVLzdV6KQoQNdZo9s75uHbwR1M+EkQRLt"
                     }
                   ],
                   "role": "model"
@@ -193,7 +193,7 @@
               }
             ],
             "modelVersion": "gemini-3.1-flash-lite",
-            "responseId": "IS2_aqa7AZmKmtkP36Kc2Qc",
+            "responseId": "LQzBasLADpPVz7IP27v0iAM",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 120,
@@ -262,7 +262,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_226007"
+                    "provider": "call_845921"
                   },
                   "function": {
                     "name": "add",
@@ -278,12 +278,12 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_226007",
+                        "id": "call_845921",
                         "name": "add"
                       },
-                      "thoughtSignature": "EnMKcQFpFH0TvBUKVq2siF0VJ+K7XNUUwi4e2/sBC15Oi3mQ0E842+74WeXUdyA0C3HF5iYJQYim4CuUo18LlGm+ZHjGawp5CXPnlqeN3iYwutpUl18hSSC0hyAacoeGWXoowvuObbaWTqPvfn0uLdekea+Q"
+                      "thoughtSignature": "EnMKcQFpFH0TV0eitce+Y2eptCRZNj1OkkvG7d0i+nQ35dVHD61QiqR0o5xKj6WeJhCVglcD4Qzg3zri0Mvp6vZyFunA3S1m5g0MlueDUtFq8jBGNKxkGjt7iB2KVLzdV6KQoQNdZo9s75uHbwR1M+EkQRLt"
                     },
-                    "fingerprint": "03b1fda745156784"
+                    "fingerprint": "6989b2ffeb2da2dc"
                   }
                 }
               ],
@@ -292,7 +292,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-3.1-flash-lite-preview",
                 "response_model": "gemini-3.1-flash-lite",
-                "response_id": "IS2_aqa7AZmKmtkP36Kc2Qc"
+                "response_id": "LQzBasLADpPVz7IP27v0iAM"
               },
               "stop": "tool_use"
             },
@@ -302,7 +302,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_226007"
+                    "provider": "call_845921"
                   },
                   "name": "add",
                   "content": [
@@ -372,7 +372,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "IS2_avL3FqLqqtsPgoyn6Qc"
+            "response_id": "LQzBaojQLonUz7IPv734iAQ"
           },
           "finish_reason": "stop",
           "raw": {
@@ -391,7 +391,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "IS2_avL3FqLqqtsPgoyn6Qc",
+            "responseId": "LQzBaojQLonUz7IPv734iAQ",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 149,

@@ -6930,19 +6930,19 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and low humidity at 45%, you should pack **sunscreen** rather than an umbrella since rain is not expected.",
+        "text": "Based on the current weather in Tokyo (sunny with light clouds, 72°F, and low humidity at 45%), you should pack **sunscreen** since there's no rain expected, but you should also bring a light umbrella just in case, as the clouds suggest there could be occasional showers later.",
         "native": null
       }
     ],
     "usage": {
-      "input_tokens": 1099,
-      "output_tokens": 47,
-      "total_tokens": 1146,
+      "input_tokens": 942,
+      "output_tokens": 67,
+      "total_tokens": 1009,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1790925779-2yoWAKbXHvwq5v2K9qCD",
+    "response_id": "gen-1791037781-nyK2t292Kd1MOoP6KCgr",
     "finish_reason": "stop",
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
@@ -6953,7 +6953,7 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Based on the current weather in Tokyo showing sunny conditions with light clouds, 72°F, and low humidity at 45%, you should pack **sunscreen** rather than an umbrella since rain is not expected.",
+            "content": "Based on the current weather in Tokyo (sunny with light clouds, 72°F, and low humidity at 45%), you should pack **sunscreen** since there's no rain expected, but you should also bring a light umbrella just in case, as the clouds suggest there could be occasional showers later.",
             "reasoning": null,
             "refusal": null,
             "role": "assistant"
@@ -6962,34 +6962,34 @@
         }
       ],
       "created": 0,
-      "id": "gen-1790925779-2yoWAKbXHvwq5v2K9qCD",
+      "id": "gen-1791037781-nyK2t292Kd1MOoP6KCgr",
       "model": "anthropic/claude-haiku-4.5",
       "object": "chat.completion",
       "provider": "Amazon Bedrock",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 47,
+        "completion_tokens": 67,
         "completion_tokens_details": {
           "audio_tokens": 0,
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.001334,
+        "cost": 0.001277,
         "cost_details": {
-          "upstream_inference_completions_cost": 0.000235,
-          "upstream_inference_cost": 0.001334,
-          "upstream_inference_prompt_cost": 0.001099
+          "upstream_inference_completions_cost": 0.000335,
+          "upstream_inference_cost": 0.001277,
+          "upstream_inference_prompt_cost": 0.000942
         },
         "is_byok": false,
-        "prompt_tokens": 1099,
+        "prompt_tokens": 942,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 1146
+        "total_tokens": 1009
       }
     }
   },

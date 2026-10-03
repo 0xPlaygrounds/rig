@@ -157,7 +157,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CsQBAWkUfRPJEK3FwUehh4E48i/zy4k/EkHwTuDZfbMWeuPwEEpqk2Xre/JJ2M9+UmhKOzySTXYzIf8iKA04X99DA4Krn1RTcAT4mYDKbg2pmVuQ83HV8upAAfmS2eOLtPekZMmJZNRvyH2cYObDO+/Lq+uKEvV6ox1+G6E7O6F9N33sRafR9WAHq3jnxSze2al+aXgSeOP0NPeWXrh7tVPKjibOkVPn9L4ZEf5FCWgQsxTBRDnhmFsuUOqI9aL9jVBgR+JUYQ=="
+                  "thoughtSignature": "CsQBAWkUfRNWwjigx5BLjc3/4s5jsWEfDkt2JGa7qBIc3y2kKUpj7XxIPwiV7eZJC/41/3lprjbuxjULbC91zcEkVIwgJHYi8MM0Wb6WuvvTuXei5SR1dOMTBl8ZHVZbZgOectZj1jToD5KzcC7RNqDgMsQJnSt7yHFi8qAkor3iMMHL34AglDKt+vECPLq9wVcg4Wwb4HzWkgEuEyN/m3p8M6rB/lOZtenNceuk1QVZFVduaAQjxXQyzbMB24ZLp7cPMDfVRA=="
                 },
                 "fingerprint": "56039ad574fa06f6"
               }
@@ -174,7 +174,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "aS2_auTBB9zRz7IPz5v2-AI"
+            "response_id": "Sw3BapiWKbLQz7IP6vjNgQQ"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -190,7 +190,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CsQBAWkUfRPJEK3FwUehh4E48i/zy4k/EkHwTuDZfbMWeuPwEEpqk2Xre/JJ2M9+UmhKOzySTXYzIf8iKA04X99DA4Krn1RTcAT4mYDKbg2pmVuQ83HV8upAAfmS2eOLtPekZMmJZNRvyH2cYObDO+/Lq+uKEvV6ox1+G6E7O6F9N33sRafR9WAHq3jnxSze2al+aXgSeOP0NPeWXrh7tVPKjibOkVPn9L4ZEf5FCWgQsxTBRDnhmFsuUOqI9aL9jVBgR+JUYQ=="
+                      "thoughtSignature": "CsQBAWkUfRNWwjigx5BLjc3/4s5jsWEfDkt2JGa7qBIc3y2kKUpj7XxIPwiV7eZJC/41/3lprjbuxjULbC91zcEkVIwgJHYi8MM0Wb6WuvvTuXei5SR1dOMTBl8ZHVZbZgOectZj1jToD5KzcC7RNqDgMsQJnSt7yHFi8qAkor3iMMHL34AglDKt+vECPLq9wVcg4Wwb4HzWkgEuEyN/m3p8M6rB/lOZtenNceuk1QVZFVduaAQjxXQyzbMB24ZLp7cPMDfVRA=="
                     }
                   ],
                   "role": "model"
@@ -201,7 +201,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "aS2_auTBB9zRz7IPz5v2-AI",
+            "responseId": "Sw3BapiWKbLQz7IP6vjNgQQ",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 106,
@@ -291,7 +291,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CsQBAWkUfRPJEK3FwUehh4E48i/zy4k/EkHwTuDZfbMWeuPwEEpqk2Xre/JJ2M9+UmhKOzySTXYzIf8iKA04X99DA4Krn1RTcAT4mYDKbg2pmVuQ83HV8upAAfmS2eOLtPekZMmJZNRvyH2cYObDO+/Lq+uKEvV6ox1+G6E7O6F9N33sRafR9WAHq3jnxSze2al+aXgSeOP0NPeWXrh7tVPKjibOkVPn9L4ZEf5FCWgQsxTBRDnhmFsuUOqI9aL9jVBgR+JUYQ=="
+                      "thoughtSignature": "CsQBAWkUfRNWwjigx5BLjc3/4s5jsWEfDkt2JGa7qBIc3y2kKUpj7XxIPwiV7eZJC/41/3lprjbuxjULbC91zcEkVIwgJHYi8MM0Wb6WuvvTuXei5SR1dOMTBl8ZHVZbZgOectZj1jToD5KzcC7RNqDgMsQJnSt7yHFi8qAkor3iMMHL34AglDKt+vECPLq9wVcg4Wwb4HzWkgEuEyN/m3p8M6rB/lOZtenNceuk1QVZFVduaAQjxXQyzbMB24ZLp7cPMDfVRA=="
                     },
                     "fingerprint": "56039ad574fa06f6"
                   }
@@ -302,7 +302,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "aS2_auTBB9zRz7IPz5v2-AI"
+                "response_id": "Sw3BapiWKbLQz7IP6vjNgQQ"
               },
               "stop": "tool_use"
             },
@@ -382,7 +382,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "ai2_aryBAvWcz7IP6K2d4AI"
+            "response_id": "TA3BapqqF67Uz7IPtoKNiQQ"
           },
           "finish_reason": "stop",
           "raw": {
@@ -401,7 +401,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "ai2_aryBAvWcz7IP6K2d4AI",
+            "responseId": "TA3BapqqF67Uz7IPtoKNiQQ",
             "usageMetadata": {
               "candidatesTokenCount": 8,
               "promptTokenCount": 144,

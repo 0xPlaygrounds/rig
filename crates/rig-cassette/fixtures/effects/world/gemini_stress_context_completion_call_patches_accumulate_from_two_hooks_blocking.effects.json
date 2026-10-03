@@ -136,7 +136,7 @@
               "native": {
                 "item": {
                   "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
-                  "thoughtSignature": "CrQCAWkUfRNeNkPnERD6Nm++LKibdYyHrRXBM44ZRiIjW62HBUjyVwmVVLY4RI6nn+3gghwsN0H+7Jsosp71jsOv69mqp1kSYhJ+J4ojPCgm+/x4ilGTwv7+56lPc67c65O7eLiqIYz0m1uepf/pPWm0v+xkRfoqkZgRYtg6PUwY8lZUc1utMsVJ0cnsBFz3bx0eouS+KdPo5ADJEUQzhlK6Rort0+uyAsM8z+FjgTFUZNYpzRDUesRLe6DkVdmQG+Pl+r0MfRT0Pip4tuXLjnZ8HRSJ+qiC2K9ImzVvcfb9yD/v864u2ZijG45W7UGS3uOPyIxuaAxqPShbMh+9uYt9AKI8j53OKGeUj2+9hlOta987Ji2gQYg1oSvqY1j8y5AOinLIVTUPh/Tb0grOTsxGN4eqdGw="
+                  "thoughtSignature": "CrQCAWkUfROfTg+/8PtfKU98p3n1F9Jji+LDdbeoQ5/Uf//He1hq3EU6HopXnKHxQwJF1RiUFy+4aP8y1E7PIwnFm6rcjSm/mUtl+PSVMn8dkbrfx5pVW47j+pkPAamwWxbxJ/sdi1zoUFNJM+2KqQtdaEY3pY9Iz5mTGiB5voKbpWwFtuqkKmvmYIzXiCOW8G3o7Wqq25+yAZuDQ7tSuTMt1lVdpSrto2oPEvpKx+rzMhlcK/VNSlWUoUifjO4RjG1z2HlwOATtZrkCjbxj+2XwPKL2ncLhjl4uSApXi9g0Xum0h0VIDZ8aE1dCeH4AGD5xngFY+texOcGStqEVFB6yRDnBPOLcHHT1KFB6ritqe0SWOj8Yw/Y/Qv4Un0Hyyh7IhJl6brog3v842UjEn7iLLaFkOAA="
                 },
                 "fingerprint": "5aaa6c62525023ee"
               }
@@ -153,7 +153,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "IRDAasqjPICoqtsP3L2PqQM"
+            "response_id": "OQ3BavqvBdzRz7IP8uC06QM"
           },
           "finish_reason": "stop",
           "raw": {
@@ -163,7 +163,7 @@
                   "parts": [
                     {
                       "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
-                      "thoughtSignature": "CrQCAWkUfRNeNkPnERD6Nm++LKibdYyHrRXBM44ZRiIjW62HBUjyVwmVVLY4RI6nn+3gghwsN0H+7Jsosp71jsOv69mqp1kSYhJ+J4ojPCgm+/x4ilGTwv7+56lPc67c65O7eLiqIYz0m1uepf/pPWm0v+xkRfoqkZgRYtg6PUwY8lZUc1utMsVJ0cnsBFz3bx0eouS+KdPo5ADJEUQzhlK6Rort0+uyAsM8z+FjgTFUZNYpzRDUesRLe6DkVdmQG+Pl+r0MfRT0Pip4tuXLjnZ8HRSJ+qiC2K9ImzVvcfb9yD/v864u2ZijG45W7UGS3uOPyIxuaAxqPShbMh+9uYt9AKI8j53OKGeUj2+9hlOta987Ji2gQYg1oSvqY1j8y5AOinLIVTUPh/Tb0grOTsxGN4eqdGw="
+                      "thoughtSignature": "CrQCAWkUfROfTg+/8PtfKU98p3n1F9Jji+LDdbeoQ5/Uf//He1hq3EU6HopXnKHxQwJF1RiUFy+4aP8y1E7PIwnFm6rcjSm/mUtl+PSVMn8dkbrfx5pVW47j+pkPAamwWxbxJ/sdi1zoUFNJM+2KqQtdaEY3pY9Iz5mTGiB5voKbpWwFtuqkKmvmYIzXiCOW8G3o7Wqq25+yAZuDQ7tSuTMt1lVdpSrto2oPEvpKx+rzMhlcK/VNSlWUoUifjO4RjG1z2HlwOATtZrkCjbxj+2XwPKL2ncLhjl4uSApXi9g0Xum0h0VIDZ8aE1dCeH4AGD5xngFY+texOcGStqEVFB6yRDnBPOLcHHT1KFB6ritqe0SWOj8Yw/Y/Qv4Un0Hyyh7IhJl6brog3v842UjEn7iLLaFkOAA="
                     }
                   ],
                   "role": "model"
@@ -173,7 +173,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "IRDAasqjPICoqtsP3L2PqQM",
+            "responseId": "OQ3BavqvBdzRz7IP8uC06QM",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 129,

@@ -128,7 +128,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_208200"
+                "provider": "call_1049033"
               },
               "function": {
                 "name": "add",
@@ -144,12 +144,12 @@
                       "x": 17,
                       "y": 25
                     },
-                    "id": "call_208200",
+                    "id": "call_1049033",
                     "name": "add"
                   },
-                  "thoughtSignature": "EnMKcQFpFH0T3Xyqs4OF4pr7X8lzyVJtPKHw6C47dCA2edzO4MJBovobX6OSsMCfip5a9+6sViWN/cymJ60SG2BepgtSj8izIlcr2NDnAwz9hdfc6fb8xkNFfOV1fJLRhZPq8+M4Suyx3qvsSqc+LByc4iLw"
+                  "thoughtSignature": "EnMKcQFpFH0Th5Rau9nkyv9CImLkcdiW7zKTR/Daknd6vXB+lsJ+OgQobcFLNNi2Rg/gkAFVonYsRzo9TrYXo0/Rm99bqpJZ6OOVeX8q18u6uKmXusDeFY9j5z8JwwifWY1KaKv+fAPNAvxEChsjeqL7/5w0"
                 },
-                "fingerprint": "8791912c42408041"
+                "fingerprint": "c7b62df37942073d"
               }
             }
           ],
@@ -163,7 +163,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3.1-flash-lite-preview",
             "response_model": "gemini-3.1-flash-lite",
-            "response_id": "cCy_avrJKMGtz7IP5o_38AI"
+            "response_id": "GgzBau-EDoK-qtsPl4LvmAY"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -177,10 +177,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_208200",
+                        "id": "call_1049033",
                         "name": "add"
                       },
-                      "thoughtSignature": "EnMKcQFpFH0T3Xyqs4OF4pr7X8lzyVJtPKHw6C47dCA2edzO4MJBovobX6OSsMCfip5a9+6sViWN/cymJ60SG2BepgtSj8izIlcr2NDnAwz9hdfc6fb8xkNFfOV1fJLRhZPq8+M4Suyx3qvsSqc+LByc4iLw"
+                      "thoughtSignature": "EnMKcQFpFH0Th5Rau9nkyv9CImLkcdiW7zKTR/Daknd6vXB+lsJ+OgQobcFLNNi2Rg/gkAFVonYsRzo9TrYXo0/Rm99bqpJZ6OOVeX8q18u6uKmXusDeFY9j5z8JwwifWY1KaKv+fAPNAvxEChsjeqL7/5w0"
                     }
                   ],
                   "role": "model"
@@ -191,7 +191,7 @@
               }
             ],
             "modelVersion": "gemini-3.1-flash-lite",
-            "responseId": "cCy_avrJKMGtz7IP5o_38AI",
+            "responseId": "GgzBau-EDoK-qtsPl4LvmAY",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 120,
@@ -260,7 +260,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_208200"
+                    "provider": "call_1049033"
                   },
                   "function": {
                     "name": "add",
@@ -276,12 +276,12 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_208200",
+                        "id": "call_1049033",
                         "name": "add"
                       },
-                      "thoughtSignature": "EnMKcQFpFH0T3Xyqs4OF4pr7X8lzyVJtPKHw6C47dCA2edzO4MJBovobX6OSsMCfip5a9+6sViWN/cymJ60SG2BepgtSj8izIlcr2NDnAwz9hdfc6fb8xkNFfOV1fJLRhZPq8+M4Suyx3qvsSqc+LByc4iLw"
+                      "thoughtSignature": "EnMKcQFpFH0Th5Rau9nkyv9CImLkcdiW7zKTR/Daknd6vXB+lsJ+OgQobcFLNNi2Rg/gkAFVonYsRzo9TrYXo0/Rm99bqpJZ6OOVeX8q18u6uKmXusDeFY9j5z8JwwifWY1KaKv+fAPNAvxEChsjeqL7/5w0"
                     },
-                    "fingerprint": "8791912c42408041"
+                    "fingerprint": "c7b62df37942073d"
                   }
                 }
               ],
@@ -290,7 +290,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-3.1-flash-lite-preview",
                 "response_model": "gemini-3.1-flash-lite",
-                "response_id": "cCy_avrJKMGtz7IP5o_38AI"
+                "response_id": "GgzBau-EDoK-qtsPl4LvmAY"
               },
               "stop": "tool_use"
             },
@@ -300,7 +300,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_208200"
+                    "provider": "call_1049033"
                   },
                   "name": "add",
                   "content": [
@@ -355,7 +355,7 @@
               "native": {
                 "item": {
                   "text": "42",
-                  "thoughtSignature": "EnMKcQFpFH0TGtYmli4oUCbX15C0xKCMaaXvslIvsvvh9d5IkuHDNnKKC9ePyGHEHKc2d5Y8oIpxQRYH1NvHkvnKXWhCDUOvx/3xUtCNK0UUDbxa7Mbp8xyvJX1HwJmfNH+TK+RWHrwHPlmowlwiOz3gP1kL"
+                  "thoughtSignature": "EnMKcQFpFH0TL8UjAkMhUsX9pRsIW+AGtMBY2EIKpCBRASkxLdPQF/V8xPsRLLa/ae4eqDRG2PN4XqwuGt/ipXXFWLyW+IbGNqXW2l9q9om0F5N8bFXn3QcCxnWH/iGiHzGkFAjRRShvL+z/hucr/VREvVuZ"
                 },
                 "fingerprint": "23f07d1922e80d53"
               }
@@ -371,7 +371,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-3.1-flash-lite-preview",
             "response_model": "gemini-3.1-flash-lite",
-            "response_id": "cSy_asWxBszQz7IP-8rLkQ0"
+            "response_id": "GgzBavXpL7adqtsPwsiMoQM"
           },
           "finish_reason": "stop",
           "raw": {
@@ -381,7 +381,7 @@
                   "parts": [
                     {
                       "text": "42",
-                      "thoughtSignature": "EnMKcQFpFH0TGtYmli4oUCbX15C0xKCMaaXvslIvsvvh9d5IkuHDNnKKC9ePyGHEHKc2d5Y8oIpxQRYH1NvHkvnKXWhCDUOvx/3xUtCNK0UUDbxa7Mbp8xyvJX1HwJmfNH+TK+RWHrwHPlmowlwiOz3gP1kL"
+                      "thoughtSignature": "EnMKcQFpFH0TL8UjAkMhUsX9pRsIW+AGtMBY2EIKpCBRASkxLdPQF/V8xPsRLLa/ae4eqDRG2PN4XqwuGt/ipXXFWLyW+IbGNqXW2l9q9om0F5N8bFXn3QcCxnWH/iGiHzGkFAjRRShvL+z/hucr/VREvVuZ"
                     }
                   ],
                   "role": "model"
@@ -391,7 +391,7 @@
               }
             ],
             "modelVersion": "gemini-3.1-flash-lite",
-            "responseId": "cSy_asWxBszQz7IP-8rLkQ0",
+            "responseId": "GgzBavXpL7adqtsPwsiMoQM",
             "usageMetadata": {
               "candidatesTokenCount": 2,
               "promptTokenCount": 149,
