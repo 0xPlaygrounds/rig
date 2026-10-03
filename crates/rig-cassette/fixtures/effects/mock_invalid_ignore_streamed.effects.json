@@ -144,6 +144,16 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call-1",
+            "name": "multiply",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -178,7 +188,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         }
       ]
