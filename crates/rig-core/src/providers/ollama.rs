@@ -117,18 +117,17 @@ pub const GPT_OSS: &str = "gpt-oss";
 pub const PHI4: &str = "phi4";
 
 /// One `/api/chat` record. Only `message` and `done` build the turn, so
-/// every other field is optional, and a counter that is not a count is
-/// unreported.
+/// every other field is optional, and one of another type is unreported.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub model: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub created_at: String,
     /// The record's assistant message, as Ollama sent it.
     pub message: serde_json::Map<String, Value>,
     pub done: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     pub done_reason: Option<String>,
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub total_duration: Option<u64>,
@@ -142,6 +141,15 @@ pub struct CompletionResponse {
     pub eval_count: Option<u64>,
     #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     pub eval_duration: Option<u64>,
+}
+
+/// A field of `T`, or `T`'s default when it holds another type.
+fn lenient<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    Ok(T::deserialize(Value::deserialize(deserializer)?).unwrap_or_default())
 }
 
 /// Map Ollama's `done_reason` onto rig's normalized vocabulary: `stop` and
@@ -347,9 +355,10 @@ fn finish_of(response: StreamingCompletionResponse) -> Finish {
 const CALL_INDEX: usize = 1 << 24;
 
 /// Decode `/api/chat` records, one whole reply or a stream of lines. Each
-/// record's message is a delta of the turn's: its thinking and content grow
-/// one reasoning and one text block, each tool call arrives whole, and the
-/// assembled message is the turn's native. Only a `done: true` record ends
+/// record's message is a delta of the turn's: its thinking grows a reasoning
+/// block and its content a text block, each tool call arrives whole, and the
+/// assembled message is the turn's native. A block ends where the next one
+/// starts, so a reply cut off loses at most its last block. Only a `done: true` record ends
 /// the reply; EOF alone does not.
 ///
 /// A model that writes its reasoning into `content` (`<think>…</think>`, or
@@ -364,9 +373,6 @@ pub struct OllamaDecoder {
     tool_calls: Vec<Value>,
     reasoning: Option<usize>,
     text: Option<usize>,
-    /// How many tool calls had arrived when the reasoning and the text block
-    /// opened: a fragment after a later call opens the next block.
-    opened_at: [usize; 2],
     /// The open reasoning block's text: each block holds its own part of
     /// the message's `thinking`.
     thinking: String,
@@ -378,7 +384,8 @@ pub struct OllamaDecoder {
 }
 
 impl OllamaDecoder {
-    /// Append `fragment` to the reasoning or text block, opening it first.
+    /// Append `fragment` to the reasoning or text block, opening it first
+    /// and ending the other.
     fn push(
         &mut self,
         reasoning: bool,
@@ -388,37 +395,34 @@ impl OllamaDecoder {
         if fragment.is_empty() {
             return Ok(());
         }
-        let calls = self.tool_calls.len();
-        let [reasoning_at, text_at] = &mut self.opened_at;
-        let (slot, opened_at, block) = if reasoning {
-            (
-                &mut self.reasoning,
-                reasoning_at,
-                Block::Reasoning { redacted: false },
-            )
+        self.close(!reasoning, out)?;
+        let (slot, block) = if reasoning {
+            (&mut self.reasoning, Block::Reasoning { redacted: false })
         } else {
-            (&mut self.text, text_at, Block::Text)
+            (&mut self.text, Block::Text)
         };
-        if let Some(index) = *slot
-            && *opened_at < calls
-        {
-            // A call ends the block: what follows it is the next block.
-            *slot = None;
-            if reasoning {
-                let thinking = std::mem::take(&mut self.thinking);
-                out.finish_with(index, json!({ "thinking": thinking }))?;
-            } else {
-                out.finish(index)?;
-            }
-        }
-        if slot.is_none() {
-            *opened_at = calls;
-        }
         let index = open_once(slot, block, out)?;
         if reasoning {
             self.thinking.push_str(fragment);
         }
         out.push(index, fragment)
+    }
+
+    /// End the open reasoning or text block; reasoning holds its text.
+    fn close(
+        &mut self,
+        reasoning: bool,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        if reasoning {
+            if let Some(index) = self.reasoning.take() {
+                let thinking = std::mem::take(&mut self.thinking);
+                out.finish_with(index, json!({ "thinking": thinking }))?;
+            }
+        } else if let Some(index) = self.text.take() {
+            out.finish(index)?;
+        }
+        Ok(())
     }
 
     /// Content, held while it may open with inline reasoning and released
@@ -487,6 +491,10 @@ impl OllamaDecoder {
             response.done || calls_follow,
             &mut out,
         )?;
+        if calls_follow {
+            self.close(true, &mut out)?;
+            self.close(false, &mut out)?;
+        }
         if let Some(Value::Array(calls)) = message.shift_remove("tool_calls") {
             for call in calls {
                 // Ollama sends each call whole, with object arguments (a
@@ -538,13 +546,8 @@ impl OllamaDecoder {
             }
             message.insert("content".to_owned(), visible.into());
         }
-        if let Some(index) = self.reasoning.take() {
-            let thinking = std::mem::take(&mut self.thinking);
-            out.finish_with(index, json!({ "thinking": thinking }))?;
-        }
-        if let Some(index) = self.text.take() {
-            out.finish(index)?;
-        }
+        self.close(true, &mut out)?;
+        self.close(false, &mut out)?;
         if !self.tool_calls.is_empty() {
             message.insert(
                 "tool_calls".to_owned(),
@@ -715,8 +718,8 @@ pub enum Message {
     Native(Value),
 }
 
-/// Combine text and supported image/document content into one user message.
-/// Reject unsupported media sources and tool results.
+/// Combine text, base64 images and string documents into one user message.
+/// [`Chat`]'s `encodes` names these forms, so the adapter hands over no other.
 fn user_message_from_content(
     content: Vec<crate::message::UserContent>,
 ) -> Result<Message, crate::message::MessageError> {
@@ -732,33 +735,14 @@ fn user_message_from_content(
                 data: DocumentSourceKind::Base64(data),
                 ..
             }) => images.push(data),
-            crate::message::UserContent::Image(_) => {
-                return Err(crate::message::MessageError::ConversionError(
-                    "Ollama images must be base64 encoded data".into(),
-                ));
-            }
             crate::message::UserContent::Document(crate::message::Document {
-                data: DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
+                data: DocumentSourceKind::String(data),
                 ..
             }) => texts.push(data),
-            crate::message::UserContent::Document(_) => {
+            _ => {
                 return Err(crate::message::MessageError::ConversionError(
-                    "Ollama documents must be string or base64 encoded data".into(),
-                ));
-            }
-            crate::message::UserContent::Audio(_) => {
-                return Err(crate::message::MessageError::ConversionError(
-                    "Ollama does not support audio user content".into(),
-                ));
-            }
-            crate::message::UserContent::Video(_) => {
-                return Err(crate::message::MessageError::ConversionError(
-                    "Ollama does not support video user content".into(),
-                ));
-            }
-            crate::message::UserContent::ToolResult(_) => {
-                return Err(crate::message::MessageError::ConversionError(
-                    "tool results must be converted to a separate Ollama message".into(),
+                    "Ollama takes text, base64 images and string documents in a user message"
+                        .into(),
                 ));
             }
         }

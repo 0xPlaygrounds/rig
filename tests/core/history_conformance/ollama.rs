@@ -86,9 +86,8 @@ impl HistoryFixture for OllamaHistory {
         http_body(&wire.encode(request, mode)?)
     }
 
-    /// Ollama's message has one `thinking` and one `content`, and a block
-    /// splits only at a tool call, so `[reasoning, text, reasoning, call]`
-    /// has no Ollama form.
+    /// Ollama's message has one `thinking` and one `content`, so
+    /// `[reasoning, text, reasoning, call]` has only a streamed form.
     fn reply(&self, shape: Shape, mode: Mode) -> Option<Vec<WireFrame>> {
         match shape {
             Shape::Rich => Some(reply(
@@ -98,6 +97,16 @@ impl HistoryFixture for OllamaHistory {
                     json!({"role": "assistant", "thinking": "plan ", "content": ""}),
                     json!({"role": "assistant", "thinking": "the lookup", "content": ""}),
                     json!({"role": "assistant", "content": "looking it up"}),
+                    json!({"role": "assistant", "content": "", "tool_calls": [call(json!({}))]}),
+                ],
+                mode,
+            )),
+            Shape::Interleaved if mode == Mode::Streaming => Some(reply(
+                Value::Null,
+                vec![
+                    json!({"role": "assistant", "thinking": "first", "content": ""}),
+                    json!({"role": "assistant", "content": "between"}),
+                    json!({"role": "assistant", "thinking": "second", "content": ""}),
                     json!({"role": "assistant", "content": "", "tool_calls": [call(json!({}))]}),
                 ],
                 mode,
@@ -155,7 +164,7 @@ impl HistoryFixture for OllamaHistory {
                     "content": "looking it up", "tool_calls": [call(json!({}))]}),
                 Some("stop"),
             ),
-            required: &["/message", "/done"],
+            required: &["/message", "/done", "/message/content"],
             frames: |document| vec![line(document)],
         })
     }

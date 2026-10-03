@@ -200,6 +200,18 @@ impl crate::completion::ReplayTarget for Chat {
             ..crate::completion::Accepts::TEXT
         }
     }
+
+    /// The daemon takes an image as base64 data and a document as its
+    /// text, and no audio or video.
+    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+        use crate::completion::Media;
+        use crate::message::DocumentSourceKind;
+        match media {
+            Media::Image(image, _) => matches!(image.data, DocumentSourceKind::Base64(_)),
+            Media::Document(document) => matches!(document.data, DocumentSourceKind::String(_)),
+            Media::Audio(_) | Media::Video(_) => false,
+        }
+    }
 }
 
 /// The embedding wire: `POST /api/embed`.
