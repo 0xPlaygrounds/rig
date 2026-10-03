@@ -110,12 +110,13 @@ fn result_output(content: &[ToolResultContent]) -> Result<Value, EncodeError> {
 }
 
 /// The custom tools of a request: a call to one is a `custom_tool_call`,
-/// answered by a `custom_tool_call_output`, as pi decides by name.
+/// answered by a `custom_tool_call_output`, as pi decides by name. A result
+/// answering a call the request sends takes that call's kind.
 struct Custom {
     /// The custom tools the request declares.
     tools: std::collections::HashSet<String>,
-    /// The call ids the request sends as custom calls.
-    calls: std::collections::HashSet<String>,
+    /// Whether each call id the request sends is a custom call.
+    calls: std::collections::HashMap<String, bool>,
 }
 
 /// The input items of `history` for `target`, which addresses `model`. A
@@ -125,11 +126,15 @@ struct Custom {
 /// and any other block rebuilt as pi rebuilds another model's turn: text as
 /// a completed output message under a synthetic id, and a call with no
 /// item id. Reasoning only its item can carry goes only with its identity.
+/// A `stateless` request resolves no stored item, so reasoning without its
+/// ciphertext is left out and the block after it is rebuilt with no item
+/// id, as another model's turn is.
 fn input(
     history: &[Message],
     target: &wire::Responses,
     model: &str,
     custom: &mut Custom,
+    stateless: bool,
 ) -> Result<Vec<Value>, EncodeError> {
     let ids = WireIds::for_target(history, target, model);
     let spelled = |call: &message::CallId| {
@@ -156,9 +161,9 @@ fn input(
                             let call_id = spelled(&result.call);
                             let output = result_output(&result.content)?;
                             items.push(
-                                if custom.calls.contains(&call_id)
-                                    || custom.tools.contains(result.name.as_str())
-                                {
+                                if custom.calls.get(&call_id).copied().unwrap_or_else(|| {
+                                    custom.tools.contains(result.name.as_str())
+                                }) {
                                     json!({"type": "custom_tool_call_output", "call_id": call_id, "output": output})
                                 } else {
                                     json!({"type": "function_call_output", "call_id": call_id, "output": output, "status": "completed"})
@@ -180,13 +185,39 @@ fn input(
             }
             Message::Assistant(turn) => {
                 let mut texts = 0usize;
+                let mut unpaired = false;
                 for block in &turn.content {
-                    let identity = match block.replay(target, &ids) {
+                    let mut replay = block.replay(target, &ids);
+                    if unpaired && !matches!(block, AssistantContent::Reasoning(_)) {
+                        unpaired = false;
+                        replay = Replay::Rebuild;
+                    }
+                    let ciphertext = |item: &Map<String, Value>| {
+                        item.get("encrypted_content")
+                            .and_then(Value::as_str)
+                            .is_some_and(|cipher| !cipher.is_empty())
+                    };
+                    let unresolvable = stateless
+                        && matches!(block, AssistantContent::Reasoning(_))
+                        && match &replay {
+                            Replay::Item(item) => !item.as_object().is_some_and(ciphertext),
+                            Replay::Identity(identity) => !ciphertext(identity),
+                            Replay::Rebuild => false,
+                        };
+                    if unresolvable {
+                        unpaired = true;
+                        continue;
+                    }
+                    let identity = match replay {
                         Replay::Item(item) => {
-                            if item.str("type") == Some("custom_tool_call")
-                                && let Some(call_id) = item.str("call_id")
-                            {
-                                custom.calls.insert(call_id.to_owned());
+                            if let Some(call_id) = item.str("call_id") {
+                                let kind = item.str("type");
+                                if matches!(kind, Some("custom_tool_call" | "function_call")) {
+                                    custom.calls.insert(
+                                        call_id.to_owned(),
+                                        kind == Some("custom_tool_call"),
+                                    );
+                                }
                             }
                             items.push(item.into_owned());
                             continue;
@@ -231,12 +262,13 @@ fn input(
                             let (kind, key, payload, prefix) = if kind == Some("custom_tool_call")
                                 || (kind.is_none() && custom.tools.contains(name))
                             {
-                                custom.calls.insert(call_id.clone());
+                                custom.calls.insert(call_id.clone(), true);
                                 let input =
                                     call.function.arguments.get("input").and_then(Value::as_str);
                                 let input = input.map_or(arguments, str::to_owned);
                                 ("custom_tool_call", "input", input, "ctc_")
                             } else {
+                                custom.calls.insert(call_id.clone(), false);
                                 ("function_call", "arguments", arguments, "fc_")
                             };
                             let mut item = json!({"type": kind, "call_id": call_id, "name": name});
@@ -355,7 +387,10 @@ impl wire::Responses {
                 .collect(),
             calls: Default::default(),
         };
-        let mut input = input(&request.chat_history, self, &model, &mut custom)?;
+        let codex =
+            self.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
+        let stateless = codex || params.get("store") == Some(&json!(false));
+        let mut input = input(&request.chat_history, self, &model, &mut custom, stateless)?;
 
         let system = |item: &Value| {
             (item.str("role") == Some("system")).then(|| {
@@ -445,8 +480,6 @@ impl wire::Responses {
                 json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}}),
             );
         }
-        let codex =
-            self.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
         if codex {
             // The codex gateway takes the turn and the tools; sampling, storage,
             // metadata and structured output are not its to accept, and

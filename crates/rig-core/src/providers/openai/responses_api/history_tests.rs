@@ -417,3 +417,226 @@ fn an_empty_completed_reply_is_an_empty_successful_turn() {
         assert_eq!(response.stop(), StopReason::Stop);
     }
 }
+
+fn reasoning(id: &str, ciphertext: Option<&str>) -> Value {
+    let mut item = json!({"type": "reasoning", "id": id, "summary": [{"type": "summary_text", "text": "plan"}]});
+    if let Some(ciphertext) = ciphertext {
+        item["encrypted_content"] = json!(ciphertext);
+    }
+    item
+}
+
+fn message(id: &str, text: &str) -> Value {
+    json!({"type": "message", "id": id, "role": "assistant", "status": "completed",
+           "content": [{"type": "output_text", "text": text, "annotations": []}]})
+}
+
+fn function_call(id: &str, call_id: &str) -> Value {
+    json!({"type": "function_call", "id": id, "call_id": call_id, "name": "f",
+           "arguments": "{}", "status": "completed"})
+}
+
+fn kinds(response: &CompletionResponse) -> Vec<&'static str> {
+    response
+        .choice
+        .iter()
+        .map(|block| match block {
+            AssistantContent::Text(_) => "text",
+            AssistantContent::Reasoning(_) => "reasoning",
+            AssistantContent::ToolCall(_) => "call",
+            AssistantContent::Image(_) => "image",
+            AssistantContent::Opaque(_) => "opaque",
+        })
+        .collect()
+}
+
+/// The input `wire` sends to continue `response`'s turn with its calls
+/// answered, under `params`.
+fn continued_on(wire: &Responses, response: &CompletionResponse, params: Value) -> Vec<Value> {
+    let Some(turn) = response.message() else {
+        panic!("the reply is a turn: {:?}", response.choice);
+    };
+    let results = response
+        .tool_calls()
+        .map(|call| {
+            crate::message::UserContent::ToolResult(
+                call.result(vec![ToolResultContent::text("ok")]),
+            )
+        })
+        .collect();
+    let history = vec![Message::user("q"), turn, Message::User { content: results }];
+    let mut request = CompletionRequest::from(history).tools(vec![tool("f")]);
+    request.additional_params = Some(params);
+    input_of(wire, request)
+}
+
+/// A `store: false` request resolves no stored item: reasoning without its
+/// ciphertext stays out, and the call after it goes without its item id.
+#[test]
+fn a_stateless_request_sends_no_reasoning_it_cannot_resolve() {
+    let response = whole(json!([
+        reasoning("rs_1", None),
+        function_call("fc_1", "call_1")
+    ]));
+    let input = continued_on(&wire(), &response, json!({"store": false}));
+    assert!(
+        !input.iter().any(|item| item["type"] == "reasoning"),
+        "{input:?}"
+    );
+    let call = input
+        .iter()
+        .find(|item| item["type"] == "function_call")
+        .expect("the call goes back");
+    assert!(call.get("id").is_none(), "{call}");
+    assert_eq!(call["call_id"], "call_1");
+
+    let stored = continued_on(&wire(), &response, json!({}));
+    assert_eq!(stored[1]["id"], "rs_1", "{stored:?}");
+    assert_eq!(stored[2]["id"], "fc_1", "{stored:?}");
+}
+
+/// ChatGPT's Codex route is always stateless, and reasoning that carries
+/// its ciphertext still goes back there.
+#[test]
+fn the_codex_route_sends_reasoning_only_with_its_ciphertext() {
+    let codex = Responses::new(
+        OpenAIConfig::with_key(&crate::providers::chatgpt::DIALECT, "key"),
+        "gpt-5.3-codex",
+    );
+    let on_codex = |output: Value| {
+        crate::test_utils::history::decode(
+            &codex,
+            Mode::Unary,
+            [WireFrame::Text(body(output).to_string())],
+        )
+        .expect("the body decodes")
+    };
+    let bare = on_codex(json!([
+        reasoning("rs_1", None),
+        function_call("fc_1", "call_1")
+    ]));
+    let input = continued_on(&codex, &bare, json!({}));
+    assert!(
+        !input.iter().any(|item| item["type"] == "reasoning"),
+        "{input:?}"
+    );
+    let ciphered = on_codex(json!([
+        reasoning("rs_1", Some("enc")),
+        function_call("fc_1", "call_1")
+    ]));
+    let input = continued_on(&codex, &ciphered, json!({}));
+    assert_eq!(input[1]["encrypted_content"], "enc", "{input:?}");
+}
+
+/// A request in a stored `conversation` continues the provider's state,
+/// which holds the calls its first results answer.
+#[test]
+fn a_conversation_continuation_keeps_the_results_it_answers() {
+    let mut request = CompletionRequest::from(vec![Message::tool_result(
+        CallId::from_wire("call_1"),
+        name("f"),
+        "done",
+    )])
+    .tools(vec![tool("f")]);
+    request.additional_params = Some(json!({"conversation": "conv_1"}));
+    let input = input_of(&wire(), request);
+    assert_eq!(input[0]["type"], "function_call_output", "{input:?}");
+    assert_eq!(input[0]["call_id"], "call_1");
+}
+
+/// A result takes the kind of the call it answers, even when the request
+/// now declares a custom tool of that call's name.
+#[test]
+fn a_result_takes_the_kind_of_the_call_it_answers() {
+    let mut custom = ResponsesToolDefinition::hosted("custom");
+    custom.name = "f".to_owned();
+    let response = whole(json!([function_call("fc_1", "call_1")]));
+    let input = continued_on(&wire().with_tool(custom), &response, json!({}));
+    let kinds: Vec<&str> = input
+        .iter()
+        .filter_map(|item| item["type"].as_str())
+        .collect();
+    assert_eq!(kinds, ["message", "function_call", "function_call_output"]);
+}
+
+/// A terminal whose output indices are shifted against the stream's
+/// restates the streamed message, so its text is said once.
+#[test]
+fn a_terminal_shifted_against_the_stream_restates_its_items() {
+    let events = [
+        json!({"type": "response.output_text.delta", "output_index": 1, "content_index": 0, "delta": "hi"}),
+        json!({"type": "response.completed", "response": {"id": "r", "status": "completed",
+               "model": "gpt-5.4", "output": [message("msg_1", "hi")]}}),
+    ];
+    let response = streamed(&events);
+    assert_eq!(response.text(), "hi", "{:?}", response.choice);
+    assert_eq!(
+        response.choice[0].native_item(),
+        Some(&message("msg_1", "hi"))
+    );
+}
+
+/// A hosted item only the terminal states takes its place between the
+/// streamed items, as in the whole reply.
+#[test]
+fn a_terminal_only_hosted_item_keeps_its_place() {
+    let search = json!({"type": "web_search_call", "id": "ws_1", "status": "completed",
+                        "action": {"type": "search", "query": "q"}});
+    let output = json!([
+        reasoning("rs_1", Some("enc")),
+        search,
+        message("msg_1", "hi")
+    ]);
+    let events = [
+        json!({"type": "response.output_item.done", "output_index": 0, "item": reasoning("rs_1", Some("enc"))}),
+        json!({"type": "response.output_item.done", "output_index": 2, "item": message("msg_1", "hi")}),
+        json!({"type": "response.completed", "response": {"id": "r", "status": "completed",
+               "model": "gpt-5.4", "output": output.clone()}}),
+    ];
+    let whole = whole(output);
+    assert_eq!(kinds(&streamed(&events)), kinds(&whole));
+    assert_eq!(kinds(&whole), ["reasoning", "opaque", "text"]);
+}
+
+/// Reasoning streamed as raw text whose done item also states a summary
+/// folds as the whole reply does.
+#[test]
+fn raw_reasoning_deltas_under_a_summary_fold_as_the_whole_reply() {
+    let rs = json!({"type": "reasoning", "id": "rs_1", "summary": [{"type": "summary_text", "text": "sum"}],
+                    "content": [{"type": "reasoning_text", "text": "raw"}], "encrypted_content": "enc"});
+    let output = json!([rs, message("msg_1", "hi")]);
+    let events = [
+        json!({"type": "response.output_item.added", "output_index": 0, "item": {"type": "reasoning", "id": "rs_1", "summary": []}}),
+        json!({"type": "response.reasoning_text.delta", "output_index": 0, "item_id": "rs_1", "content_index": 0, "delta": "raw"}),
+        json!({"type": "response.reasoning_summary_text.delta", "output_index": 0, "item_id": "rs_1", "summary_index": 0, "delta": "sum"}),
+        json!({"type": "response.output_item.done", "output_index": 0, "item": rs}),
+        json!({"type": "response.output_item.added", "output_index": 1, "item": {"type": "message", "id": "msg_1", "role": "assistant", "content": []}}),
+        json!({"type": "response.output_text.delta", "output_index": 1, "item_id": "msg_1", "content_index": 0, "delta": "hi"}),
+        json!({"type": "response.output_item.done", "output_index": 1, "item": message("msg_1", "hi")}),
+        json!({"type": "response.completed", "response": body(output.clone())}),
+    ];
+    let streamed = streamed(&events);
+    let whole = whole(output);
+    assert_eq!(streamed.choice, whole.choice);
+}
+
+/// A call with no name is dropped at decode, so the reasoning before it,
+/// which goes only with that call, never goes back with the next item.
+#[test]
+fn reasoning_before_a_dropped_call_does_not_go_back() {
+    let nameless = json!({"type": "function_call", "id": "fc_1", "call_id": "call_1",
+                          "arguments": "{}", "status": "completed"});
+    let response = whole(json!([
+        reasoning("rs_1", Some("enc")),
+        nameless,
+        message("msg_1", "hi")
+    ]));
+    let input = replayed(&response, &["f"]);
+    assert!(!input.iter().any(|item| item["id"] == "rs_1"), "{input:?}");
+    assert!(
+        input
+            .iter()
+            .any(|item| item["type"] == "message" && item["role"] == "assistant"),
+        "{input:?}"
+    );
+}

@@ -251,14 +251,15 @@ impl crate::completion::ReplayTarget for Responses {
         }
     }
 
-    /// A request naming `previous_response_id` continues a response the
-    /// provider stores, which holds the calls its first results answer.
+    /// A request naming `previous_response_id` or a `conversation`
+    /// continues state the provider stores, which holds the calls its first
+    /// results answer.
     fn continues_stored(&self, request: &completion::CompletionRequest) -> bool {
-        request
-            .additional_params
-            .as_ref()
-            .and_then(|params| params.get("previous_response_id"))
-            .is_some_and(|id| !id.is_null())
+        request.additional_params.as_ref().is_some_and(|params| {
+            ["previous_response_id", "conversation"]
+                .iter()
+                .any(|key| params.get(*key).is_some_and(|value| !value.is_null()))
+        })
     }
 
     /// pi's `normalizeIdPart`: characters outside `[a-zA-Z0-9_-]` become

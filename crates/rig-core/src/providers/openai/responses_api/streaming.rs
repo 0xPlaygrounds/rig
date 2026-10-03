@@ -167,6 +167,8 @@ struct Slot {
     custom: bool,
     /// Whether the call's id was stated.
     named: bool,
+    /// Whether the call's tool name was stated.
+    titled: bool,
 }
 
 /// The item types the client executes, which nothing in rig answers: they
@@ -418,6 +420,7 @@ impl ResponsesDecoder {
             arguments: arguments.unwrap_or_default().to_owned(),
             custom,
             named: item.str("call_id").is_some_and(|id| !id.is_empty()),
+            titled: item.str("name").is_some_and(|name| !name.is_empty()),
         });
         let slot = self.slots.len() - 1;
         if let Some(index) = index {
@@ -540,8 +543,10 @@ impl ResponsesDecoder {
         }
         let at = done.at;
         let mut item = item;
+        let mut nameless = false;
         match done.kind {
             Kind::Call => {
+                nameless = !done.titled && item.str("name").is_none_or(str::is_empty);
                 let arguments = arguments_of(&item).unwrap_or_else(|| streamed_arguments(done));
                 out.fragment(
                     Some(at),
@@ -576,7 +581,9 @@ impl ResponsesDecoder {
             return Ok(());
         }
         out.finish(at)?;
-        self.release(true, out)
+        // The writer drops a call with no name, so the reasoning it held
+        // has no item to go with.
+        self.release(!nameless, out)
     }
 
     /// Write one output-item event into the reply.
@@ -637,8 +644,16 @@ impl ResponsesDecoder {
     /// no earlier terminal item took: the one with its id; else the one the
     /// stream gave that index when it is of the item's kind, as pi reads an
     /// index whatever id it states; else the first of its kind the stream
-    /// gave no index and no other id.
-    fn restated(&self, index: usize, item: &Value, taken: &HashSet<usize>) -> Option<usize> {
+    /// gave no index and no other id; else the first of its kind with no
+    /// other id that the stream put at an index the terminal holds no item
+    /// of that kind at, a stream whose indices are shifted against it.
+    fn restated(
+        &self,
+        index: usize,
+        item: &Value,
+        output: &[Value],
+        taken: &HashSet<usize>,
+    ) -> Option<usize> {
         let id = item_id(item);
         let free = |at: &usize| {
             !taken.contains(at)
@@ -660,6 +675,17 @@ impl ResponsesDecoder {
                 find(&|at, slot| {
                     !self.indexed.values().any(|indexed| *indexed == at)
                         && (id.is_none() || slot.id.is_none())
+                })
+            })
+            .or_else(|| {
+                find(&|at, slot| {
+                    (id.is_none() || slot.id.is_none())
+                        && self.indexed.iter().any(|(streamed, indexed)| {
+                            *indexed == at
+                                && output
+                                    .get(*streamed)
+                                    .is_none_or(|other| Kind::of(other) != slot.kind)
+                        })
                 })
             })
     }
@@ -694,7 +720,7 @@ impl ResponsesDecoder {
             .enumerate()
             .filter(|(_, item)| item.is_object())
         {
-            let known = self.restated(index, item, &taken).and_then(|at| {
+            let known = self.restated(index, item, output, &taken).and_then(|at| {
                 let slot = self.slots.get(at)?;
                 Some((at, slot.open, slot.kind, slot.at))
             });

@@ -66,7 +66,7 @@ fn input_items(message: completion::Message) -> Result<Vec<Value>, EncodeError> 
         tools: Default::default(),
         calls: Default::default(),
     };
-    super::input(&[message], &wire, "gpt-5", &mut custom)
+    super::input(&[message], &wire, "gpt-5", &mut custom, false)
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
