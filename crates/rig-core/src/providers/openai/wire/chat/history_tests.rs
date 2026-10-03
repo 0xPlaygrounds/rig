@@ -588,3 +588,42 @@ fn only_a_complete_item_becomes_a_native() {
         whole.choice
     );
 }
+
+/// chatB "accepts_images dead": the text-only models of Z.AI, Moonshot,
+/// MiniMax and MiMo, on their own Chat dialects and through OpenRouter, get
+/// a placeholder for an image, by the rule the Messages wire shares, and
+/// their vision models still get the image.
+#[test]
+fn review_text_only_chat_dialect_models_get_placeholders() {
+    use crate::providers::openai::wire::{MINIMAX, MOONSHOT, XIAOMIMIMO, ZAI};
+    let history = vec![Message::User {
+        content: vec![UserContent::text("look"), UserContent::Image(png())],
+    }];
+    let cases: [(&'static Dialect, &str, bool); 14] = [
+        (&ZAI, "glm-4.6", false),
+        (&ZAI, "glm-4.5v", true),
+        (&MOONSHOT, "kimi-k2-0905-preview", false),
+        (&MOONSHOT, "kimi-k2.6", true),
+        (&MINIMAX, "MiniMax-M2", false),
+        (&MINIMAX, "MiniMax-M3", true),
+        (&XIAOMIMIMO, "mimo-v2-flash", false),
+        (&XIAOMIMIMO, "mimo-v2.5", true),
+        (&OPENROUTER, "z-ai/glm-4.6", false),
+        (&OPENROUTER, "moonshotai/kimi-k2-0905", false),
+        (&OPENROUTER, "minimax/minimax-m2", false),
+        (&OPENROUTER, "xiaomi/mimo-v2-flash", false),
+        (&OPENROUTER, "deepseek/deepseek-chat-v3.1", false),
+        (&OPENROUTER, "z-ai/glm-4.5v", true),
+    ];
+    let mut wrong = Vec::new();
+    for (dialect, model, images) in cases {
+        let body = sent(&wire(dialect, model), history.clone()).to_string();
+        if body.contains("image_url") != images {
+            wrong.push(format!("{}/{model}", dialect.name));
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "image_url sent to text-only models, or withheld from vision models: {wrong:?}"
+    );
+}

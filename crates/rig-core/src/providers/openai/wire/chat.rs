@@ -866,26 +866,41 @@ const OPENAI_TEXT_ONLY: [&str; 10] = [
     unary::O3_MINI,
 ];
 
-/// Whether `model` reads user images on `dialect`, by the provider's
-/// documented model rules. A model the rules do not name reads them.
-/// DeepSeek's API takes text content only (it answers an image part with a
-/// 400) and Mira's gateway takes text; Groq reads images on its Llama 4
-/// models; Mistral's Codestral and Devstral are text models; OpenAI's are
-/// GPT-3.5 and [`OPENAI_TEXT_ONLY`] with their dated snapshots.
-fn reads_images(dialect: &super::Dialect, model: &str) -> bool {
-    match dialect.quirks.rewrite {
-        BodyRewrite::DeepSeek | BodyRewrite::Mira => false,
-        BodyRewrite::GroqCompoundTools => model.contains("llama-4"),
-        BodyRewrite::Mistral => !(model.starts_with("codestral") || model.starts_with("devstral")),
-        BodyRewrite::None if dialect.name == super::dialects::OPENAI.name => {
+/// Whether `model` reads user images from `vendor`, a dialect's name or the
+/// vendor an OpenRouter model id starts with, by the provider's documented
+/// model rules. A model the rules do not name reads them. DeepSeek's API
+/// takes text content only (it answers an image part with a 400) and
+/// Mira's gateway takes text; Groq reads images on its Llama 4 models;
+/// Mistral's Codestral and Devstral are text models; OpenAI's are GPT-3.5
+/// and [`OPENAI_TEXT_ONLY`] with their dated snapshots; Z.AI, Moonshot,
+/// MiniMax and MiMo apply the rules their Messages wires share.
+fn vendor_reads_images(vendor: &str, model: &str) -> bool {
+    use crate::providers::{minimax, moonshot, xiaomimimo, zai};
+    match vendor {
+        "deepseek" | "mira" => false,
+        "groq" => model.contains("llama-4"),
+        "mistral" | "mistralai" => {
+            !(model.starts_with("codestral") || model.starts_with("devstral"))
+        }
+        "openai" | "azure.openai" => {
             !(model.starts_with("gpt-3.5") || OPENAI_TEXT_ONLY.iter().any(|id| is_model(model, id)))
         }
-        BodyRewrite::None
-        | BodyRewrite::HuggingFaceRouter
-        | BodyRewrite::Perplexity
-        | BodyRewrite::LlamaCpp
-        | BodyRewrite::Moonshot
-        | BodyRewrite::OpenRouter => true,
+        "zai" | "z-ai" => zai::reads_images(model),
+        "moonshot" | "moonshotai" => moonshot::reads_images(model),
+        "minimax" => minimax::reads_images(model),
+        "xiaomimimo" | "xiaomi" => xiaomimimo::reads_images(model),
+        _ => true,
+    }
+}
+
+/// Whether `model` reads user images on `dialect`. OpenRouter names a
+/// model `vendor/model`, and the vendor's rule applies.
+fn reads_images(dialect: &super::Dialect, model: &str) -> bool {
+    match model.split_once('/') {
+        Some((vendor, model)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => {
+            vendor_reads_images(vendor, model)
+        }
+        _ => vendor_reads_images(dialect.name, model),
     }
 }
 

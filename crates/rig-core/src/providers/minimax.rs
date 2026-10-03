@@ -40,6 +40,13 @@ pub const MINIMAX_M2_1_HIGHSPEED: &str = "MiniMax-M2.1-highspeed";
 /// `MiniMax-M2`
 pub const MINIMAX_M2: &str = "MiniMax-M2";
 
+/// Whether MiniMax `model` reads images: M2 models are text only, and M3
+/// reads images. The name is matched in any case, as gateways lowercase it.
+/// Every wire MiniMax serves applies this rule.
+pub(crate) fn reads_images(model: &str) -> bool {
+    !model.to_ascii_lowercase().starts_with("minimax-m2")
+}
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::MINIMAX, "MiniMax");
 crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::MINIMAX,
