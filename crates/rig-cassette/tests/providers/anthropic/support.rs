@@ -77,6 +77,28 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// [`with_anthropic_cassette`], with `check` run on what the session
+/// recorded before the recording is written (`cassettes::finish_checked`).
+pub(super) async fn with_anthropic_checked_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+    check: impl FnOnce(&std::path::Path, &str),
+) where
+    F: FnOnce(AnthropicModels) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let spec = spec.into();
+    let (cassette, bound) = anthropic_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(AnthropicModels::new(
+        bound,
+        rig_test_support::cassettes::local_http(),
+    )))
+    .catch_unwind()
+    .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "anthropic", spec.scenario()).await;
+    crate::cassettes::finish_checked(cassette, "anthropic", spec.scenario(), result, check).await;
+}
+
 /// Long-run caching recordings
 /// (`crates/rig-cassette/fixtures/cassettes/anthropic/long_run_caching/`). The
 /// body gets the models and the session's clock, whose record-only pause

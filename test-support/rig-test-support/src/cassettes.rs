@@ -149,3 +149,35 @@ pub async fn checkpoint_attempt(cassette: &ProviderCassette, provider: &str, sce
         path.display()
     );
 }
+
+/// Finish `cassette` after a test body's `result`, checking what it recorded
+/// first. `check` reads the session's exchanges under the cassette root and
+/// for the scenario it is given: the recording so far, checkpointed under the attempt root, when
+/// recording, and the committed fixture on replay. A check that fails while
+/// recording leaves the committed fixture as it was and keeps the attempt
+/// aside, as a failing body does.
+pub async fn finish_checked(
+    cassette: ProviderCassette,
+    provider: &str,
+    scenario: &str,
+    result: Result<(), Box<dyn std::any::Any + Send + 'static>>,
+    check: impl FnOnce(&std::path::Path, &str),
+) {
+    let result = match result {
+        Ok(()) => {
+            let root = if CassetteMode::current() == CassetteMode::Record {
+                let root = attempt_root()
+                    .join("checked")
+                    .join(std::process::id().to_string());
+                let path = rig_cassette::http::cassette_path(&root, provider, scenario);
+                cassette.checkpoint_recording(&path).await;
+                root
+            } else {
+                cassette_root()
+            };
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check(&root, scenario)))
+        }
+        failed => failed,
+    };
+    cassette.finish_after_test(result).await;
+}

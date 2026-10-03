@@ -76,6 +76,22 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
         "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
     ),
     (
+        "anthropic/context_binding/between_tools_after_tool_change.yaml",
+        "the cell pins how a turn made under the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "anthropic/context_binding/changed_system_with_drop_block.yaml",
+        "the cell pins that thinking bound to the old system prompt replays after it changes; the changed system prompt is the behavior being recorded",
+    ),
+    (
+        "anthropic/context_binding/changed_system_without_drop_block.yaml",
+        "the cell pins that thinking bound to the old system prompt is refused without the binding; the changed system prompt is the behavior being recorded",
+    ),
+    (
+        "anthropic/context_binding/changed_tools_without_drop_block.yaml",
+        "the cell pins that thinking bound to the old tools is refused without the binding; the changed tool list is the behavior being recorded",
+    ),
+    (
         "anthropic/context_binding/changed_tools_with_drop_block.yaml",
         "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
     ),

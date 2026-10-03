@@ -3228,3 +3228,185 @@ fn thinking_without_a_binding_replays_another_contexts_turn_as_text() {
         "{value}"
     );
 }
+
+/// What Anthropic would reject in `body`: an empty message or blank text,
+/// a system message outside a slot (after a user turn, before an assistant
+/// turn or the end), and a call its next message does not answer first.
+fn messages_violations(body: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    let messages = body["messages"].as_array().cloned().unwrap_or_default();
+    for (i, m) in messages.iter().enumerate() {
+        let content = m["content"].as_array().cloned().unwrap_or_default();
+        if content.is_empty() {
+            out.push(format!("message {i} has empty content"));
+        }
+        for b in &content {
+            if b["type"] == "text" && b["text"].as_str().is_some_and(|t| t.trim().is_empty()) {
+                out.push(format!("message {i} has blank text"));
+            }
+        }
+        // A run of system messages shares one slot, which Anthropic takes.
+        if m["role"] == "system" {
+            let prev = messages[..i]
+                .iter()
+                .rev()
+                .find(|message| message["role"] != "system")
+                .map(|message| message["role"].clone());
+            let next = messages[i + 1..]
+                .iter()
+                .find(|message| message["role"] != "system")
+                .map(|message| message["role"].clone());
+            if prev != Some(json!("user")) || !(next.is_none() || next == Some(json!("assistant")))
+            {
+                out.push(format!("system at {i} between {prev:?} and {next:?}"));
+            }
+        }
+        if m["role"] == "assistant" {
+            let ids: Vec<String> = content
+                .iter()
+                .filter(|b| b["type"] == "tool_use")
+                .filter_map(|b| b["id"].as_str().map(str::to_owned))
+                .collect();
+            if ids.is_empty() {
+                continue;
+            }
+            let Some(next) = messages.get(i + 1) else {
+                out.push(format!("tool_use at {i} ends the request"));
+                continue;
+            };
+            let next_content = next["content"].as_array().cloned().unwrap_or_default();
+            let leading: Vec<String> = next_content
+                .iter()
+                .take_while(|b| b["type"] == "tool_result")
+                .filter_map(|b| b["tool_use_id"].as_str().map(str::to_owned))
+                .collect();
+            if next["role"] != "user" || ids.iter().any(|id| !leading.contains(id)) {
+                out.push(format!(
+                    "tool_use at {i} not answered first by next message"
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Histories `adapt` and the Messages encoder must shape into a request
+/// Anthropic takes, on a model that takes system messages in place and on
+/// one that folds them into the prompt (round-5 F3).
+#[test]
+fn adversarial_histories_encode_to_requests_anthropic_takes() {
+    use crate::message::{
+        AssistantMessage, CallId, Origin, StopReason, ToolCall, ToolFunction, ToolName,
+    };
+    let other = Some(Origin::new("openai.chat", "openai", "gpt-4.1"));
+    let asst = |content: Vec<AssistantContent>, stop: StopReason| {
+        Message::Assistant(AssistantMessage {
+            content,
+            origin: other.clone(),
+            stop: Some(stop),
+        })
+    };
+    let call = |id: &str| {
+        ToolCall::new(
+            CallId::from_wire(id),
+            ToolFunction::new(ToolName::new("lookup").expect("name"), json!({})),
+        )
+    };
+    let result = |id: &str| Message::User {
+        content: vec![UserContent::ToolResult(
+            call(id).result(vec![ToolResultContent::text("r")]),
+        )],
+    };
+    let text = |t: &str| AssistantContent::text(t);
+    let tc = |id: &str| AssistantContent::ToolCall(call(id));
+    let cases: Vec<(&str, Vec<Message>)> = vec![
+        (
+            "system between assistants",
+            vec![
+                Message::user("a"),
+                asst(vec![text("one")], StopReason::Stop),
+                Message::system("mid"),
+                asst(vec![text("two")], StopReason::Stop),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "system while a call waits, then text",
+            vec![
+                Message::user("a"),
+                asst(vec![tc("x")], StopReason::ToolUse),
+                Message::system("mid"),
+                Message::User {
+                    content: vec![
+                        UserContent::text("note"),
+                        UserContent::ToolResult(
+                            call("x").result(vec![ToolResultContent::text("r")]),
+                        ),
+                    ],
+                },
+                Message::user("q"),
+            ],
+        ),
+        (
+            "blank user after a call",
+            vec![
+                Message::user("a"),
+                asst(vec![tc("x")], StopReason::ToolUse),
+                Message::user("  "),
+                result("x"),
+            ],
+        ),
+        (
+            "two systems around a user",
+            vec![
+                Message::system("s0"),
+                Message::user("a"),
+                Message::system("s1"),
+                Message::user("b"),
+                Message::system("s2"),
+                asst(vec![text("ok")], StopReason::Stop),
+                Message::user("end"),
+            ],
+        ),
+        (
+            "system before results of an aborted turn",
+            vec![
+                Message::user("a"),
+                asst(vec![tc("x")], StopReason::Aborted("cut".into())),
+                Message::system("mid"),
+                result("x"),
+                Message::user("q"),
+            ],
+        ),
+    ];
+    let mut failures = Vec::new();
+    for model in [CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6] {
+        for (label, history) in &cases {
+            let mut request = CompletionRequest::from(history.clone()).max_tokens(64);
+            request.tools = vec![completion::ToolDefinition {
+                name: ToolName::new("lookup").expect("name"),
+                description: "d".into(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }];
+            let body = match request_body(Params {
+                model,
+                request,
+                prompt_caching: false,
+                automatic_caching: false,
+                automatic_caching_ttl: None,
+                static_prefix_cache_ttl: None,
+            }) {
+                Ok(body) => body,
+                Err(error) => {
+                    failures.push(format!("{model} {label}: {error}"));
+                    continue;
+                }
+            };
+            let v = messages_violations(&body);
+            if !v.is_empty() {
+                failures.push(format!("{model} {label}: {v:?}\n  {}", body["messages"]));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

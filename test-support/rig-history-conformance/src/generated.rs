@@ -534,6 +534,23 @@ pub(crate) fn alternation(body: &Value) -> Vec<String> {
 /// message-shaped wire needs: the adapter joins them. Gemini's `contents`
 /// are left out, since it splits a user turn's function responses from its
 /// text by design.
+/// What breaks a user-first rule in `body`: its first message after any
+/// system message is not a user message, in its `messages` or `contents`.
+pub(crate) fn first_is_user(body: &Value) -> Vec<String> {
+    let first = body
+        .get("messages")
+        .or_else(|| body.get("contents"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|message| message.get("role").and_then(Value::as_str))
+        .find(|role| *role != "system");
+    match first {
+        Some("user") | None => Vec::new(),
+        Some(role) => vec![format!("the first message is a `{role}` message")],
+    }
+}
+
 pub(crate) fn adjacent_users(body: &Value) -> Vec<String> {
     let messages = body
         .get("messages")

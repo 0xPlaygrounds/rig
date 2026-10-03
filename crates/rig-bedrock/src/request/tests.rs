@@ -647,3 +647,206 @@ fn a_hosted_use_replays_only_with_its_result() {
         );
     }
 }
+
+/// What Converse would reject in `body`: a first message that is not a
+/// user's, an empty message or blank text, two messages of one role in a
+/// row, a call its next message does not answer, and tool blocks with no
+/// `toolConfig`.
+fn converse_violations(body: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    let messages = body["messages"].as_array().cloned().unwrap_or_default();
+    if messages.first().map(|m| m["role"].clone()) != Some(json!("user")) {
+        out.push("first message is not user".into());
+    }
+    let mut uses_any = false;
+    for (i, m) in messages.iter().enumerate() {
+        let content = m["content"].as_array().cloned().unwrap_or_default();
+        if content.is_empty() {
+            out.push(format!("message {i} has empty content"));
+        }
+        for b in &content {
+            if let Some(t) = b.get("text").and_then(Value::as_str)
+                && t.trim().is_empty()
+            {
+                out.push(format!("message {i} has blank text"));
+            }
+            if b.get("toolUse").is_some() || b.get("toolResult").is_some() {
+                uses_any = true;
+            }
+        }
+        if i > 0 && messages[i - 1]["role"] == m["role"] {
+            out.push(format!(
+                "messages {} and {i} share role {}",
+                i - 1,
+                m["role"]
+            ));
+        }
+        // every toolUse is answered in the next user message
+        let used: Vec<String> = content
+            .iter()
+            .filter_map(|b| {
+                b.pointer("/toolUse/toolUseId")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+            .filter(|_| m["role"] == "assistant")
+            .collect();
+        let next = messages
+            .get(i + 1)
+            .map(|n| n["content"].to_string())
+            .unwrap_or_default();
+        for id in used {
+            if !next.contains(&format!("\"toolUseId\":\"{id}\"")) {
+                out.push(format!("toolUse {id} at {i} unanswered"));
+            }
+        }
+    }
+    if uses_any && body.get("toolConfig").is_none() {
+        out.push("toolUse/toolResult without toolConfig".into());
+    }
+    out
+}
+
+/// Histories `adapt` must shape into a request Converse takes, with and
+/// without declared tools: leading orphan results (round-5 F1), blank user
+/// text (F8), an emptied turn holding only redacted reasoning (F7), and
+/// system messages in awkward places.
+#[test]
+fn adversarial_histories_encode_to_requests_converse_takes() {
+    let other = Some(Origin::new("openai.chat", "openai", "gpt-4.1"));
+    let asst = |content: Vec<AssistantContent>, stop: StopReason| {
+        Message::Assistant(AssistantMessage {
+            content,
+            origin: other.clone(),
+            stop: Some(stop),
+        })
+    };
+    let result = |id: &str| Message::User {
+        content: vec![UserContent::ToolResult(
+            call(id, "lookup", json!({})).result(vec![ToolResultContent::text("r")]),
+        )],
+    };
+    let text = |t: &str| AssistantContent::text(t);
+    let tc = |id: &str| AssistantContent::ToolCall(call(id, "lookup", json!({})));
+    let cases: Vec<(&str, Vec<Message>)> = vec![
+        (
+            "orphan result first",
+            vec![
+                result("gone"),
+                asst(vec![text("hello")], StopReason::Stop),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "system then orphan result first",
+            vec![
+                Message::system("sys"),
+                result("gone"),
+                asst(vec![text("hello")], StopReason::Stop),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "results of an aborted turn first",
+            vec![
+                Message::user("a"),
+                asst(vec![tc("x")], StopReason::Aborted("cut".into())),
+                result("x"),
+                asst(vec![text("hello")], StopReason::Stop),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "system between assistants",
+            vec![
+                Message::user("a"),
+                asst(vec![text("one")], StopReason::Stop),
+                Message::system("mid"),
+                asst(vec![text("two")], StopReason::Stop),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "orphan between assistants",
+            vec![
+                Message::user("a"),
+                asst(vec![text("one")], StopReason::Stop),
+                result("gone"),
+                asst(vec![text("two")], StopReason::Stop),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "system while a call waits",
+            vec![
+                Message::user("a"),
+                asst(vec![tc("x")], StopReason::ToolUse),
+                Message::system("mid"),
+                result("x"),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "blank user between",
+            vec![
+                Message::user("a"),
+                asst(vec![text("one")], StopReason::Stop),
+                Message::user("   "),
+                asst(vec![text("two")], StopReason::Stop),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "only an emptied turn",
+            vec![
+                Message::user("a"),
+                asst(
+                    vec![AssistantContent::Reasoning(rig_core::message::Reasoning {
+                        text: String::new(),
+                        redacted: true,
+                        native: None,
+                    })],
+                    StopReason::Stop,
+                ),
+                Message::user("q"),
+            ],
+        ),
+        (
+            "leading assistant then system",
+            vec![
+                asst(vec![text("hello")], StopReason::Stop),
+                Message::system("later"),
+                Message::user("q"),
+            ],
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (label, history) in cases {
+        for tools in [true, false] {
+            let mut request = CompletionRequest::new("next");
+            if tools {
+                request.tools = vec![tool("lookup")];
+            }
+            request.chat_history = history.clone();
+            let request = match Completion::prepare(request, &Converse::new(CLAUDE).describe()) {
+                Ok(request) => request,
+                Err(error) => {
+                    failures.push(format!("{label} tools={tools}: prepare failed: {error}"));
+                    continue;
+                }
+            };
+            let body = Converse::new(CLAUDE)
+                .encode(request, Mode::Unary)
+                .expect("encodes")
+                .body;
+            let v = converse_violations(&body);
+            if !v.is_empty() {
+                failures.push(format!(
+                    "{label} tools={tools}: {v:?}\n  {}",
+                    body["messages"]
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

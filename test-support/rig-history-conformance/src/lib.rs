@@ -2094,8 +2094,9 @@ pub fn h16_call_identity<F: HistoryFixture>(fixture: &F) {
 
 /// H17. Generated histories: every one encodes, every call in the body has
 /// exactly one result after it and no result lacks a call, a stored turn
-/// replays the same items after a store rewrites it, and roles alternate on
-/// a wire that requires it. The seed is fixed; `RIG_HISTORY_CASES` raises
+/// replays the same items after a store rewrites it, roles alternate on a
+/// wire that requires it, and a wire that requires a leading user message
+/// gets one. The seed is fixed; `RIG_HISTORY_CASES` raises
 /// the case count (256 by default).
 pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
     let cases: u64 = std::env::var("RIG_HISTORY_CASES")
@@ -2106,12 +2107,22 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
         .into_iter()
         .filter_map(|shape| turn_of(fixture, shape, Mode::Unary))
         .collect();
+    // The wire's own rule: a wire that requires a leading user message
+    // gets one whatever the generated history.
+    let starts_with_user = fixture
+        .wire(fixture.model())
+        .describe()
+        .replay
+        .is_some_and(|target| target.starts_with_user());
     let problems = |history: &[Message], mode: Mode, tools: generated::Tools| -> Vec<String> {
         let body = match sent_as(fixture, fixture.model(), history.to_vec(), mode, tools) {
             Ok(body) => body,
             Err(error) => return vec![format!("it does not encode: {error}")],
         };
         let mut problems = generated::pairing(&body);
+        if starts_with_user {
+            problems.extend(generated::first_is_user(&body));
+        }
         if fixture.strict_roles() {
             problems.extend(generated::alternation(&body));
         } else if !fixture.combines_same_role() {

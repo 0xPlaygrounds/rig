@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use rig_test_support::cassette_models::OpenAiModels;
 
-use super::super::support::with_openrouter_cassette;
+use super::super::support::with_openrouter_checked_cassette;
 
 const MODEL: &str = "anthropic/claude-opus-5.5";
 
@@ -83,13 +83,20 @@ async fn two_turns(client: OpenAiModels, route: &'static str) {
     assert!(!second.choice.is_empty(), "the second turn answers");
 }
 
-/// The recorded pair: the tools change, the signed reasoning goes back
-/// verbatim, and OpenRouter accepts it.
-fn assert_recorded(scenario: &str) {
-    let bodies: Vec<Value> = crate::cassettes::recorded_interaction_bodies("openrouter", scenario)
-        .into_iter()
-        .map(|(request, _)| serde_json::from_str(&request).expect("a JSON request body"))
-        .collect();
+/// The recorded pair: the tools change, the first reply's signed reasoning
+/// goes back exactly as received, both replies are served by `served`, the
+/// pinned route, and OpenRouter accepts the second.
+fn assert_recorded(root: &std::path::Path, scenario: &str, served: &str) {
+    let bodies: Vec<Value> =
+        rig_cassette::http::recorded_interaction_bodies(root, "openrouter", scenario)
+            .into_iter()
+            .map(|(request, _)| serde_json::from_str(&request).expect("a JSON request body"))
+            .collect();
+    let replies: Vec<(u16, Value)> =
+        rig_cassette::http::recorded_statuses_and_bodies(root, "openrouter", scenario)
+            .into_iter()
+            .map(|(status, body)| (status, serde_json::from_str(&body).unwrap_or(Value::Null)))
+            .collect();
     assert_eq!(bodies.len(), 2, "{scenario}: two turns are recorded");
     let names = |body: &Value| -> Vec<String> {
         body["tools"]
@@ -110,46 +117,54 @@ fn assert_recorded(scenario: &str) {
         .flatten()
         .find(|message| message["role"] == "assistant")
         .expect("the replayed assistant turn");
-    let signed = assistant["reasoning_details"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|detail| {
-            detail["signature"]
-                .as_str()
-                .is_some_and(|sig| !sig.is_empty())
-        });
+    let first = &replies[0].1["choices"][0]["message"]["reasoning_details"];
     assert!(
-        signed,
-        "{scenario}: the signed reasoning goes back verbatim: {assistant}"
+        first
+            .as_array()
+            .is_some_and(|details| details.iter().any(|detail| detail["signature"]
+                .as_str()
+                .is_some_and(|sig| !sig.is_empty()))),
+        "{scenario}: the first reply's reasoning is signed: {first}"
     );
-    let statuses = crate::cassettes::recorded_statuses_and_bodies("openrouter", scenario);
-    assert_eq!(statuses[1].0, 200, "{scenario}: OpenRouter accepts it");
+    assert_eq!(
+        &assistant["reasoning_details"], first,
+        "{scenario}: the signed reasoning goes back exactly as received"
+    );
+    for (status, reply) in &replies {
+        assert_eq!(*status, 200, "{scenario}: OpenRouter accepts every turn");
+        assert_eq!(
+            reply["provider"], served,
+            "{scenario}: the pinned route serves it"
+        );
+    }
 }
 
 #[tokio::test]
 async fn anthropic() {
-    with_openrouter_cassette("context_binding/anthropic", |client| {
-        two_turns(client, "anthropic")
-    })
+    with_openrouter_checked_cassette(
+        "context_binding/anthropic",
+        |client| two_turns(client, "anthropic"),
+        |root, scenario| assert_recorded(root, scenario, "Anthropic"),
+    )
     .await;
-    assert_recorded("context_binding/anthropic");
 }
 
 #[tokio::test]
 async fn amazon_bedrock() {
-    with_openrouter_cassette("context_binding/amazon_bedrock", |client| {
-        two_turns(client, "amazon-bedrock")
-    })
+    with_openrouter_checked_cassette(
+        "context_binding/amazon_bedrock",
+        |client| two_turns(client, "amazon-bedrock"),
+        |root, scenario| assert_recorded(root, scenario, "Amazon Bedrock"),
+    )
     .await;
-    assert_recorded("context_binding/amazon_bedrock");
 }
 
 #[tokio::test]
 async fn google_vertex() {
-    with_openrouter_cassette("context_binding/google_vertex", |client| {
-        two_turns(client, "google-vertex")
-    })
+    with_openrouter_checked_cassette(
+        "context_binding/google_vertex",
+        |client| two_turns(client, "google-vertex"),
+        |root, scenario| assert_recorded(root, scenario, "Google"),
+    )
     .await;
-    assert_recorded("context_binding/google_vertex");
 }

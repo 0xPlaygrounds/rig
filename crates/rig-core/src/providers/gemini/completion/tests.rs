@@ -1989,3 +1989,33 @@ fn a_tool_schema_goes_as_parameters_json_schema_unchanged() {
         json!({"name": "weather", "description": "the weather"})
     );
 }
+
+/// Gemini takes system text only in `systemInstruction` (round-5 F4):
+/// `adapt` folds a later system message into the leading one, as pi does,
+/// so the user turns it separated become one content.
+#[test]
+fn a_later_system_message_folds_into_the_instruction() {
+    let history = vec![
+        Message::system("s0"),
+        Message::user("a"),
+        Message::Assistant(crate::message::AssistantMessage::new(vec![
+            crate::message::AssistantContent::text("ok"),
+        ])),
+        Message::user("b"),
+        Message::system("later"),
+        Message::user("c"),
+    ];
+    let body = prepared_body("gemini-2.5-flash", CompletionRequest::from(history));
+    let roles: Vec<&str> = body["contents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|content| content["role"].as_str())
+        .collect();
+    assert_eq!(roles, ["user", "model", "user"], "{}", body["contents"]);
+    let instruction = body["systemInstruction"].to_string();
+    assert!(
+        instruction.contains("s0") && instruction.contains("later"),
+        "{instruction}"
+    );
+}

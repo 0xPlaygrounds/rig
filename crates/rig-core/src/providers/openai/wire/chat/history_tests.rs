@@ -1316,3 +1316,58 @@ fn a_turn_with_nothing_chat_can_send_leaves_no_adjacent_users() {
     );
     assert_eq!(roles(&body), ["user", "assistant", "user"], "{body}");
 }
+
+/// Perplexity, which declares no tools, gets what `adapt` makes of awkward
+/// histories: a result no call asked for is dropped, as it is when tools are
+/// declared (round-5 F11), blank user text goes (F8), and two assistant
+/// turns stay two, with no text glued together (F5).
+#[test]
+fn perplexity_gets_orphans_dropped_blanks_gone_and_turns_apart() {
+    let other = Some(Origin::new(
+        "anthropic.messages",
+        "anthropic",
+        "claude-opus-5-5",
+    ));
+    let assistant = |text: &str| {
+        Message::Assistant(AssistantMessage {
+            content: vec![AssistantContent::text(text)],
+            origin: other.clone(),
+            stop: Some(StopReason::Stop),
+        })
+    };
+    let orphan = Message::User {
+        content: vec![UserContent::ToolResult(
+            ToolCall::new(
+                CallId::from_wire("gone"),
+                ToolFunction::new(name("lookup"), json!({})),
+            )
+            .result(vec![ToolResultContent::text("r")]),
+        )],
+    };
+    let wire = wire(&PERPLEXITY, "sonar");
+    let body = sent(
+        &wire,
+        vec![
+            orphan.clone(),
+            Message::user("a"),
+            assistant("First sentence."),
+            orphan,
+            Message::user("   "),
+            assistant("Second sentence."),
+            Message::user("q"),
+        ],
+    );
+    let text = body["messages"].to_string();
+    assert!(
+        !text.contains("[tool lookup"),
+        "the orphan result is dropped: {text}"
+    );
+    assert!(
+        !text.contains("First sentence.Second"),
+        "the turns stay apart: {text}"
+    );
+    for message in body["messages"].as_array().into_iter().flatten() {
+        let content = message["content"].as_str().unwrap_or("x");
+        assert!(!content.trim().is_empty(), "no blank message: {text}");
+    }
+}

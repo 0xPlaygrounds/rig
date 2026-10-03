@@ -291,3 +291,40 @@ fn an_unanswered_turn_fails_its_run_only_when_cut_or_failed() {
         None
     );
 }
+
+/// One answer rule (round-5 F2): whitespace text is no answer, so a turn the
+/// budget cut with only whitespace beside its reasoning fails its run, and
+/// the empty-turn rule agrees with it.
+#[test]
+fn a_whitespace_answer_is_no_answer() {
+    use super::{AssistantContent, StopReason, turn_delivered_no_answer, unanswered_failure};
+    use crate::completion::FinishReason;
+    let cut = vec![
+        AssistantContent::reasoning("thinking").with_native(serde_json::json!({"signature": "s"})),
+        AssistantContent::text("\n\n"),
+    ];
+    assert!(cut[1].is_blank());
+    assert!(
+        unanswered_failure(&cut, Some(&StopReason::Length), Some(&FinishReason::Length)).is_some(),
+        "a turn cut by the budget with only whitespace text fails"
+    );
+    let whitespace = vec![AssistantContent::text("  ")];
+    assert!(turn_delivered_no_answer(&whitespace));
+    assert!(crate::transcript::is_empty_assistant_turn(&whitespace));
+}
+
+/// Redacted reasoning without a current provider item has nothing to send
+/// (round-5 F7); with one, it replays.
+#[test]
+fn redacted_reasoning_without_its_item_is_blank() {
+    use super::{AssistantContent, Reasoning};
+    let redacted = AssistantContent::Reasoning(Reasoning {
+        text: "kept".to_owned(),
+        redacted: true,
+        native: None,
+    });
+    assert!(redacted.is_blank());
+    let with_item =
+        redacted.with_native(serde_json::json!({"type": "redacted_thinking", "data": "x"}));
+    assert!(!with_item.is_blank());
+}

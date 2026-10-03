@@ -822,3 +822,25 @@ fn a_signature_only_part_replays_its_signature() {
         "{body}"
     );
 }
+
+/// A user part's own `mediaResolution` has no field in the gRPC `Part`
+/// (Google's `google/ai/generativelanguage/v1beta/content.proto` and the
+/// vendored `proto/gemini.proto` declare none; v1alpha neither), so the wire
+/// refuses it loudly rather than dropping it. The REST API honours one
+/// (`gemini/media_resolution/per_part_low`); Rig sends none on any wire.
+#[test]
+fn a_part_with_its_own_media_resolution_is_refused() {
+    let content = serde_json::json!({
+        "role": "user",
+        "parts": [{
+            "inlineData": {"mimeType": "image/png", "data": "iVBORw0KGgo="},
+            "mediaResolution": {"level": "MEDIA_RESOLUTION_LOW"}
+        }]
+    });
+    let error = crate::rest::from_rest::<proto::Content>(content)
+        .expect_err("a part's mediaResolution is not a gRPC field");
+    assert!(
+        error.to_string().contains("mediaResolution"),
+        "the refusal names the field: {error}"
+    );
+}

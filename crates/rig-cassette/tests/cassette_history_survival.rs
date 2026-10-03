@@ -50,6 +50,11 @@ use rig_test_support::history_survival::{
 /// as stale so exemptions cannot outlive the behavior they excuse.
 const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
     (
+        "anthropic/context_binding/between_tools_after_tool_change.yaml",
+        "signature",
+        "under `between_tools`, which takes no thinking binding, Rig replays the turn made under other tools as another model's (its signed thinking as text), which this cell pins live",
+    ),
+    (
         "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
         "tool_call_id",
         "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
@@ -216,6 +221,10 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
 /// other than as recorded. `(cassette path suffix, reason)`, reported as
 /// stale once it stops matching a real difference.
 const VERBATIM_EXEMPT: &[(&str, &str)] = &[
+    (
+        "anthropic/context_binding/between_tools_after_tool_change.yaml",
+        "under `between_tools`, which takes no thinking binding, Rig replays the turn made under other tools as another model's (its signed thinking as text), which this cell pins live",
+    ),
     (
         "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
         "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",

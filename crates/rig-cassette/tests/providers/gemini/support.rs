@@ -416,6 +416,28 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// [`with_gemini_cassette`], with `check` run on what the session
+/// recorded before the recording is written (`cassettes::finish_checked`).
+pub(super) async fn with_gemini_checked_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+    check: impl FnOnce(&std::path::Path, &str),
+) where
+    F: FnOnce(GeminiModels) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let spec = spec.into();
+    let (cassette, bound) = gemini_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(GeminiModels::new(
+        bound,
+        rig_test_support::cassettes::local_http(),
+    )))
+    .catch_unwind()
+    .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "gemini", spec.scenario()).await;
+    crate::cassettes::finish_checked(cassette, "gemini", spec.scenario(), result, check).await;
+}
+
 /// Per-bug wrapper for the model-turn termination-metadata matrix
 /// (`crates/rig-cassette/fixtures/cassettes/gemini/turn_termination_matrix/`), rig#2184.
 pub(super) async fn with_gemini_turn_metadata_cassette<F, Fut>(

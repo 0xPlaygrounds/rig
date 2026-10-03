@@ -2,10 +2,12 @@
 //!
 //! | # | Cell | Fact |
 //! |---|------|------|
-//! | 1 | `media_resolution/per_part_low` | The Developer API honours a part's own `mediaResolution`: the same image costs fewer image tokens at `MEDIA_RESOLUTION_LOW` than at the default. Google's gRPC protos publish no such `Part` field, which is why the gRPC wire refuses it. |
-//! | 2 | `stream_function_call_arguments/developer_api` | With `streamFunctionCallArguments`, the Developer API still streams each call's arguments whole, never as `partialArgs`, so Rig's decoder needs no partial-argument assembly. |
+//! | 1 | `media_resolution/per_part_low` | The Developer API honours a part's own `mediaResolution`: the same image costs fewer image tokens at `MEDIA_RESOLUTION_LOW` than at the default. Rig sends no per-part setting on any wire; the vendored gRPC `Part` has no field for one. |
+//! | 2 | `stream_function_call_arguments/developer_api` | A request that sets `streamFunctionCallArguments` still gets each call's arguments whole from the Developer API, never as `partialArgs`. Vertex AI documents `partialArgs` for the flag; Rig's Vertex wire is unary, and the Vertex streaming form is not verified here. |
 //!
-//! Cell 1 sends raw requests: Rig's images carry no per-part settings.
+//! Cell 1 sends raw requests, through the session's client: Rig's images
+//! carry no per-part settings. Every check of cell 2 runs on the recorded
+//! exchanges before a recording is written.
 
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, ToolDefinition};
@@ -13,7 +15,7 @@ use rig::message::{AssistantContent, ToolName};
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 use serde_json::{Value, json};
 
-use super::super::support::with_gemini_cassette;
+use super::super::support::{with_gemini_cassette, with_gemini_checked_cassette};
 
 /// A one-pixel PNG.
 const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
@@ -32,10 +34,8 @@ fn image_tokens(reply: &Value) -> u64 {
 #[tokio::test]
 async fn per_part_media_resolution() {
     with_gemini_cassette("media_resolution/per_part_low", |models| async move {
-        let http = reqwest::Client::builder()
-            .no_proxy()
-            .build()
-            .expect("an HTTP client");
+        let client = rig_test_support::cassettes::local_reqwest();
+        let http = client.inner().expect("the session's reqwest client");
         let url = format!(
             "{}/v1beta/models/{GEMINI_3_FLASH_PREVIEW}:generateContent?key={}",
             models.config.base_url.trim_end_matches('/'),
@@ -72,7 +72,7 @@ async fn per_part_media_resolution() {
 
 #[tokio::test]
 async fn stream_function_call_arguments() {
-    with_gemini_cassette(
+    with_gemini_checked_cassette(
         "stream_function_call_arguments/developer_api",
         |models| async move {
             let request = CompletionRequest::new(
@@ -115,20 +115,24 @@ async fn stream_function_call_arguments() {
                 "the call's arguments arrive whole: {q}"
             );
         },
+        |root, scenario| {
+            let request = rig_cassette::http::recorded_json_request(root, "gemini", scenario);
+            assert_eq!(
+                request["toolConfig"]["functionCallingConfig"]["streamFunctionCallArguments"],
+                true,
+                "the recorded request asks for streamed arguments: {request}"
+            );
+            let frames = rig_cassette::http::recorded_sse_json_frames(root, "gemini", scenario);
+            let text = serde_json::to_string(&frames).expect("frames serialize");
+            assert!(
+                !text.contains("partialArgs") && !text.contains("willContinue"),
+                "the Developer API sends no partial arguments"
+            );
+            assert!(
+                text.contains("functionCall"),
+                "the recorded stream carries the call"
+            );
+        },
     )
     .await;
-
-    let frames = crate::cassettes::recorded_sse_json_frames(
-        "gemini",
-        "stream_function_call_arguments/developer_api",
-    );
-    let text = serde_json::to_string(&frames).expect("frames serialize");
-    assert!(
-        !text.contains("partialArgs") && !text.contains("willContinue"),
-        "the Developer API sends no partial arguments"
-    );
-    assert!(
-        text.contains("functionCall"),
-        "the recorded stream carries the call"
-    );
 }
