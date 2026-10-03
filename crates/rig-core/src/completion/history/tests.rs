@@ -1299,3 +1299,60 @@ fn a_blank_leading_system_message_leaves_the_context_unchanged() {
         context_of(&request(vec![Message::system(" "), Message::user("q")]))
     );
 }
+
+#[derive(Debug)]
+struct LeadingSystemOnly;
+
+impl ReplayTarget for LeadingSystemOnly {
+    fn api(&self) -> Api {
+        TARGET.api()
+    }
+
+    fn provider(&self) -> &str {
+        TARGET.provider()
+    }
+
+    fn model(&self) -> &str {
+        TARGET.model()
+    }
+
+    fn accepts(&self, model: &str) -> Accepts {
+        TARGET.accepts(model)
+    }
+
+    fn mid_conversation_system(&self, _model: &str) -> bool {
+        false
+    }
+}
+
+#[test]
+fn a_model_without_mid_conversation_system_gets_one_leading_system_message() {
+    let history = vec![
+        Message::system("be brief"),
+        Message::user("q"),
+        turn(Some(same()), vec![call("c1")]),
+        Message::system("steer"),
+        Message::User {
+            content: vec![result("c1", "done"), UserContent::text("next")],
+        },
+    ];
+    let adapted = adapt(&history, &LeadingSystemOnly);
+    assert_eq!(adapted[0], Message::system("be brief\n\nsteer"));
+    assert_eq!(
+        adapted[1..],
+        [
+            Message::user("q"),
+            turn(Some(same()), vec![call("c1")]),
+            Message::User {
+                content: vec![result("c1", "done"), UserContent::text("next")],
+            },
+        ]
+    );
+    assert!(
+        adapt(&history, &TARGET)
+            .iter()
+            .filter(|message| matches!(message, Message::System { .. }))
+            .count()
+            == 2
+    );
+}

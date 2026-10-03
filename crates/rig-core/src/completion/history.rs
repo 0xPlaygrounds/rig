@@ -237,6 +237,14 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     fn starts_with_user(&self) -> bool {
         false
     }
+
+    /// Whether `model` reads system messages after the first user or
+    /// assistant message. When it does not, [`adapt`] folds every system
+    /// message into one leading message, as pi does.
+    fn mid_conversation_system(&self, model: &str) -> bool {
+        let _ = model;
+        true
+    }
 }
 
 /// Which side of a hosted-tool pair an opaque item is.
@@ -478,7 +486,33 @@ pub(crate) fn adapt_for(
             }
         }
     }
-    merge_users(answer_calls(shaped, stored))
+    let shaped = merge_users(answer_calls(shaped, stored));
+    if target.mid_conversation_system(model) {
+        shaped
+    } else {
+        leading_system(shaped)
+    }
+}
+
+/// `history` with its system messages joined into one leading message.
+fn leading_system(history: Vec<Message>) -> Vec<Message> {
+    let (system, rest): (Vec<Message>, Vec<Message>) = history
+        .into_iter()
+        .partition(|message| matches!(message, Message::System { .. }));
+    let prompt: Vec<String> = system
+        .into_iter()
+        .filter_map(|message| match message {
+            Message::System { content } => Some(content),
+            Message::User { .. } | Message::Assistant(_) => None,
+        })
+        .collect();
+    let mut history = Vec::with_capacity(rest.len() + 1);
+    if !prompt.is_empty() {
+        history.push(Message::system(prompt.join("\n\n")));
+    }
+    // Moving a system message out may leave two user messages adjacent.
+    history.extend(merge_users(rest));
+    history
 }
 
 /// Call ids as the target sends them. Every provider id in the adapted
