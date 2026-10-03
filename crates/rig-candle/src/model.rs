@@ -341,6 +341,11 @@ impl rig_core::wire::Wire for Generation {
 }
 
 impl rig_core::completion::ReplayTarget for Generation {
+    // A local runtime has no finish vocabulary: its decoder states a stop.
+    fn states_finish_reason(&self) -> bool {
+        false
+    }
+
     fn api(&self) -> rig_core::message::Api {
         rig_core::message::Api::from_static("candle.generate")
     }

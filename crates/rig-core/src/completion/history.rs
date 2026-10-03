@@ -192,6 +192,13 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         None
     }
 
+    /// Whether every reply on this wire states why it stopped. A reply that
+    /// then names no reason failed (pi's `supportsFinishReason`); a wire
+    /// with no finish vocabulary, such as a local runtime, says `false`.
+    fn states_finish_reason(&self) -> bool {
+        true
+    }
+
     /// Whether `model` binds its provider items to the request's tools and
     /// system prompt, so a turn made under another context replays as if
     /// from another model.

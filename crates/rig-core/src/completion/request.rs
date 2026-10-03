@@ -346,10 +346,22 @@ impl CompletionResponse {
 
     /// The turn this response began, holding `content`, for a runtime that
     /// cut the reply short and answers its calls itself (an agent rolling a
-    /// turn back over an invalid call). It keeps the origin, and the provider
-    /// items of the blocks in `content`, which only closed blocks hold; it
-    /// stops to call tools, since the runtime answers them.
+    /// turn back over an invalid call). It keeps the origin, and stops to
+    /// call tools, since the runtime answers them. A block keeps its provider
+    /// item only when this response holds the same block with it: the fold
+    /// already dropped the items of blocks from the first unfinished one on,
+    /// which may need a partner that never arrived.
     pub fn continued(&self, content: Vec<AssistantContent>) -> AssistantMessage {
+        let content = content
+            .into_iter()
+            .map(|block| {
+                if self.choice.contains(&block) {
+                    block
+                } else {
+                    crate::operation::completion::canonical(block)
+                }
+            })
+            .collect();
         AssistantMessage {
             content,
             origin: Some(self.origin.clone()),

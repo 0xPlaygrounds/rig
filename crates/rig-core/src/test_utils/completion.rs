@@ -313,6 +313,11 @@ impl crate::completion::ReplayTarget for MockScript {
         MOCK_API
     }
 
+    // Scripts state a finish reason only when a test is about one.
+    fn states_finish_reason(&self) -> bool {
+        false
+    }
+
     fn provider(&self) -> &str {
         &self.name
     }

@@ -335,3 +335,100 @@ fn a_call_closed_without_a_name_is_dropped() {
     });
     assert!(response(decoded).choice.is_empty());
 }
+
+/// One reply written by `write` on a wire fold, which states finish reasons
+/// and whose call items hold their id at `slot`, then ended with `finish`.
+fn write_on_wire(
+    slot: Option<&'static str>,
+    finish: Finish,
+    write: impl for<'id> FnOnce(&mut Out<'id, Completion>) -> Result<(), ProviderError>,
+) -> Decoded<Completion> {
+    let turn = Turn {
+        wire: true,
+        call_id_slot: slot,
+        ..Turn::relayed("test")
+    };
+    decode_with(turn, "test", |reply| {
+        let mut out = reply.out();
+        write(&mut out)?;
+        let _ = out.end(finish);
+        Ok(())
+    })
+}
+
+fn stop(reason: crate::completion::FinishReason) -> Finish {
+    Finish {
+        reason: Some(reason),
+        ..Finish::default()
+    }
+}
+
+#[test]
+fn a_wire_reply_that_names_no_finish_reason_failed() {
+    let decoded = write_on_wire(None, Finish::default(), |out| {
+        out.whole(0, Block::Text, json!({"type": "text"}), "hi")
+    });
+    assert!(response(decoded).stop().is_failure());
+}
+
+#[test]
+fn a_call_left_open_at_a_clean_end_fails_the_turn_but_not_at_the_token_limit() {
+    use crate::completion::FinishReason;
+    let open_call = |out: &mut Out<'_, Completion>| {
+        out.open(
+            0,
+            Block::Call {
+                id: CallId::from_wire("call_1"),
+                name: name("lookup"),
+            },
+            Value::Null,
+        )?;
+        out.push(0, r#"{"q": "ri"#)
+    };
+    let stopped = response(write_on_wire(None, stop(FinishReason::Stop), open_call));
+    assert!(stopped.stop().is_failure(), "{:?}", stopped.stop());
+    let cut = response(write_on_wire(None, stop(FinishReason::Length), open_call));
+    assert!(!cut.stop().is_failure(), "{:?}", cut.stop());
+}
+
+#[test]
+fn blocks_from_the_first_unfinished_item_on_replay_canonically() {
+    use crate::completion::FinishReason;
+    let decoded = write_on_wire(None, stop(FinishReason::Length), |out| {
+        out.whole(0, Block::Reasoning { redacted: false }, json!({"sig": "a"}), "plan")?;
+        out.open(1, Block::Reasoning { redacted: false }, json!({"sig": "b"}))?;
+        out.push(1, "more")?;
+        out.whole(2, Block::Text, json!({"id": "msg_1"}), "answer")
+    });
+    let choice = response(decoded).choice;
+    let natives: Vec<bool> = choice
+        .iter()
+        .map(|block| block.native_item().is_some())
+        .collect();
+    assert_eq!(natives, [true, false, false], "{choice:?}");
+}
+
+#[test]
+fn a_call_sent_without_an_id_keeps_its_item_only_where_the_item_has_an_id_slot() {
+    use crate::completion::FinishReason;
+    let idless = |out: &mut Out<'_, Completion>| {
+        out.fragment(
+            0,
+            CallFragment {
+                id: None,
+                name: Some("lookup"),
+                arguments: Some("{}"),
+            },
+        )?;
+        out.edit(0, |item| *item = json!({"functionCall": {"name": "lookup"}}))?;
+        out.finish(0)
+    };
+    let slotted = response(write_on_wire(
+        Some("/functionCall/id"),
+        stop(FinishReason::ToolCalls),
+        idless,
+    ));
+    assert!(slotted.choice[0].native_item().is_some());
+    let unslotted = response(write_on_wire(None, stop(FinishReason::ToolCalls), idless));
+    assert!(unslotted.choice[0].native_item().is_none());
+}

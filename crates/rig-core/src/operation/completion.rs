@@ -71,6 +71,11 @@ impl Operation for Completion {
         );
         Turn {
             span,
+            wire: call
+                .wire
+                .replay
+                .is_some_and(|target| target.states_finish_reason()),
+            call_id_slot: call.wire.replay.and_then(|target| target.call_id_slot()),
             ..Turn::new(Origin::new(api, call.wire.name, model))
         }
     }
@@ -182,6 +187,19 @@ pub struct Turn {
     open: BTreeMap<usize, Draft>,
     next_part: u32,
     call_ids: HashSet<CallId>,
+    /// Whether the reply's end must name a finish reason: a wire's fold
+    /// whose target states one (a relayed or written reply states its own).
+    wire: bool,
+    /// Where the wire's call items hold their id ([`ReplayTarget::call_id_slot`]).
+    ///
+    /// [`ReplayTarget::call_id_slot`]: crate::completion::ReplayTarget::call_id_slot
+    call_id_slot: Option<&'static str>,
+    /// The first position whose item closed without the provider stating it
+    /// complete. An item there may be the partner a later one needs, so
+    /// blocks from it on replay from their canonical fields.
+    first_incomplete: Option<usize>,
+    /// Whether a call was still open when the provider ended the reply.
+    unfinished_call: bool,
     /// The index of the block a boundary-less wire is streaming.
     run: Option<usize>,
     next_auto: usize,
@@ -334,6 +352,10 @@ impl Turn {
             open: BTreeMap::new(),
             next_part: 0,
             call_ids: HashSet::new(),
+            wire: false,
+            call_id_slot: None,
+            first_incomplete: None,
+            unfinished_call: false,
             run: None,
             next_auto: AUTO_INDEX,
             by_index: None,
@@ -481,7 +503,9 @@ impl Turn {
     /// The id a call closing now takes, and the provider item it keeps:
     /// `id`, or, when the provider sent none or one an earlier call of the
     /// reply holds, a fresh rig-issued id (as pi issues). A renamed call
-    /// keeps no item, since the item names the id it lost.
+    /// keeps no item, since the item names the id it lost; a call sent with
+    /// no id keeps its item only on a wire whose items have an id slot,
+    /// which replay then fills with the id its result gets.
     fn distinct_call_id(
         &mut self,
         id: Option<CallId>,
@@ -493,7 +517,8 @@ impl Turn {
                 tracing::warn!(%id, "the provider named two tool calls with one id; renaming the second");
                 (CallId::Local(LocalCallId::new()), serde_json::Value::Null)
             }
-            None => (CallId::Local(LocalCallId::new()), item),
+            None if self.call_id_slot.is_some() => (CallId::Local(LocalCallId::new()), item),
+            None => (CallId::Local(LocalCallId::new()), serde_json::Value::Null),
         };
         self.call_ids.insert(id.clone());
         (id, item)
@@ -519,7 +544,10 @@ impl Turn {
         } = draft;
         let item = match (closing, &body) {
             (Closing::Complete, _) | (Closing::Incomplete, Body::Opaque { .. }) => item,
-            (Closing::Incomplete, _) => serde_json::Value::Null,
+            (Closing::Incomplete, _) => {
+                self.cut_at(part.index());
+                serde_json::Value::Null
+            }
         };
         let content = match body {
             Body::Text(text) => {
@@ -720,30 +748,33 @@ impl Turn {
             } else {
                 Closing::Incomplete
             };
+            if self
+                .open
+                .get(&index)
+                .is_some_and(|draft| matches!(draft.body, Body::Call { .. }))
+            {
+                self.unfinished_call = true;
+            }
             if let Err(error) = self.close_item(items, index, closing) {
                 items.push_back(Err(error));
             }
         }
     }
 
+    /// Record that the item at `position` never completed.
+    fn cut_at(&mut self, position: usize) {
+        self.first_incomplete = Some(
+            self.first_incomplete
+                .map_or(position, |first| first.min(position)),
+        );
+    }
+
     /// The parts taken so far, in their position (in wire-index order on a
-    /// wire that asked for it); a part that has not ended is not among them.
+    /// wire that asked for it); a part that has not ended is not among them,
+    /// and parts from the first incomplete one on keep no provider item.
     pub fn snapshot(&self) -> Vec<AssistantContent> {
-        let mut parts: Vec<(usize, &AssistantContent)> = self
-            .choice
-            .iter()
-            .enumerate()
-            .filter_map(|(position, part)| Some((position, part.as_ref()?)))
-            .collect();
-        if let Some(by_index) = &self.by_index {
-            parts.sort_by_key(|(position, _)| {
-                (
-                    by_index.get(position).copied().unwrap_or(usize::MAX),
-                    *position,
-                )
-            });
-        }
-        parts.into_iter().map(|(_, part)| part.clone()).collect()
+        self.clone_cut()
+            .ordered(self.choice.iter().cloned().enumerate().collect())
     }
 
     /// Who the reply is from.
@@ -775,19 +806,35 @@ impl Turn {
                 }
             }
         }
-        response.choice = self
+        // An item the reply never finished may be the partner a later one
+        // needs: blocks from the first open item on replay canonically.
+        let mut cut = self.clone_cut();
+        if let Some(first) = self.open.values().map(|draft| draft.part.index()).min() {
+            cut.cut_at(first);
+        }
+        let parts = self
             .choice
             .iter()
             .enumerate()
-            .filter_map(|(index, part)| {
-                part.clone().or_else(|| {
+            .map(|(index, part)| {
+                let part = part.clone().or_else(|| {
                     self.open_text
                         .get(&index)
                         .map(|text| AssistantContent::text(text.clone()))
-                })
+                });
+                (index, part)
             })
             .collect();
+        response.choice = cut.ordered(parts);
         response
+    }
+
+    /// The ordering state of this turn, which a partial view cuts further.
+    fn clone_cut(&self) -> Cut<'_> {
+        Cut {
+            by_index: self.by_index.as_ref(),
+            first_incomplete: self.first_incomplete,
+        }
     }
 
     fn response(&self, end: Finish, reply: Reply) -> CompletionResponse {
@@ -809,11 +856,72 @@ impl Turn {
             origin.model.clone_from(model);
         }
         origin.response_id = reported(response_id);
+        let error = error.or_else(|| {
+            if !self.wire {
+                return None;
+            }
+            match &reason {
+                None => Some("the provider ended the reply without a finish reason".to_owned()),
+                Some(FinishReason::Length) => None,
+                Some(_) if self.unfinished_call => Some(
+                    "the provider ended the reply with a tool call it never finished".to_owned(),
+                ),
+                Some(_) => None,
+            }
+        });
         let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
             .with_optional_finish_reason(reason);
         response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response
+    }
+}
+
+/// `block` with no provider item: an opaque item no longer replays.
+pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
+    match block {
+        AssistantContent::Opaque(opaque) => AssistantContent::Opaque(Opaque {
+            replay: false,
+            ..opaque
+        }),
+        block => block.canonical(),
+    }
+}
+
+/// A turn's ordering and its first incomplete position, for a partial view.
+struct Cut<'a> {
+    by_index: Option<&'a BTreeMap<usize, usize>>,
+    first_incomplete: Option<usize>,
+}
+
+impl Cut<'_> {
+    fn cut_at(&mut self, position: usize) {
+        self.first_incomplete = Some(
+            self.first_incomplete
+                .map_or(position, |first| first.min(position)),
+        );
+    }
+
+    fn ordered(&self, parts: Vec<(usize, Option<AssistantContent>)>) -> Vec<AssistantContent> {
+        let mut parts: Vec<(usize, AssistantContent)> = parts
+            .into_iter()
+            .filter_map(|(position, part)| {
+                let part = part?;
+                Some(match self.first_incomplete {
+                    Some(first) if position >= first => (position, canonical(part)),
+                    _ => (position, part),
+                })
+            })
+            .collect();
+        if let Some(by_index) = self.by_index {
+            parts.sort_by_key(|(position, _)| {
+                (
+                    by_index.get(position).copied().unwrap_or(usize::MAX),
+                    *position,
+                )
+            });
+        }
+        parts.into_iter().map(|(_, part)| part).collect()
     }
 }
 
