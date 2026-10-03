@@ -158,6 +158,24 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "8BxQ4Yb0L",
+            "name": "lookup",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{\"q\": \"What is the capital of France?\"}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -191,7 +209,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         }
       ]

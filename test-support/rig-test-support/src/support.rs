@@ -901,6 +901,9 @@ pub async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamO
                 Item::Event(StreamEvent::Arguments { .. }) => {
                     observation.events.push("tool_call_delta");
                 }
+                Item::Event(StreamEvent::CallDraft { .. }) => {
+                    observation.events.push("call_draft");
+                }
                 Item::Event(StreamEvent::End {
                     content: AssistantContent::Reasoning(_),
                     ..
@@ -1273,6 +1276,9 @@ where
             }
             Ok(Item::Event(StreamEvent::Arguments { .. })) => {
                 observation.events.push("tool_call_delta");
+            }
+            Ok(Item::Event(StreamEvent::CallDraft { .. })) => {
+                observation.events.push("call_draft");
             }
             Ok(Item::Event(StreamEvent::End {
                 content: AssistantContent::Reasoning(_),

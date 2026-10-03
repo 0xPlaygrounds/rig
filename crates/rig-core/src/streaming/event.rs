@@ -60,9 +60,10 @@ pub enum PartKind {
 }
 
 /// One event of a completion stream: a part starts, grows, or ends with the
-/// content it finalized. Deserialization restores the shape of one recorded
-/// event without checking order. Push the result into a [`Transcript`] to
-/// check it against the items before it.
+/// content it finalized. A call draft previews a tool call while the model
+/// still writes it. Deserialization restores the shape of one recorded event
+/// without checking order. Push the result into a [`Transcript`] to check it
+/// against the items before it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum StreamEvent {
@@ -94,24 +95,48 @@ pub enum StreamEvent {
         /// The raw JSON arguments.
         json: String,
     },
+    /// A tool call being written, before it is a part. `draft` numbers the
+    /// calls of this reply in the order they were first seen. `id` and `name`
+    /// are present on the fragment where the provider sent them. `json` is
+    /// the new argument text, not the accumulated text. Informational only:
+    /// it takes no position and needs no `End`. A draft that is dropped never
+    /// gets a matching `End`.
+    CallDraft {
+        /// The call preview, in first-seen order.
+        draft: u32,
+        /// The provider id this fragment carried.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        /// The tool name this fragment carried.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// The new argument text.
+        json: String,
+    },
     /// A part ended with the content it finalized.
     End {
         /// The part.
         part: Part,
         /// The finalized content.
         content: AssistantContent,
+        /// The draft this tool call was previewed as. `None` for parts that
+        /// were never previewed and for calls that arrived whole.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        draft: Option<u32>,
     },
 }
 
 impl StreamEvent {
-    /// The part this event is about.
-    pub const fn part(&self) -> Part {
+    /// The part this event is about. `None` for a call draft, which takes no
+    /// position.
+    pub const fn part(&self) -> Option<Part> {
         match self {
             Self::Start { part, .. }
             | Self::Text { part, .. }
             | Self::Reasoning { part, .. }
             | Self::Arguments { part, .. }
-            | Self::End { part, .. } => *part,
+            | Self::End { part, .. } => Some(*part),
+            Self::CallDraft { .. } => None,
         }
     }
 
@@ -122,6 +147,7 @@ impl StreamEvent {
             Self::Text { .. } => "Text",
             Self::Reasoning { .. } => "Reasoning",
             Self::Arguments { .. } => "Arguments",
+            Self::CallDraft { .. } => "CallDraft",
             Self::End { .. } => "End",
         }
     }
@@ -215,11 +241,15 @@ impl Transcript {
     }
 
     /// Append the next item a stream yielded, refusing one the writer could
-    /// not have produced after the items so far.
+    /// not have produced after the items so far. A call draft takes no
+    /// position and is accepted anywhere.
     pub fn push(&mut self, item: Item<StreamEvent>) -> Result<(), SequenceError> {
         let position = self.items.len();
         if let Item::Event(event) = &item {
-            let index = event.part().index();
+            let Some(index) = event.part().map(|part| part.index()) else {
+                self.items.push(item);
+                return Ok(());
+            };
             let kind = match event {
                 StreamEvent::Start { kind, .. } => {
                     if index != self.parts.len() {
@@ -231,6 +261,7 @@ impl Transcript {
                 StreamEvent::Text { .. } => Some(PartKind::Text),
                 StreamEvent::Reasoning { .. } => Some(PartKind::Reasoning),
                 StreamEvent::Arguments { .. } => Some(PartKind::ToolCall),
+                StreamEvent::CallDraft { .. } => None,
                 StreamEvent::End { content, .. } => Some(match content {
                     AssistantContent::Text(_) => PartKind::Text,
                     AssistantContent::Reasoning(_) => PartKind::Reasoning,

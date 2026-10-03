@@ -346,6 +346,7 @@ impl StreamedTurnAssembler {
                 ..
             }
             | StreamEvent::Arguments { .. } => Ok(vec![StreamedTurnEvent::HoldToolCall]),
+            StreamEvent::CallDraft { .. } => Ok(vec![StreamedTurnEvent::EmitIngested]),
             StreamEvent::End {
                 content: AssistantContent::ToolCall(tool_call),
                 ..

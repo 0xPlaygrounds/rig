@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 25
         }
       },
       {
@@ -233,6 +233,184 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1",
+            "name": "record_payload",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "label"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\":\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "c"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "afé"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " 東京"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\",\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "values"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\":["
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "3"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "8"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "],\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "meta"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\":{\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "active"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\":"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "true"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "}}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -274,7 +452,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         }
       ],

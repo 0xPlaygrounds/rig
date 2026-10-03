@@ -739,8 +739,8 @@ async fn final_response_from_event(event: serde_json::Value) -> CompletionRespon
 }
 
 /// Drain a stream whose provider fully delivered one tool call before a
-/// terminal error: the call's part comes first, then the error, then
-/// nothing.
+/// terminal error: the call's previews and part come first, then the error,
+/// then nothing.
 async fn flushed_tool_call_then_error(
     stream: &mut crate::streaming::CompletionStream,
 ) -> (crate::message::ToolCall, ErrorReport) {
@@ -756,7 +756,8 @@ async fn flushed_tool_call_then_error(
                     kind: PartKind::ToolCall,
                     ..
                 }
-                | StreamEvent::Arguments { .. },
+                | StreamEvent::Arguments { .. }
+                | StreamEvent::CallDraft { .. },
             )) => {}
             Ok(Item::Event(StreamEvent::End {
                 content: AssistantContent::ToolCall(call),

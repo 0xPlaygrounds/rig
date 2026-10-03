@@ -196,6 +196,7 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
                         StreamEvent::End {
                             part,
                             content: AssistantContent::ToolCall(_),
+                            ..
                         } => Some(*part),
                         _ => None,
                     })

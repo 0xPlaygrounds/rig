@@ -144,6 +144,424 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_00_BS3cNqjhG7nRR4QUHKV46584",
+            "name": "final_result",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "title"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ": "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "Se"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "attle"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Meet"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "up"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ", "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "category"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ": "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "Meet"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "up"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ", "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "summary"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ": "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "A"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " local"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " gathering"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " for"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " developers"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " in"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Seattle"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " share"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " projects"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " discuss"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " network"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " community"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -179,7 +597,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         }
       ]

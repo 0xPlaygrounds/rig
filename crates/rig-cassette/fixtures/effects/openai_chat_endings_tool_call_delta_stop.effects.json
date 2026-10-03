@@ -122,6 +122,3816 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_yFEvCr1ZYiRIZsFYzEpWuOCU",
+            "name": "write_note",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "title"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\":\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\",\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "body"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\":\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " systems"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " programming"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " designed"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " provide"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " memory"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " safety"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " concurrency"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " performance"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " without"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " sacrificing"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " control"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Its"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " origins"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " trace"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " back"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " personal"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " project"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " by"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Gray"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "don"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Ho"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "are"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " in"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " late"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "200"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "0"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "s"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " who"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " explored"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ways"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " build"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " that"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " combined"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " low"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-level"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " control"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " modern"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " safety"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " features"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Mozilla"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " began"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " sponsoring"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " project"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " around"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "200"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "9"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " catal"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "y"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "zing"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " development"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " bringing"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " more"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " contributors"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " resources"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " effort"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ".\\"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "In"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " early"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "201"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "0"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "s"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " evolved"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " from"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " research"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " into"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " practical"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " tool"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " The"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "’s"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " design"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " prioritized"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " strong"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " type"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " system"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " an"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " innovative"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ownership"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " model"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " that"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " en"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "forces"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " memory"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " safety"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " at"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " compile"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " time"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " through"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " borrow"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " checker"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " These"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ideas"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " distinguished"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " from"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " contempor"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "aries"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ":"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " instead"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " relying"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " on"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " garbage"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " collector"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " uses"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ownership"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " rules"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ensure"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " that"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " references"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " cannot"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " out"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "live"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " data"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " they"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " point"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " preventing"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " common"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " bugs"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " like"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " use"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-after"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-free"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " data"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " races"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Along"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "side"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " core"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " key"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " tooling"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " matured"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "—"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "most"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " notably"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Cargo"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " package"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " manager"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " build"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " system"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " crates"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ".io"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " package"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " registry"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "—"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "both"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " which"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " greatly"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " simplified"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " dependency"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " management"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " distribution"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ".\\"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " reached"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " major"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " milestone"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " release"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " version"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "0"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " in"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " May"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "201"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " signaling"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " stability"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " for"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " its"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " libraries"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " The"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "0"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " release"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " made"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " attractive"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " industry"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " users"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " who"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " needed"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " stable"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ABI"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " long"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-term"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " support"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " commitments"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Over"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " following"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " years"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " continued"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " improve"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ergonom"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "ics"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " compile"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-time"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " guarantees"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " performance"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " while"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " maintaining"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " commitment"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " stability"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " backward"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " compatibility"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " through"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " carefully"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " managed"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " release"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " process"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ".\\"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "The"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "’s"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " emphasis"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " on"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " safe"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " concurrency"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " predictable"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " performance"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " drew"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " attention"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " from"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " companies"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " open"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-source"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " projects"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Developers"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " began"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " using"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " for"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " networking"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " software"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " embedded"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " systems"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " browser"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " components"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " command"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-line"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " tools"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " citing"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " reliability"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " speed"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " The"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " community"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " grew"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " rapidly"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " it"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ecosystem"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " libraries"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " tools"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " learning"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " resources"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Governance"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " stewardship"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " project"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " also"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " matured"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ":"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " adopted"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " community"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-driven"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " model"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " later"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " transitioned"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " stewardship"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " dedicated"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " foundation"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " support"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " long"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "-term"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " sustainability"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ".\\"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "\\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "Today"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " stands"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " as"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " an"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " influential"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " in"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " systems"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " programming"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " combining"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ideas"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " from"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " functional"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " imperative"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " paradig"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "ms"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " novel"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " ownership"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " semantics"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Its"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " success"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " has"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " resh"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "aped"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " expectations"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " around"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " safety"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " performance"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " inspiring"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " research"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " new"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " language"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " designs"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " while"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " gaining"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " widespread"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " adoption"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " in"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " production"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " systems"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " Rust"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "’s"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " history"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " story"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " of"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " careful"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " engineering"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " open"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " collaboration"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " steady"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " evolution"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " toward"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " safer"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " faster"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": " software"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ".\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -156,7 +3966,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         }
       ]

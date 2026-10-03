@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 7
         }
       },
       {
@@ -204,6 +204,40 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "toolu_01CpRefFG6QwS6bWahs4ZCtT",
+            "name": "add",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{\"x\": 9"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": ", \"y\": "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "16}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -238,7 +272,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         }
       ],

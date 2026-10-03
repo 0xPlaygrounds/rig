@@ -318,6 +318,7 @@ pub(super) async fn collect_raw_stream_outcome(
                 note(&mut outcome.order, "tool_call");
             }
             Ok(Item::Event(StreamEvent::Arguments { .. })) => {}
+            Ok(Item::Event(StreamEvent::CallDraft { .. })) => {}
             Ok(Item::Event(StreamEvent::End {
                 content: AssistantContent::Reasoning(reasoning),
                 ..

@@ -32,7 +32,7 @@ pub(super) fn delivered_prefix(items: &[Item<StreamEvent>]) -> Vec<AssistantCont
                     open.push_str(text);
                 }
             }
-            Item::Event(StreamEvent::End { part, content }) => {
+            Item::Event(StreamEvent::End { part, content, .. }) => {
                 open_text.remove(&part.index());
                 if let Some(slot) = parts.get_mut(part.index()) {
                     *slot = Some(content.clone());

@@ -134,7 +134,18 @@
           }
         }
       },
-      "events": [],
+      "events": [
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630",
+            "name": "file_report",
+            "json": ""
+          }
+        }
+      ],
       "scope": "parity/run#0"
     }
   ]

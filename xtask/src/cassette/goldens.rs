@@ -66,7 +66,10 @@ pub(crate) fn revert_delivery_churn(root: &Path, base: &str) -> Result<Rebased, 
         let before = output(root, "git", &["show", &format!("{base}:{path}")])?;
         let after = std::fs::read_to_string(root.join(path)).unwrap_or_default();
         if delivery_only(&before, &after) {
-            output(root, "git", &["checkout", base, "--", path])?;
+            // Restore via `show` plus a write rather than `checkout`, which
+            // needs the index lock racy CI files otherwise hold.
+            std::fs::write(root.join(path), &before)
+                .map_err(|error| format!("{path}: {error}"))?;
             outcome.reverted += 1;
             continue;
         }
@@ -268,12 +271,13 @@ fn inserted_per_batch(base: &Value, head: &Value, id: u64) -> Result<(Vec<usize>
             old_item += 1;
             old_event += 1;
         } else if event.is_some_and(is_close)
+            || event.is_some_and(is_draft)
             || event.is_some_and(|event| starts_a_sibling(event, new_events.get(new_event)))
         {
             mapped.push(None);
         } else {
             return Err(format!(
-                "effect {id}: event {} is not an inserted close",
+                "effect {id}: event {} is not an inserted close or draft",
                 new_event - 1
             ));
         }
@@ -335,19 +339,38 @@ fn place(sizes: &[u64], placed: &[usize], total: usize) -> Vec<u64> {
 }
 
 /// Whether a base event and a regenerated one are the same, a `block_end`
-/// possibly having gained its `block`.
+/// possibly having gained its `block`, or a typed `end` having gained its
+/// `draft` link to the call previews inserted before it.
 pub(crate) fn same_event(old: &Value, new: &Value) -> bool {
     if old == new {
         return true;
     }
-    let strip = |event: &Value| {
+    let strip_block = |event: &Value| {
         let mut event = event.clone();
         if let Some(object) = event.as_object_mut() {
             object.remove("block");
         }
         event
     };
-    is_close(new) && old.get("block").is_none() && strip(old) == strip(new)
+    if is_close(new) && old.get("block").is_none() && strip_block(old) == strip_block(new) {
+        return true;
+    }
+    without_draft(old) == without_draft(new)
+}
+
+/// An event with its `draft` link removed: what an end was before previews
+/// existed. Typed items wrap the event under `value`.
+fn without_draft(event: &Value) -> Value {
+    let mut event = event.clone();
+    if let Some(value) = event.get_mut("value")
+        && let Some(object) = value.as_object_mut()
+    {
+        object.remove("draft");
+    }
+    if let Some(object) = event.as_object_mut() {
+        object.remove("draft");
+    }
+    event
 }
 
 /// Whether an event is a text or reasoning `block_end`: what canonical
@@ -358,6 +381,14 @@ pub(crate) fn is_close(event: &Value) -> bool {
             event.pointer("/end/close").and_then(Value::as_str),
             Some("text" | "reasoning")
         )
+}
+
+/// Whether an event is a call preview the change inserted.
+fn is_draft(event: &Value) -> bool {
+    // Typed items wrap the event under `value`; block events carry it
+    // directly. Only typed streams gain previews.
+    let event = event.get("value").unwrap_or(event);
+    event.get("event").and_then(Value::as_str) == Some("call_draft")
 }
 
 /// `after`'s text with its `header.deliveries` array replaced by `before`'s,

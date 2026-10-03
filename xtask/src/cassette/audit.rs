@@ -45,6 +45,10 @@ pub(crate) enum Change {
     Rebatched,
     /// A count that follows the number of stream items, in a migrated golden.
     CountShift,
+    /// A typed stream that gained call previews: inserted `call_draft`
+    /// events and the `draft` link on a tool call's end. The finished parts
+    /// are unchanged.
+    DraftPreview,
     /// A deleted golden no test names any more.
     Retired,
 }
@@ -60,6 +64,7 @@ impl fmt::Display for Change {
             Self::CallRestored => "rejected call replayed as made",
             Self::Rebatched => "delivery rebatched",
             Self::CountShift => "count shift",
+            Self::DraftPreview => "call previews inserted",
             Self::Retired => "golden retired",
         })
     }
@@ -159,6 +164,27 @@ fn typed(events: &[Value]) -> bool {
 /// Whether `events` is a block-shaped stream: a list of block events.
 fn block_shaped(events: &[Value]) -> bool {
     events.iter().all(|event| event.get("event").is_some())
+}
+
+/// A typed stream with its call previews removed and the `draft` link
+/// stripped from its ends: what the stream was before previews existed.
+fn without_drafts(events: &[Value]) -> Vec<Value> {
+    events
+        .iter()
+        .filter_map(|item| {
+            let event = event_of(item)?;
+            if event.get("event").and_then(Value::as_str) == Some("call_draft") {
+                return None;
+            }
+            let mut item = item.clone();
+            if let Some(value) = item.get_mut("value")
+                && let Some(object) = value.as_object_mut()
+            {
+                object.remove("draft");
+            }
+            Some(item)
+        })
+        .collect()
 }
 
 /// Call `visit` with every typed stream in `value`.
@@ -353,6 +379,9 @@ struct File<'a> {
     path: &'a str,
     /// Whether a stream of this golden migrated: its counts may move.
     migrated: bool,
+    /// Whether a stream of this golden gained call previews: its counts may
+    /// move with the inserted drafts.
+    drafted: bool,
     /// The records whose streams migrated: their outcome's `raw` may be the
     /// reply's terminal document.
     records: BTreeSet<String>,
@@ -370,6 +399,7 @@ impl<'a> File<'a> {
             audit,
             path,
             migrated: false,
+            drafted: false,
             records: BTreeSet::new(),
             lengths: BTreeMap::new(),
             calls: Vec::new(),
@@ -400,7 +430,7 @@ impl<'a> File<'a> {
         let mut validated = Vec::new();
         self.compare(base, head, "", &mut validated);
         for (at, before, after) in validated {
-            if self.migrated {
+            if self.migrated || self.drafted {
                 self.audit.count(Change::CountShift, 1);
             } else {
                 self.audit.other(
@@ -538,12 +568,18 @@ impl<'a> File<'a> {
     /// A stream that changed: a block-shaped one migrated to the typed
     /// stream whose parts, in start order, finalize the same content. A part
     /// the base left open may read on in the typed stream; a cut stream's
-    /// tail may stay open. Returns whether the stream migrated.
+    /// tail may stay open. A typed stream that only gained call previews
+    /// counts as drafted. Returns whether the stream migrated.
     fn stream(&mut self, old: &[Value], new: &[Value], outcome: Option<&Value>, at: &str) -> bool {
         if old == new {
             return false;
         }
         if !block_shaped(old) {
+            if typed(old) && typed(new) && without_drafts(new) == old {
+                self.drafted = true;
+                self.audit.count(Change::DraftPreview, 1);
+                return true;
+            }
             self.audit
                 .other(self.path, format!("{at}: the stream changed"));
             return false;
@@ -664,7 +700,7 @@ impl<'a> File<'a> {
         let batches = new
             .iter()
             .map(|delivery| delivery.get("batch").and_then(Value::as_u64));
-        if !self.migrated {
+        if !self.migrated && !self.drafted {
             self.audit
                 .other(self.path, "delivery batches differ from the base's");
             return;
@@ -718,7 +754,7 @@ impl<'a> File<'a> {
     }
 
     /// The same errors in the same order; their positions move only in a
-    /// migrated golden.
+    /// migrated or drafted golden.
     fn errors(&mut self, id: &str, old: &Value, new: &Value) {
         let (Some(old), Some(new)) = (old.as_array(), new.as_array()) else {
             self.audit
@@ -744,7 +780,7 @@ impl<'a> File<'a> {
                 self.audit
                     .other(self.path, format!("stream error {k} of {id} changed"));
             } else if old.get("item") != new.get("item") {
-                if self.migrated {
+                if self.migrated || self.drafted {
                     self.audit.count(Change::CountShift, 1);
                 } else {
                     self.audit

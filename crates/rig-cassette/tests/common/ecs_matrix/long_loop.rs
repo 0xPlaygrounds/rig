@@ -1682,6 +1682,7 @@ fn assert_stream_delivery(cell: &Cell, turns: &[Turn<'_>]) {
                 StreamEvent::End {
                     part,
                     content: AssistantContent::ToolCall(_),
+                    ..
                 } => Some(*part),
                 _ => None,
             })

@@ -251,3 +251,62 @@ async fn an_empty_id_is_no_id() {
     assert_eq!(response.response_id, None);
     assert_eq!(response.model, None);
 }
+
+/// Fragments preview as drafts while the call is still open, and the end
+/// links back to them.
+#[tokio::test]
+async fn tool_call_fragments_preview_as_drafts_before_the_end() {
+    let mut stream = stream_of(vec![
+        MockStreamEvent::tool_call_name_delta("tool_1", "lookup"),
+        MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"q\":"),
+        MockStreamEvent::tool_call_arguments_delta("tool_1", "1}"),
+        MockStreamEvent::tool_call_end("tool_1"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]);
+    let items = items_of(&mut stream).await;
+    let events: Vec<_> = items
+        .iter()
+        .filter_map(|item| item.as_ref().ok())
+        .filter_map(|item| match item {
+            Item::Event(event) => Some(event.clone()),
+            Item::Unknown(_) => None,
+        })
+        .collect();
+    let drafts: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::CallDraft {
+                draft,
+                id,
+                name,
+                json,
+            } => Some((*draft, id.clone(), name.clone(), json.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(drafts.len(), 3, "{events:?}");
+    assert_eq!(drafts[0].0, 0);
+    assert_eq!(drafts[0].1.as_deref(), Some("tool_1"));
+    assert_eq!(drafts[0].2.as_deref(), Some("lookup"));
+    assert_eq!(drafts[1].2, None);
+    assert_eq!(drafts[1].3, "{\"q\":");
+    assert_eq!(drafts[2].3, "1}");
+    let Some(StreamEvent::End { draft, .. }) = events.iter().find_map(|event| match event {
+        event @ StreamEvent::End { .. } => Some(event),
+        _ => None,
+    }) else {
+        panic!("the call ends: {events:?}");
+    };
+    assert_eq!(*draft, Some(0));
+    let draft_at = events
+        .iter()
+        .position(|event| matches!(event, StreamEvent::CallDraft { .. }))
+        .expect("a draft");
+    let end_at = events
+        .iter()
+        .position(|event| matches!(event, StreamEvent::End { .. }))
+        .expect("an end");
+    assert!(draft_at < end_at, "drafts preview before the end: {events:?}");
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(response.choice.len(), 1);
+}
