@@ -1348,8 +1348,8 @@ impl ReplayTarget for LeadingSystemOnly {
         TARGET.accepts(model)
     }
 
-    fn mid_conversation_system(&self, _model: &str) -> bool {
-        false
+    fn later_system(&self, _model: &str) -> LaterSystem {
+        LaterSystem::Leading
     }
 }
 

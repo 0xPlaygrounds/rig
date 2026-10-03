@@ -316,6 +316,33 @@ impl ReplayTarget for Converse {
         true
     }
 
+    /// A later system message goes as user text where it stands, so adding
+    /// one never changes the cached prefix before it.
+    fn later_system(&self, _model: &str) -> rig_core::completion::LaterSystem {
+        rig_core::completion::LaterSystem::UserText
+    }
+
+    /// Converse takes user and assistant messages only in alternation.
+    fn alternates_roles(&self) -> bool {
+        true
+    }
+
+    /// Converse takes a hosted tool's use and result only beside a
+    /// `toolConfig`, which only the request's own tools make.
+    fn hosted_needs_tools(&self) -> bool {
+        true
+    }
+
+    /// Only the request's tools reach Converse's `toolConfig`;
+    /// `additional_params` go to `additionalModelRequestFields`.
+    fn declares_tools(&self, request: &CompletionRequest) -> bool {
+        !request.tools.is_empty()
+    }
+
+    fn sends_alone(&self, block: &rig_core::message::AssistantContent) -> bool {
+        crate::request::sends(block, self)
+    }
+
     /// Converse carries images in its four formats, documents in a format it
     /// lists, and inline data, which must be valid base64. Only Nova reads S3
     /// objects and video. Converse rejects a document's text source and

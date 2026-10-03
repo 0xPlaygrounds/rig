@@ -238,12 +238,25 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         false
     }
 
-    /// Whether `model` reads system messages after the first user or
-    /// assistant message. When it does not, [`adapt`] folds every system
-    /// message into one leading message, as pi does.
-    fn mid_conversation_system(&self, model: &str) -> bool {
+    /// Where `model` takes system messages that come after the
+    /// conversation begins ([`LaterSystem`]). By default where the history
+    /// has them.
+    fn later_system(&self, model: &str) -> LaterSystem {
         let _ = model;
-        true
+        LaterSystem::InPlace
+    }
+
+    /// Whether the wire requires user and assistant messages to alternate.
+    /// [`adapt`] then joins two messages of one role that only system
+    /// messages separate, which move after them.
+    fn alternates_roles(&self) -> bool {
+        false
+    }
+
+    /// Whether a hosted tool's use and result need the request to declare
+    /// tools. A request that declares none then sends neither.
+    fn hosted_needs_tools(&self) -> bool {
+        false
     }
 
     /// Whether `model` reads a tool result as several parts. When it reads
@@ -262,6 +275,20 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         let _ = block;
         true
     }
+}
+
+/// Where a target takes the system messages that come after the
+/// conversation begins ([`ReplayTarget::later_system`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaterSystem {
+    /// Where the history has them.
+    InPlace,
+    /// Joined with the leading ones into one system message, as pi's
+    /// `collapseSystemMessages` does.
+    Leading,
+    /// As user text where the history has them, so adding one never moves
+    /// the prefix before it.
+    UserText,
 }
 
 /// Which side of a hosted-tool pair an opaque item is.
@@ -404,7 +431,7 @@ pub(crate) fn context_of(
     let mut tools: Vec<_> = request.tools.iter().collect();
     tools.sort_by(|left, right| left.name.cmp(&right.name));
     let raw = raw_tools(request);
-    let folds = !target.mid_conversation_system(model);
+    let folds = target.later_system(model) == LaterSystem::Leading;
     let mut system: Vec<&str> = request
         .chat_history
         .iter()
@@ -519,15 +546,83 @@ pub(crate) fn adapt_for(
         }
     }
     let shaped = merge_users(answer_calls(shaped, stored));
-    if target.mid_conversation_system(model) {
-        shaped
+    let shaped = match target.later_system(model) {
+        LaterSystem::InPlace => shaped,
+        LaterSystem::Leading => leading_system(shaped),
+        LaterSystem::UserText => system_as_user_text(shaped),
+    };
+    if target.alternates_roles() {
+        alternated(shaped)
     } else {
-        leading_system(shaped)
+        shaped
     }
 }
 
-/// `history` with its system messages joined into one leading message.
+/// Whether `history` has a system message after its first user or
+/// assistant message.
+fn has_later_system(history: &[Message]) -> bool {
+    history
+        .iter()
+        .skip_while(|message| matches!(message, Message::System { .. }))
+        .any(|message| matches!(message, Message::System { .. }))
+}
+
+/// `history` with every later system message as user text where it stands.
+fn system_as_user_text(history: Vec<Message>) -> Vec<Message> {
+    let mut leading = true;
+    let history = history
+        .into_iter()
+        .map(|message| match message {
+            Message::System { content } if !leading => Message::User {
+                content: vec![UserContent::text(content)],
+            },
+            message => {
+                leading &= matches!(message, Message::System { .. });
+                message
+            }
+        })
+        .collect();
+    merge_users(history)
+}
+
+/// `history` with no two user or assistant messages of one role in a row:
+/// two that only system messages separate become one, and the system
+/// messages move after them.
+fn alternated(history: Vec<Message>) -> Vec<Message> {
+    let mut alternated: Vec<Message> = Vec::with_capacity(history.len());
+    let mut held: Vec<Message> = Vec::new();
+    for message in history {
+        let started = alternated
+            .iter()
+            .any(|message| !matches!(message, Message::System { .. }));
+        match (message, alternated.last_mut()) {
+            (message @ Message::System { .. }, _) if started => held.push(message),
+            (Message::User { content }, Some(Message::User { content: previous })) => {
+                previous.extend(content);
+            }
+            (Message::Assistant(turn), Some(Message::Assistant(previous))) => {
+                if previous.origin != turn.origin {
+                    previous.origin = None;
+                }
+                previous.stop = turn.stop;
+                previous.content.extend(turn.content);
+            }
+            (message, _) => {
+                alternated.append(&mut held);
+                alternated.push(message);
+            }
+        }
+    }
+    alternated.append(&mut held);
+    alternated
+}
+
+/// `history` with its system messages joined into one leading message, when
+/// any comes after the conversation begins.
 fn leading_system(history: Vec<Message>) -> Vec<Message> {
+    if !has_later_system(&history) {
+        return history;
+    }
     let (system, rest): (Vec<Message>, Vec<Message>) = history
         .into_iter()
         .partition(|message| matches!(message, Message::System { .. }));
@@ -721,6 +816,13 @@ fn assistant(
                         call.function.name,
                         crate::json_utils::to_canonical_string(&call.function.arguments_value())
                     )))
+                }
+                AssistantContent::Opaque(opaque)
+                    if !accepts.tools
+                        && target.hosted_needs_tools()
+                        && target.hosted_pair(&opaque.item).is_some() =>
+                {
+                    return None;
                 }
                 block => block,
             };

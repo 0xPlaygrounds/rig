@@ -22,6 +22,6 @@ pub mod request;
 
 pub use cache_cost::{CacheCost, CacheRates};
 pub use handle::ModelRef;
-pub use history::{Accepts, Media, Pairing, Place, Replay, ReplayTarget, adapt};
+pub use history::{Accepts, LaterSystem, Media, Pairing, Place, Replay, ReplayTarget, adapt};
 pub use message::{AssistantContent, AssistantMessage, Message, MessageError};
 pub use request::*;

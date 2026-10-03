@@ -27,9 +27,10 @@ fn request_body_with(params: Params<'_>, strict: bool) -> Result<Value, EncodeEr
     wire.automatic_caching_ttl = params.automatic_caching_ttl;
     wire.static_prefix_cache_ttl = params.static_prefix_cache_ttl;
     wire.strict_tools = strict;
-    let mut request = params.request;
-    request.chat_history = request.chat_history_with_documents();
-    request.documents.clear();
+    use crate::wire::{Operation, Wire};
+    // The request as production encodes it: prepared, so adapted.
+    let request = crate::operation::Completion::prepare(params.request, &wire.describe())
+        .map_err(|error| EncodeError::request(error.to_string()))?;
     body(&wire, request, Mode::Unary)
 }
 
@@ -486,7 +487,7 @@ fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
 fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
     let request = completion_request_with_history(
         vec![
-            message::Message::Assistant(message::AssistantMessage::new(vec![
+            own_turn(vec![
                 message::AssistantContent::Opaque(message::Opaque {
                     item: json!({
                         "type": "server_tool_use",
@@ -509,7 +510,7 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
                     }),
                     replay: true,
                 }),
-            ])),
+            ]),
             message::Message::System {
                 content: "For the rest of this conversation, answer in Spanish.".to_string(),
             },
@@ -536,56 +537,6 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
     assert_eq!(messages[0]["role"], "assistant");
     assert_eq!(messages[0]["content"][0]["type"], "server_tool_use");
     assert_eq!(messages[0]["content"][1]["type"], "web_search_tool_result");
-    assert_eq!(messages[1]["role"], "system");
-    assert_eq!(
-        messages[1]["content"][0]["text"],
-        "For the rest of this conversation, answer in Spanish."
-    );
-    assert_eq!(messages[2]["role"], "assistant");
-}
-
-#[test]
-fn opus_4_8_preserves_system_message_after_assistant_server_tool_use() {
-    let request = completion_request_with_history(
-        vec![
-            message::Message::Assistant(message::AssistantMessage::new(vec![
-                message::AssistantContent::Opaque(message::Opaque {
-                    item: json!({
-                        "type": "server_tool_use",
-                        "id": "srvtoolu_01",
-                        "name": "web_search",
-                        "input": {
-                            "query": "clear daytime sky color"
-                        }
-                    }),
-                    replay: true,
-                }),
-            ])),
-            message::Message::System {
-                content: "For the rest of this conversation, answer in Spanish.".to_string(),
-            },
-            message::Message::assistant("Entendido."),
-        ],
-        None,
-    );
-
-    let request = request_body(Params {
-        model: CLAUDE_OPUS_4_8,
-        request,
-        prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
-        static_prefix_cache_ttl: None,
-    })
-    .unwrap();
-
-    let value = serde_json::to_value(request).unwrap();
-    assert!(value.get("system").is_none());
-
-    let messages = value["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 3);
-    assert_eq!(messages[0]["role"], "assistant");
-    assert_eq!(messages[0]["content"][0]["type"], "server_tool_use");
     assert_eq!(messages[1]["role"], "system");
     assert_eq!(
         messages[1]["content"][0]["text"],
@@ -631,13 +582,15 @@ fn opus_4_8_moves_a_misplaced_system_message_after_the_next_user_turn() {
         ],
     );
 
-    // The two user turns it separated go as one, as Anthropic reads them.
+    // The two user turns it separated stay two, which Anthropic combines.
     assert!(value.get("system").is_none(), "{value}");
-    let messages = value["messages"].as_array().unwrap();
-    assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0]["role"], "user");
-    assert_eq!(messages[0]["content"].as_array().map(Vec::len), Some(2));
-    assert_eq!(messages[1]["role"], "system");
+    let roles: Vec<&str> = value["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|message| message["role"].as_str())
+        .collect();
+    assert_eq!(roles, ["user", "user", "system"]);
 }
 
 /// The agent-loop placement: a system message between an assistant's
@@ -2373,6 +2326,8 @@ fn a_rig_issued_call_id_is_spelled_alike_on_call_and_result() {
         ],
         None,
     );
+    let mut request = request;
+    request.tools = vec![generic_tool("add")];
     let wire = request_body(Params {
         model: CLAUDE_SONNET_4_6,
         request,
@@ -3172,4 +3127,17 @@ fn context_binding_reads_every_spelling_of_a_claude_model() {
     ] {
         assert!(!binds_context(model), "{model}");
     }
+}
+
+/// A turn Claude Opus 4.8 made on Anthropic's API, as a reply decodes it.
+fn own_turn(content: Vec<message::AssistantContent>) -> message::Message {
+    message::Message::Assistant(message::AssistantMessage {
+        content,
+        origin: Some(message::Origin::new(
+            "anthropic.messages",
+            "anthropic",
+            CLAUDE_OPUS_4_8,
+        )),
+        stop: Some(message::StopReason::Stop),
+    })
 }

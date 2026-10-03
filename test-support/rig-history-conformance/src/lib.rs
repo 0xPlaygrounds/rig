@@ -569,8 +569,15 @@ pub trait HistoryFixture {
     }
 
     /// Whether the wire requires user and assistant messages to alternate
-    /// (Anthropic, Gemini, Bedrock), checked on generated histories (H17).
+    /// (Bedrock), checked on generated histories (H17).
     fn strict_roles(&self) -> bool {
+        false
+    }
+
+    /// Whether the provider combines consecutive messages of one role
+    /// itself (Anthropic documents it), so H17 checks neither alternation
+    /// nor adjacent user messages.
+    fn combines_same_role(&self) -> bool {
         false
     }
 
@@ -2043,7 +2050,7 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
         let mut problems = generated::pairing(&body);
         if fixture.strict_roles() {
             problems.extend(generated::alternation(&body));
-        } else {
+        } else if !fixture.combines_same_role() {
             problems.extend(generated::adjacent_users(&body));
         }
         problems

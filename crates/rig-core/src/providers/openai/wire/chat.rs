@@ -730,29 +730,17 @@ fn messages_mut(map: &mut Map<String, Value>) -> impl Iterator<Item = &mut Map<S
         .filter_map(Value::as_object_mut)
 }
 
-/// Perplexity accepts only system, user and assistant roles in strict
-/// user/assistant alternation: text-only content-part arrays flatten (arrays
-/// with other parts are left for its sonar models), and adjacent text
-/// messages of one role become one.
-fn finalize_perplexity(messages: &mut Vec<Value>) {
-    let mut merged: Vec<Value> = Vec::with_capacity(messages.len());
-    for mut message in std::mem::take(messages) {
+/// Perplexity takes text-only content-part arrays as strings (arrays with
+/// other parts are left for its sonar models). `adapt` keeps its user and
+/// assistant messages alternating ([`ReplayTarget::alternates_roles`]).
+///
+/// [`ReplayTarget::alternates_roles`]: crate::completion::ReplayTarget::alternates_roles
+fn finalize_perplexity(messages: &mut [Value]) {
+    for message in messages {
         if let Some(content) = message.get_mut("content") {
             flatten_text_content_parts(content, "\n", true);
         }
-        if let (Some(role @ ("user" | "assistant")), Some(text)) =
-            (message.str("role"), message.str("content"))
-            && let Some(previous) = merged.last_mut()
-            && previous.str("role") == Some(role)
-            && let Some(Value::String(previous)) = previous.get_mut("content")
-        {
-            previous.push('\n');
-            previous.push_str(text);
-            continue;
-        }
-        merged.push(message);
     }
-    *messages = merged;
 }
 
 /// GPT-6 models that call function tools on Chat Completions only at
@@ -1144,8 +1132,13 @@ impl crate::completion::ReplayTarget for Chat {
         self.provider.dialect.quirks.states_finish_reason
     }
 
-    fn mid_conversation_system(&self, _model: &str) -> bool {
-        self.provider.dialect.quirks.mid_conversation_system
+    fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
+        self.provider.dialect.quirks.later_system
+    }
+
+    /// Perplexity takes user and assistant messages only in alternation.
+    fn alternates_roles(&self) -> bool {
+        self.provider.dialect.quirks.rewrite == BodyRewrite::Perplexity
     }
 
     /// In array mode a result's parts go as an array.

@@ -307,10 +307,9 @@ pub struct Quirks {
     pub response_format_with_tools: bool,
     /// Whether this server honours an image inside a `role:"tool"` message.
     pub supports_image_tool_results: bool,
-    /// Whether the server reads `system` messages after the conversation
-    /// begins. When it does not, the history's system messages are joined
-    /// into one leading message.
-    pub mid_conversation_system: bool,
+    /// Where the server takes `system` messages that come after the
+    /// conversation begins.
+    pub later_system: crate::completion::LaterSystem,
     /// Whether a streaming request asks for the usage chunk through
     /// `stream_options`.
     pub stream_include_usage: bool,
@@ -396,7 +395,7 @@ impl Quirks {
             supports_response_format: true,
             response_format_with_tools: false,
             supports_image_tool_results: false,
-            mid_conversation_system: true,
+            later_system: crate::completion::LaterSystem::InPlace,
             stream_include_usage: true,
             output_cap: OutputCap::Legacy,
             native_finish_reason: false,

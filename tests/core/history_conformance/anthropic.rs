@@ -323,7 +323,9 @@ impl HistoryFixture for MessagesHistory {
         ))
     }
 
-    fn strict_roles(&self) -> bool {
+    /// Messages combines consecutive user or assistant turns (its docs;
+    /// checked live on Claude Sonnet 4.6 and Opus 5.5).
+    fn combines_same_role(&self) -> bool {
         true
     }
 }

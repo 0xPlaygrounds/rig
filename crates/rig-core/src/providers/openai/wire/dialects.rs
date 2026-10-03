@@ -257,7 +257,7 @@ pub const MISTRAL: Dialect = Dialect {
         // chunk regardless.
         stream_include_usage: false,
         // Mistral reads one optional system message, before the conversation.
-        mid_conversation_system: false,
+        later_system: crate::completion::LaterSystem::Leading,
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",

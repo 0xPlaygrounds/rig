@@ -118,6 +118,13 @@ pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
     listed(model).is_some_and(|[_, rejects, _]| rejects)
 }
 
+/// Whether `model` takes `role: "system"` inside `messages` (the
+/// mid-conversation system messages page). A model the table does not list
+/// takes system text only in the request's `system`.
+pub(super) fn takes_mid_conversation_system(model: &str) -> bool {
+    listed(model).is_some_and(|[mid, _, _]| mid)
+}
+
 /// Whether the Claude `model` binds its thinking blocks to the request's
 /// tools and system prompt, however the serving API spells it: Anthropic's
 /// `claude-opus-5-5`, OpenRouter's `anthropic/claude-opus-5.5`, or Bedrock's
@@ -202,32 +209,12 @@ pub(super) fn body(
     let top = top_level_cache_control(wire, &mut params)?;
     let strict = wire.strict_tools && wire.provider.dialect.quirks.strict_tool_schemas;
     let mut tools = tools(request.tools, &mut params, strict)?;
-    let (mut system, history) = split_system(
-        &request.chat_history,
-        listed(&model).is_some_and(|[mid, _, _]| mid),
-    );
+    let (mut system, history) =
+        split_system(&request.chat_history, takes_mid_conversation_system(&model));
     let ids = WireIds::for_target(&history, wire, &model);
     let mut messages: Vec<Value> = Vec::new();
     for message in &history {
-        let Some(mut message) = message_json(message, wire, &ids)? else {
-            continue;
-        };
-        // A hoisted system message, or a dropped orphan result, leaves two
-        // messages of one role adjacent: they go as one, as Anthropic reads
-        // them, and the results stay first.
-        match messages.last_mut() {
-            Some(last)
-                if last.str("role") == message.str("role")
-                    && last.str("role") != Some("system") =>
-            {
-                if let (Some(Value::Array(content)), Some(Value::Array(more))) =
-                    (last.get_mut("content"), message.get_mut("content"))
-                {
-                    content.append(more);
-                }
-            }
-            _ => messages.push(message),
-        }
+        messages.extend(message_json(message, wire, &ids)?);
     }
     apply_cache_control(wire, top.as_ref(), &mut system, &mut messages, &mut tools)?;
     let has_tools = !tools.is_empty();
@@ -570,7 +557,7 @@ fn system_slot(history: &[Message], index: usize) -> bool {
 }
 
 /// Whether the system message at `index` sits where Anthropic takes one:
-/// after a user turn, or an assistant turn ending in a server tool block,
+/// after a user turn, or an assistant turn ending in a server tool's result,
 /// and before an assistant turn or the end.
 fn valid_system_message(history: &[Message], index: usize) -> bool {
     let after = index.checked_sub(1).and_then(|before| history.get(before));
@@ -578,9 +565,8 @@ fn valid_system_message(history: &[Message], index: usize) -> bool {
         Some(Message::User { .. }) => true,
         Some(Message::Assistant(turn)) => matches!(
             turn.content.last(),
-            Some(AssistantContent::Opaque(opaque)) if opaque.kind().is_some_and(|kind| {
-                kind.ends_with("_tool_use") || kind.ends_with("_tool_result")
-            })
+            Some(AssistantContent::Opaque(opaque))
+                if opaque.kind().is_some_and(|kind| kind.ends_with("_tool_result"))
         ),
         Some(Message::System { .. }) | None => false,
     };

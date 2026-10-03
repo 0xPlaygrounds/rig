@@ -571,6 +571,32 @@ impl crate::completion::ReplayTarget for Messages {
             .unwrap_or_default()
     }
 
+    /// A model that takes no system message inside `messages` gets every
+    /// one folded into the leading system prompt.
+    fn later_system(&self, model: &str) -> crate::completion::LaterSystem {
+        if super::completion::takes_mid_conversation_system(model) {
+            crate::completion::LaterSystem::InPlace
+        } else {
+            crate::completion::LaterSystem::Leading
+        }
+    }
+
+    /// A container item is request state, never content, and unsigned
+    /// thinking that is redacted or blank has nothing to send.
+    fn sends_alone(&self, block: &crate::message::AssistantContent) -> bool {
+        use crate::completion::Replay;
+        use crate::message::AssistantContent;
+        let ids = crate::providers::internal::wire_ids::WireIds::default();
+        match (block, block.replay(self, &ids)) {
+            (AssistantContent::Opaque(opaque), _) => opaque.kind() != Some("container"),
+            (_, Replay::Item(_)) => true,
+            (AssistantContent::Reasoning(reasoning), _) => {
+                !reasoning.redacted && !reasoning.text.trim().is_empty()
+            }
+            _ => true,
+        }
+    }
+
     fn call_id_slot(&self) -> Option<&'static str> {
         Some("/id")
     }

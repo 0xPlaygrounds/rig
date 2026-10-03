@@ -9,7 +9,7 @@ use base64::Engine as _;
 use base64::alphabet::STANDARD;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 use base64::prelude::BASE64_STANDARD;
-use rig_core::completion::{CompletionRequest, Message, Replay, ReplayTarget};
+use rig_core::completion::{CompletionRequest, Message, Replay};
 use rig_core::error::EncodeError;
 use rig_core::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, MimeType, ToolChoice,
@@ -63,13 +63,11 @@ pub(crate) fn body(
         system.push(json!({ "cachePoint": { "type": "default" } }));
     }
     let ids = WireIds::for_target(history, wire, model);
-    // Converse takes a hosted tool's use and result only beside a
-    // `toolConfig`.
-    let hosted = tool_config(&request).is_some();
     let mut messages: Vec<Value> = Vec::new();
     for message in history {
         let mut content = Vec::new();
         let role = match message {
+            // `adapt` sends a later system message as user text.
             Message::System { content: text } => {
                 content.push(json!({ "text": text }));
                 "user"
@@ -85,23 +83,13 @@ pub(crate) fn body(
             }
             Message::Assistant(turn) => {
                 for block in &turn.content {
-                    content.extend(assistant(block, wire, family, &ids, hosted)?);
+                    content.extend(assistant(block, wire, family, &ids)?);
                 }
                 "assistant"
             }
         };
-        // Converse rejects an empty message, and alternates roles: a turn the
-        // adapter left beside another of its role, such as two turns an
-        // orphan result separated, joins it.
-        match messages.last_mut() {
-            _ if content.is_empty() => {}
-            Some(last) if last["role"] == role => {
-                if let Some(Value::Array(previous)) = last.get_mut("content") {
-                    previous.append(&mut content);
-                }
-            }
-            _ => messages.push(json!({ "role": role, "content": content })),
-        }
+        // `adapt` alternates the roles and drops a turn with nothing to send.
+        messages.push(json!({ "role": role, "content": content }));
     }
     // Bedrock requires a name on every document and Rig's `Document` carries
     // none. A name repeated within one request takes a counter.
@@ -193,19 +181,15 @@ fn tool_config(request: &CompletionRequest) -> Option<Value> {
 }
 
 /// The Converse block for one assistant block, or `None` when there is
-/// nothing to send. A hosted tool's use or result goes only when the
-/// request carries a `toolConfig` (`hosted`).
+/// nothing to send ([`sends`] states which).
 fn assistant(
     block: &AssistantContent,
     wire: &Converse,
     family: Family,
     ids: &WireIds,
-    hosted: bool,
 ) -> Result<Option<Value>, EncodeError> {
     if let AssistantContent::Opaque(opaque) = block {
-        let sendable =
-            opaque.replay && (hosted || ReplayTarget::hosted_pair(wire, &opaque.item).is_none());
-        return Ok(sendable.then(|| whole_numbers(opaque.item.clone())));
+        return Ok(opaque.replay.then(|| whole_numbers(opaque.item.clone())));
     }
     if let Replay::Item(item) = block.replay(wire, ids) {
         return Ok(Some(whole_numbers(item.into_owned())));
@@ -233,6 +217,21 @@ fn assistant(
         AssistantContent::Image(image) => Some(json!({ "image": self::image(image)? })),
         AssistantContent::Opaque(_) => None,
     })
+}
+
+/// Whether [`assistant`] sends `block` on `wire`: everything but an opaque
+/// item that does not replay and reasoning that is redacted or blank without
+/// a current item, which carry nothing Converse takes.
+pub(crate) fn sends(block: &AssistantContent, wire: &Converse) -> bool {
+    let ids = WireIds::default();
+    match (block, block.replay(wire, &ids)) {
+        (AssistantContent::Opaque(opaque), _) => opaque.replay,
+        (_, Replay::Item(_)) => true,
+        (AssistantContent::Reasoning(reasoning), _) => {
+            !reasoning.redacted && !reasoning.text.trim().is_empty()
+        }
+        _ => true,
+    }
 }
 
 /// `value` with each whole number written as an integer: a store may write
