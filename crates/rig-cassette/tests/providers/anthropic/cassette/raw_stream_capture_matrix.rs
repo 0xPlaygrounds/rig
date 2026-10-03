@@ -54,9 +54,7 @@ use futures::StreamExt;
 use rig::completion::{FinishReason, ToolDefinition};
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
-use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::streaming::StreamEvent;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -160,21 +158,18 @@ async fn streamed_body(
     sink.put(drain_stream(stream).await);
 }
 
-/// Cells 4 and 5 share this: terminal `raw` is populated, and reads back into
-/// the provider terminal type without loss.
-fn assert_raw_round_trips(raw: &Value) -> StreamingCompletionResponse {
+/// Cells 4 and 5 share this: terminal `raw` is populated, and is
+/// Anthropic's terminal record, with its usage and stop reason.
+fn assert_raw_round_trips(raw: &Value) -> &Value {
     assert!(
         !raw.is_null(),
         "every terminal `stream()` yields carries `raw`"
     );
-    let typed = StreamingCompletionResponse::deserialize(raw)
-        .expect("`raw` is the serialized anthropic::streaming::StreamingCompletionResponse");
-    assert_eq!(
-        serde_json::to_value(&typed).expect("re-serialize"),
-        *raw,
-        "raw ↔ typed must round-trip without loss"
+    assert!(
+        raw["usage"].is_object() && raw["stop_reason"].is_string(),
+        "{raw}"
     );
-    typed
+    raw
 }
 
 /// Every string a JSON value contains — object keys and string leaves — so a
@@ -312,15 +307,6 @@ async fn terminal_raw_round_trips_into_provider_type() {
         "every terminal `stream()` yields carries `raw`"
     );
 
-    // Typed access is recoverable and lossless.
-    let typed = StreamingCompletionResponse::deserialize(raw)
-        .expect("`raw` is the serialized anthropic::streaming::StreamingCompletionResponse");
-    assert_eq!(
-        serde_json::to_value(&typed).expect("re-serialize"),
-        *raw,
-        "raw ↔ typed must round-trip without loss"
-    );
-
     // Terminal record only. Pin the exact key set: the fields the Anthropic
     // terminal type carries for an `end_turn` text stream (no
     // `stop_sequence`, which is skipped when absent, and no
@@ -379,8 +365,6 @@ async fn terminal_raw_round_trips_into_provider_type() {
     assert_eq!(recorded.stop_reason.as_deref(), Some("end_turn"));
     assert_eq!(raw["usage"]["output_tokens"], json!(recorded.output_tokens));
     assert_eq!(raw["usage"]["input_tokens"], json!(recorded.input_tokens));
-    assert_eq!(typed.stop_reason.as_deref(), Some("end_turn"));
-    assert_eq!(typed.usage.output_tokens as u64, recorded.output_tokens);
 
     // The normalized view beside it reports what the fixture recorded.
     assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
@@ -447,9 +431,6 @@ async fn raw_exposes_stop_sequence() {
     );
     assert_eq!(raw["stop_reason"], "stop_sequence");
     assert_eq!(raw["stop_sequence"], "alpha");
-    let typed = StreamingCompletionResponse::deserialize(raw).expect("typed access");
-    assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
-    assert_eq!(typed.stop_reason.as_deref(), Some("stop_sequence"));
     assert_terminal_matches_fixture(STOP_SEQUENCE_SCENARIO, &terminal, &recorded);
 }
 
@@ -457,9 +438,8 @@ async fn raw_exposes_stop_sequence() {
 // 3: raw and the normalized terminal tell one story
 // ---------------------------------------------------------------------------
 
-/// The normalized terminal and `raw` describe the same stream: reading `raw`
-/// back into the provider terminal type reproduces every normalized field
-/// delivered beside it: identity, finish reason, model, usage. And each of
+/// The normalized terminal and `raw` describe the same stream: `raw`
+/// carries every normalized field delivered beside it: identity, finish reason, model, usage. And each of
 /// those is what the fixture recorded.
 #[tokio::test]
 async fn normalized_terminal_matches_raw_renormalized() {
@@ -487,21 +467,14 @@ async fn normalized_terminal_matches_raw_renormalized() {
         "every terminal `stream()` yields carries `raw`"
     );
 
-    let typed = StreamingCompletionResponse::deserialize(raw)
-        .expect("`raw` is the serialized anthropic::streaming::StreamingCompletionResponse");
     assert_eq!(
-        serde_json::to_value(&typed).expect("typed record serializes"),
-        *raw,
-        "the provider record round-trips through its own serde"
-    );
-    assert_eq!(
-        typed.message_id.as_deref(),
+        raw["message_id"].as_str(),
         terminal.response_id(),
-        "the message id survives raw → typed"
+        "the message id is the record's"
     );
-    assert_eq!(typed.model.as_deref(), terminal.model());
+    assert_eq!(raw["model"].as_str(), terminal.model());
     assert_eq!(
-        typed.usage.input_tokens.map(|n| n as u64),
+        raw["usage"]["input_tokens"].as_u64(),
         terminal.usage.input_tokens
     );
 
@@ -599,10 +572,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
         "the terminal `raw` carries `thinking_tokens` as the wire spelled it"
     );
     assert_eq!(
-        typed
-            .usage
-            .output_tokens_details
-            .map(|details| details.thinking_tokens),
+        typed["usage"]["output_tokens_details"]["thinking_tokens"].as_u64(),
         Some(recorded_thinking_tokens)
     );
     assert_eq!(raw["stop_reason"], "end_turn");
@@ -716,7 +686,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     // `raw` names the stop reason as the wire spelled it; the normalized
     // terminal maps it onto `ToolCalls` and never spells `tool_use`.
     assert_eq!(raw["stop_reason"], "tool_use");
-    assert_eq!(typed.stop_reason.as_deref(), Some("tool_use"));
+    assert_eq!(typed["stop_reason"], "tool_use");
     assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
     let normalized = canonical_without_raw(terminal.clone());
     assert!(

@@ -169,3 +169,21 @@ fn every_named_finding_test_exists() {
         "named tests that no longer exist: {missing:?}"
     );
 }
+
+/// Every Messages-format dialect runs the suite on its Messages wire, not
+/// only on the Chat half its provider module may also serve:
+/// `anthropic_<dialect>`, and `anthropic` for Anthropic itself.
+#[test]
+fn every_messages_dialect_has_a_history_suite() {
+    let missing: Vec<String> = rig_core::providers::anthropic::wire::all()
+        .map(|dialect| match dialect.name {
+            "anthropic" => "anthropic".to_owned(),
+            name => format!("anthropic_{name}"),
+        })
+        .filter(|wire| !history_conformance::SUITE_WIRES.contains(&wire.as_str()))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "Messages dialects without a history suite: {missing:?}"
+    );
+}

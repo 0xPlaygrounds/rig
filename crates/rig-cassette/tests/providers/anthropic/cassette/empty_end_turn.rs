@@ -145,7 +145,9 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
 
             // The conversation is plain values: the recorded follow-up sent
             // the preamble, the first turn's reply and the tool result (the
-            // prompt was not repeated), so that is the history here.
+            // prompt was not repeated), so that is the history here. It
+            // declares the tool its history calls: without one, the calls
+            // and results go as text.
             let mut history = vec![Message::system(TERMINAL_NOTIFY_PREAMBLE)];
             let first_turn = model
                 .call(
@@ -172,7 +174,11 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
             ));
 
             let followup = model
-                .call(CompletionRequest::from(history).max_tokens(1024))
+                .call(
+                    CompletionRequest::from(history)
+                        .max_tokens(1024)
+                        .tool(notify_tool_definition()),
+                )
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");
 

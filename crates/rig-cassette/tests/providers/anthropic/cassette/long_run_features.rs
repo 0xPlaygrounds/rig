@@ -137,12 +137,10 @@ fn tool_changes(recording: &Recording) -> Vec<(usize, u64, Option<u64>)> {
 }
 
 /// Active tools that change every ten turns on Claude Opus 5.5, whose
-/// thinking blocks are bound to the tools they were produced with: the first
-/// request after the change (turn 11) replays earlier thinking blocks under a
-/// different `tools` list and is refused with a 400, the documented
-/// thinking-block binding. The ten turns before it cache as usual. Dropping
-/// the blocks instead needs the binding-controls beta and a request field
-/// rig has no typed setting for.
+/// thinking blocks are bound to the tools they were produced with. A turn
+/// made under other tools replays as another model's, its thinking as text,
+/// so the first request after each change (turns 11 and 21) is accepted
+/// where it used to be refused with a 400 (#2703), and every turn completes.
 #[tokio::test]
 async fn dynamic_tools_30() {
     let run = with_anthropic_long_run_cassette(
@@ -163,21 +161,32 @@ async fn dynamic_tools_30() {
         &run.log,
     );
     report_dynamic(&recording, &figures, &run);
-    assert_eq!(run.completed, 10, "the first ten turns complete");
-    let (turn, error) = run
-        .refused
-        .as_ref()
-        .expect("the changed tool list is refused");
-    assert_eq!(*turn, 11);
     assert!(
-        error.contains("400")
-            && error.contains("The `tools` list differs from the one this block was created with"),
-        "the refusal is the documented thinking-block binding: {error}"
+        run.refused.is_none(),
+        "no turn is refused: {:?}",
+        run.refused
     );
-    assert!(
-        tool_changes(&recording).is_empty(),
-        "every successful call advertised the first tool set"
-    );
+    assert_eq!(run.completed, 30, "every turn completes");
+    let changed: Vec<&Value> = (1..recording.calls.len())
+        .filter(|&index| {
+            tool_names(&recording.calls[index].body) != tool_names(&recording.calls[index - 1].body)
+        })
+        .map(|index| &recording.calls[index].body)
+        .collect();
+    assert_eq!(changed.len(), 2, "the advertised tools change twice");
+    for body in changed {
+        let signed = body["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|message| message["content"].as_array().into_iter().flatten())
+            .filter(|block| block["type"] == "thinking" || block["type"] == "redacted_thinking")
+            .count();
+        assert_eq!(
+            signed, 0,
+            "the first request under new tools replays no thinking made under the old ones"
+        );
+    }
 }
 
 fn report_dynamic(recording: &Recording, figures: &Figures, run: &workloads::DynamicToolsRun) {

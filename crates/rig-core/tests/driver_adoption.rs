@@ -1398,7 +1398,6 @@ fn runtime_turns_come_from_folds() {
 /// the list only shrinks.
 const PENDING_REPLAY_ADOPTION: &[&str] = &[
     "rig-bedrock/src/types/assistant_content.rs",
-    "rig-core/src/providers/anthropic/completion.rs",
     "rig-core/src/providers/gemini/completion.rs",
     "rig-core/src/providers/gemini/interactions_api/mod.rs",
     "rig-core/src/providers/internal/rebuild.rs",

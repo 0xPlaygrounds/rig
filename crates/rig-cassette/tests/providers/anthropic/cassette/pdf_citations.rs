@@ -1,18 +1,16 @@
 //! PDF-backed citations, recorded from the real API.
 //!
-//! `Citation` has hand-written serde (`completion.rs`) with five locator
-//! variants, and only two of them — `char_location` (plain-text documents) and
-//! `web_search_result_location` — had ever been recorded. `page_location` is
-//! the shape a PDF produces, and the recorded PDF scenarios never enabled
-//! citations, so that variant's decoding had only unit coverage.
+//! A citation rides on its text block's provider item. Only `char_location`
+//! (plain-text documents) and `web_search_result_location` had ever been
+//! recorded; `page_location` is the shape a PDF produces, and the recorded
+//! PDF scenarios never enabled citations before this one.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::message::{Document, DocumentSourceKind, Message, UserContent};
-use rig::providers::anthropic::completion::{
-    self as anthropic_completion, CLAUDE_SONNET_4_6, Citation,
-};
+use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use serde_json::Value;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -31,23 +29,18 @@ fn cited_pdf() -> Document {
     }
 }
 
-fn collect_citations(choice: &[rig::message::AssistantContent]) -> Vec<Citation> {
+/// The citations on the text blocks of `choice`, from their provider items.
+fn collect_citations(choice: &[rig::message::AssistantContent]) -> Vec<Value> {
     choice
         .iter()
-        .filter_map(|content| match content {
-            rig::message::AssistantContent::Text(text) => Some(text),
-            _ => None,
-        })
-        .flat_map(|text| {
-            anthropic_completion::anthropic_citations(text)
-                .expect("citations should decode from Anthropic text metadata")
-        })
+        .filter(|content| matches!(content, rig::message::AssistantContent::Text(_)))
+        .filter_map(|content| content.native_item()?.get("citations")?.as_array().cloned())
+        .flatten()
         .collect()
 }
 
-/// A PDF-grounded answer cites back into the document by *page*, so the
-/// response must decode as [`Citation::PageLocation`] rather than falling
-/// through to the forward-compatible `Unknown` bucket.
+/// A PDF-grounded answer cites back into the document by *page*: each
+/// citation is a `page_location` with a forward page range.
 #[tokio::test]
 async fn pdf_document_citations_decode_as_page_locations() {
     with_anthropic_cassette(
@@ -79,26 +72,26 @@ async fn pdf_document_citations_decode_as_page_locations() {
 
             let page_locations: Vec<_> = citations
                 .iter()
-                .filter_map(|citation| match citation {
-                    Citation::PageLocation(page) => Some(page),
-                    _ => None,
-                })
+                .filter(|citation| citation["type"] == "page_location")
                 .collect();
             assert!(
                 !page_locations.is_empty(),
                 "a PDF citation must decode as PageLocation, got {citations:?}",
             );
             for page in page_locations {
+                let number = |key: &str| page[key].as_u64().unwrap_or_default();
                 assert!(
-                    page.start_page_number >= 1,
+                    number("start_page_number") >= 1,
                     "page numbers are 1-indexed, got {page:?}",
                 );
                 assert!(
-                    page.end_page_number >= page.start_page_number,
+                    number("end_page_number") >= number("start_page_number"),
                     "page range must not run backwards, got {page:?}",
                 );
                 assert!(
-                    !page.cited_text.is_empty(),
+                    page["cited_text"]
+                        .as_str()
+                        .is_some_and(|text| !text.is_empty()),
                     "a citation must quote the text it points at, got {page:?}",
                 );
             }

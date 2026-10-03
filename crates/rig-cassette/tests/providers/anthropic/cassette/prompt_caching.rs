@@ -14,7 +14,6 @@ use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::cassette_models::MapWire;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -213,31 +212,42 @@ fn expected_buckets(mode: CachingMode, prefix_ttl: Option<&CacheTtl>) -> (bool, 
     (can_write_5m, can_write_1h)
 }
 
+/// A counter of Anthropic's `usage`, zero when absent.
+fn count(usage: &serde_json::Value, pointer: &str) -> u64 {
+    usage
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default()
+}
+
 fn assert_cache_creation_split(
-    usage: &anthropic::completion::Usage,
+    usage: &serde_json::Value,
     mode: CachingMode,
     prefix_ttl: Option<&CacheTtl>,
     context: &str,
 ) {
     let (can_write_5m, can_write_1h) = expected_buckets(mode, prefix_ttl);
-    let Some(split) = usage.cache_creation.as_ref() else {
-        panic!("{context}: Anthropic should report the per-TTL cache_creation split: {usage:?}");
-    };
+    assert!(
+        usage["cache_creation"].is_object(),
+        "{context}: Anthropic should report the per-TTL cache_creation split: {usage}"
+    );
+    let five = count(usage, "/cache_creation/ephemeral_5m_input_tokens");
+    let one = count(usage, "/cache_creation/ephemeral_1h_input_tokens");
     assert_eq!(
-        split.ephemeral_5m_input_tokens + split.ephemeral_1h_input_tokens,
-        usage.cache_creation_input_tokens.unwrap_or_default(),
-        "{context}: per-TTL buckets should sum to the aggregate: {usage:?}"
+        five + one,
+        count(usage, "/cache_creation_input_tokens"),
+        "{context}: per-TTL buckets should sum to the aggregate: {usage}"
     );
     if !can_write_5m {
         assert_eq!(
-            split.ephemeral_5m_input_tokens, 0,
-            "{context}: no marker requests a 5m write in this configuration: {usage:?}"
+            five, 0,
+            "{context}: no marker requests a 5m write in this configuration: {usage}"
         );
     }
     if !can_write_1h {
         assert_eq!(
-            split.ephemeral_1h_input_tokens, 0,
-            "{context}: no marker requests a 1h write in this configuration: {usage:?}"
+            one, 0,
+            "{context}: no marker requests a 1h write in this configuration: {usage}"
         );
     }
 }
@@ -269,19 +279,19 @@ async fn run_matrix_body(
     } else {
         let first = send_matrix_raw_probe(&model, preamble.clone(), tools.clone()).await;
         assert_matrix_raw_response(&first, mode, prefix_ttl.as_ref(), "first matrix request");
-        let first_usage = &first.usage;
+        let first_usage = &first["usage"];
         assert!(
-            first_usage.cache_creation_input_tokens.unwrap_or_default() > 0
-                || first_usage.cache_read_input_tokens.unwrap_or_default() > 0,
-            "first matrix request should create or read cache tokens, got usage: {first_usage:?}"
+            count(first_usage, "/cache_creation_input_tokens") > 0
+                || count(first_usage, "/cache_read_input_tokens") > 0,
+            "first matrix request should create or read cache tokens, got usage: {first_usage}"
         );
 
         let second = send_matrix_raw_probe(&model, preamble, tools).await;
         assert_matrix_raw_response(&second, mode, prefix_ttl.as_ref(), "warm matrix request");
         assert!(
-            second.usage.cache_read_input_tokens.unwrap_or_default() > 0,
-            "warm matrix request should read cached tokens, got usage: {:?}",
-            second.usage
+            count(&second["usage"], "/cache_read_input_tokens") > 0,
+            "warm matrix request should read cached tokens, got usage: {}",
+            second["usage"]
         );
     }
 }
@@ -300,7 +310,7 @@ async fn send_matrix_raw_probe(
     model: &Model<Messages>,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
-) -> anthropic::completion::CompletionResponse {
+) -> serde_json::Value {
     let mut builder = CompletionRequest::new(CACHE_PROBE_PROMPT)
         .preamble(preamble)
         .temperature(0.0)
@@ -312,24 +322,24 @@ async fn send_matrix_raw_probe(
         .call(builder)
         .await
         .expect("matrix Anthropic request should succeed");
-    anthropic::completion::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized anthropic::completion::CompletionResponse")
+    response.raw
 }
 
 fn assert_matrix_raw_response(
-    response: &anthropic::completion::CompletionResponse,
+    response: &serde_json::Value,
     mode: CachingMode,
     prefix_ttl: Option<&CacheTtl>,
     context: &str,
 ) {
-    let text: String = response
-        .content
-        .iter()
-        .filter(|block| block.kind() == "text")
-        .map(|block| block.str("text"))
+    let text: String = response["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "text")
+        .filter_map(|block| block["text"].as_str())
         .collect();
     assert_text_contains_cache_probe(&text, CACHE_PROBE_RESPONSE);
-    assert_cache_creation_split(&response.usage, mode, prefix_ttl, context);
+    assert_cache_creation_split(&response["usage"], mode, prefix_ttl, context);
 }
 
 async fn send_matrix_streaming_probe(

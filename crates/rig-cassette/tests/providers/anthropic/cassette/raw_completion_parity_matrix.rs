@@ -5,10 +5,8 @@
 //!
 //! # The contract
 //!
-//! One call yields both views. `CompletionResponse::deserialize(&response.raw)`
-//! reads Anthropic's own reply out of the blocking response, and
-//! `anthropic::streaming::StreamingCompletionResponse::deserialize(&raw)`
-//! reads the provider's terminal record out of a stream's. The provider-native
+//! One call yields both views. `response.raw` is Anthropic's own reply on
+//! the blocking response, and the provider's terminal record on a stream's. The provider-native
 //! fields — message id, model, token counts — must be exactly what the
 //! normalized view reports, otherwise a caller who reaches for the provider
 //! type to read a field rig does not normalize is reading a different exchange
@@ -48,7 +46,6 @@ use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig_test_support::cassette_models::AnthropicModels;
-use serde::Deserialize;
 
 use super::super::support::{
     assert_ids_match_recording, recorded_request_id_headers, sse_json_frames,
@@ -277,22 +274,24 @@ fn assert_blocking_parity(
 }
 
 /// The two views of one reply agree: `raw` is Anthropic's own reply document,
-/// and the provider type reads the same message id, model and token counts
+/// and the document holds the same message id, model and token counts
 /// the normalized response reports. The transport id is a response header
 /// rather than a body field, so it reaches the caller only on the normalized
 /// identity.
 fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported) {
-    let typed = anthropic::completion::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is Anthropic's reply document, which the provider type reads");
+    let raw = &response.raw;
     assert_eq!(
-        Some(typed.id.as_str()),
+        raw["id"].as_str(),
         reported.identity.response_id.as_deref(),
         "the normalized message id is the document's"
     );
-    assert_eq!(Some(typed.model.as_str()), reported.model.as_deref());
-    assert_eq!(Some(typed.usage.input_tokens), reported.usage.input_tokens);
+    assert_eq!(raw["model"].as_str(), reported.model.as_deref());
     assert_eq!(
-        Some(typed.usage.output_tokens),
+        raw["usage"]["input_tokens"].as_u64(),
+        reported.usage.input_tokens
+    );
+    assert_eq!(
+        raw["usage"]["output_tokens"].as_u64(),
         reported.usage.output_tokens
     );
     assert!(
@@ -342,11 +341,8 @@ fn assert_streamed_parity(
     expected: FinishReason,
     stop_reason: &str,
 ) {
-    let typed: anthropic::streaming::StreamingCompletionResponse =
-        serde_json::from_value(second_record.raw.clone())
-            .expect("the terminal's raw is the provider record");
     assert_eq!(
-        typed.usage.input_tokens.map(|n| n as u64),
+        second_record.raw["usage"]["input_tokens"].as_u64(),
         second_record.usage.input_tokens,
         "the raw record and the normalized record agree on usage"
     );

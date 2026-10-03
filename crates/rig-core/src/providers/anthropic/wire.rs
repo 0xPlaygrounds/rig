@@ -13,22 +13,14 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
-use crate::error::ProviderError;
-use crate::model::{ModelInfo, ModelList};
-pub use crate::operation::VerifyDecoder;
-use crate::operation::{Completion, ModelListing, ModelPage, Verify as VerifyOp};
+use crate::operation::Completion;
 use crate::providers::internal::named_dialect;
-use crate::wire::Flow;
-use crate::wire::{
-    Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
-    WireFrame,
-};
+use crate::wire::{Body, Capabilities, Descriptor, Encoded, Framing, Mode, Secret, Wire};
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, ToolDefinition,
-    default_max_tokens_for_model, document_source, image_source, rejects_forced_tool_choice,
-    sanitize_strict_tool_schema,
+    CacheTtl, default_max_tokens_for_model, document_source, image_source,
+    rejects_forced_tool_choice,
 };
 use super::streaming::MessagesDecoder;
 
@@ -63,6 +55,10 @@ pub struct Quirks {
     /// Whether the provider implements Anthropic's constrained tool schemas.
     /// A gateway that does not leaves Rig-generated tools unchanged.
     pub strict_tool_schemas: bool,
+    /// Whether the provider takes thinking back without a signature, as
+    /// Kimi does (pi's `allowEmptySignature`). Elsewhere unsigned thinking
+    /// replays as text.
+    pub unsigned_thinking: bool,
 }
 
 impl Quirks {
@@ -71,6 +67,7 @@ impl Quirks {
         Self {
             max_tokens: MaxTokens::ByModel,
             strict_tool_schemas: true,
+            unsigned_thinking: false,
         }
     }
 
@@ -79,6 +76,7 @@ impl Quirks {
         Self {
             max_tokens: MaxTokens::Fixed(4096),
             strict_tool_schemas: false,
+            unsigned_thinking: false,
         }
     }
 }
@@ -148,12 +146,6 @@ pub const fn compatible(
     }
 }
 
-/// The strict-tool transform Anthropic's constrained decoding needs.
-pub(crate) fn strict_tool_transform(tool: &mut ToolDefinition) {
-    sanitize_strict_tool_schema(&mut tool.input_schema);
-    tool.strict = true;
-}
-
 impl Dialect {
     /// The `max_tokens` this dialect defaults `model` to.
     pub fn default_max_tokens(&self, model: &str) -> Option<u64> {
@@ -180,13 +172,20 @@ pub const MINIMAX: Dialect = compatible(
     Some("MINIMAX_ANTHROPIC_API_BASE"),
 );
 
-/// Moonshot's Anthropic-format endpoint.
-pub const MOONSHOT: Dialect = compatible(
-    "moonshot",
-    "https://api.moonshot.ai/anthropic",
-    "MOONSHOT_API_KEY",
-    Some("MOONSHOT_ANTHROPIC_API_BASE"),
-);
+/// Moonshot's Anthropic-format endpoint, which sends and takes back
+/// thinking without a signature.
+pub const MOONSHOT: Dialect = Dialect {
+    quirks: Quirks {
+        unsigned_thinking: true,
+        ..Quirks::gateway()
+    },
+    ..compatible(
+        "moonshot",
+        "https://api.moonshot.ai/anthropic",
+        "MOONSHOT_API_KEY",
+        Some("MOONSHOT_ANTHROPIC_API_BASE"),
+    )
+};
 
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
@@ -281,22 +280,8 @@ impl AnthropicConfig {
         }
     }
 
-    /// The model-listing wire.
-    pub(crate) fn models(&self) -> Models {
-        Models {
-            provider: self.clone(),
-        }
-    }
-
-    /// The credential-check wire.
-    pub(crate) fn verify(&self) -> Verify {
-        Verify {
-            provider: self.clone(),
-        }
-    }
-
     /// The request headers every Messages-format endpoint takes.
-    fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
+    pub(super) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
         let builder = builder
             .header("x-api-key", self.api_key.expose())
             .header("anthropic-version", &self.version);
@@ -444,60 +429,6 @@ impl Messages {
         self.strict_tools = true;
         self
     }
-
-    /// The typed request body, shared by both modes.
-    fn body(
-        &self,
-        mut request: CompletionRequest,
-        mode: Mode,
-    ) -> Result<serde_json::Value, EncodeError> {
-        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        if request.max_tokens.is_none() {
-            // A request that addresses another model gets that model's
-            // default; the wire's own model keeps the one it was built with.
-            let default = if model == self.model {
-                self.default_max_tokens
-            } else {
-                self.provider
-                    .dialect
-                    .default_max_tokens(&model)
-                    .or(self.default_max_tokens)
-            };
-            let Some(tokens) = default else {
-                return Err(EncodeError::request(
-                    "`max_tokens` must be set for Anthropic",
-                ));
-            };
-            request.max_tokens = Some(tokens);
-        }
-        let typed = AnthropicCompletionRequest::try_from_params(
-            AnthropicRequestParams {
-                model: &model,
-                request,
-                prompt_caching: self.prompt_caching,
-                automatic_caching: self.automatic_caching,
-                automatic_caching_ttl: self.automatic_caching_ttl.clone(),
-                static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
-            },
-            (self.strict_tools && self.provider.dialect.quirks.strict_tool_schemas)
-                .then_some(strict_tool_transform as fn(&mut ToolDefinition)),
-        )?;
-        let mut body = serde_json::to_value(&typed)?;
-        if mode == Mode::Unary {
-            return Ok(body);
-        }
-        // Anthropic rejects tool_choice without tools.
-        if let Some(map) = body.as_object_mut() {
-            map.insert("stream".to_owned(), serde_json::Value::Bool(true));
-            if map.contains_key("tools") {
-                map.entry("tool_choice")
-                    .or_insert_with(|| serde_json::json!({ "type": "auto" }));
-            } else {
-                map.shift_remove("tool_choice");
-            }
-        }
-        Ok(body)
-    }
 }
 
 impl Wire for Messages {
@@ -519,7 +450,7 @@ impl Wire for Messages {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let body = self.body(request, mode)?;
+        let body = super::completion::body(self, request, mode)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Anthropic completion request",
@@ -545,7 +476,7 @@ impl Wire for Messages {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        MessagesDecoder::new()
+        MessagesDecoder::new(self.provider.dialect.quirks.unsigned_thinking)
     }
 }
 
@@ -614,135 +545,42 @@ impl crate::completion::ReplayTarget for Messages {
             .take(64)
             .collect()
     }
-}
 
-/// The model-listing wire: `GET /v1/models`, cursor-paged.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Models {
-    /// The provider this wire speaks to.
-    pub provider: AnthropicConfig,
-}
-
-impl Wire for Models {
-    type Op = ModelListing;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
-
-    fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(self.provider.dialect.name)
+    /// An edited call keeps the `caller` that ties it to the code
+    /// execution that made it.
+    fn identity(&self, item: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+        item.get("caller")
+            .filter(|_| item.get("type").and_then(serde_json::Value::as_str) == Some("tool_use"))
+            .map(|caller| serde_json::Map::from_iter([("caller".to_owned(), caller.clone())]))
+            .unwrap_or_default()
     }
 
-    fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        Ok(Encoded::new(
-            self.models_request(cursor.as_deref())?,
-            Framing::Whole,
-        ))
+    fn call_id_slot(&self) -> Option<&'static str> {
+        Some("/id")
     }
 
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
+    /// Claude models whose thinking is bound to the tools and system prompt
+    /// it was made under refuse it under others.
+    fn binds_context(&self, model: &str) -> bool {
+        self.provider.dialect.name == ANTHROPIC.name && super::completion::binds_context(model)
     }
-}
 
-impl Models {
-    /// One page's request, after `cursor` when the previous page named one.
-    fn models_request(&self, cursor: Option<&str>) -> Result<http::Request<Body>, EncodeError> {
-        let uri = match cursor {
-            Some(cursor) => format!(
-                "{}{}",
-                self.provider.base_url,
-                crate::providers::internal::with_query_pairs("/v1/models", &[("after_id", cursor)],)
-            ),
-            None => format!("{}/v1/models", self.provider.base_url),
+    /// A server tool's use (`server_tool_use`, `mcp_tool_use`) and the
+    /// `*_tool_result` that answers it by `tool_use_id`.
+    fn hosted_pair(
+        &self,
+        item: &serde_json::Value,
+    ) -> Option<(crate::completion::Pairing, String)> {
+        use crate::completion::Pairing;
+        let kind = item.get("type")?.as_str()?;
+        let (side, key) = if kind.ends_with("_tool_use") {
+            (Pairing::Use, "id")
+        } else if kind.ends_with("_tool_result") {
+            (Pairing::Result, "tool_use_id")
+        } else {
+            return None;
         };
-        self.provider
-            .headers(http::Request::get(uri))
-            .body(Body::empty())
-            .map_err(EncodeError::from)
-    }
-}
-
-/// One page of `GET /v1/models`.
-#[derive(Debug, Deserialize)]
-#[doc(hidden)]
-pub struct ModelsPage {
-    data: Vec<ModelEntry>,
-    #[serde(default)]
-    has_more: bool,
-    #[serde(default)]
-    last_id: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelEntry {
-    id: String,
-    display_name: String,
-}
-
-impl From<ModelEntry> for ModelInfo {
-    fn from(entry: ModelEntry) -> Self {
-        ModelInfo::new(entry.id, entry.display_name)
-    }
-}
-
-/// Decodes `GET /v1/models` and the cursor Anthropic names.
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = ModelsPage;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["data"])
-    }
-
-    fn decode(
-        &mut self,
-        page: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        // Missing or empty cursors would repeatedly fetch page one, even with has_more.
-        let next = page
-            .last_id
-            .filter(|cursor| page.has_more && !cursor.is_empty());
-        Ok(out.end(ModelPage {
-            models: ModelList::new(page.data.into_iter().map(ModelInfo::from).collect()),
-            next,
-        }))
-    }
-}
-
-/// The credential-check wire: `GET /v1/models`, status only, decoded by
-/// the shared [`VerifyDecoder`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Verify {
-    /// The provider this wire speaks to.
-    pub provider: AnthropicConfig,
-}
-
-impl Wire for Verify {
-    type Op = VerifyOp;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = VerifyDecoder;
-
-    fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(self.provider.dialect.name)
-    }
-
-    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = self
-            .provider
-            .headers(http::Request::get(format!(
-                "{}/v1/models",
-                self.provider.base_url
-            )))
-            .body(Body::empty())?;
-        Ok(Encoded::new(request, Framing::Whole))
-    }
-
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        VerifyDecoder
+        Some((side, item.get(key)?.as_str()?.to_owned()))
     }
 }
 

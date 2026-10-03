@@ -10,7 +10,7 @@ use super::*;
 use crate::message::AssistantContent;
 use crate::test_utils::json_body;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
-use crate::wire::{Framing, Mode, Wire};
+use crate::wire::{Framing, Mode, Wire, WireFrame};
 
 /// `text_turn_parity.yaml`'s reply body, verbatim.
 const UNARY: &str = r#"{"content":[{"text":"parity probe","type":"text"}],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":14,"output_tokens":6,"service_tier":"standard"}}"#;

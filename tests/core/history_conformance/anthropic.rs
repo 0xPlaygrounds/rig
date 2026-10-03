@@ -4,10 +4,13 @@
 
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
+use rig_core::message::{AssistantContent, Message};
 use rig_core::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig_core::providers::anthropic::{ANTHROPIC, AnthropicConfig, Dialect, Messages};
 use rig_core::wire::{Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{
+    Ablation, CallShape, Ending, HistoryFixture, Shape, decode, http_body,
+};
 use serde_json::{Value, json};
 
 /// A Messages-format dialect's side of the suite.
@@ -137,7 +140,6 @@ impl MessagesHistory {
         events.push(json!({"type": "message_delta",
             "delta": {"stop_reason": stop_reason, "stop_sequence": null},
             "usage": {"output_tokens": 5}}));
-        events.push(json!({"type": "message_stop"}));
         events
             .into_iter()
             .map(|event| WireFrame::Text(event.to_string()))
@@ -259,6 +261,70 @@ impl HistoryFixture for MessagesHistory {
             required: &["/type", "/content", "/content/*/type"],
             frames: |document| vec![WireFrame::Text(document.to_string())],
         })
+    }
+
+    /// The item as the content of a whole message.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let item = block.native_item()?.clone();
+        let wire = self.wire(self.model);
+        let response = decode(
+            &wire,
+            &CompletionRequest::new("restate"),
+            Mode::Unary,
+            self.whole(vec![item], "end_turn"),
+        )
+        .ok()?;
+        match response.message() {
+            Some(Message::Assistant(turn)) => turn.content.into_iter().next(),
+            _ => None,
+        }
+    }
+
+    /// Messages keys every block by its index, so calls never come without
+    /// one: a stream may reuse an index once its block stopped, and a whole
+    /// message lists its calls.
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<WireFrame>> {
+        let calls = vec![
+            json!({"type": "tool_use", "id": "a1", "name": "weather", "input": {"city": "Paris"}}),
+            json!({"type": "tool_use", "id": "b2", "name": "weather", "input": {"city": "Rome"}}),
+        ];
+        match (shape, mode) {
+            (CallShape::WholeList, Mode::Unary) => Some(self.whole(calls, "tool_use")),
+            (CallShape::ReusedIndex, Mode::Streaming) => {
+                let mut frames = self.stream(calls, "tool_use");
+                // Both calls at index 0: the second opens after the first stopped.
+                for frame in &mut frames {
+                    let WireFrame::Text(text) = frame else {
+                        continue;
+                    };
+                    *text = text.replace("\"index\":1", "\"index\":0");
+                }
+                Some(frames)
+            }
+            _ => None,
+        }
+    }
+
+    fn empty_reply(&self, mode: Mode) -> Option<Vec<WireFrame>> {
+        Some(match mode {
+            Mode::Unary => self.whole(Vec::new(), "end_turn"),
+            Mode::Streaming => self.stream(Vec::new(), "end_turn"),
+        })
+    }
+
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        Some("/stop_reason")
+    }
+
+    fn error_frame(&self) -> Option<WireFrame> {
+        Some(WireFrame::Text(
+            json!({"type": "error", "error": {"type": "overloaded_error", "message": "busy"}})
+                .to_string(),
+        ))
+    }
+
+    fn strict_roles(&self) -> bool {
+        true
     }
 }
 

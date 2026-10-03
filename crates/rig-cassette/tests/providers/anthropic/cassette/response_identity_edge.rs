@@ -13,12 +13,9 @@ use rig::agent::{
 };
 use rig::completion::{CompletionResponse, Document, Message};
 use rig::driver::Model;
-use rig::providers::anthropic::completion::{
-    CLAUDE_SONNET_4_6, CacheTtl, CompletionResponse as AnthropicResponse, Usage,
-};
+use rig::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
 use rig::providers::anthropic::wire::Messages;
 use rig::tool::{Tool, ToolContext, ToolExecutionError};
-use serde::Deserialize;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{Adder, IdentityProbe, TOOLS_PREAMBLE, assert_transport_request_id};
@@ -27,10 +24,8 @@ use rig::completion::CompletionRequest;
 /// Anthropic's own usage for a turn, read off [`CompletionResponse::raw`]:
 /// the per-TTL cache-creation split is provider-native and rig's normalized
 /// usage does not model it.
-fn provider_usage(response: &CompletionResponse) -> Usage {
-    AnthropicResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized anthropic::completion::CompletionResponse")
-        .usage
+fn provider_usage(response: &CompletionResponse) -> &serde_json::Value {
+    &response.raw["usage"]
 }
 
 fn cache_padding(label: &str) -> String {
@@ -82,17 +77,18 @@ async fn caching_and_identity_share_the_wire_blocking() {
             // wrote (or re-read) the 1h prefix, the warm turn read it.
             let cold = provider_usage(&first);
             let warm = provider_usage(&second);
-            let split = cold
-                .cache_creation
-                .as_ref()
-                .expect("per-TTL split reported");
+            let count = |usage: &serde_json::Value, pointer: &str| {
+                usage.pointer(pointer).and_then(serde_json::Value::as_u64)
+            };
+            assert!(cold["cache_creation"].is_object(), "per-TTL split reported");
             assert_eq!(
-                split.ephemeral_1h_input_tokens + split.ephemeral_5m_input_tokens,
-                cold.cache_creation_input_tokens.unwrap_or_default()
+                count(cold, "/cache_creation/ephemeral_1h_input_tokens").unwrap_or_default()
+                    + count(cold, "/cache_creation/ephemeral_5m_input_tokens").unwrap_or_default(),
+                count(cold, "/cache_creation_input_tokens").unwrap_or_default()
             );
             assert!(
-                warm.cache_read_input_tokens.unwrap_or_default() > 0,
-                "warm turn reads the cache, got {warm:?}"
+                count(warm, "/cache_read_input_tokens").unwrap_or_default() > 0,
+                "warm turn reads the cache, got {warm}"
             );
         },
     )

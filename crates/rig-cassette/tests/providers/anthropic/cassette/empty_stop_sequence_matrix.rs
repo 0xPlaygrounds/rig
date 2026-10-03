@@ -61,9 +61,7 @@
 
 use rig::completion::{FinishReason, ToolDefinition};
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::CompletionResponse;
 use rig_test_support::cassette_models::MapWire;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_empty_stop_cassette};
@@ -150,11 +148,13 @@ async fn raw_normalize_empty_stop_sequence() {
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
                 .expect("empty stop-sequence request should succeed");
-            let raw = CompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
-
-            assert!(raw.content.is_empty(), "premise: the turn carried nothing");
-            assert_eq!(raw.stop_sequence.as_deref(), Some("alpha"));
+            let raw = &response.raw;
+            assert_eq!(
+                raw["content"],
+                json!([]),
+                "premise: the turn carried nothing"
+            );
+            assert_eq!(raw["stop_sequence"], "alpha");
 
             assert!(
                 response.choice.is_empty(),

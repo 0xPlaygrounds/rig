@@ -1,8 +1,4 @@
-use super::super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CLAUDE_OPUS_4_8, CLAUDE_SONNET_4_6,
-    CacheControl, CacheTtl, Message, SystemContent, anthropic_citations,
-    apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
-};
+use super::super::completion::{CLAUDE_OPUS_4_8, CLAUDE_SONNET_4_6};
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::completion::Message as RigMessage;
@@ -16,12 +12,12 @@ use serde_json::json;
 
 /// A fresh decoder, for its classifier.
 fn adapter() -> MessagesDecoder {
-    MessagesDecoder::new()
+    MessagesDecoder::new(false)
 }
 
 /// Decode `events` through one decoder as one reply, then EOF.
 fn decode(events: impl IntoIterator<Item = MessagesEvent>) -> Decoded<Completion> {
-    decode_events!(MessagesDecoder::new(), "anthropic", events)
+    decode_events!(MessagesDecoder::new(false), "anthropic", events)
 }
 
 /// The event one wire frame classifies to.
@@ -82,7 +78,7 @@ fn item(content: &AssistantContent) -> Option<&Value> {
 }
 
 /// The message delta that ends a reply with `stop_reason`.
-fn message_delta(stop_reason: &str, usage: PartialUsage) -> MessagesEvent {
+fn message_delta(stop_reason: &str, usage: Value) -> MessagesEvent {
     classified(
         &json!({"type": "message_delta",
             "delta": {"stop_reason": stop_reason, "stop_sequence": null},
@@ -131,6 +127,7 @@ fn built_streaming_body(
     } else {
         wire
     };
+    let request = <Completion as crate::wire::Operation>::prepare(request, &wire.describe())?;
     let encoded = wire.encode(request, Mode::Streaming)?;
     match encoded.request.body() {
         Body::Bytes(bytes) => Ok(serde_json::from_slice(bytes)?),
@@ -140,32 +137,43 @@ fn built_streaming_body(
 
 #[test]
 fn test_streaming_tool_build_marks_final_combined_tool() {
-    let mut additional_params = json!({
-        "tools": [{
-            "name": "provider_tool",
-            "description": "Provider tool",
-            "input_schema": {"type": "object"}
-        }]
-    });
-
-    let mut tools = build_tool_definitions(
-        vec![crate::completion::ToolDefinition {
+    let request = CompletionRequest::new(RigMessage::user("Hi"))
+        .max_tokens(64)
+        .tools(vec![crate::completion::ToolDefinition {
             name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
-        }],
-        &mut additional_params,
-        None,
-    )
-    .unwrap();
-    let mut system: Vec<SystemContent> = Vec::new();
-    let mut messages: Vec<Message> = Vec::new();
-    apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None, None).unwrap();
-
+        }])
+        .additional_params(json!({
+            "tools": [{
+                "name": "provider_tool",
+                "description": "Provider tool",
+                "input_schema": {"type": "object"}
+            }]
+        }));
+    let wire = AnthropicConfig::new("test-key")
+        .completion(CLAUDE_SONNET_4_6)
+        .with_prompt_caching();
+    let body = streamed_body(&wire, request);
+    let tools = body["tools"].as_array().expect("tools");
     assert_eq!(tools.len(), 2);
     assert!(tools[0].get("cache_control").is_none());
     assert_eq!(tools[1]["name"], "provider_tool");
     assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+}
+
+/// The streaming body `wire` encodes for `request`.
+fn streamed_body(
+    wire: &crate::providers::anthropic::Messages,
+    request: CompletionRequest,
+) -> Value {
+    use crate::wire::Wire;
+    crate::test_utils::json_body(
+        &wire
+            .encode(request, Mode::Streaming)
+            .expect("the request encodes")
+            .request,
+    )
 }
 
 #[test]
@@ -249,16 +257,13 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
     // Unification invariant: the streaming body is exactly the blocking body
     // (built via the same typed request) plus `stream: true`. Pins the two
     // wire formats together so a future edit can't reintroduce drift.
-    let blocking = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-        model: CLAUDE_OPUS_4_8,
-        request,
-        prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
-        static_prefix_cache_ttl: None,
-    })
-    .expect("blocking request body should build");
-    let mut expected = serde_json::to_value(&blocking).expect("serialize blocking body");
+    let wire = crate::providers::anthropic::wire::AnthropicConfig::new("test-key")
+        .completion(CLAUDE_OPUS_4_8);
+    let mut expected = crate::test_utils::json_body(
+        &crate::wire::Wire::encode(&wire, request, Mode::Unary)
+            .expect("blocking request body should build")
+            .request,
+    );
     expected
         .as_object_mut()
         .expect("body is an object")
@@ -340,47 +345,33 @@ fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
 
 #[test]
 fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
-    let mut additional_params = json!({
-        "cache_control": {"type": "ephemeral", "ttl": "1h"}
-    });
-    let top_level_cache_control =
-        resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
-    let mut tools = build_tool_definitions(
-        vec![crate::completion::ToolDefinition {
-            name: crate::message::ToolName::new("rig_tool").expect("tool name"),
-            description: "Rig tool".to_string(),
-            parameters: json!({"type": "object", "properties": {}}),
-        }],
-        &mut additional_params,
-        None,
-    )
-    .unwrap();
-    let mut system = vec![SystemContent::Text {
-        text: "System prompt".to_string(),
-        cache_control: None,
-    }];
-    let mut messages: Vec<Message> = Vec::new();
-
-    apply_prompt_cache_control(
-        &mut system,
-        &mut messages,
-        &mut tools,
-        true,
-        None,
-        top_level_cache_control.as_ref(),
-    )
-    .unwrap();
-
-    assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
-    assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
-    match &system[0] {
-        SystemContent::Text {
-            cache_control: Some(CacheControl::Ephemeral { ttl }),
-            ..
-        } => assert_eq!(ttl.as_ref(), Some(&CacheTtl::OneHour)),
-        other => panic!("expected system cache_control, got {other:?}"),
-    }
-    assert!(additional_params.get("cache_control").is_none());
+    let request = CompletionRequest::from(vec![
+        RigMessage::system("System prompt"),
+        RigMessage::user("Hi"),
+    ])
+    .max_tokens(64)
+    .tools(vec![crate::completion::ToolDefinition {
+        name: crate::message::ToolName::new("rig_tool").expect("tool name"),
+        description: "Rig tool".to_string(),
+        parameters: json!({"type": "object", "properties": {}}),
+    }])
+    .additional_params(json!({"cache_control": {"type": "ephemeral", "ttl": "1h"}}));
+    let wire = AnthropicConfig::new("test-key")
+        .completion(CLAUDE_SONNET_4_6)
+        .with_prompt_caching();
+    let body = streamed_body(&wire, request);
+    assert_eq!(
+        body["tools"][0]["cache_control"],
+        json!({"type": "ephemeral", "ttl": "1h"})
+    );
+    assert_eq!(
+        body["system"][0]["cache_control"],
+        json!({"type": "ephemeral", "ttl": "1h"})
+    );
+    assert_eq!(
+        body["cache_control"],
+        json!({"type": "ephemeral", "ttl": "1h"})
+    );
 }
 
 /// Signature fragments concatenate onto the opening signature, as pi
@@ -644,16 +635,17 @@ fn citation_deltas_land_on_the_text_item() {
             panic!("one text block: {:?}", response.choice);
         };
         assert_eq!(text.text, "the grass is green");
-        let citations = anthropic_citations(text).expect("the citations parse");
         assert_eq!(
-            serde_json::to_value(&citations).expect("citations serialize"),
-            json!([citation])
+            response.choice[0]
+                .native_item()
+                .and_then(|item| item.get("citations")),
+            Some(&json!([citation]))
         );
     }
 }
 
 /// A citation of a known kind with a defective payload never fails the
-/// reply: it lands on the item, and reading the citations reports it.
+/// reply: it lands on the item as sent.
 #[test]
 fn a_defective_citation_lands_on_its_item() {
     let frames = reply(
@@ -669,10 +661,15 @@ fn a_defective_citation_lands_on_its_item() {
         "end_turn",
     );
     let response = streamed(&frames).expect("the reply folds");
-    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+    let [block @ AssistantContent::Text(_)] = response.choice.as_slice() else {
         panic!("one text block: {:?}", response.choice);
     };
-    assert!(anthropic_citations(text).is_err());
+    assert_eq!(
+        block
+            .native_item()
+            .and_then(|item| item.pointer("/citations/0/cited_text")),
+        Some(&json!(1))
+    );
 }
 
 /// Server tools and their results are provider items with no canonical
@@ -928,15 +925,12 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     let response = decoded.outcome.expect("the message_delta ends the reply");
     // The native record rides on `raw`; the split is Anthropic-specific, so
     // it is readable only there.
-    let native: StreamingCompletionResponse =
-        serde_json::from_value(response.raw).expect("raw must be the native terminal");
-    let split = native
-        .usage
-        .cache_creation
-        .expect("terminal usage must carry the message_start cache_creation split");
-    assert_eq!(split.ephemeral_1h_input_tokens, 9366);
-    assert_eq!(split.ephemeral_5m_input_tokens, 336);
-    assert_eq!(native.usage.cache_creation_input_tokens, Some(9702));
+    let usage = &response.raw["usage"];
+    assert_eq!(
+        usage["cache_creation"],
+        json!({"ephemeral_1h_input_tokens": 9366, "ephemeral_5m_input_tokens": 336})
+    );
+    assert_eq!(usage["cache_creation_input_tokens"], 9702);
 }
 
 /// A terminal `message_delta` carrying only the output count (Anthropic's
@@ -959,17 +953,10 @@ fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
     assert_eq!(response.usage.cached_input_tokens, Some(6));
     assert_eq!(response.usage.output_tokens, Some(3));
     assert_eq!(response.usage.total_tokens, Some(23));
-    let native: StreamingCompletionResponse =
-        serde_json::from_value(response.raw).expect("raw must be the native terminal");
-    assert_eq!(native.usage.cache_creation_input_tokens, Some(4));
-    assert_eq!(native.usage.cache_read_input_tokens, Some(6));
-    assert_eq!(
-        native
-            .usage
-            .cache_creation
-            .map(|cache| cache.ephemeral_1h_input_tokens),
-        Some(3)
-    );
+    let usage = &response.raw["usage"];
+    assert_eq!(usage["cache_creation_input_tokens"], 4);
+    assert_eq!(usage["cache_read_input_tokens"], 6);
+    assert_eq!(usage["cache_creation"]["ephemeral_1h_input_tokens"], 3);
 }
 
 /// An explicit terminal zero is authoritative over `message_start`'s counts.
@@ -1054,14 +1041,7 @@ fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
         ),
         message_delta(
             "max_tokens",
-            PartialUsage {
-                output_tokens: 5,
-                input_tokens: Some(3),
-                cache_creation_input_tokens: None,
-                cache_creation: None,
-                cache_read_input_tokens: Some(2),
-                output_tokens_details: None,
-            },
+            json!({"output_tokens": 5, "input_tokens": 3, "cache_read_input_tokens": 2}),
         ),
     ]);
     let response = decoded.outcome.expect("the reply ended");
@@ -1087,7 +1067,7 @@ fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() 
         tool_use(0, "toolu_1", "add"),
         input_json(0, r#"{"x":1}"#),
         stop(0),
-        message_delta("end_turn", PartialUsage::default()),
+        message_delta("end_turn", json!({"output_tokens": 0})),
     ]);
     assert_eq!(
         decoded.outcome.expect("the reply ended").finish_reason(),
@@ -1099,7 +1079,7 @@ fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() 
 /// the turn.
 #[test]
 fn unknown_stop_reason_survives_onto_the_terminal_record() {
-    let decoded = decode([message_delta("x_rig_reason", PartialUsage::default())]);
+    let decoded = decode([message_delta("x_rig_reason", json!({"output_tokens": 0}))]);
     let response = decoded.outcome.expect("the reply ended");
     assert_eq!(
         response.finish_reason(),
@@ -1409,12 +1389,12 @@ mod terminal_emission {
 
     /// Raw capture on a streamed reply, through the real `Model::stream`
     /// seam over the mock transport: the response's `raw` is Anthropic's own
-    /// `StreamingCompletionResponse`. A `message_delta` with `stop_sequence`
+    /// terminal record. A `message_delta` with `stop_sequence`
     /// set is used because the normalized finish folds it into
     /// `FinishReason::Stop` and keeps neither Anthropic's spelling nor which
     /// sequence fired — both are readable only off the capture.
     #[tokio::test]
-    async fn terminal_raw_round_trips_into_the_terminal_type() {
+    async fn terminal_raw_is_anthropics_terminal_record() {
         const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
         let (_, saw_error, finished) = collect(sse(&[
@@ -1428,20 +1408,13 @@ mod terminal_emission {
         let response = finished.expect("the reply ended");
 
         let raw = &response.raw;
-        let typed: super::super::StreamingCompletionResponse =
-            serde_json::from_value(raw.clone()).expect("raw must deserialize");
-        assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the terminal type serializes to"
-        );
-        assert_eq!(typed.stop_reason.as_deref(), Some("stop_sequence"));
-        assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
-        assert_eq!(typed.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(raw["stop_reason"], "stop_sequence");
+        assert_eq!(raw["stop_sequence"], "alpha");
+        assert_eq!(raw["message_id"], "msg_1");
 
         // The capture maps to the same end the reply finished with.
-        assert_eq!(typed.message_id.as_deref(), response.response_id());
-        assert_eq!(typed.model.as_deref(), response.model());
+        assert_eq!(raw["message_id"].as_str(), response.response_id());
+        assert_eq!(raw["model"].as_str(), response.model());
         assert_eq!(
             response.finish_reason(),
             Some(crate::completion::FinishReason::Stop)
@@ -1459,7 +1432,7 @@ fn an_empty_tool_use_id_is_minted_not_keyed_on_the_empty_string() {
         stop(0),
         tool_use(1, "", "add"),
         stop(1),
-        message_delta("tool_use", PartialUsage::default()),
+        message_delta("tool_use", json!({"output_tokens": 0})),
     ]);
     let ids: Vec<_> = decoded
         .outcome
@@ -1735,4 +1708,48 @@ fn an_empty_reply_folds_the_same_whole_or_streamed() {
             "{reason}: {whole:?}"
         );
     }
+}
+
+/// Anthropic A6: a stop reason states every block still open complete, as
+/// pi keeps a signature whatever `content_block_stop` did: thinking whose
+/// stop never came keeps its signed item, and so does a call whose input is
+/// whole. A call whose input is still cut stays open, and the end of the
+/// reply closes it unfinished.
+#[test]
+fn a_stop_reason_states_every_open_block_complete() {
+    let without_stops = |reason: &str, input: &str| {
+        let mut frames = reply(Vec::new(), reason);
+        let end = frames.pop().expect("the message_delta");
+        frames.extend([
+            json!({"type": "content_block_start", "index": 0,
+                "content_block": {"type": "thinking", "thinking": "", "signature": ""}}),
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "plan"}}),
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "signature_delta", "signature": "sig"}}),
+            json!({"type": "content_block_start", "index": 1,
+                "content_block": {"type": "tool_use", "id": "toolu_a", "name": "f", "input": {}}}),
+            json!({"type": "content_block_delta", "index": 1,
+                "delta": {"type": "input_json_delta", "partial_json": input}}),
+            end,
+        ]);
+        frames
+    };
+    let response = streamed(&without_stops("tool_use", "{\"x\":1}")).expect("the reply folds");
+    assert_eq!(response.stop(), StopReason::ToolUse);
+    assert_eq!(
+        item(&response.choice[0]),
+        Some(&json!({"type": "thinking", "thinking": "plan", "signature": "sig"}))
+    );
+    assert_eq!(
+        item(&response.choice[1]),
+        Some(&json!({"type": "tool_use", "id": "toolu_a", "name": "f", "input": {"x": 1}}))
+    );
+
+    let cut = streamed(&without_stops("max_tokens", "{\"x\":")).expect("the reply folds");
+    assert_eq!(cut.stop(), StopReason::Length);
+    assert!(item(&cut.choice[0]).is_some(), "{:?}", cut.choice);
+    assert!(item(&cut.choice[1]).is_none(), "{:?}", cut.choice);
+    let unfinished = streamed(&without_stops("tool_use", "{\"x\":")).expect("the reply folds");
+    assert!(unfinished.stop().is_failure(), "{:?}", unfinished.stop());
 }

@@ -6,7 +6,10 @@
 //! is a compile error rather than a shrinking test count.
 
 pub mod anthropic;
+pub mod anthropic_minimax;
 pub mod anthropic_moonshot;
+pub mod anthropic_xiaomimimo;
+pub mod anthropic_zai;
 pub mod azure;
 pub mod chat;
 pub mod chatgpt;
@@ -41,6 +44,9 @@ pub const SUITE_WIRES: &[&str] = &[
     mock::HISTORY_WIRE,
     anthropic::HISTORY_WIRE,
     anthropic_moonshot::HISTORY_WIRE,
+    anthropic_zai::HISTORY_WIRE,
+    anthropic_minimax::HISTORY_WIRE,
+    anthropic_xiaomimimo::HISTORY_WIRE,
     chatgpt::HISTORY_WIRE,
     cohere::HISTORY_WIRE,
     copilot::HISTORY_WIRE,

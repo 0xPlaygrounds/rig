@@ -1,9 +1,22 @@
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+//! The Messages reply decoder, for a whole message and for the event stream
+//! alike. Each content block becomes one block, in wire order, whose
+//! provider item is the block as the provider states it complete, and only
+//! when the wire would take that item back.
+//!
+//! ```
+//! use rig_core::providers::anthropic::streaming::MessagesDecoder;
+//!
+//! let decoder = MessagesDecoder::new(false);
+//! # let _ = decoder;
+//! ```
 
-use super::completion::{CacheCreation, OutputTokensDetails};
+use std::collections::BTreeMap;
+
+use serde_json::{Map, Value, json};
+
 use crate::completion::FinishReason;
 use crate::error::ProviderError;
+use crate::json_utils::Lenient;
 use crate::message::{CallId, ToolName};
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
@@ -12,11 +25,10 @@ use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
     WireFrame,
 };
-use std::collections::HashMap;
 
 /// Recognized Messages event tags; any other tag classifies as unknown.
+/// `message` is the whole message a unary reply is.
 const KNOWN_EVENT_TYPES: &[&str] = &[
-    // Unary replies use the same classifier with a whole-message tag.
     "message",
     "message_start",
     "content_block_start",
@@ -33,8 +45,8 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
 /// an invented field, or a known one of another type, never fails a reply.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MessagesEvent {
-    /// The event's fields.
-    pub fields: Map<String, Value>,
+    /// The event as sent.
+    pub fields: Value,
     /// The frame's text when it is an `error` event, whose envelope is
     /// reported verbatim.
     raw: Option<String>,
@@ -42,23 +54,20 @@ pub struct MessagesEvent {
 
 impl MessagesEvent {
     fn kind(&self) -> &str {
-        str_of(&self.fields, "type")
+        self.fields.str("type").unwrap_or_default()
     }
 
-    /// The content block the event addresses. A block event without one
-    /// cannot be applied.
+    /// The content block the event addresses.
     fn index(&self) -> Result<usize, ProviderError> {
         self.fields
-            .get("index")
-            .and_then(Value::as_u64)
+            .u64("index")
             .and_then(|index| usize::try_from(index).ok())
             .ok_or_else(|| {
                 ProviderError::Response(format!("Anthropic `{}` names no block index", self.kind()))
             })
     }
 
-    /// The object under `key`, the block or delta the event carries. One
-    /// without a `type` cannot be told apart from any other.
+    /// The block or delta under `key`, which must name its `type`.
     fn item(&self, key: &str) -> Result<Map<String, Value>, ProviderError> {
         match self.fields.get(key) {
             Some(Value::Object(item)) if item.get("type").is_some_and(Value::is_string) => {
@@ -72,19 +81,7 @@ impl MessagesEvent {
     }
 }
 
-/// The string field `key`, empty when absent or of another type.
-fn str_of<'a>(fields: &'a Map<String, Value>, key: &str) -> &'a str {
-    fields.get(key).and_then(Value::as_str).unwrap_or_default()
-}
-
-/// The string field `key`, when present.
-fn string_of(fields: &Map<String, Value>, key: &str) -> Option<String> {
-    fields.get(key).and_then(Value::as_str).map(str::to_owned)
-}
-
-/// Anthropic's usage counters, read leniently: a counter that is absent or
-/// not a count is unknown. The decoder and the observation projection both
-/// read usage through [`Counts::of`].
+/// Anthropic's usage counters, read leniently.
 #[derive(Debug, Clone, Default, PartialEq)]
 struct Counts {
     input: Option<u64>,
@@ -98,7 +95,7 @@ struct Counts {
 
 impl Counts {
     fn of(usage: Option<&Value>) -> Self {
-        let count = |pointer: &str| usage.and_then(|usage| usage.pointer(pointer)?.as_u64());
+        let count = |pointer: &str| usage?.at(pointer)?.as_u64_lenient();
         Self {
             input: count("/input_tokens"),
             output: count("/output_tokens"),
@@ -130,92 +127,73 @@ impl Counts {
         }
     }
 
-    /// The counters as [`PartialUsage`] spells them in a stream's `raw`.
-    fn partial(&self) -> PartialUsage {
-        PartialUsage {
-            output_tokens: self
-                .output
-                .and_then(|tokens| usize::try_from(tokens).ok())
-                .unwrap_or_default(),
-            input_tokens: self.input.and_then(|tokens| usize::try_from(tokens).ok()),
-            cache_creation_input_tokens: self.cache_creation,
-            cache_creation: self
-                .cache_creation_split
-                .as_ref()
-                .and_then(|split| CacheCreation::deserialize(split).ok()),
-            cache_read_input_tokens: self.cache_read,
-            output_tokens_details: self
-                .thinking
-                .map(|thinking_tokens| OutputTokensDetails { thinking_tokens }),
+    /// The counters as a stream's terminal record spells them.
+    fn record(&self) -> Value {
+        let mut usage = Map::new();
+        usage.insert("output_tokens".into(), json!(self.output.unwrap_or(0)));
+        usage.insert("input_tokens".into(), json!(self.input));
+        usage.insert(
+            "cache_creation_input_tokens".into(),
+            json!(self.cache_creation),
+        );
+        usage.insert("cache_read_input_tokens".into(), json!(self.cache_read));
+        if let Some(split) = &self.cache_creation_split {
+            usage.insert("cache_creation".into(), split.clone());
         }
+        if let Some(thinking) = self.thinking {
+            usage.insert(
+                "output_tokens_details".into(),
+                json!({ "thinking_tokens": thinking }),
+            );
+        }
+        Value::Object(usage)
     }
 }
 
-/// How a Messages `stop_reason` ends the turn, and the error a failed one
-/// reports. Every reason Anthropic documents is listed; any other value is
+/// How a Messages `stop_reason` ends the turn, and the error a refusal
+/// reports. A reason Anthropic does not document is
 /// [`FinishReason::Other`], which fails the turn.
 fn finish_of(reason: &str, details: Option<&Value>) -> (FinishReason, Option<String>) {
-    match reason {
+    let reason = match reason {
         // `pause_turn` is a server-tool loop that stopped at its limit: the
         // turn is replayed as it is to resume it (pi's rule).
-        "end_turn" | "stop_sequence" | "pause_turn" => (FinishReason::Stop, None),
-        // The output reached `max_tokens`, or filled the context window:
-        // either way the turn holds what was produced.
-        "max_tokens" | "model_context_window_exceeded" => (FinishReason::Length, None),
-        "tool_use" => (FinishReason::ToolCalls, None),
+        "end_turn" | "stop_sequence" | "pause_turn" => FinishReason::Stop,
+        "max_tokens" | "model_context_window_exceeded" => FinishReason::Length,
+        "tool_use" => FinishReason::ToolCalls,
         // A refusal fails the turn with its explanation (pi's rule).
-        "refusal" => (
-            FinishReason::ContentFilter,
-            Some(
-                details
-                    .and_then(|details| details.get("explanation"))
-                    .and_then(Value::as_str)
-                    .filter(|explanation| !explanation.is_empty())
-                    .unwrap_or("The model refused to complete the request")
-                    .to_owned(),
-            ),
-        ),
-        // A gateway's safety stop, which pi also handles.
-        "sensitive" => (
-            FinishReason::Other(reason.to_owned()),
-            Some("Provider stopped with: sensitive".to_owned()),
-        ),
-        other => (FinishReason::Other(other.to_owned()), None),
-    }
+        "refusal" => {
+            let explanation = details
+                .and_then(|details| details.str("explanation"))
+                .filter(|explanation| !explanation.is_empty())
+                .unwrap_or("The model refused to complete the request");
+            return (FinishReason::ContentFilter, Some(explanation.to_owned()));
+        }
+        other => FinishReason::Other(other.to_owned()),
+    };
+    (reason, None)
 }
 
-/// The counters a stream's terminal `message_delta` reports, a typed view
-/// of a streamed response's `raw`. The decoder never reads it.
-#[derive(Debug, Deserialize, Clone, Serialize, Default)]
-pub struct PartialUsage {
-    pub output_tokens: usize,
-    #[serde(default)]
-    pub input_tokens: Option<usize>,
-    #[serde(default)]
-    pub cache_creation_input_tokens: Option<u64>,
-    /// Per-TTL breakdown of `cache_creation_input_tokens`. Anthropic reports
-    /// it on `message_start`, not the terminal `message_delta`; the decoder
-    /// carries it forward onto the terminal usage.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_creation: Option<CacheCreation>,
-    #[serde(default)]
-    pub cache_read_input_tokens: Option<u64>,
-    /// Output-token breakdown reported by the terminal `message_delta`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_tokens_details: Option<OutputTokensDetails>,
+/// What an open content block is, for the checks its end makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Text,
+    Thinking,
+    Redacted,
+    Call,
+    Opaque,
 }
 
-/// Decodes Messages replies, a whole message or a stream of events: each
-/// content block becomes one block, in wire order, whose provider item is
-/// the block as `content_block_stop` states it. EOF without a
-/// `message_delta` stop reason is truncation.
+/// Decodes Messages replies, a whole message or a stream of events.
+/// `content_block_stop` states a block complete; a stop reason states every
+/// block still open complete, but a call whose input is not yet JSON.
 #[derive(Debug, Default)]
 pub struct MessagesDecoder {
-    /// The input JSON streamed so far for each open block, and whether the
-    /// block is a call.
-    inputs: HashMap<usize, (bool, String)>,
+    /// Each open block's kind and the input JSON streamed to it.
+    open: BTreeMap<usize, (Kind, String)>,
     /// Whether a block other than a leading `fallback` marker opened.
     opened: bool,
+    /// Whether the dialect takes thinking back without a signature.
+    unsigned_thinking: bool,
     /// The counters `message_start` reported, for a terminal `message_delta`
     /// that does not repeat them.
     start: Counts,
@@ -225,9 +203,13 @@ pub struct MessagesDecoder {
 }
 
 impl MessagesDecoder {
-    /// A fresh decoder for one reply.
-    pub fn new() -> Self {
-        Self::default()
+    /// A fresh decoder for one reply. `unsigned_thinking` is whether the
+    /// dialect takes thinking back without a signature.
+    pub fn new(unsigned_thinking: bool) -> Self {
+        Self {
+            unsigned_thinking,
+            ..Self::default()
+        }
     }
 
     /// Open the content block at `index` as the provider states it.
@@ -237,7 +219,8 @@ impl MessagesDecoder {
         block: Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        let kind = str_of(&block, "type").to_owned();
+        let block = Value::Object(block);
+        let kind = block.str("type").unwrap_or_default();
         // A leading `fallback` names the model that took over; one after
         // output began is a fallback rig cannot represent (pi's rule).
         if kind == "fallback" {
@@ -246,36 +229,33 @@ impl MessagesDecoder {
                     "Anthropic performed an unsupported mid-output model fallback".to_owned(),
                 ));
             }
-            return out.open(index, Block::Opaque { replay: false }, Value::Object(block));
+            self.open.insert(index, (Kind::Opaque, String::new()));
+            return out.open(index, Block::Opaque { replay: false }, block);
         }
         self.opened = true;
-        let (opened, text) = match kind.as_str() {
-            "text" => (Block::Text, str_of(&block, "text").to_owned()),
+        let (opened, kind, text) = match kind {
+            "text" => (Block::Text, Kind::Text, block.str("text")),
             "thinking" => (
                 Block::Reasoning { redacted: false },
-                str_of(&block, "thinking").to_owned(),
+                Kind::Thinking,
+                block.str("thinking"),
             ),
-            "redacted_thinking" => (Block::Reasoning { redacted: true }, String::new()),
+            "redacted_thinking" => (Block::Reasoning { redacted: true }, Kind::Redacted, None),
             "tool_use" => {
-                self.inputs.insert(index, (true, String::new()));
-                let id = str_of(&block, "id");
+                self.open.insert(index, (Kind::Call, String::new()));
+                let id = block.str("id").unwrap_or_default().to_owned();
                 let input = block.get("input").cloned().unwrap_or_default();
-                match ToolName::new(str_of(&block, "name")) {
-                    Ok(name) => out.open(
-                        index,
-                        Block::Call {
-                            id: CallId::from_wire(id),
-                            name,
-                        },
-                        Value::Object(block),
-                    )?,
+                match ToolName::new(block.str("name").unwrap_or_default()) {
+                    Ok(name) => {
+                        let id = CallId::from_wire(&id);
+                        out.open(index, Block::Call { id, name }, block)?;
+                    }
                     // A nameless call: the writer drops it with a warning.
                     Err(_) => out.fragment(
                         Some(index),
                         CallFragment {
-                            id: Some(id),
-                            name: None,
-                            arguments: None,
+                            id: Some(&id),
+                            ..CallFragment::default()
                         },
                     )?,
                 }
@@ -283,12 +263,11 @@ impl MessagesDecoder {
                 // streams it, and the fragments win.
                 return out.announce(index, input);
             }
-            _ => {
-                self.inputs.insert(index, (false, String::new()));
-                (Block::Opaque { replay: true }, String::new())
-            }
+            _ => (Block::Opaque { replay: true }, Kind::Opaque, None),
         };
-        out.open(index, opened, Value::Object(block))?;
+        let text = text.unwrap_or_default().to_owned();
+        self.open.insert(index, (kind, String::new()));
+        out.open(index, opened, block)?;
         out.push(index, &text)
     }
 
@@ -301,41 +280,36 @@ impl MessagesDecoder {
         delta: Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        let kind = delta
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         // The fragment a block is built from must be text.
         let fragment = |key: &str| {
             delta.get(key).and_then(Value::as_str).ok_or_else(|| {
-                ProviderError::Response(format!(
-                    "Anthropic `{}` carries no string `{key}`",
-                    str_of(&delta, "type")
-                ))
+                ProviderError::Response(format!("Anthropic `{kind}` carries no string `{key}`"))
             })
         };
-        match str_of(&delta, "type") {
-            "text_delta" => {
-                out.push(index, fragment("text")?)?;
-                out.merge(index, &delta)
-            }
-            "thinking_delta" => {
-                out.push(index, fragment("thinking")?)?;
-                out.merge(index, &delta)
-            }
+        match kind {
+            "text_delta" => out.push(index, fragment("text")?)?,
+            "thinking_delta" => out.push(index, fragment("thinking")?)?,
             "input_json_delta" => {
                 let fragment = fragment("partial_json")?;
-                let Some((call, json)) = self.inputs.get_mut(&index) else {
+                let Some((kind @ (Kind::Call | Kind::Opaque), json)) = self.open.get_mut(&index)
+                else {
                     return Err(ProviderError::Response(format!(
                         "Anthropic streamed input to content block {index}, which takes none"
                     )));
                 };
                 json.push_str(fragment);
-                if *call {
-                    out.push(index, fragment)
-                } else {
-                    Ok(())
+                if *kind == Kind::Call {
+                    out.push(index, fragment)?;
                 }
+                return Ok(());
             }
             "citations_delta" => {
                 let citation = delta.get("citation").cloned().unwrap_or_default();
-                out.edit(index, |item| {
+                return out.edit(index, |item| {
                     if let Some(item) = item.as_object_mut() {
                         match item.get_mut("citations") {
                             Some(Value::Array(citations)) => citations.push(citation),
@@ -344,40 +318,59 @@ impl MessagesDecoder {
                             }
                         }
                     }
-                })
+                });
             }
-            // Signatures concatenate; `compaction_delta` and kinds rig has
-            // never seen land in the item too.
-            _ => out.merge(index, &delta),
+            _ => {}
         }
+        // Text and signatures concatenate; `compaction_delta` and kinds
+        // rig has never seen land in the item too.
+        out.merge(index, &delta)
     }
 
-    /// End the block at `index`, as `content_block_stop` states it complete:
-    /// its streamed input set on its item, which becomes the block's native.
-    /// Input that is not a JSON object leaves the item unusable, so the
-    /// block closes without one and replays from its canonical fields.
+    /// End the block at `index` as stated complete. Its item becomes the
+    /// block's native only when the wire takes it back: text that is not
+    /// blank, thinking with its signature (unless the dialect takes it
+    /// unsigned), redacted thinking with its data, and a call with an
+    /// object `input`, set from what streamed. A hosted item whose input is
+    /// not an object never completed.
     fn stop(&mut self, index: usize, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        let complete = match self.inputs.remove(&index) {
-            None => true,
-            Some((_, json)) if json.is_empty() => {
-                let mut object = true;
-                out.edit(index, |item| {
-                    object = item.get("input").is_none_or(Value::is_object);
-                })?;
-                object
-            }
-            Some((_, json)) => match crate::json_utils::parse_tool_arguments(&json) {
-                Ok(input) if input.is_object() => {
-                    out.edit(index, |item| {
-                        if let Some(item) = item.as_object_mut() {
-                            item.insert("input".to_owned(), input);
-                        }
-                    })?;
+        let Some((kind, json)) = self.open.remove(&index) else {
+            return out.finish(index);
+        };
+        let streamed = (!json.is_empty()).then(|| crate::json_utils::parse_tool_arguments(&json));
+        let unsigned = self.unsigned_thinking;
+        let mut complete = true;
+        out.edit(index, |item| {
+            let input = match streamed {
+                Some(Ok(parsed)) => Ok(Some(parsed)),
+                Some(Err(_)) => Err(()),
+                None => Ok(item.get("input").cloned()),
+            };
+            let kept = match (kind, input) {
+                (Kind::Text, _) => !item.str("text").unwrap_or_default().trim().is_empty(),
+                (Kind::Thinking, _) => {
+                    unsigned || item.str("signature").is_some_and(|s| !s.is_empty())
+                }
+                (Kind::Redacted, _) => item.str("data").is_some_and(|data| !data.is_empty()),
+                (Kind::Opaque, Ok(None)) => true,
+                (Kind::Call | Kind::Opaque, Ok(Some(input @ Value::Object(_)))) => {
+                    set(item, "input", input);
                     true
                 }
-                Ok(_) | Err(_) => false,
-            },
-        };
+                (Kind::Call, Ok(None | Some(Value::Null))) => {
+                    set(item, "input", json!({}));
+                    true
+                }
+                (Kind::Call, _) => false,
+                (Kind::Opaque, _) => {
+                    complete = false;
+                    true
+                }
+            };
+            if !kept {
+                *item = Value::Null;
+            }
+        })?;
         if complete {
             out.finish(index)
         } else {
@@ -386,10 +379,10 @@ impl MessagesDecoder {
     }
 
     /// Note the metadata a whole message or `message_start` states.
-    fn metadata(&mut self, message: &Map<String, Value>) {
+    fn metadata(&mut self, message: &Value) {
         self.start = Counts::of(message.get("usage"));
-        self.message_id = string_of(message, "id");
-        self.response_model = string_of(message, "model");
+        self.message_id = message.str("id").map(str::to_owned);
+        self.response_model = message.str("model").map(str::to_owned);
         self.note_container(message.get("container"));
     }
 
@@ -399,19 +392,34 @@ impl MessagesDecoder {
         }
     }
 
-    /// End the reply with Anthropic's terminal record.
+    /// End the reply with Anthropic's terminal record. Every block still
+    /// open is complete, but a call whose input is not JSON yet: the end of
+    /// the reply closes it unfinished. The container the reply ran in is a
+    /// last opaque block.
     fn end(
-        &self,
+        &mut self,
         usage: &Counts,
         stop_reason: Option<&str>,
         details: Option<&Value>,
         mut out: Out<'_, Completion>,
-    ) -> Flow {
+    ) -> Result<Flow, ProviderError> {
+        let open: Vec<usize> = self
+            .open
+            .iter()
+            .filter(|(_, (kind, json))| {
+                *kind != Kind::Call
+                    || json.is_empty()
+                    || crate::json_utils::parse_tool_arguments(json).is_ok_and(|v| v.is_object())
+            })
+            .map(|(index, _)| *index)
+            .collect();
+        for index in open {
+            self.stop(index, &mut out)?;
+        }
         if let Some(container) = &self.container {
             let index = out.fresh_index();
-            let item = serde_json::json!({ "type": "container", "container": container });
-            // A fresh index is never open, so writing it whole cannot fail.
-            let _ = out.whole(index, Block::Opaque { replay: true }, item, "");
+            let item = json!({ "type": "container", "container": container });
+            out.whole(index, Block::Opaque { replay: true }, item, "")?;
         }
         let (reason, error) = match stop_reason {
             Some(reason) => {
@@ -420,13 +428,13 @@ impl MessagesDecoder {
             }
             None => (None, None),
         };
-        out.end(Finish {
+        Ok(out.end(Finish {
             usage: usage.usage(),
             reason,
             response_id: self.message_id.clone(),
             model: self.response_model.clone(),
             error,
-        })
+        }))
     }
 
     /// A whole message, written block by block through the calls a stream
@@ -434,16 +442,11 @@ impl MessagesDecoder {
     /// streamed (pi's rule): the stop reason decides how it ends.
     fn whole(
         &mut self,
-        message: Map<String, Value>,
+        message: Value,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
         self.metadata(&message);
-        let stop_reason = message.get("stop_reason").and_then(Value::as_str);
-        let content = match message.get("content") {
-            Some(Value::Array(content)) => content.as_slice(),
-            _ => &[],
-        };
-        for (index, block) in content.iter().enumerate() {
+        for (index, block) in message.arr("content").iter().enumerate() {
             let Some(block) = block
                 .as_object()
                 .filter(|block| block.get("type").is_some_and(Value::is_string))
@@ -456,10 +459,15 @@ impl MessagesDecoder {
             self.stop(index, &mut out)?;
         }
         let usage = self.start.clone();
-        Ok(self.end(&usage, stop_reason, message.get("stop_details"), out))
+        self.end(
+            &usage,
+            message.str("stop_reason"),
+            message.get("stop_details"),
+            out,
+        )
     }
 
-    /// The stream's terminal `message_delta`: its counters, falling back to
+    /// The stream's terminal `message_delta` counters, falling back to
     /// `message_start`'s for those it omits.
     fn terminal(&self, usage: Option<&Value>) -> Counts {
         let terminal = Counts::of(usage);
@@ -486,14 +494,14 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<MessagesEvent> {
         let data = frame.as_str();
-        wire::classify_tagged_frame::<Map<String, Value>>(&data, "type", |event_type| {
+        wire::classify_tagged_frame::<Value>(&data, "type", |event_type| {
             KNOWN_EVENT_TYPES.contains(&event_type)
         })
         .map(|fields| {
             // The one event whose payload leaves this crate as bytes rather
             // than as decoded fields, so it is captured where the frame is
             // still in hand.
-            let raw = (str_of(&fields, "type") == "error").then(|| data.to_string());
+            let raw = (fields.str("type") == Some("error")).then(|| data.to_string());
             MessagesEvent { fields, raw }
         })
     }
@@ -508,7 +516,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
             // A `message_start` without a message body (a Bedrock-compatible
             // gateway sends one) is a no-op.
             "message_start" => {
-                if let Some(Value::Object(message)) = event.fields.get("message") {
+                if let Some(message) = event.fields.get("message").filter(|m| m.is_object()) {
                     self.metadata(message);
                 }
             }
@@ -526,27 +534,30 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 self.note_container(delta.and_then(|delta| delta.get("container")));
                 // Only a `message_delta` carrying a stop reason is the
                 // provider's end; without one it is a no-op.
-                let Some(reason) = delta
-                    .and_then(|delta| delta.get("stop_reason"))
-                    .and_then(Value::as_str)
-                else {
+                let Some(reason) = delta.and_then(|delta| delta.str("stop_reason")) else {
                     return Ok(Flow::More);
                 };
                 let usage = self.terminal(event.fields.get("usage"));
-                out.raw(serde_json::to_value(StreamingCompletionResponse {
-                    usage: usage.partial(),
-                    stop_reason: Some(reason.to_owned()),
-                    // Rides the same `message_delta` as the stop reason:
-                    // `message_start` always opens with `null`.
-                    stop_sequence: delta
-                        .and_then(|delta| delta.get("stop_sequence"))
-                        .and_then(Value::as_str)
-                        .map(str::to_owned),
-                    message_id: self.message_id.clone(),
-                    model: self.response_model.clone(),
-                })?);
+                let mut record = Map::new();
+                record.insert("usage".into(), usage.record());
+                record.insert("stop_reason".into(), json!(reason));
+                // The stop sequence rides the same `message_delta` as the
+                // stop reason: `message_start` always opens with `null`.
+                for (key, value) in [
+                    (
+                        "stop_sequence",
+                        delta.and_then(|delta| delta.str("stop_sequence")),
+                    ),
+                    ("message_id", self.message_id.as_deref()),
+                    ("model", self.response_model.as_deref()),
+                ] {
+                    if let Some(value) = value {
+                        record.insert(key.into(), json!(value));
+                    }
+                }
+                out.raw(Value::Object(record));
                 let details = delta.and_then(|delta| delta.get("stop_details"));
-                return Ok(self.end(&usage, Some(reason), details, out));
+                return self.end(&usage, Some(reason), details, out);
             }
             // Preserve the complete error envelope rather than re-encode
             // modeled fields.
@@ -569,11 +580,13 @@ impl MessagesDecoder {
     /// envelope, on the unary reply and on the stream's `message_start`,
     /// `message_delta` and `error` events.
     pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(Value::Object(payload)) = serde_json::from_slice::<Value>(payload) else {
+        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
             return;
         };
-        let message = payload.get("message").and_then(Value::as_object);
-        let fields = message.unwrap_or(&payload);
+        let fields = payload
+            .get("message")
+            .filter(|m| m.is_object())
+            .unwrap_or(&payload);
         // Anthropic reports the prompt on `message_start` and the answer's
         // running total on each `message_delta`: each is a snapshot of what it
         // knows, never a sum.
@@ -590,48 +603,31 @@ impl MessagesDecoder {
                 },
             });
         }
-        let stop_reason = string_of(fields, "stop_reason").or_else(|| {
-            payload
-                .get("delta")
-                .and_then(Value::as_object)
-                .and_then(|delta| string_of(delta, "stop_reason"))
-        });
+        let stop_reason = fields
+            .str("stop_reason")
+            .or_else(|| payload.at("/delta/stop_reason").and_then(Value::as_str));
         let verdict = AdapterVerdict {
-            finish_reason: stop_reason.map(|v| sink.scrub(&v)),
+            finish_reason: stop_reason.map(|reason| sink.scrub(reason)),
             block_reason: None,
             detail: None,
-            model: string_of(fields, "model").map(|v| sink.scrub(&v)),
+            model: fields.str("model").map(|model| sink.scrub(model)),
         };
-        let response_id = string_of(fields, "id").map(|v| sink.scrub(&v));
+        let response_id = fields.str("id").map(|id| sink.scrub(id));
         sink.provider(verdict, response_id);
         if let Some(error) = payload
             .get("error")
-            .and_then(|error| ObservedError::deserialize(error).ok())
+            .and_then(|error| serde::Deserialize::deserialize(error).ok())
         {
-            error.emit(sink);
+            ObservedError::emit(error, sink);
         }
     }
 }
 
-/// Anthropic's own terminal stream record, a streamed response's `raw`:
-/// callers who want the provider-native shape deserialize it from there.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct StreamingCompletionResponse {
-    /// Token usage carried by the terminal `message_delta` event.
-    pub usage: PartialUsage,
-    /// Anthropic's `stop_reason`, verbatim, when the stream reported one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stop_reason: Option<String>,
-    /// Matched stop sequence reported by the terminal frame, preserved verbatim.
-    /// The provider strips this sequence from output text.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stop_sequence: Option<String>,
-    /// The `message_start` message ID, when the stream reported one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-    /// The model named by `message_start`, when the stream reported one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+/// Set `key` of the object `item`.
+fn set(item: &mut Value, key: &str, value: Value) {
+    if let Some(item) = item.as_object_mut() {
+        item.insert(key.to_owned(), value);
+    }
 }
 
 #[cfg(test)]

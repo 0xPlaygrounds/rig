@@ -4,7 +4,7 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, Document, Message,
     ProviderToolDefinition,
 };
-use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse};
+use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
@@ -17,13 +17,12 @@ use rig::completion::CompletionRequest;
 /// returned. These cells fall back to it when rig's normalized choice holds
 /// no assistant text, and one request carries both views.
 fn provider_text(response: &RigCompletionResponse) -> Option<String> {
-    let reply = CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
-    let text: String = reply
-        .content
-        .iter()
-        .filter(|block| block.kind() == "text")
-        .map(|block| block.str("text"))
+    let text: String = response.raw["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "text")
+        .filter_map(|block| block["text"].as_str())
         .collect();
     (!text.is_empty()).then_some(text)
 }

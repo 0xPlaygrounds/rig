@@ -43,6 +43,9 @@ pub const HISTORY_WIRES: &[&str] = &[
     "mock",
     "anthropic",
     "anthropic_moonshot",
+    "anthropic_zai",
+    "anthropic_minimax",
+    "anthropic_xiaomimimo",
     "openai_responses",
     "chatgpt",
     "copilot",
@@ -237,6 +240,46 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
         "tool_results_lead_a_merged_user_message",
         "review: Anthropic text before tool_result",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "an_idless_call_replays_under_the_id_its_result_gets",
+        "#2655, Responses NEW-B neighbour (an Anthropic tool_use without an id)",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "thinking_made_under_other_tools_replays_as_another_models",
+        "#2703 (Opus 5.5 thinking bound to its tools)",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "unsigned_thinking_keeps_its_item_only_where_the_dialect_takes_it",
+        "round 4: Anthropic A4 (unsigned thinking replayed as thinking)",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "a_kept_tool_use_item_always_states_an_object_input",
+        "round 4: Anthropic A5 (a tool_use item without input)",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "a_server_tool_result_never_replays_without_its_use",
+        "round 4: Anthropic A3 (an orphaned server-tool result)",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "a_blank_text_block_keeps_no_item_and_is_never_sent",
+        "round 4: Anthropic blank text with a current item (encoder drop deleted)",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/streaming/tests.rs",
+        "a_stop_reason_states_every_open_block_complete",
+        "round 4: Anthropic A6 (a signature lost without content_block_stop)",
+    ),
+    (
+        "tests/core/history_conformance_registry.rs",
+        "every_messages_dialect_has_a_history_suite",
+        "round 4: Anthropic A8 (no Messages suite for Z.AI, MiniMax and MiMo)",
     ),
     (
         "crates/rig-cassette/tests/providers/anthropic/cassette/malformed_tool_args_matrix.rs",
