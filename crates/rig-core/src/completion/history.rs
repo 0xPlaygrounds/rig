@@ -622,8 +622,9 @@ fn assistant(
 
 /// A same-model turn's kept blocks (`None` where `adapt` dropped one), with
 /// every block whose partner is gone dropped too: an item that needs the one
-/// after it ([`ReplayTarget::needs_next`]), and a hosted use or result
-/// whose other half is missing ([`ReplayTarget::hosted_pair`]).
+/// after it ([`ReplayTarget::needs_next`]) when that one is dropped or only
+/// rebuilt, and a hosted use or result whose other half is missing
+/// ([`ReplayTarget::hosted_pair`]).
 fn paired(
     mut content: Vec<Option<AssistantContent>>,
     target: &dyn ReplayTarget,
@@ -653,7 +654,21 @@ fn paired(
                 block => block.native_item(),
             })
             .is_some_and(|item| target.needs_next(item));
-        let next_gone = content.get(at + 1).is_none_or(Option::is_none);
+        // The partner must go back as the item the provider issued: its item,
+        // or a rebuild that keeps its identity, never a block with neither.
+        let next_gone =
+            content
+                .get(at + 1)
+                .and_then(Option::as_ref)
+                .is_none_or(|next| match next {
+                    AssistantContent::Opaque(opaque) => !opaque.replay,
+                    next => {
+                        next.native_item().is_none()
+                            && next
+                                .stale_item()
+                                .is_none_or(|item| target.identity(item).is_empty())
+                    }
+                });
         if needs
             && next_gone
             && let Some(slot) = content.get_mut(at)

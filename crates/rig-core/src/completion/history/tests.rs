@@ -1119,6 +1119,7 @@ impl ReplayTarget for Paired {
 #[test]
 fn a_same_model_item_whose_partner_is_gone_goes_with_it() {
     let reasoning = AssistantContent::reasoning("plan").with_native(json!({"type": "reasoning"}));
+    let answer = AssistantContent::text("answer").with_native(json!({"type": "message"}));
     let blank = AssistantContent::text(" ");
     let hosted = |kind: &str, id: &str| {
         AssistantContent::Opaque(Opaque {
@@ -1137,7 +1138,9 @@ fn a_same_model_item_whose_partner_is_gone_goes_with_it() {
                 hosted("server_result", "s1"),
                 hosted("server_use", "s2"),
                 reasoning.clone(),
-                AssistantContent::text("answer"),
+                answer.clone(),
+                reasoning.clone(),
+                AssistantContent::text("rebuilt"),
             ],
         ),
     ];
@@ -1148,7 +1151,8 @@ fn a_same_model_item_whose_partner_is_gone_goes_with_it() {
             hosted("server_use", "s1"),
             hosted("server_result", "s1"),
             reasoning,
-            AssistantContent::text("answer"),
+            answer,
+            AssistantContent::text("rebuilt"),
         ]
     );
 }
