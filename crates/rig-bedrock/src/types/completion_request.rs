@@ -62,6 +62,15 @@ impl AwsCompletionRequest {
             return Ok(None);
         }
 
+        if let Some(rig_core::message::ToolChoice::Specific { function_names }) =
+            &self.inner.tool_choice
+            && function_names.len() != 1
+        {
+            return Err(ProviderError::Request(
+                "Bedrock requires exactly one function name for ToolChoice::Specific".into(),
+            ));
+        }
+
         let tools = self
             .inner
             .tools
