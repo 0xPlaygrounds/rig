@@ -12,7 +12,8 @@ use crate::message::{
     StopReason, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
 };
 use crate::providers::openai::wire::{
-    DEEPSEEK, Dialect, LLAMACPP, MISTRAL, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY,
+    DEEPSEEK, Dialect, LLAMACPP, MISTRAL, MOONSHOT, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY,
+    XIAOMIMIMO,
 };
 use crate::test_utils::history::{assert_every_variant, decode};
 use crate::test_utils::json_body;
@@ -1097,4 +1098,170 @@ fn whole_reply_calls_are_delimited_by_the_list() {
     assert_eq!(paris.function.arguments_value(), json!({"city": "Paris"}));
     assert_eq!(rome.function.arguments_value(), json!({"city": "Rome"}));
     assert_ne!(paris.id, rome.id);
+}
+
+fn call_turn(id: &str, tool: &str) -> Message {
+    Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+        ToolCall::from_wire(id, ToolFunction::new(name(tool), json!({}))),
+    )]))
+}
+
+fn result(id: &str, tool: &str) -> Message {
+    Message::tool_result(CallId::from_wire(id), name(tool), "x")
+}
+
+/// A content part with no `type` and a string `text` is text, and nothing
+/// of it lands on the replayed message's own fields.
+#[test]
+fn a_typeless_text_part_is_text() {
+    let wire = wire(&OPENAI, "gpt-4o");
+    let frames = vec![whole(
+        json!({"role": "assistant", "content": [{"text": "hello"}]}),
+        "stop",
+    )];
+    let response = decode(&wire, Mode::Unary, frames).expect("the reply decodes");
+    assert_eq!(response.text(), "hello", "{:?}", response.choice);
+    let body = sent(
+        &wire,
+        vec![Message::user("q"), Message::Assistant(turn_of(&response))],
+    );
+    let assistant = &body["messages"][1];
+    assert_eq!(assistant["content"], "hello", "{body}");
+    assert!(assistant.get("text").is_none(), "{body}");
+}
+
+/// pi's `requiresReasoningContentOnAssistantMessages` follows the model:
+/// DeepSeek at its own base URL behind the OpenAI dialect, every MiMo
+/// model, and Kimi K3 under any gateway path send an empty
+/// `reasoning_content` on a call turn with none; other models send none.
+#[test]
+fn reasoning_content_follows_the_model() {
+    let history = || {
+        vec![
+            Message::user("q"),
+            call_turn("call_0", "f"),
+            result("call_0", "f"),
+        ]
+    };
+    let deepseek = OpenAIConfig::with_key(&OPENAI, "key")
+        .with_base_url("https://api.deepseek.com")
+        .chat("deepseek-reasoner");
+    for wire in [
+        deepseek,
+        wire(&DEEPSEEK, "deepseek-reasoner"),
+        wire(&XIAOMIMIMO, "mimo-v2.5"),
+        wire(&MOONSHOT, "kimi-k3"),
+        wire(&OPENAI, "accounts/fireworks/models/kimi-k3"),
+        wire(&OPENROUTER, "moonshotai/kimi-k2.6"),
+    ] {
+        let body = sent(&wire, history());
+        assert_eq!(
+            body["messages"][1]["reasoning_content"],
+            json!(""),
+            "{}: {body}",
+            wire.model
+        );
+    }
+    for wire in [wire(&OPENAI, "gpt-4o"), wire(&MOONSHOT, "kimi-k2.6")] {
+        let body = sent(&wire, history());
+        assert!(
+            body["messages"][1].get("reasoning_content").is_none(),
+            "{}: {body}",
+            wire.model
+        );
+    }
+}
+
+/// A Claude model that binds its thinking to the request's tools binds it
+/// through OpenRouter too: after the tool list changes, its signed
+/// `reasoning_details` are not sent back. A model that binds nothing keeps
+/// them.
+#[test]
+fn openrouter_claude_thinking_binds_to_the_tools() {
+    let frames = || {
+        vec![
+            chunk(
+                json!({"role": "assistant", "reasoning": "plan", "reasoning_details": [
+                    {"type": "reasoning.text", "text": "plan", "signature": "SIG",
+                     "format": "anthropic-claude-v1", "index": 0}]}),
+                None,
+            ),
+            chunk(
+                json!({"tool_calls": [{"index": 0, "id": "toolu_1", "type": "function",
+                    "function": {"name": "f", "arguments": "{}"}}]}),
+                Some("tool_calls"),
+            ),
+            WireFrame::Text("[DONE]".to_owned()),
+        ]
+    };
+    for (model, binds) in [
+        ("anthropic/claude-opus-5.5", true),
+        ("anthropic/claude-haiku-4.5", false),
+    ] {
+        let wire = wire(&OPENROUTER, model);
+        let response = decode(&wire, Mode::Streaming, frames()).expect("the reply decodes");
+        let mut next = CompletionRequest::new("next");
+        next.tools.push(crate::completion::ToolDefinition::new(
+            name("g"),
+            "a tool added since",
+            json!({"type": "object", "properties": {}}),
+        ));
+        let body = sent_with(
+            &wire,
+            next,
+            vec![
+                Message::user("q"),
+                Message::Assistant(turn_of(&response)),
+                result("toolu_1", "f"),
+            ],
+        );
+        assert_eq!(
+            body["messages"][1].get("reasoning_details").is_none(),
+            binds,
+            "{model}: {body}"
+        );
+    }
+}
+
+/// Two whole calls streamed with neither an index nor an id are two calls:
+/// a fragment continues the latest call only until its arguments are a
+/// whole object.
+#[test]
+fn index_less_id_less_calls_split_once_whole() {
+    let wire = wire(&OPENAI, "gpt-4o");
+    let call = |name: &str, arguments: &str| {
+        chunk(
+            json!({"tool_calls": [{"type": "function",
+                "function": {"name": name, "arguments": arguments}}]}),
+            None,
+        )
+    };
+    let frames = vec![
+        chunk(json!({"role": "assistant"}), None),
+        call("f", "{\"q\":"),
+        chunk(
+            json!({"tool_calls": [{"function": {"arguments": "\"a\"}"}}]}),
+            None,
+        ),
+        call("f", "{\"q\":\"b\"}"),
+        chunk(json!({}), Some("tool_calls")),
+        WireFrame::Text("[DONE]".to_owned()),
+    ];
+    let response = decode(&wire, Mode::Streaming, frames).expect("the reply decodes");
+    let arguments: Vec<Value> = response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::ToolCall(call) => {
+                Some(Value::Object(call.function.arguments.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        arguments,
+        [json!({"q": "a"}), json!({"q": "b"})],
+        "{:?}",
+        response.choice
+    );
 }

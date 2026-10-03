@@ -119,7 +119,7 @@ pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
 }
 
 /// Whether `model` binds its thinking blocks to the request's context.
-pub(super) fn binds_context(model: &str) -> bool {
+pub(crate) fn binds_context(model: &str) -> bool {
     listed(model).is_some_and(|[_, _, binds]| binds)
 }
 

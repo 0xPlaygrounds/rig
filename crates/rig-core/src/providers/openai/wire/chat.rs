@@ -218,6 +218,28 @@ impl Chat {
             .with_route(Some(quirks.completion_path)))
     }
 
+    /// The field every assistant message carries its reasoning under,
+    /// empty when the turn has none (pi's
+    /// `requiresReasoningContentOnAssistantMessages`): the dialect's own, and
+    /// `reasoning_content` for DeepSeek at any base URL, for Kimi K3 under
+    /// any gateway's path, and for OpenRouter's Kimi K2.6, as pi's catalogue
+    /// marks them.
+    fn reasoning_field(&self, model: &str) -> Option<&'static str> {
+        let deepseek = self
+            .provider
+            .base_url
+            .to_ascii_lowercase()
+            .contains("deepseek.com");
+        let name = model.rsplit('/').next().unwrap_or(model);
+        let listed = is_model(name, crate::providers::moonshot::KIMI_K3)
+            || is_model(model, "moonshotai/kimi-k2.6");
+        self.provider
+            .dialect
+            .quirks
+            .reasoning_field
+            .or((deepseek || listed).then_some("reasoning_content"))
+    }
+
     /// The wire for `model` on `provider`, with every option off.
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self {
@@ -412,7 +434,9 @@ impl Chat {
                     }
                     user_message(&mut messages, &mut parts);
                 }
-                Message::Assistant(turn) => messages.extend(self.assistant(turn, &ids, custom)),
+                Message::Assistant(turn) => {
+                    messages.extend(self.assistant(turn, &ids, custom, model));
+                }
             }
         }
         if messages.is_empty() {
@@ -435,8 +459,9 @@ impl Chat {
         turn: &AssistantMessage,
         ids: &WireIds,
         custom: &[String],
+        model: &str,
     ) -> Option<Value> {
-        let quirks = &self.provider.dialect.quirks;
+        let reasoning_field = self.reasoning_field(model);
         let (mut text, mut parts, mut has_parts) = (String::new(), Vec::new(), false);
         let mut reasoning: Vec<(String, String)> = Vec::new();
         let (mut fields, mut calls) = (Map::new(), Vec::new());
@@ -481,7 +506,7 @@ impl Chat {
                             None
                         }
                         Replay::Identity(identity) => identity.keys().next().cloned(),
-                        Replay::Rebuild => quirks.reasoning_field.map(str::to_owned),
+                        Replay::Rebuild => reasoning_field.map(str::to_owned),
                     };
                     if let Some(field) = field {
                         match reasoning.iter_mut().find(|(name, _)| *name == field) {
@@ -496,14 +521,14 @@ impl Chat {
                 AssistantContent::ToolCall(call) => {
                     calls.push(call_item(call, replay, ids, custom));
                 }
-                AssistantContent::Opaque(opaque) if opaque.replay => match &opaque.item {
-                    item if item.get("type").is_some() => {
+                // An opaque is a content part; one with no `type` is not
+                // sent, so its keys never land on the message.
+                AssistantContent::Opaque(opaque) if opaque.replay => {
+                    if opaque.item.get("type").is_some() {
                         has_parts = true;
-                        parts.push(item.clone());
+                        parts.push(opaque.item.clone());
                     }
-                    Value::Object(item) => fields.extend(item.clone()),
-                    _ => {}
-                },
+                }
                 AssistantContent::Opaque(_) | AssistantContent::Image(_) => {}
             }
         }
@@ -527,7 +552,7 @@ impl Chat {
                 Some(Value::Array(parts)) => !parts.is_empty(),
                 _ => false,
             };
-        if let Some(field) = quirks.reasoning_field {
+        if let Some(field) = reasoning_field {
             message
                 .entry(field)
                 .or_insert_with(|| Value::String(String::new()));
@@ -1117,6 +1142,16 @@ impl crate::completion::ReplayTarget for Chat {
     fn states_finish_reason(&self) -> bool {
         self.provider.dialect.quirks.states_finish_reason
     }
+
+    /// A Claude model whose thinking binds to the request's tools and
+    /// system prompt binds it through OpenRouter too, which spells it
+    /// `anthropic/claude-opus-5.5`.
+    fn binds_context(&self, model: &str) -> bool {
+        self.provider.dialect.quirks.rewrite == BodyRewrite::OpenRouter
+            && model.strip_prefix("anthropic/").is_some_and(|model| {
+                crate::providers::anthropic::completion::binds_context(&model.replace('.', "-"))
+            })
+    }
 }
 
 /// OpenAI's Chat models that read no images.
@@ -1255,11 +1290,13 @@ pub(crate) enum Part {
 }
 
 impl Part {
-    /// The part `part` is, by its `type`.
+    /// The part `part` is, by its `type`. A part with no `type` and a
+    /// string `text` is text.
     pub(crate) fn of(part: &Value) -> Self {
         let text = |key: &str| part.str(key).unwrap_or_default().to_owned();
         match part.str("type") {
             Some("text") => Self::Text(text("text")),
+            None if part.str("text").is_some() => Self::Text(text("text")),
             Some("refusal") => Self::Text(text("refusal")),
             Some("thinking") => Self::Thinking(match part.get("thinking") {
                 Some(Value::Array(chunks)) => chunks
@@ -1304,12 +1341,24 @@ enum Writing {
     Reasoning,
 }
 
-/// A tool call the reply has open: its writer index, the id it states, and
-/// whether its kind is one rig cannot answer (an opaque item).
+/// A tool call the reply has open: its writer index, the id it states,
+/// whether its kind is one rig cannot answer (an opaque item), and the
+/// function arguments streamed so far.
 struct OpenCall {
     at: usize,
     id: Option<String>,
     opaque: bool,
+    arguments: String,
+}
+
+impl OpenCall {
+    /// Whether its function arguments are already a whole object.
+    fn complete(&self) -> bool {
+        matches!(
+            crate::json_utils::parse_tool_arguments(&self.arguments),
+            Ok(Value::Object(_))
+        )
+    }
 }
 
 /// The chat-completions decoder: one state machine for a whole reply and a
@@ -1612,14 +1661,16 @@ impl ChatDecoder {
     }
 
     /// One tool-call fragment. It goes to the call at its wire index, where
-    /// the writer tells a new id under it from the call it held; without an
-    /// index (or with `null`), to the open call that states its id, or the
-    /// latest when it states none (pi). Its fields merge into the call's
+    /// the writer tells a new id under it from the call it held. Without an
+    /// index (or with `null`) it goes to the open call that states its id;
+    /// one that states no id continues the latest call while that call's
+    /// arguments are not yet a whole object, and otherwise opens a new call
+    /// when it brings a name or arguments. Its fields merge into the call's
     /// item.
     fn call(&mut self, call: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         self.close_writing(out)?;
         let id = match call.get("id") {
-            Some(Value::String(id)) if !id.is_empty() => Some(id.clone()),
+            Some(Value::String(id)) if !id.is_empty() && id != "null" => Some(id.clone()),
             Some(id @ Value::Number(_)) => Some(id.to_string()),
             _ => None,
         };
@@ -1627,6 +1678,15 @@ impl ChatDecoder {
             .get("index")
             .and_then(Value::as_u64)
             .and_then(|index| usize::try_from(index).ok());
+        let arguments = call
+            .at("/function/arguments")
+            .map(crate::json_utils::value_to_json_string);
+        let name = call
+            .at("/function/name")
+            .or_else(|| call.at("/custom/name"))
+            .and_then(Value::as_str);
+        let starts = name.is_some_and(|name| !name.is_empty())
+            || arguments.as_deref().is_some_and(|text| !text.is_empty());
         let at = match index {
             Some(index) => index,
             None => match id.as_deref() {
@@ -1634,7 +1694,10 @@ impl ChatDecoder {
                     .calls
                     .iter()
                     .find(|open| open.id.as_deref() == Some(id)),
-                None => self.calls.last(),
+                None => self
+                    .calls
+                    .last()
+                    .filter(|open| open.opaque || !open.complete() || !starts),
             }
             .map_or_else(|| out.fresh_index(), |open| open.at),
         };
@@ -1643,6 +1706,8 @@ impl ChatDecoder {
                 if id.is_some() {
                     open.id.clone_from(&id);
                 }
+                open.arguments
+                    .push_str(arguments.as_deref().unwrap_or_default());
                 open.opaque
             }
             None => {
@@ -1650,19 +1715,16 @@ impl ChatDecoder {
                 if opaque {
                     out.open(at, Block::Opaque { replay: false }, Value::Null)?;
                 }
-                let id = id.clone();
-                self.calls.push(OpenCall { at, id, opaque });
+                self.calls.push(OpenCall {
+                    at,
+                    id: id.clone(),
+                    opaque,
+                    arguments: arguments.clone().unwrap_or_default(),
+                });
                 opaque
             }
         };
         if !opaque {
-            let arguments = call
-                .at("/function/arguments")
-                .map(crate::json_utils::value_to_json_string);
-            let name = call
-                .at("/function/name")
-                .or_else(|| call.at("/custom/name"))
-                .and_then(Value::as_str);
             out.fragment(
                 Some(at),
                 CallFragment {

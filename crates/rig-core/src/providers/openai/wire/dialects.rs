@@ -392,6 +392,12 @@ pub const MOONSHOT_CHINA: Dialect = Dialect {
 /// Xiaomi MiMo's OpenAI-compatible half.
 pub const XIAOMIMIMO: Dialect = Dialect {
     base_url_env: Some("XIAOMI_MIMO_API_BASE"),
+    quirks: Quirks {
+        // Every MiMo model takes `reasoning_content` back on every assistant
+        // message (pi).
+        reasoning_field: Some("reasoning_content"),
+        ..Quirks::openai()
+    },
     ..Dialect::gateway(
         "xiaomimimo",
         "https://api.xiaomimimo.com/v1",
