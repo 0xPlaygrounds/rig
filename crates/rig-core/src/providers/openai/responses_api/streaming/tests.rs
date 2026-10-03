@@ -39,48 +39,100 @@ fn classify_known_event_decodes() {
     ));
 }
 
-/// Gateways translating non-OpenAI models (rig#2668, e.g. LiteLLM serving
-/// Claude) omit `sequence_number`, which OpenAI always sends. It is an
-/// ordering hint on an already-ordered SSE stream, so its absence must not
-/// discard the event.
+/// Gateways that translate non-OpenAI models into the Responses format, such
+/// as LiteLLM, omit `sequence_number`. Every known event must still decode.
 #[test]
 fn classify_events_without_sequence_number_decode() {
-    let delta = json!({
-        "type": "response.output_text.delta",
-        "item_id": "msg_b",
-        "output_index": 0,
-        "content_index": 0,
-        "delta": "OK",
-        "model": "claude",
-    })
-    .to_string();
-    assert!(
-        matches!(
-            classify_responses_frame(&delta),
-            WireEvent::Known(StreamingCompletionChunk::Delta(_))
-        ),
-        "a delta without sequence_number must decode"
-    );
-
-    let done = json!({
-        "type": "response.output_item.done",
-        "output_index": 0,
-        "item": {
-            "type": "message",
-            "id": "msg_b",
-            "role": "assistant",
-            "status": "completed",
-            "content": [{ "type": "output_text", "annotations": [], "text": "OK" }],
-        },
-    })
-    .to_string();
-    assert!(
-        matches!(
-            classify_responses_frame(&done),
-            WireEvent::Known(StreamingCompletionChunk::Delta(_))
-        ),
-        "an output_item.done without sequence_number must decode"
-    );
+    let frames = [
+        json!({
+            "type": "response.created",
+            "response": sample_response(ResponseStatus::InProgress),
+        }),
+        json!({
+            "type": "response.completed",
+            "response": sample_response(ResponseStatus::Completed),
+        }),
+        json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": message_output_item("msg_1", "hi"),
+        }),
+        json!({
+            "type": "response.content_part.added",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "part": {"type": "output_text", "text": ""},
+        }),
+        json!({
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "hi",
+        }),
+        json!({
+            "type": "response.output_text.done",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "text": "hi",
+        }),
+        json!({
+            "type": "response.refusal.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "no",
+        }),
+        json!({
+            "type": "response.refusal.done",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "refusal": "no",
+        }),
+        json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc_1",
+            "output_index": 0,
+            "delta": "{}",
+        }),
+        json!({
+            "type": "response.function_call_arguments.done",
+            "item_id": "fc_1",
+            "output_index": 0,
+            "arguments": "{}",
+        }),
+        json!({
+            "type": "response.reasoning_summary_part.added",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "summary_index": 0,
+            "part": {"type": "summary_text", "text": ""},
+        }),
+        json!({
+            "type": "response.reasoning_summary_text.delta",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "summary_index": 0,
+            "delta": "thinking",
+        }),
+        json!({
+            "type": "response.reasoning_text.delta",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "thinking",
+        }),
+    ];
+    for frame in frames {
+        let event = classify_responses_frame(&frame.to_string());
+        assert!(
+            matches!(event, WireEvent::Known(_)),
+            "{frame} decoded as {event:?}"
+        );
+    }
 }
 
 #[test]
@@ -1062,6 +1114,41 @@ async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_r
     assert_eq!(response.usage.input_tokens, Some(10));
     assert_eq!(response.usage.output_tokens, Some(5));
     assert_eq!(response.usage.total_tokens, Some(15));
+}
+
+/// The translated-model stream shape from LiteLLM: no event carries
+/// `sequence_number`, and decoding runs without envelope repair.
+#[tokio::test]
+async fn stream_without_sequence_numbers_decodes_text() {
+    let text_delta = json!({
+        "type": "response.output_text.delta",
+        "item_id": "msg_b",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": "OK",
+        "model": "claude",
+    });
+    let completed = json!({
+        "type": "response.completed",
+        "response": sample_response(ResponseStatus::Completed),
+    });
+
+    let mut stream = responses_stream_of(&[text_delta, completed]).await;
+    let mut text = String::new();
+    while let Some(item) = stream.next().await {
+        if let Item::Event(StreamEvent::Text { text: delta, .. }) =
+            item.expect("stream without sequence numbers should not error")
+        {
+            text.push_str(&delta);
+        }
+    }
+
+    assert_eq!(text, "OK");
+    let response = stream.finish().await.expect("the reply ended");
+    assert_eq!(
+        response.finish_reason(),
+        Some(crate::completion::FinishReason::Stop)
+    );
 }
 
 /// A multi-block reasoning done item (summaries + `encrypted_content`)

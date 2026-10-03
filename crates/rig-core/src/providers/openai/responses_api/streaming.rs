@@ -149,7 +149,7 @@ pub struct ResponseChunk {
     pub kind: ResponseChunkKind,
     /// The response itself
     pub response: CompletionResponse,
-    /// The item sequence
+    /// The event's position in the stream. Absent on some compatible gateways.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sequence_number: Option<u64>,
 }
@@ -219,19 +219,14 @@ fn message_id_from_response(response: &CompletionResponse) -> Option<String> {
     })
 }
 
-/// Fill absent sequence, output, content, and summary indices with zero.
+/// Fill absent output, content, and summary indices with zero.
 /// Preserve existing fields and content. Return `None` for invalid or non-object
 /// JSON or serialization failure. Missing output indices can merge distinct items
 /// into slot zero; callers must enable repair only for compatible dialects.
 fn repair_envelope_less_frame(data: &str) -> Option<String> {
     let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?;
     let object = value.as_object_mut()?;
-    for field in [
-        "sequence_number",
-        "output_index",
-        "content_index",
-        "summary_index",
-    ] {
+    for field in ["output_index", "content_index", "summary_index"] {
         object
             .entry(field)
             .or_insert_with(|| serde_json::Value::from(0));
