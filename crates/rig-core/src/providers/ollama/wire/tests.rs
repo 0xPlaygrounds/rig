@@ -1,7 +1,7 @@
 use super::*;
 use crate::completion::CompletionRequest;
-use crate::wire::{Mode, Wire};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
+use crate::wire::{Mode, Wire};
 
 /// A config is data a host persists, so what survives the round trip is the
 /// part that is not a credential: a reloaded wire addresses the same daemon
