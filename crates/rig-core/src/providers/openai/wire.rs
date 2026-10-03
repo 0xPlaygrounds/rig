@@ -150,7 +150,7 @@ pub enum BodyRewrite {
     DeepSeek,
     /// Mira's gateway: content-part arrays flattened to strings.
     Mira,
-    /// Perplexity: sent unchanged; the encoder's media rules read it.
+    /// Perplexity: text-only content arrays sent as one string.
     Perplexity,
     /// Mistral: the forced tool choice relaxed to `auto` beside a structured
     /// response format, and its own content chunks.

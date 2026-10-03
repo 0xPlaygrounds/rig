@@ -484,10 +484,7 @@ fn perplexity_reads_a_tool_exchange_as_text() {
         json!([
             {"role": "user", "content": "look it up"},
             {"role": "assistant", "content": "[called tool lookup with {\"q\":\"rig\"}]"},
-            {"role": "user", "content": [
-                {"type": "text", "text": "[tool lookup result] crimson"},
-                {"type": "text", "text": "next"},
-            ]},
+            {"role": "user", "content": "[tool lookup result] crimson\nnext"},
         ])
     );
 }

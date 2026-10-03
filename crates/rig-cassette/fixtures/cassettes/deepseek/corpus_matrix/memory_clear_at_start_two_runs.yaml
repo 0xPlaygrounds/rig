@@ -7,13 +7,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":"Reply with the single word: ready.","role":"user"}],"model":"deepseek-chat","temperature":0.0}'
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"Reply with the single word: ready.","role":"user"}],"model":"deepseek-chat","temperature":0.0}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"ready","role":"assistant"}}],"created":0,"id":"9ff4dba3-8ab6-4606-a109-6c873d6b51be","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":22,"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":23}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"ready","role":"assistant"}}],"created":0,"id":"d5af17ba-61ab-4867-9242-3cf52b15c429","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":22,"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":23}}'
 ---
 when:
   path: /chat/completions
@@ -24,10 +24,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":"Reply with the single word: ready.","role":"user"},{"content":"ready","reasoning_content":"","role":"assistant"},{"content":"Now reply with the single word: again.","role":"user"}],"model":"deepseek-chat","temperature":0.0}'
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"Reply with the single word: ready.","role":"user"},{"content":"ready","reasoning_content":"","role":"assistant"},{"content":"Now reply with the single word: again.","role":"user"}],"model":"deepseek-chat","temperature":0.0}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"again","role":"assistant"}}],"created":0,"id":"7c825475-4ab3-411f-a947-9ad2030c98ed","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":36,"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":37}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"again","role":"assistant"}}],"created":0,"id":"d50d3a79-2f32-41e7-9f0e-d21cc03cf33a","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":1,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":36,"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":37}}'

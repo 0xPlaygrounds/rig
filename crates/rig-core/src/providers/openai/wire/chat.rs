@@ -591,9 +591,16 @@ impl Chat {
                 }
             }
             // The gateway takes every message's content as one string.
-            BodyRewrite::Mira => {
+            // Perplexity spends output budget on a text-part array (a short
+            // `max_tokens` comes back empty at `length`, checked live), so
+            // text-only arrays go as one string; the gateway takes every
+            // content as one string.
+            BodyRewrite::Perplexity | BodyRewrite::Mira => {
+                let all = self.provider.dialect.quirks.rewrite == BodyRewrite::Mira;
                 for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
-                    if let Value::Array(parts) = content {
+                    if let Value::Array(parts) = content
+                        && (all || parts.iter().all(|part| part.str("type") == Some("text")))
+                    {
                         let texts: Vec<&str> =
                             parts.iter().filter_map(|part| part.str("text")).collect();
                         *content = Value::String(texts.join("\n"));
@@ -603,10 +610,7 @@ impl Chat {
             BodyRewrite::DeepSeek => finalize_deepseek(map),
             BodyRewrite::Mistral => finalize_mistral(map),
             BodyRewrite::OpenRouter if self.prompt_caching => apply_openrouter_prompt_caching(map),
-            BodyRewrite::None
-            | BodyRewrite::Perplexity
-            | BodyRewrite::OpenRouter
-            | BodyRewrite::HuggingFaceRouter => {}
+            BodyRewrite::None | BodyRewrite::OpenRouter | BodyRewrite::HuggingFaceRouter => {}
         }
         Ok(())
     }

@@ -105,15 +105,24 @@ fn recorded_first_user_part_types(scenario: &str) -> Option<Vec<String>> {
     })
 }
 
-/// The text of a recorded request's first user message.
+/// The text of a recorded request's first user message: its string, or
+/// its text parts joined by newlines.
 fn recorded_first_user_text(scenario: &str) -> String {
     let body = recorded_request(scenario);
-    body["messages"]
+    let content = body["messages"]
         .as_array()
         .and_then(|messages| messages.iter().find(|message| message["role"] == "user"))
-        .and_then(|user| user["content"].as_str())
-        .expect("the first user message is a string")
-        .to_owned()
+        .map(|user| user["content"].clone())
+        .expect("a user message is recorded");
+    match content {
+        serde_json::Value::String(text) => text,
+        serde_json::Value::Array(parts) => parts
+            .iter()
+            .filter_map(|part| part["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        other => panic!("user content is text or text parts: {other}"),
+    }
 }
 
 // ================================================================
