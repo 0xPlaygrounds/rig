@@ -198,7 +198,7 @@ impl Chat {
             }
             body.insert("stream".to_owned(), Value::Bool(true));
         }
-        self.finalize(&mut body);
+        self.rewrite(&mut body)?;
         let body = Value::Object(body);
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -302,7 +302,7 @@ impl Chat {
             .filter_map(|tool| tool.at("/custom/name").and_then(Value::as_str))
             .map(str::to_owned)
             .collect();
-        let mut messages = self.messages(&request.chat_history, &model, &custom)?;
+        let messages = self.messages(&request.chat_history, &model, &custom)?;
 
         let mut tools: Vec<Value> = Vec::new();
         let mut tool_choice = None;
@@ -354,7 +354,7 @@ impl Chat {
                 tracing::warn!("Tool choice is not supported by this provider and will be ignored");
             }
         }
-        self.refuse_or_steer(&model, &tools, &mut tool_choice, &params, &mut messages)?;
+        refuse_openai_tools(&model, &tools, &params, quirks)?;
 
         if request.output_schema.is_some() && !quirks.supports_response_format {
             tracing::warn!(
@@ -558,84 +558,55 @@ impl Chat {
         has_content.then_some(Value::Object(message))
     }
 
-    /// The dialect's checks on the request's tools: a refusal where the
-    /// provider would answer with an error or silently do something else,
-    /// and Moonshot's steering for `required`.
-    fn refuse_or_steer(
-        &self,
-        model: &str,
-        tools: &[Value],
-        choice: &mut Option<Value>,
-        params: &Map<String, Value>,
-        messages: &mut Vec<Value>,
-    ) -> Result<(), EncodeError> {
-        let quirks = &self.provider.dialect.quirks;
-        // Only OpenAI's own endpoint serves its reasoning families.
-        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies && !tools.is_empty() {
-            let effort_none =
-                params.get("reasoning_effort").and_then(Value::as_str) == Some("none");
-            if NO_TOOLS_ON_CHAT.iter().any(|id| is_model(model, id)) {
-                return Err(EncodeError::request(format!(
-                    "{model} cannot call function tools on Chat Completions: it takes them there \
-                     only at reasoning_effort \"none\", which it does not support. Use the \
-                     Responses wire."
-                )));
-            }
-            if TOOLS_ONLY_WITHOUT_REASONING
-                .iter()
-                .any(|id| is_model(model, id))
-                && !effort_none
-            {
-                return Err(EncodeError::request(format!(
-                    "{model} calls function tools on Chat Completions only at reasoning_effort \
-                     \"none\": send `\"reasoning_effort\": \"none\"` in additional_params, or use \
-                     the Responses wire."
-                )));
-            }
-        }
-        let forced = choice
-            .as_ref()
-            .and_then(|choice| choice.at("/function/name"));
-        match (quirks.rewrite, forced) {
-            (BodyRewrite::LlamaCpp, Some(name)) => {
-                let name = name.as_str().unwrap_or_default();
-                Err(EncodeError::request(format!(
-                    "llama.cpp cannot force a specific tool: `llama-server` accepts only \
-                     `auto`, `none` or `required` for tool_choice and silently treats \
-                     anything else as `auto`, so requesting `{name}` would return whichever \
-                     tool the model picked. Use `ToolChoice::Required` to force a call, or \
-                     advertise only `{name}` in `tools`."
-                )))
-            }
-            (BodyRewrite::Moonshot, Some(_)) => Err(EncodeError::request(
-                "Moonshot does not support forcing a specific tool",
-            )),
-            (BodyRewrite::Moonshot, None)
-                if choice.as_ref().and_then(Value::as_str) == Some("required") =>
-            {
-                tracing::warn!(
-                    "Moonshot does not support tool_choice=required; coercing to auto with an \
-                     additional steering message"
-                );
-                *choice = Some(Value::from("auto"));
-                messages.push(json!({"role": "user",
-                    "content": "Please select a tool to handle the current issue."}));
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
-    /// Apply dialect body rewrites after merging streaming parameters.
-    fn finalize(&self, map: &mut Map<String, Value>) {
+    /// The dialect's rewrite of the finished body ([`BodyRewrite`]): a
+    /// refusal where the provider would answer with an error or silently do
+    /// something else, Moonshot's steering for `required`, and each
+    /// dialect's spellings and content shapes.
+    fn rewrite(&self, map: &mut Map<String, Value>) -> Result<(), EncodeError> {
+        let forced = map
+            .get("tool_choice")
+            .and_then(|choice| choice.at("/function/name"))
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         match self.provider.dialect.quirks.rewrite {
-            BodyRewrite::Perplexity => {
-                if let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) {
-                    finalize_perplexity(messages);
+            BodyRewrite::LlamaCpp => {
+                if let Some(name) = forced {
+                    return Err(EncodeError::request(format!(
+                        "llama.cpp cannot force a specific tool: `llama-server` accepts only \
+                         `auto`, `none` or `required` for tool_choice and silently treats \
+                         anything else as `auto`, so requesting `{name}` would return whichever \
+                         tool the model picked. Use `ToolChoice::Required` to force a call, or \
+                         advertise only `{name}` in `tools`."
+                    )));
                 }
             }
+            BodyRewrite::Moonshot => {
+                if forced.is_some() {
+                    return Err(EncodeError::request(
+                        "Moonshot does not support forcing a specific tool",
+                    ));
+                }
+                if map.get("tool_choice").and_then(Value::as_str) == Some("required") {
+                    tracing::warn!(
+                        "Moonshot does not support tool_choice=required; coercing to auto with an \
+                         additional steering message"
+                    );
+                    map.insert("tool_choice".to_owned(), Value::from("auto"));
+                    if let Some(Value::Array(messages)) = map.get_mut("messages") {
+                        messages.push(json!({"role": "user",
+                            "content": "Please select a tool to handle the current issue."}));
+                    }
+                }
+            }
+            // Perplexity takes text-only part arrays as strings (other arrays
+            // are left for its sonar models); `adapt` alternates its roles.
+            BodyRewrite::Perplexity => {
+                for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
+                    flatten_text_content_parts(content, "\n", true);
+                }
+            }
+            // The gateway takes every message's content as one string.
             BodyRewrite::Mira => {
-                // The gateway takes every message's content as one string.
                 for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
                     flatten_text_content_parts(content, "\n", false);
                 }
@@ -646,11 +617,45 @@ impl Chat {
             BodyRewrite::None
             | BodyRewrite::OpenRouter
             | BodyRewrite::GroqCompoundTools
-            | BodyRewrite::HuggingFaceRouter
-            | BodyRewrite::LlamaCpp
-            | BodyRewrite::Moonshot => {}
+            | BodyRewrite::HuggingFaceRouter => {}
         }
+        Ok(())
     }
+}
+
+/// Refuse function tools to an OpenAI model that cannot call them on Chat
+/// Completions: some GPT-6 models take them there only at
+/// `reasoning_effort: "none"`, and some not at all. Only OpenAI's own
+/// endpoint serves those families.
+fn refuse_openai_tools(
+    model: &str,
+    tools: &[Value],
+    params: &Map<String, Value>,
+    quirks: &Quirks,
+) -> Result<(), EncodeError> {
+    if quirks.output_cap != OutputCap::OpenAiReasoningFamilies || tools.is_empty() {
+        return Ok(());
+    }
+    if NO_TOOLS_ON_CHAT.iter().any(|id| is_model(model, id)) {
+        return Err(EncodeError::request(format!(
+            "{model} cannot call function tools on Chat Completions: it takes them there \
+             only at reasoning_effort \"none\", which it does not support. Use the \
+             Responses wire."
+        )));
+    }
+    let effort_none = params.get("reasoning_effort").and_then(Value::as_str) == Some("none");
+    if TOOLS_ONLY_WITHOUT_REASONING
+        .iter()
+        .any(|id| is_model(model, id))
+        && !effort_none
+    {
+        return Err(EncodeError::request(format!(
+            "{model} calls function tools on Chat Completions only at reasoning_effort \
+             \"none\": send `\"reasoning_effort\": \"none\"` in additional_params, or use \
+             the Responses wire."
+        )));
+    }
+    Ok(())
 }
 
 /// `call` as the item the wire sends, from what replay hands the encoder:
@@ -728,19 +733,6 @@ fn messages_mut(map: &mut Map<String, Value>) -> impl Iterator<Item = &mut Map<S
         .into_iter()
         .flatten()
         .filter_map(Value::as_object_mut)
-}
-
-/// Perplexity takes text-only content-part arrays as strings (arrays with
-/// other parts are left for its sonar models). `adapt` keeps its user and
-/// assistant messages alternating ([`ReplayTarget::alternates_roles`]).
-///
-/// [`ReplayTarget::alternates_roles`]: crate::completion::ReplayTarget::alternates_roles
-fn finalize_perplexity(messages: &mut [Value]) {
-    for message in messages {
-        if let Some(content) = message.get_mut("content") {
-            flatten_text_content_parts(content, "\n", true);
-        }
-    }
 }
 
 /// GPT-6 models that call function tools on Chat Completions only at
