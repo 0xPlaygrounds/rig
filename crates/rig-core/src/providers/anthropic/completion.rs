@@ -72,84 +72,55 @@ pub enum CacheTtl {
     OneHour,
 }
 
-/// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYYMMDD`),
-/// and not a later model whose ID merely starts with `id`.
-pub(super) fn is_model(model: &str, id: &str) -> bool {
-    model
-        .strip_prefix(id)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with("-20"))
+/// What Anthropic publishes of each model with a 128K synchronous output
+/// limit: whether it takes `role: "system"` inside `messages` (the
+/// mid-conversation system messages page; Claude Sonnet 5 does not), whether
+/// it answers a forced `tool_choice` with a 400 (the what's-new pages), and
+/// whether its thinking binds to the request's tools and system prompt (the
+/// recorded 400 on Claude Opus 5.5, and the models pi sends `drop_block` for).
+const MODELS: [(&str, [bool; 3]); 10] = [
+    (CLAUDE_FABLE_5_1, [true, true, true]),
+    (CLAUDE_FABLE_5, [true, false, false]),
+    (CLAUDE_OPUS_5_5, [true, true, true]),
+    (CLAUDE_OPUS_5, [true, false, true]),
+    (CLAUDE_SONNET_5_5, [true, true, true]),
+    (CLAUDE_SONNET_5, [false; 3]),
+    (CLAUDE_OPUS_4_8, [true, false, false]),
+    (CLAUDE_OPUS_4_7, [false; 3]),
+    (CLAUDE_OPUS_4_6, [false; 3]),
+    (CLAUDE_SONNET_4_6, [false; 3]),
+];
+
+/// `model`'s row of [`MODELS`]: the model, or one of its dated snapshots
+/// (`<id>-YYYYMMDD`), never a later model whose id merely starts with one.
+fn listed(model: &str) -> Option<[bool; 3]> {
+    MODELS.iter().find_map(|(id, flags)| {
+        let rest = model.strip_prefix(id)?;
+        (rest.is_empty() || rest.starts_with("-20")).then_some(*flags)
+    })
 }
 
-/// Models whose published synchronous output limit is 128K tokens.
-const OUTPUT_128K: [&str; 10] = [
-    CLAUDE_FABLE_5_1,
-    CLAUDE_FABLE_5,
-    CLAUDE_OPUS_5_5,
-    CLAUDE_OPUS_5,
-    CLAUDE_SONNET_5_5,
-    CLAUDE_SONNET_5,
-    CLAUDE_OPUS_4_8,
-    CLAUDE_OPUS_4_7,
-    CLAUDE_OPUS_4_6,
-    CLAUDE_SONNET_4_6,
-];
-
-/// Models that accept `role: "system"` inside `messages`, per Anthropic's
-/// mid-conversation system messages page. Claude Sonnet 5 does not.
-const MID_CONVERSATION_SYSTEM: [&str; 6] = [
-    CLAUDE_FABLE_5_1,
-    CLAUDE_FABLE_5,
-    CLAUDE_OPUS_5_5,
-    CLAUDE_OPUS_5,
-    CLAUDE_SONNET_5_5,
-    CLAUDE_OPUS_4_8,
-];
-
-/// Models that answer a forced `tool_choice` (`any` or `tool`) with a 400, per
-/// their what's-new pages.
-const REJECTS_FORCED_TOOL_CHOICE: [&str; 3] =
-    [CLAUDE_OPUS_5_5, CLAUDE_SONNET_5_5, CLAUDE_FABLE_5_1];
-
-/// Models whose thinking blocks are bound to the request's tools and system
-/// prompt, and refused under others: the recorded 400 on Claude Opus 5.5,
-/// and the models pi sends `drop_block` for.
-const BINDS_CONTEXT: [&str; 4] = [
-    CLAUDE_FABLE_5_1,
-    CLAUDE_OPUS_5,
-    CLAUDE_OPUS_5_5,
-    CLAUDE_SONNET_5_5,
-];
-
-/// Return the published synchronous output limit for a recognized model.
-/// Unknown models require an explicit `max_tokens` value.
+/// The published synchronous output limit of a recognized model. Unknown
+/// models require an explicit `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    if OUTPUT_128K.iter().any(|id| is_model(model, id)) {
-        Some(128_000)
-    } else if model.starts_with("claude-opus-4")
-        || model.starts_with("claude-sonnet-4")
-        || model.starts_with("claude-haiku-4-5")
-    {
-        Some(64_000)
-    } else {
-        None
+    let older = ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"];
+    match listed(model) {
+        Some(_) => Some(128_000),
+        None => older
+            .iter()
+            .any(|prefix| model.starts_with(prefix))
+            .then_some(64_000),
     }
 }
 
 /// Whether `model` rejects a forced tool choice.
 pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
-    REJECTS_FORCED_TOOL_CHOICE
-        .iter()
-        .any(|id| is_model(model, id))
-}
-
-/// Whether `model` accepts `role: "system"` inside `messages`.
-pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
-    MID_CONVERSATION_SYSTEM.iter().any(|id| is_model(model, id))
+    listed(model).is_some_and(|[_, rejects, _]| rejects)
 }
 
 /// Whether `model` binds its thinking blocks to the request's context.
 pub(super) fn binds_context(model: &str) -> bool {
-    BINDS_CONTEXT.iter().any(|id| is_model(model, id))
+    listed(model).is_some_and(|[_, _, binds]| binds)
 }
 
 /// The Messages request body for `request`, already prepared, on `wire`.
@@ -191,7 +162,7 @@ pub(super) fn body(
     let mut tools = tools(request.tools, &mut params, strict)?;
     let (mut system, history) = split_system(
         &request.chat_history,
-        supports_mid_conversation_system_messages(&model),
+        listed(&model).is_some_and(|[mid, _, _]| mid),
     );
     let ids = WireIds::for_target(&history, wire, &model);
     let mut messages: Vec<Value> = Vec::new();
@@ -266,7 +237,7 @@ fn text(text: &str) -> Value {
 }
 
 /// An object of the `fields` that are present, in order.
-fn object<const N: usize>(fields: [(&str, Option<Value>); N]) -> Map<String, Value> {
+pub(super) fn object<const N: usize>(fields: [(&str, Option<Value>); N]) -> Map<String, Value> {
     fields
         .into_iter()
         .filter_map(|(key, value)| Some((key.to_owned(), value?)))
@@ -419,13 +390,11 @@ fn unsendable() -> EncodeError {
 pub(super) fn image_source(image: &message::Image) -> Option<Value> {
     Some(match &image.data {
         DocumentSourceKind::Base64(data) => {
-            let media_type = match image.media_type.as_ref()? {
-                ImageMediaType::JPEG => "image/jpeg",
-                ImageMediaType::PNG => "image/png",
-                ImageMediaType::GIF => "image/gif",
-                ImageMediaType::WEBP => "image/webp",
-                _ => return None,
-            };
+            let media_type = image.media_type.as_ref().filter(|media_type| {
+                use ImageMediaType::{GIF, JPEG, PNG, WEBP};
+                matches!(media_type, JPEG | PNG | GIF | WEBP)
+            })?;
+            let media_type = message::MimeType::to_mime_type(media_type);
             json!({ "type": "base64", "media_type": media_type, "data": data })
         }
         DocumentSourceKind::Url(url) => json!({ "type": "url", "url": url }),
@@ -629,11 +598,7 @@ fn top_level_cache_control(
     let raw = match params.shift_remove("cache_control") {
         None | Some(Value::Null) => None,
         Some(raw) => {
-            let ttl = match raw.get("ttl") {
-                None | Some(Value::Null) => Ok(None),
-                Some(ttl) => CacheTtl::deserialize(ttl).map(Some),
-            };
-            match ttl {
+            match Option::<CacheTtl>::deserialize(raw.get("ttl").unwrap_or(&Value::Null)) {
                 Ok(ttl) if raw.str("type") == Some("ephemeral") => Some(ephemeral(ttl.as_ref())),
                 _ => {
                     return Err(EncodeError::request(format!(

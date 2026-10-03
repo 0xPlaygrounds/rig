@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
+use super::completion::object;
 use crate::completion::FinishReason;
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
@@ -129,31 +130,25 @@ impl Counts {
 
     /// The counters as a stream's terminal record spells them.
     fn record(&self) -> Value {
-        let mut usage = Map::new();
-        usage.insert("output_tokens".into(), json!(self.output.unwrap_or(0)));
-        usage.insert("input_tokens".into(), json!(self.input));
-        usage.insert(
-            "cache_creation_input_tokens".into(),
-            json!(self.cache_creation),
-        );
-        usage.insert("cache_read_input_tokens".into(), json!(self.cache_read));
-        if let Some(split) = &self.cache_creation_split {
-            usage.insert("cache_creation".into(), split.clone());
-        }
-        if let Some(thinking) = self.thinking {
-            usage.insert(
-                "output_tokens_details".into(),
-                json!({ "thinking_tokens": thinking }),
-            );
-        }
-        Value::Object(usage)
+        let details = |thinking| json!({ "thinking_tokens": thinking });
+        Value::Object(object([
+            ("output_tokens", Some(json!(self.output.unwrap_or(0)))),
+            ("input_tokens", Some(json!(self.input))),
+            (
+                "cache_creation_input_tokens",
+                Some(json!(self.cache_creation)),
+            ),
+            ("cache_read_input_tokens", Some(json!(self.cache_read))),
+            ("cache_creation", self.cache_creation_split.clone()),
+            ("output_tokens_details", self.thinking.map(details)),
+        ]))
     }
 }
 
 /// How a Messages `stop_reason` ends the turn, and the error a refusal
 /// reports. A reason Anthropic does not document is
 /// [`FinishReason::Other`], which fails the turn.
-fn finish_of(reason: &str, details: Option<&Value>) -> (FinishReason, Option<String>) {
+fn finish_of(reason: &str, details: Option<&Value>) -> (Option<FinishReason>, Option<String>) {
     let reason = match reason {
         // `pause_turn` is a server-tool loop that stopped at its limit: the
         // turn is replayed as it is to resume it (pi's rule).
@@ -166,11 +161,14 @@ fn finish_of(reason: &str, details: Option<&Value>) -> (FinishReason, Option<Str
                 .and_then(|details| details.str("explanation"))
                 .filter(|explanation| !explanation.is_empty())
                 .unwrap_or("The model refused to complete the request");
-            return (FinishReason::ContentFilter, Some(explanation.to_owned()));
+            return (
+                Some(FinishReason::ContentFilter),
+                Some(explanation.to_owned()),
+            );
         }
         other => FinishReason::Other(other.to_owned()),
     };
-    (reason, None)
+    (Some(reason), None)
 }
 
 /// What an open content block is, for the checks its end makes.
@@ -356,11 +354,14 @@ impl MessagesDecoder {
                 (Kind::Redacted, _) => item.str("data").is_some_and(|data| !data.is_empty()),
                 (Kind::Opaque, Ok(None)) => true,
                 (Kind::Call | Kind::Opaque, Ok(Some(input @ Value::Object(_)))) => {
-                    set(item, "input", input);
+                    crate::operation::completion::merge(item, &object([("input", Some(input))]));
                     true
                 }
                 (Kind::Call, Ok(None | Some(Value::Null))) => {
-                    set(item, "input", json!({}));
+                    crate::operation::completion::merge(
+                        item,
+                        &object([("input", Some(json!({})))]),
+                    );
                     true
                 }
                 (Kind::Call, _) => false,
@@ -389,9 +390,10 @@ impl MessagesDecoder {
     }
 
     fn note_container(&mut self, container: Option<&Value>) {
-        if let Some(container) = container.filter(|container| !container.is_null()) {
-            self.container = Some(container.clone());
-        }
+        self.container = container
+            .filter(|c| !c.is_null())
+            .or(self.container.as_ref())
+            .cloned();
     }
 
     /// End the reply with Anthropic's terminal record. Every block still
@@ -423,13 +425,7 @@ impl MessagesDecoder {
             let item = json!({ "type": "container", "container": container });
             out.whole(index, Block::Opaque { replay: true }, item, "")?;
         }
-        let (reason, error) = match stop_reason {
-            Some(reason) => {
-                let (reason, error) = finish_of(reason, details);
-                (Some(reason), error)
-            }
-            None => (None, None),
-        };
+        let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
         Ok(out.end(Finish {
             usage: usage.usage(),
             reason,
@@ -472,21 +468,15 @@ impl MessagesDecoder {
     /// The stream's terminal `message_delta` counters, falling back to
     /// `message_start`'s for those it omits.
     fn terminal(&self, usage: Option<&Value>) -> Counts {
-        let terminal = Counts::of(usage);
+        let (terminal, start) = (Counts::of(usage), self.start.clone());
         Counts {
             // Zero-as-missing is a gateway heuristic for the input count
             // only, not a rule for cache counts.
-            input: terminal
-                .input
-                .filter(|tokens| *tokens > 0)
-                .or(self.start.input),
-            output: terminal.output,
-            cache_read: terminal.cache_read.or(self.start.cache_read),
-            cache_creation: terminal.cache_creation.or(self.start.cache_creation),
-            cache_creation_split: terminal
-                .cache_creation_split
-                .or_else(|| self.start.cache_creation_split.clone()),
-            thinking: terminal.thinking,
+            input: terminal.input.filter(|tokens| *tokens > 0).or(start.input),
+            cache_read: terminal.cache_read.or(start.cache_read),
+            cache_creation: terminal.cache_creation.or(start.cache_creation),
+            cache_creation_split: terminal.cache_creation_split.or(start.cache_creation_split),
+            ..terminal
         }
     }
 }
@@ -496,16 +486,14 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<MessagesEvent> {
         let data = frame.as_str();
-        wire::classify_tagged_frame::<Value>(&data, "type", |event_type| {
-            KNOWN_EVENT_TYPES.contains(&event_type)
-        })
-        .map(|fields| {
-            // The one event whose payload leaves this crate as bytes rather
-            // than as decoded fields, so it is captured where the frame is
-            // still in hand.
-            let raw = (fields.str("type") == Some("error")).then(|| data.to_string());
-            MessagesEvent { fields, raw }
-        })
+        wire::classify_tagged_frame::<Value>(&data, "type", |tag| KNOWN_EVENT_TYPES.contains(&tag))
+            .map(|fields| {
+                // The one event whose payload leaves this crate as bytes rather
+                // than as decoded fields, so it is captured where the frame is
+                // still in hand.
+                let raw = (fields.str("type") == Some("error")).then(|| data.to_string());
+                MessagesEvent { fields, raw }
+            })
     }
 
     fn decode(
@@ -540,24 +528,19 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                     return Ok(Flow::More);
                 };
                 let usage = self.terminal(event.fields.get("usage"));
-                let mut record = Map::new();
-                record.insert("usage".into(), usage.record());
-                record.insert("stop_reason".into(), json!(reason));
                 // The stop sequence rides the same `message_delta` as the
                 // stop reason: `message_start` always opens with `null`.
-                for (key, value) in [
+                let stop_sequence = delta.and_then(|delta| delta.str("stop_sequence"));
+                out.raw(Value::Object(object([
+                    ("usage", Some(usage.record())),
+                    ("stop_reason", Some(json!(reason))),
                     (
                         "stop_sequence",
-                        delta.and_then(|delta| delta.str("stop_sequence")),
+                        stop_sequence.map(|sequence| json!(sequence)),
                     ),
-                    ("message_id", self.message_id.as_deref()),
-                    ("model", self.response_model.as_deref()),
-                ] {
-                    if let Some(value) = value {
-                        record.insert(key.into(), json!(value));
-                    }
-                }
-                out.raw(Value::Object(record));
+                    ("message_id", self.message_id.clone().map(Value::String)),
+                    ("model", self.response_model.clone().map(Value::String)),
+                ])));
                 let details = delta.and_then(|delta| delta.get("stop_details"));
                 return self.end(&usage, Some(reason), details, out);
             }
@@ -622,13 +605,6 @@ impl MessagesDecoder {
         {
             ObservedError::emit(error, sink);
         }
-    }
-}
-
-/// Set `key` of the object `item`.
-fn set(item: &mut Value, key: &str, value: Value) {
-    if let Some(item) = item.as_object_mut() {
-        item.insert(key.to_owned(), value);
     }
 }
 
