@@ -35,6 +35,8 @@ use rig_core::wire::{Mode, Operation, Wire};
 
 pub use rig_core::test_utils::history_conformance::{decode, partial};
 
+mod generated;
+
 /// Every completion wire and dialect that must run the suite, by the name
 /// its `history_conformance_suite!` invocation gives.
 pub const HISTORY_WIRES: &[&str] = &[
@@ -134,6 +136,21 @@ pub const ROWS: &[(&str, &str)] = &[
     (
         "h14_model_identity",
         "gemini NEW resume origin model, gemini NEW Vertex model override",
+    ),
+    (
+        "h15_item_round_trip",
+        "round 4: Anthropic A4 and A5, Responses NEW-C, Gemini NEW-3 (stored items the wire \
+         would refuse)",
+    ),
+    (
+        "h16_call_identity",
+        "#2655, round 4: Chat NEW-1 and NEW-2 (merged parallel calls), Mistral tool-0, Gemini \
+         3 id-less call, Responses NEW-B and NEW-E, Anthropic A1, stored duplicate ids, rename \
+         scope",
+    ),
+    (
+        "h17_generated_histories",
+        "round 4: fuzz F1 (duplicate ids), F2 (fingerprint number form), role alternation",
     ),
 ];
 
@@ -329,6 +346,19 @@ pub struct Ablation<F> {
     pub frames: fn(Value) -> Vec<F>,
 }
 
+/// How two streamed calls are told apart ([`HistoryFixture::calls_reply`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallShape {
+    /// Fragments carry no index.
+    Indexless,
+    /// Fragments carry `index: null`.
+    NullIndex,
+    /// Both calls use index 0.
+    ReusedIndex,
+    /// A whole reply whose calls all state one index.
+    WholeList,
+}
+
 /// How a documented finish ends a turn ([`h07_failed_turns`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ending {
@@ -382,6 +412,48 @@ pub trait HistoryFixture {
     /// JSON documents.
     fn ablation(&self) -> Option<Ablation<<Self::Wire as Wire>::Frame>> {
         None
+    }
+
+    /// `block`'s provider item decoded alone, as the wire's whole reply of
+    /// one item, for row H15; `None` when the wire has no such decode.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let _ = block;
+        None
+    }
+
+    /// Two streamed calls to `weather`, ids `a1` and `b2`, arguments
+    /// `{"city":"Paris"}` and `{"city":"Rome"}`, told apart as `shape`
+    /// says (row H16); `None` when the wire cannot express the shape.
+    fn calls_reply(
+        &self,
+        shape: CallShape,
+        mode: Mode,
+    ) -> Option<Vec<<Self::Wire as Wire>::Frame>> {
+        let _ = (shape, mode);
+        None
+    }
+
+    /// A reply that ends cleanly with no content (row H3).
+    fn empty_reply(&self, mode: Mode) -> Option<Vec<<Self::Wire as Wire>::Frame>> {
+        let _ = mode;
+        None
+    }
+
+    /// The JSON pointer of the finish reason in the [`Self::ablation`]
+    /// document (row H5): without it the reply must fail.
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// A frame carrying an in-band error, which fails a stream (row H7).
+    fn error_frame(&self) -> Option<<Self::Wire as Wire>::Frame> {
+        None
+    }
+
+    /// Whether the wire requires user and assistant messages to alternate
+    /// (Anthropic, Gemini, Bedrock), checked on generated histories (H17).
+    fn strict_roles(&self) -> bool {
+        false
     }
 
     /// Whether the wire keeps provider items. A local runtime keeps none.
@@ -530,7 +602,7 @@ pub fn contains_subtree(document: &Value, item: &Value) -> bool {
 /// The position of `item` in a depth-first walk of `document`.
 fn position_of(document: &Value, item: &Value) -> Option<usize> {
     fn walk(value: &Value, item: &Value, at: &mut usize) -> Option<usize> {
-        if value == item {
+        if same(value, item) {
             return Some(*at);
         }
         *at += 1;
@@ -541,6 +613,28 @@ fn position_of(document: &Value, item: &Value) -> Option<usize> {
         }
     }
     walk(document, item, &mut 0)
+}
+
+/// JSON equality with numbers compared by value, so `0` and `0.0` match:
+/// a store or an SDK may write either.
+fn same(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Number(left), Value::Number(right)) => left.as_f64() == right.as_f64(),
+        (Value::Array(left), Value::Array(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| same(left, right))
+        }
+        (Value::Object(left), Value::Object(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .all(|(key, value)| right.get(key).is_some_and(|other| same(value, other)))
+        }
+        (left, right) => left == right,
+    }
 }
 
 const MODES: [Mode; 2] = [Mode::Unary, Mode::Streaming];
@@ -676,6 +770,21 @@ pub fn h03_stream_equals_whole<F: HistoryFixture>(fixture: &F) {
         };
         rig_core::test_utils::history::assert_restated_agrees(&wire, whole, streamed);
     }
+    // An empty reply is a success in both modes, decided once by the fold.
+    if let (Some(whole), Some(streamed)) = (
+        fixture.empty_reply(Mode::Unary),
+        fixture.empty_reply(Mode::Streaming),
+    ) {
+        for (mode, frames) in [(Mode::Unary, whole), (Mode::Streaming, streamed)] {
+            let response = decode(&wire, &CompletionRequest::new("restate"), mode, frames)
+                .unwrap_or_else(|error| panic!("{mode:?}: an empty reply decodes: {error}"));
+            assert!(
+                !response.stop().is_failure(),
+                "{mode:?}: an empty reply that ended cleanly is a success: {:?}",
+                response.stop()
+            );
+        }
+    }
 }
 
 /// H4. An invented item type and an invented field survive decode and
@@ -745,6 +854,16 @@ pub fn h05_field_ablation<F: HistoryFixture>(fixture: &F) {
                 panic!("the reply with `{pointer}` {change} still decodes: {error}");
             }
         }
+    }
+    if let Some(pointer) = fixture.finish_reason_pointer() {
+        let mut document = ablation.document.clone();
+        remove_pointer(&mut document, pointer);
+        let failed = decode(&wire, &request, Mode::Unary, (ablation.frames)(document))
+            .map_or(true, |response| response.stop().is_failure());
+        assert!(
+            failed,
+            "a reply without its finish reason `{pointer}` failed"
+        );
     }
 }
 
@@ -906,6 +1025,19 @@ pub fn h07_failed_turns<F: HistoryFixture>(fixture: &F) {
             "a failed turn is never replayed: {adapted:?}"
         );
     }
+    if let (Some(error), Some(mut frames)) = (
+        fixture.error_frame(),
+        fixture.reply(Shape::Rich, Mode::Streaming),
+    ) {
+        frames.truncate(frames.len().saturating_sub(1).max(1));
+        frames.push(error);
+        let (response, _) = partial(&wire, Mode::Streaming, frames);
+        assert!(
+            response.stop().is_failure(),
+            "an in-band error fails the turn: {:?}",
+            response.stop()
+        );
+    }
 }
 
 /// H8. Every call is answered once: an unanswered call gets an error
@@ -986,6 +1118,42 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
         sent(fixture, fixture.model(), history[1..].to_vec(), mode)
             .unwrap_or_else(|error| panic!("{mode:?}: the paired history encodes: {error}"));
     }
+    // A request that lets the model call no tools gets calls and results as
+    // text, so a wire that needs tool definitions for them never sees one.
+    for mode in MODES {
+        let wire = fixture.wire(fixture.model());
+        let mut request = CompletionRequest::new("next");
+        request.chat_history = history[1..].to_vec();
+        request.chat_history.push(Message::user("next"));
+        let prepared = Completion::prepare(request, &wire.describe())
+            .unwrap_or_else(|error| panic!("{mode:?}: the history prepares: {error}"));
+        assert!(
+            prepared.chat_history.iter().all(|message| match message {
+                Message::Assistant(turn) => turn.tool_calls().next().is_none(),
+                Message::User { content } => content
+                    .iter()
+                    .all(|part| !matches!(part, UserContent::ToolResult(_))),
+                Message::System { .. } => true,
+            }),
+            "{mode:?}: no tools, so no calls: {:?}",
+            prepared.chat_history
+        );
+        fixture
+            .body(&wire, prepared, mode)
+            .unwrap_or_else(|error| panic!("{mode:?}: the history without tools encodes: {error}"));
+    }
+    // A system message that arrives while a call waits is held until it is
+    // answered, then sent before the user's own text.
+    let held = vec![
+        Message::user("q"),
+        history[1].clone(),
+        Message::system("steer"),
+        history[2].clone(),
+    ];
+    for mode in MODES {
+        sent(fixture, fixture.model(), held.clone(), mode)
+            .unwrap_or_else(|error| panic!("{mode:?}: a held system message encodes: {error}"));
+    }
 }
 
 /// H9. The adapter downgrades whatever the model does not read or the wire
@@ -1050,6 +1218,10 @@ fn media_history() -> Vec<Message> {
     let call = ToolCall::new(
         CallId::from_wire("call_shot"),
         ToolFunction::new(name("screenshot"), serde_json::json!({})),
+    );
+    let listing = ToolCall::new(
+        CallId::from_wire("call_list"),
+        ToolFunction::new(name("list"), serde_json::json!({})),
     );
     vec![
         Message::system(""),
@@ -1136,6 +1308,17 @@ fn media_history() -> Vec<Message> {
                     Source::url("https://example.com/rig-matrix-tool.png"),
                     Some(ImageMediaType::PNG),
                 )),
+            ]))],
+        },
+        Message::Assistant(AssistantMessage {
+            content: vec![AssistantContent::ToolCall(listing.clone())],
+            origin: Some(Origin::new("other.api", "other", "other-model")),
+            stop: Some(StopReason::ToolUse),
+        }),
+        Message::User {
+            content: vec![UserContent::ToolResult(listing.result(vec![
+                ToolResultContent::text("first part"),
+                ToolResultContent::text("second part"),
             ]))],
         },
     ]
@@ -1233,7 +1416,12 @@ pub fn h10_persistence<F: HistoryFixture>(fixture: &F) {
         };
         let expected = fixture.replayed(&turn);
         let stored = serde_json::to_value(Message::Assistant(turn)).expect("a turn serializes");
-        for loaded in [stored.clone(), sorted(stored)] {
+        for loaded in [
+            stored.clone(),
+            sorted(stored.clone()),
+            numbers(stored.clone(), Numbers::ThroughF64),
+            numbers(stored, Numbers::WholeAsFloat),
+        ] {
             let loaded: Message = serde_json::from_value(loaded).expect("a stored turn loads");
             let Message::Assistant(turn) = &loaded else {
                 panic!("an assistant turn loads as one");
@@ -1258,6 +1446,45 @@ pub fn h10_persistence<F: HistoryFixture>(fixture: &F) {
                 );
             }
         }
+    }
+}
+
+/// How a store rewrites numbers ([`h10_persistence`]).
+#[derive(Clone, Copy)]
+enum Numbers {
+    /// Every number passes through an f64, as JavaScript and Mongo read it.
+    ThroughF64,
+    /// Every integer is written as a float.
+    WholeAsFloat,
+}
+
+/// `value` with every number rewritten as `how` says.
+fn numbers(value: Value, how: Numbers) -> Value {
+    match value {
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .map(|(key, value)| (key, numbers(value, how)))
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(
+            values
+                .into_iter()
+                .map(|value| numbers(value, how))
+                .collect(),
+        ),
+        Value::Number(number) => match how {
+            Numbers::ThroughF64 => number
+                .as_f64()
+                .and_then(serde_json::Number::from_f64)
+                .map_or(Value::Number(number), Value::Number),
+            Numbers::WholeAsFloat if number.is_f64() => Value::Number(number),
+            Numbers::WholeAsFloat => number
+                .as_f64()
+                .and_then(serde_json::Number::from_f64)
+                .map_or(Value::Number(number), Value::Number),
+        },
+        value => value,
     }
 }
 
@@ -1348,6 +1575,44 @@ pub fn h12_edits<F: HistoryFixture>(fixture: &F) {
             );
         }
     }
+    // Every other kind the wire has: an edited reasoning block or call is
+    // rebuilt, its stale item never sent.
+    for mode in MODES {
+        let Some(turn) = turn_of(fixture, Shape::Rich, mode) else {
+            continue;
+        };
+        for at in 0..turn.content.len() {
+            let mut edited = turn.clone();
+            let stale = edited.content[at].native_item().cloned();
+            let changed = match &mut edited.content[at] {
+                AssistantContent::Reasoning(reasoning) if !reasoning.redacted => {
+                    reasoning.text.push_str(" (edited)");
+                    true
+                }
+                AssistantContent::ToolCall(call) => {
+                    call.function
+                        .arguments
+                        .insert("x_rig_edit".to_owned(), Value::from(true));
+                    true
+                }
+                _ => false,
+            };
+            let Some(stale) = stale.filter(|_| changed) else {
+                continue;
+            };
+            let body = sent(
+                fixture,
+                fixture.model(),
+                vec![Message::user("q"), Message::Assistant(edited)],
+                mode,
+            )
+            .unwrap_or_else(|error| panic!("{mode:?}: an edit at {at} encodes: {error}"));
+            assert!(
+                !contains_subtree(&body, &stale),
+                "{mode:?}: block {at}'s stale item is not sent: {body}"
+            );
+        }
+    }
 }
 
 /// H13. A turn a runtime rolls back (`CompletionResponse::continued`), at
@@ -1401,6 +1666,29 @@ pub fn h13_rollback<F: HistoryFixture>(fixture: &F) {
         "a reply cut after {cut} frames keeps every block but the last"
     );
     rolled_back(fixture, &cut_off, "cut before its finish");
+    // At every cut, an item that needs the one after it is replayed only
+    // with it.
+    let describe = wire.describe();
+    let target = describe.replay.expect("a replay target");
+    for cut in 1..count {
+        let (response, _) = cut_at(cut);
+        let turn = response.continued(response.choice.clone());
+        let items: Vec<Option<Value>> = turn
+            .content
+            .iter()
+            .map(|block| block.native_item().cloned())
+            .collect();
+        for (at, item) in items.iter().enumerate() {
+            if let Some(item) = item
+                && target.needs_next(item)
+            {
+                assert!(
+                    items.get(at + 1).is_some_and(Option::is_some),
+                    "a reply cut after {cut} frames keeps {item} without the item it needs"
+                );
+            }
+        }
+    }
 }
 
 /// Roll `response` back as a runtime does and check it replays.
@@ -1454,6 +1742,227 @@ pub fn h14_model_identity<F: HistoryFixture>(fixture: &F) {
             "{mode:?}: the override reaches the request: {body}"
         );
     }
+    // On a wire that binds items to the request's tools, a turn made under
+    // other tools replays as if from another model.
+    let describe = wire.describe();
+    let target = describe.replay.expect("a replay target");
+    if target.binds_context(fixture.model()) {
+        let Some(frames) = fixture.reply(Shape::Rich, Mode::Unary) else {
+            return;
+        };
+        let mut made = CompletionRequest::new("restate");
+        made.tools = tools_of(&[]);
+        let turn = match decode(&wire, &made, Mode::Unary, frames)
+            .unwrap_or_else(|error| panic!("the reply decodes: {error}"))
+            .message()
+        {
+            Some(Message::Assistant(turn)) => turn,
+            other => panic!("an assistant turn: {other:?}"),
+        };
+        let mut request = CompletionRequest::new("next");
+        request.tools = vec![rig_core::completion::ToolDefinition {
+            name: name("x_rig_new_tool"),
+            description: "a tool added since".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+        }];
+        request.chat_history = vec![
+            Message::user("q"),
+            Message::Assistant(turn.clone()),
+            Message::user("next"),
+        ];
+        let prepared = Completion::prepare(request, &wire.describe())
+            .unwrap_or_else(|error| panic!("the request prepares: {error}"));
+        let body = fixture
+            .body(&wire, prepared, Mode::Unary)
+            .unwrap_or_else(|error| panic!("the request encodes: {error}"));
+        for item in fixture.replayed(&turn) {
+            assert!(
+                !contains_subtree(&body, &item),
+                "a turn made under other tools does not replay {item}: {body}"
+            );
+        }
+    }
+}
+
+/// H15. Every provider item a block keeps is one the wire takes back: the
+/// item decoded alone, as the wire's whole reply, gives back the block.
+pub fn h15_item_round_trip<F: HistoryFixture>(fixture: &F) {
+    let mut checked = 0;
+    for mode in MODES {
+        for shape in [Shape::Rich, Shape::Interleaved] {
+            let Some(turn) = turn_of(fixture, shape, mode) else {
+                continue;
+            };
+            for block in turn
+                .content
+                .iter()
+                .filter(|block| block.native_item().is_some())
+            {
+                let Some(decoded) = fixture.decode_item(block) else {
+                    continue;
+                };
+                checked += 1;
+                assert_eq!(
+                    decoded.canonical(),
+                    block.canonical(),
+                    "{mode:?}: the stored item {:?} decodes back to its block",
+                    block.native_item()
+                );
+            }
+        }
+    }
+    if checked == 0 {
+        eprintln!("skip: the wire decodes no single item");
+    }
+}
+
+/// H16. Calls are told apart and keep their identity: streamed calls with
+/// no index, a `null` one or a reused one, and a whole list whose calls
+/// state one index, are two calls; and a history whose calls share ids, in
+/// one turn and across turns, sends each call once with one result under
+/// the same wire id.
+pub fn h16_call_identity<F: HistoryFixture>(fixture: &F) {
+    let wire = fixture.wire(fixture.model());
+    for shape in [
+        CallShape::Indexless,
+        CallShape::NullIndex,
+        CallShape::ReusedIndex,
+        CallShape::WholeList,
+    ] {
+        for mode in MODES {
+            let Some(frames) = fixture.calls_reply(shape, mode) else {
+                continue;
+            };
+            let response = decode(&wire, &CompletionRequest::new("restate"), mode, frames)
+                .unwrap_or_else(|error| panic!("{shape:?} in {mode:?} decodes: {error}"));
+            let calls: Vec<(String, Value)> = response
+                .tool_calls()
+                .map(|call| (call.id.wire().into_owned(), call.function.arguments_value()))
+                .collect();
+            assert_eq!(
+                calls,
+                [
+                    ("a1".to_owned(), serde_json::json!({"city": "Paris"})),
+                    ("b2".to_owned(), serde_json::json!({"city": "Rome"})),
+                ],
+                "{shape:?} in {mode:?}: two calls"
+            );
+        }
+    }
+    let call = |id: &str| {
+        AssistantContent::ToolCall(ToolCall::new(
+            CallId::from_wire(id),
+            ToolFunction::new(name("lookup"), serde_json::json!({"q": id})),
+        ))
+    };
+    let foreign = |content| {
+        Message::Assistant(AssistantMessage {
+            content,
+            origin: Some(Origin::new("other.api", "other", "other-model")),
+            stop: Some(StopReason::ToolUse),
+        })
+    };
+    let answer = |id: &str, text: &str| Message::User {
+        content: vec![UserContent::ToolResult(ToolResult {
+            call: CallId::from_wire(id),
+            name: name("lookup"),
+            content: vec![ToolResultContent::text(text)],
+            is_error: false,
+        })],
+    };
+    let local = ToolCall::new(
+        CallId::Local(rig_core::message::LocalCallId::new()),
+        ToolFunction::new(name("lookup"), serde_json::json!({})),
+    );
+    let history = vec![
+        Message::user("q"),
+        foreign(vec![call("dup"), call("dup")]),
+        Message::User {
+            content: vec![answer("dup", "one"), answer("dup", "two")]
+                .into_iter()
+                .flat_map(|message| match message {
+                    Message::User { content } => content,
+                    _ => Vec::new(),
+                })
+                .collect(),
+        },
+        foreign(vec![call("dup")]),
+        answer("dup", "three"),
+        foreign(vec![AssistantContent::ToolCall(local.clone())]),
+        Message::User {
+            content: vec![UserContent::ToolResult(
+                local.result(vec![ToolResultContent::text("four")]),
+            )],
+        },
+    ];
+    for mode in MODES {
+        let body = sent(fixture, fixture.model(), history.clone(), mode)
+            .unwrap_or_else(|error| panic!("{mode:?}: shared call ids encode: {error}"));
+        let problems = generated::pairing(&body);
+        assert!(problems.is_empty(), "{mode:?}: {problems:?} in {body}");
+    }
+}
+
+/// H17. Generated histories: every one encodes, every call in the body has
+/// exactly one result after it and no result lacks a call, a stored turn
+/// replays the same items after a store rewrites it, and roles alternate on
+/// a wire that requires it. The seed is fixed; `RIG_HISTORY_CASES` raises
+/// the case count (256 by default).
+pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
+    let cases: u64 = std::env::var("RIG_HISTORY_CASES")
+        .ok()
+        .and_then(|cases| cases.parse().ok())
+        .unwrap_or(256);
+    let own: Vec<AssistantMessage> = [Shape::Rich, Shape::Interleaved]
+        .into_iter()
+        .filter_map(|shape| turn_of(fixture, shape, Mode::Unary))
+        .collect();
+    let problems = |history: &[Message], mode: Mode| -> Vec<String> {
+        let body = match sent(fixture, fixture.model(), history.to_vec(), mode) {
+            Ok(body) => body,
+            Err(error) => return vec![format!("it does not encode: {error}")],
+        };
+        let mut problems = generated::pairing(&body);
+        if fixture.strict_roles() {
+            problems.extend(generated::alternation(&body));
+        }
+        problems
+    };
+    for case in 0..cases {
+        let mut rng = generated::Rng::new(0x5eed_0000 + case);
+        let history = generated::history(&mut rng, &own);
+        for mode in MODES {
+            let found = problems(&history, mode);
+            if !found.is_empty() {
+                let small = generated::shrink(history.clone(), |history| {
+                    !problems(history, mode).is_empty()
+                });
+                panic!(
+                    "case {case} in {mode:?}: {found:?}\nhistory: {}\nshrunk: {}\nproblems there: {:?}",
+                    generated::render(&history),
+                    generated::render(&small),
+                    problems(&small, mode)
+                );
+            }
+        }
+    }
+    for turn in &own {
+        let expected = fixture.replayed(turn);
+        let stored =
+            serde_json::to_value(Message::Assistant(turn.clone())).expect("a turn serializes");
+        for how in [Numbers::ThroughF64, Numbers::WholeAsFloat] {
+            let loaded: Message = serde_json::from_value(numbers(stored.clone(), how))
+                .expect("a rewritten turn loads");
+            let Message::Assistant(loaded) = loaded else {
+                panic!("an assistant turn loads as one");
+            };
+            assert_eq!(
+                fixture.replayed(&loaded).len(),
+                expected.len(),
+                "a store that rewrites numbers keeps every provider item current"
+            );
+        }
+    }
 }
 
 fn name(name: &str) -> ToolName {
@@ -1487,6 +1996,9 @@ macro_rules! history_conformance_suite {
             h12_edits,
             h13_rollback,
             h14_model_identity,
+            h15_item_round_trip,
+            h16_call_identity,
+            h17_generated_histories,
         }
 
         #[test]
@@ -1506,6 +2018,9 @@ macro_rules! history_conformance_suite {
                 "h12_edits",
                 "h13_rollback",
                 "h14_model_identity",
+                "h15_item_round_trip",
+                "h16_call_identity",
+                "h17_generated_histories",
             ];
             let rows: Vec<&str> = $crate::ROWS.iter().map(|(row, _)| *row).collect();
             assert_eq!(emitted.as_slice(), rows.as_slice());
