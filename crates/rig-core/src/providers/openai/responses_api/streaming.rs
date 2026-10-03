@@ -468,14 +468,7 @@ impl ResponsesDecoder {
         open.open = false;
         let at = open.at;
         if open.kind == Kind::Call {
-            let arguments = streamed_arguments(open);
-            out.fragment(
-                Some(at),
-                CallFragment {
-                    arguments: Some(&arguments),
-                    ..CallFragment::default()
-                },
-            )?;
+            flush(open, out)?;
         }
         out.close(at)?;
         self.release(false, out)
@@ -516,12 +509,20 @@ impl ResponsesDecoder {
         } else {
             Kind::Reasoning
         };
-        let slot = match self.addressed(frame, kind)? {
-            Some(slot) if self.slots[slot].open && self.slots[slot].kind == kind => slot,
+        let known = self.addressed(frame, kind)?.and_then(|at| {
+            let slot = self.slots.get(at)?;
+            Some((at, slot.open, slot.kind == kind))
+        });
+        let slot = match known {
+            Some((slot, true, true)) => slot,
             // A delta for an item that already closed is left to the item,
             // which states its text.
-            Some(slot) if self.slots[slot].kind == kind => return Ok(()),
-            _ => self.added(output_index(frame)?, &json!({"type": kind_name(kind)}), out)?,
+            Some((_, false, true)) => return Ok(()),
+            _ => self.added(
+                output_index(frame)?,
+                &json!({"type": if kind == Kind::Message { "message" } else { "reasoning" }}),
+                out,
+            )?,
         };
         let Some(streamed) = self.slots.get_mut(slot).filter(|slot| slot.open) else {
             return Ok(());
@@ -638,15 +639,15 @@ impl ResponsesDecoder {
                                 .zip(slot.id.as_deref())
                                 .is_none_or(|(id, known)| id == known))
                 };
+                let known = known.and_then(|at| {
+                    let slot = self.slots.get(at)?;
+                    let same = item_id(item).is_some() && slot.id.as_deref() == item_id(item);
+                    Some((at, slot.open && restates(slot), same))
+                });
                 let slot = match known {
-                    Some(slot) if self.slots[slot].open && restates(&self.slots[slot]) => slot,
+                    Some((slot, true, _)) => slot,
                     // The item this one restates is already done.
-                    Some(slot)
-                        if item_id(item).is_some()
-                            && self.slots[slot].id.as_deref() == item_id(item) =>
-                    {
-                        return Ok(());
-                    }
+                    Some((_, false, true)) => return Ok(()),
                     _ => self.added(index, item, out)?,
                 };
                 self.done(slot, item.clone(), out)
@@ -675,19 +676,28 @@ impl ResponsesDecoder {
     /// gave no index and no other id.
     fn restated(&self, index: usize, item: &Value, taken: &HashSet<usize>) -> Option<usize> {
         let id = item_id(item);
-        let free = |slot: &usize| !taken.contains(slot) && self.slots[*slot].kind == Kind::of(item);
-        id.and_then(|id| {
-            (0..self.slots.len())
-                .find(|slot| free(slot) && self.slots[*slot].id.as_deref() == Some(id))
-        })
-        .or_else(|| self.indexed.get(&index).copied().filter(free))
-        .or_else(|| {
-            (0..self.slots.len()).find(|slot| {
-                free(slot)
-                    && !self.indexed.values().any(|indexed| indexed == slot)
-                    && (id.is_none() || self.slots[*slot].id.is_none())
+        let free = |at: &usize| {
+            !taken.contains(at)
+                && self
+                    .slots
+                    .get(*at)
+                    .is_some_and(|slot| slot.kind == Kind::of(item))
+        };
+        let find = |fits: &dyn Fn(usize, &Slot) -> bool| {
+            self.slots
+                .iter()
+                .enumerate()
+                .find(|(at, slot)| free(at) && fits(*at, slot))
+                .map(|(at, _)| at)
+        };
+        id.and_then(|id| find(&|_, slot| slot.id.as_deref() == Some(id)))
+            .or_else(|| self.indexed.get(&index).copied().filter(free))
+            .or_else(|| {
+                find(&|at, slot| {
+                    !self.indexed.values().any(|indexed| *indexed == at)
+                        && (id.is_none() || slot.id.is_none())
+                })
             })
-        })
     }
 
     /// The terminal response: finish or write each item of its output,
@@ -719,15 +729,18 @@ impl ResponsesDecoder {
             .enumerate()
             .filter(|(_, item)| item.is_object())
         {
-            let slot = match self.restated(index, item, &taken) {
-                Some(slot) if !self.slots[slot].open => {
+            let known = self.restated(index, item, &taken).and_then(|at| {
+                let slot = self.slots.get(at)?;
+                Some((at, slot.open, slot.kind, slot.at))
+            });
+            let slot = match known {
+                Some((slot, false, kind, at)) => {
                     taken.insert(slot);
                     let ciphertext = item
                         .get("encrypted_content")
                         .filter(|cipher| cipher.as_str().is_some_and(|cipher| !cipher.is_empty()));
-                    if let (Kind::Reasoning, Some(ciphertext)) = (self.slots[slot].kind, ciphertext)
-                    {
-                        out.edit(self.slots[slot].at, |native| {
+                    if let (Kind::Reasoning, Some(ciphertext)) = (kind, ciphertext) {
+                        out.edit(at, |native| {
                             let stated = native
                                 .str("encrypted_content")
                                 .is_some_and(|cipher| !cipher.is_empty());
@@ -738,7 +751,7 @@ impl ResponsesDecoder {
                     }
                     continue;
                 }
-                Some(slot) => slot,
+                Some((slot, ..)) => slot,
                 None => self.added(
                     Some(index).filter(|index| !self.indexed.contains_key(index)),
                     item,
@@ -753,19 +766,10 @@ impl ResponsesDecoder {
         let open = self.slots.iter().any(|slot| slot.open);
         self.release(!open, &mut out)?;
         // A call never done shows what streamed, in a turn that fails.
-        for slot in self
-            .slots
-            .iter()
-            .filter(|slot| slot.open && slot.kind == Kind::Call)
-        {
-            let arguments = streamed_arguments(slot);
-            out.fragment(
-                Some(slot.at),
-                CallFragment {
-                    arguments: Some(&arguments),
-                    ..CallFragment::default()
-                },
-            )?;
+        for slot in self.slots.iter().filter(|slot| slot.open) {
+            if slot.kind == Kind::Call {
+                flush(slot, &mut out)?;
+            }
         }
         let (reason, error) = finish_reason_of(&response);
         let end = Finish {
@@ -781,6 +785,16 @@ impl ResponsesDecoder {
         out.raw(response);
         Ok(out.end(end))
     }
+}
+
+/// Give `slot`'s call what it streamed, before it closes undone.
+fn flush(slot: &Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+    let arguments = streamed_arguments(slot);
+    let fragment = CallFragment {
+        arguments: Some(&arguments),
+        ..CallFragment::default()
+    };
+    out.fragment(Some(slot.at), fragment)
 }
 
 /// The argument JSON of what `slot`'s call streamed.
@@ -802,13 +816,6 @@ fn output_index(frame: &Value) -> Result<Option<usize>, ProviderError> {
             })
         })
         .transpose()
-}
-
-fn kind_name(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Message => "message",
-        _ => "reasoning",
-    }
 }
 
 impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
@@ -834,8 +841,10 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                         .filter(|response| response.is_object())
                         .cloned()
                         .unwrap_or_else(|| json!({}));
-                    if kind == "response.incomplete" {
-                        response["status"] = json!("incomplete");
+                    if let (true, Some(fields)) =
+                        (kind == "response.incomplete", response.as_object_mut())
+                    {
+                        fields.insert("status".to_owned(), json!("incomplete"));
                     }
                     self.finish(response, out)
                 }

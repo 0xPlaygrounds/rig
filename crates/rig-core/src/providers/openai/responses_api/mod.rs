@@ -48,7 +48,7 @@ fn image_part(image: &message::Image) -> Option<Value> {
     };
     let mut part =
         json!({"type": "input_image", "detail": image.detail.clone().unwrap_or_default()});
-    part[key] = Value::String(source);
+    set(&mut part, key, Value::String(source));
     Some(part)
 }
 
@@ -70,6 +70,13 @@ fn document_part(document: &Document) -> Option<Value> {
         DocumentSourceKind::String(text) => json!({"type": "input_text", "text": text}),
         _ => return None,
     })
+}
+
+/// `value` with `key` set to `field`, when `value` is an object.
+fn set(value: &mut Value, key: &str, field: Value) {
+    if let Some(fields) = value.as_object_mut() {
+        fields.insert(key.to_owned(), field);
+    }
 }
 
 /// The refusal for a part a request was not prepared to carry.
@@ -95,7 +102,9 @@ fn result_output(content: &[ToolResultContent]) -> Result<Value, EncodeError> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(match parts.as_mut_slice() {
-        [part] if part.str("type") == Some("input_text") => part["text"].take(),
+        [part] if part.str("type") == Some("input_text") => {
+            part.get_mut("text").map(Value::take).unwrap_or_default()
+        }
         _ => Value::Array(parts),
     })
 }
@@ -209,7 +218,7 @@ fn input(
                             if let Some(phase) =
                                 identity.get("phase").filter(|phase| phase.is_string())
                             {
-                                item["phase"] = phase.clone();
+                                set(&mut item, "phase", phase.clone());
                             }
                             items.push(item);
                             continue;
@@ -228,14 +237,14 @@ fn input(
                                 };
                                 let mut item = json!({"type": "custom_tool_call", "call_id": call_id, "name": name, "input": input});
                                 if let Some(id) = id("ctc_") {
-                                    item["id"] = json!(id);
+                                    set(&mut item, "id", json!(id));
                                 }
                                 item
                             } else {
                                 let arguments = call.function.arguments_value().to_string();
                                 let mut item = json!({"type": "function_call", "call_id": call_id, "name": name, "arguments": arguments});
                                 if let Some(id) = id("fc_") {
-                                    item["id"] = json!(id);
+                                    set(&mut item, "id", json!(id));
                                 }
                                 item
                             }
@@ -253,7 +262,7 @@ fn input(
                             let mut item =
                                 json!({"type": "reasoning", "id": rs, "summary": summary});
                             if let Some(ciphertext) = identity.get("encrypted_content") {
-                                item["encrypted_content"] = ciphertext.clone();
+                                set(&mut item, "encrypted_content", ciphertext.clone());
                             }
                             item
                         }
@@ -296,7 +305,7 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
 fn include_ciphertext(body: &mut Value) {
     const CIPHERTEXT: &str = "reasoning.encrypted_content";
     if !body["include"].is_array() {
-        body["include"] = json!([]);
+        set(body, "include", json!([]));
     }
     if let Some(include) = body["include"].as_array_mut()
         && !include.iter().any(|item| item == CIPHERTEXT)
@@ -420,41 +429,36 @@ fn body(
     ];
     for (key, value) in fields {
         if let Some(value) = value {
-            body[key] = value;
+            set(&mut body, key, value);
         }
     }
     for (key, value) in params {
         if !value.is_null() && body.get(&key).is_none() {
-            body[key.as_str()] = value;
+            set(&mut body, &key, value);
         }
     }
     if body.get("text").is_none()
         && let Some(schema) = request.output_schema
     {
         let (name, schema) = super::structured_output_schema(schema);
-        body["text"] = json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}});
+        set(
+            &mut body,
+            "text",
+            json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}}),
+        );
     }
     let codex = wire.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
     if codex {
         // The codex gateway takes the turn and the tools; sampling, storage,
         // metadata and structured output are not its to accept, and
         // `store: false` is the one value it wants stated.
+        const UNACCEPTED: &str = "temperature max_output_tokens background metadata parallel_tool_calls service_tier text top_p user";
         if let Some(fields) = body.as_object_mut() {
-            for key in [
-                "temperature",
-                "max_output_tokens",
-                "background",
-                "metadata",
-                "parallel_tool_calls",
-                "service_tier",
-                "text",
-                "top_p",
-                "user",
-            ] {
+            UNACCEPTED.split(' ').for_each(|key| {
                 fields.shift_remove(key);
-            }
+            });
         }
-        body["store"] = json!(false);
+        set(&mut body, "store", json!(false));
     }
     // Reasoning replays without stored state only with its ciphertext.
     if codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)) {
