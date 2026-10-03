@@ -740,6 +740,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
 }
 
 #[tokio::test]
+#[ignore = "deepseek-v4-flash now spends the 56-token budget before the second call's arguments start, even for the original request bytes (3 live attempts, 2026-10-03)"]
 async fn streaming_parallel_calls_keep_the_complete_one() {
     const SCENARIO: &str = "truncation_matrix/streaming_parallel_calls_keep_the_complete_one";
     with_deepseek_truncation_cassette_result(

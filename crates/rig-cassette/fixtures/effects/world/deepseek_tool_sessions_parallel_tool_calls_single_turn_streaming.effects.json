@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,28 +10,28 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 20,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -39,7 +39,31 @@
         }
       },
       {
+        "batch": 21,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 22,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 23,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 24,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -111,6 +135,14 @@
         }
       },
       {
+        "batch": 33,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 34,
         "id": 3,
         "kind": {
@@ -143,6 +175,14 @@
         }
       },
       {
+        "batch": 38,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 39,
         "id": 3,
         "kind": {
@@ -160,6 +200,14 @@
       },
       {
         "batch": 41,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -303,7 +351,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_zJAKfTQHonhlPH9gqlbn7022"
+                "provider": "call_00_HjCJsprgqfGSOfM5UdJY2779"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -315,16 +363,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
+                  "id": "call_00_HjCJsprgqfGSOfM5UdJY2779",
                   "type": "function"
                 },
-                "fingerprint": "3237b9622b0f44d5"
+                "fingerprint": "f37ae76a01118b53"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_01_Ctvf5eQgYz82IVkcT3I18329"
+                "provider": "call_01_XhlnIlGoEv1jC3enuOTY1086"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -336,10 +384,10 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
+                  "id": "call_01_XhlnIlGoEv1jC3enuOTY1086",
                   "type": "function"
                 },
-                "fingerprint": "cf5901ad32e18751"
+                "fingerprint": "a2e1c7473869d68f"
               }
             }
           ],
@@ -354,7 +402,7 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "8ac58a85-95ad-4ed9-a88c-92b2ff7835d8"
+            "response_id": "0419274e-1b80-47fc-a4c6-77d6f5302d26"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -369,7 +417,7 @@
               "total_tokens": 435
             },
             "finish_reason": "tool_calls",
-            "response_id": "8ac58a85-95ad-4ed9-a88c-92b2ff7835d8",
+            "response_id": "0419274e-1b80-47fc-a4c6-77d6f5302d26",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -404,7 +452,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_zJAKfTQHonhlPH9gqlbn7022"
+                "provider": "call_00_HjCJsprgqfGSOfM5UdJY2779"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -416,10 +464,10 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
+                  "id": "call_00_HjCJsprgqfGSOfM5UdJY2779",
                   "type": "function"
                 },
-                "fingerprint": "3237b9622b0f44d5"
+                "fingerprint": "f37ae76a01118b53"
               }
             }
           }
@@ -448,7 +496,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_01_Ctvf5eQgYz82IVkcT3I18329"
+                "provider": "call_01_XhlnIlGoEv1jC3enuOTY1086"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -460,10 +508,10 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
+                  "id": "call_01_XhlnIlGoEv1jC3enuOTY1086",
                   "type": "function"
                 },
-                "fingerprint": "cf5901ad32e18751"
+                "fingerprint": "a2e1c7473869d68f"
               }
             }
           }
@@ -554,7 +602,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_zJAKfTQHonhlPH9gqlbn7022"
+                    "provider": "call_00_HjCJsprgqfGSOfM5UdJY2779"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -566,16 +614,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_00_zJAKfTQHonhlPH9gqlbn7022",
+                      "id": "call_00_HjCJsprgqfGSOfM5UdJY2779",
                       "type": "function"
                     },
-                    "fingerprint": "3237b9622b0f44d5"
+                    "fingerprint": "f37ae76a01118b53"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_01_Ctvf5eQgYz82IVkcT3I18329"
+                    "provider": "call_01_XhlnIlGoEv1jC3enuOTY1086"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -587,10 +635,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_01_Ctvf5eQgYz82IVkcT3I18329",
+                      "id": "call_01_XhlnIlGoEv1jC3enuOTY1086",
                       "type": "function"
                     },
-                    "fingerprint": "cf5901ad32e18751"
+                    "fingerprint": "a2e1c7473869d68f"
                   }
                 }
               ],
@@ -599,7 +647,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "8ac58a85-95ad-4ed9-a88c-92b2ff7835d8"
+                "response_id": "0419274e-1b80-47fc-a4c6-77d6f5302d26"
               },
               "stop": "tool_use"
             },
@@ -609,7 +657,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_zJAKfTQHonhlPH9gqlbn7022"
+                    "provider": "call_00_HjCJsprgqfGSOfM5UdJY2779"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -622,7 +670,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_01_Ctvf5eQgYz82IVkcT3I18329"
+                    "provider": "call_01_XhlnIlGoEv1jC3enuOTY1086"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -675,13 +723,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\"."
             }
           ],
           "usage": {
             "input_tokens": 465,
-            "output_tokens": 17,
-            "total_tokens": 482,
+            "output_tokens": 23,
+            "total_tokens": 488,
             "cached_input_tokens": 256
           },
           "origin": {
@@ -689,22 +737,22 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "bdcfae32-d2d3-46b0-b1eb-a264328fabcf"
+            "response_id": "5fbc5852-00c8-4d7a-9541-3e638da99e47"
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "completion_tokens": 17,
+              "completion_tokens": 23,
               "prompt_cache_hit_tokens": 256,
               "prompt_cache_miss_tokens": 209,
               "prompt_tokens": 465,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 482
+              "total_tokens": 488
             },
             "finish_reason": "stop",
-            "response_id": "bdcfae32-d2d3-46b0-b1eb-a264328fabcf",
+            "response_id": "5fbc5852-00c8-4d7a-9541-3e638da99e47",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -752,7 +800,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is"
+            "text": " returned"
           }
         },
         {
@@ -760,7 +808,31 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " crimson"
+            "text": " \""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "c"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "rim"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "son"
           }
         },
         {
@@ -785,6 +857,14 @@
             "event": "text",
             "part": 0,
             "text": "or"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "\""
           }
         },
         {
@@ -824,7 +904,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is"
+            "text": " returned"
           }
         },
         {
@@ -832,7 +912,23 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " silver"
+            "text": " \""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "sil"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "ver"
           }
         },
         {
@@ -856,7 +952,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "."
+            "text": "\"."
           }
         },
         {
@@ -866,7 +962,7 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\"."
             }
           }
         }

@@ -70,39 +70,39 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate.",
+              "text": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine.",
               "native": {
                 "item": {
-                  "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
+                  "reasoning_content": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine."
                 },
-                "fingerprint": "78557bd1ccd8f3a2"
+                "fingerprint": "53595d1f0730b173"
               }
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time."
+              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that cause crashes, security vulnerabilities, and undefined behavior."
             }
           ],
           "usage": {
             "input_tokens": 57,
-            "output_tokens": 123,
-            "total_tokens": 180,
+            "output_tokens": 114,
+            "total_tokens": 171,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 64
+            "reasoning_tokens": 59
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "b086fc78-93d3-4756-9565-517280ec2936"
+            "response_id": "12d53f01-b881-4f9c-b8a7-ad8403942706"
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "completion_tokens": 123,
+              "completion_tokens": 114,
               "completion_tokens_details": {
-                "reasoning_tokens": 64
+                "reasoning_tokens": 59
               },
               "prompt_cache_hit_tokens": 0,
               "prompt_cache_miss_tokens": 57,
@@ -110,10 +110,10 @@
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 180
+              "total_tokens": 171
             },
             "finish_reason": "stop",
-            "response_id": "b086fc78-93d3-4756-9565-517280ec2936",
+            "response_id": "12d53f01-b881-4f9c-b8a7-ad8403942706",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -161,7 +161,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " in"
+            "text": " concise"
           }
         },
         {
@@ -169,7 +169,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " one"
+            "text": ","
           }
         },
         {
@@ -177,7 +177,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " or"
+            "text": " "
           }
         },
         {
@@ -185,7 +185,23 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " two"
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "2"
           }
         },
         {
@@ -273,7 +289,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Conc"
+            "text": " Need"
           }
         },
         {
@@ -281,23 +297,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "ise"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " Could"
+            "text": " maybe"
           }
         },
         {
@@ -313,23 +313,15 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Rust"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
             "text": " systems"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " programming"
           }
         },
         {
@@ -441,15 +433,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Memory"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " safety"
+            "text": " Why"
           }
         },
         {
@@ -465,7 +449,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " because"
+            "text": ":"
           }
         },
         {
@@ -473,39 +457,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " bugs"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " like"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " use"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "-after"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "-free"
+            "text": " security"
           }
         },
         {
@@ -521,46 +473,6 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " buffer"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " over"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "flows"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " lead"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " to"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
             "text": " crashes"
           }
         },
@@ -569,7 +481,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "/"
+            "text": ","
           }
         },
         {
@@ -577,7 +489,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "security"
+            "text": " undefined"
           }
         },
         {
@@ -585,7 +497,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " vulnerabilities"
+            "text": " behavior"
           }
         },
         {
@@ -601,7 +513,23 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Two"
+            "text": " One"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " or"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " two"
           }
         },
         {
@@ -633,7 +561,39 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " accurate"
+            "text": " no"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " mark"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "down"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "?"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " Fine"
           }
         },
         {
@@ -651,12 +611,12 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "text": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate.",
+              "text": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine.",
               "native": {
                 "item": {
-                  "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise. Could mention Rust is systems language with compile-time ownership/borrow checker preventing memory errors. Memory safety matters because bugs like use-after-free, buffer overflows lead to crashes/security vulnerabilities. Two sentences. Ensure accurate."
+                  "reasoning_content": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine."
                 },
-                "fingerprint": "78557bd1ccd8f3a2"
+                "fingerprint": "53595d1f0730b173"
               }
             }
           }
@@ -898,7 +858,23 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " flaws"
+            "text": " it"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " prevents"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " bugs"
           }
         },
         {
@@ -907,6 +883,38 @@
             "event": "text",
             "part": 1,
             "text": " like"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " buffer"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": " over"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "flows"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": ","
           }
         },
         {
@@ -946,38 +954,6 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " double"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " f"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": "rees"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
             "text": " and"
           }
         },
@@ -986,7 +962,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " buffer"
+            "text": " data"
           }
         },
         {
@@ -994,7 +970,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " over"
+            "text": " races"
           }
         },
         {
@@ -1002,7 +978,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": "flows"
+            "text": " that"
           }
         },
         {
@@ -1026,7 +1002,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " and"
+            "text": ","
           }
         },
         {
@@ -1058,7 +1034,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " which"
+            "text": " and"
           }
         },
         {
@@ -1066,7 +1042,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " Rust"
+            "text": " undefined"
           }
         },
         {
@@ -1074,55 +1050,7 @@
           "value": {
             "event": "text",
             "part": 1,
-            "text": " prevents"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " by"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " catching"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " them"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " at"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " compile"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": " time"
+            "text": " behavior"
           }
         },
         {
@@ -1140,7 +1068,7 @@
             "part": 1,
             "content": {
               "type": "text",
-              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because flaws like use-after-free, double frees, and buffer overflows cause crashes and security vulnerabilities, which Rust prevents by catching them at compile time."
+              "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that cause crashes, security vulnerabilities, and undefined behavior."
             }
           }
         }

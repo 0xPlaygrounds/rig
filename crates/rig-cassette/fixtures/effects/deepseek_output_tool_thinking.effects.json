@@ -94,53 +94,53 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce.",
+              "text": "The user wants a concise event object for a local Rust meetup in Seattle. I need to call final_result with title, category, summary. No tools to search needed — just produce structured result.\n\nLet me create: title \"Seattle Rust Meetup\", category \"Meetup\" or \"Technology\", summary describing a local Rust programmers meetup in Seattle.\n\nI should be concise.",
               "native": {
                 "item": {
-                  "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce."
+                  "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I need to call final_result with title, category, summary. No tools to search needed — just produce structured result.\n\nLet me create: title \"Seattle Rust Meetup\", category \"Meetup\" or \"Technology\", summary describing a local Rust programmers meetup in Seattle.\n\nI should be concise."
                 },
-                "fingerprint": "ffa13314978cfdc7"
+                "fingerprint": "4c2c865ee97e2345"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_2g1OMQFZ41XFC1VlfRAA2168"
+                "provider": "call_00_zghun6cNjC2nvYPdjhuS7781"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup",
-                  "category": "Meetup",
-                  "summary": "A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code."
+                  "category": "Technology / Developer Meetup",
+                  "summary": "A local gathering for Rust programmers in Seattle, featuring community talks, live coding, and networking for developers of all experience levels. Held regularly at a downtown Seattle venue; free to attend, with refreshments provided."
                 }
               },
               "native": {
                 "item": {
                   "function": {
-                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Meetup\", \"summary\": \"A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code.\"}",
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology / Developer Meetup\", \"summary\": \"A local gathering for Rust programmers in Seattle, featuring community talks, live coding, and networking for developers of all experience levels. Held regularly at a downtown Seattle venue; free to attend, with refreshments provided.\"}",
                     "name": "final_result"
                   },
-                  "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168",
+                  "id": "call_00_zghun6cNjC2nvYPdjhuS7781",
                   "type": "function"
                 },
-                "fingerprint": "413356b6e72ab065"
+                "fingerprint": "c0ebe1ee4e26cb15"
               }
             }
           ],
           "usage": {
             "input_tokens": 401,
-            "output_tokens": 165,
-            "total_tokens": 566,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 41
+            "output_tokens": 195,
+            "total_tokens": 596,
+            "cached_input_tokens": 256,
+            "reasoning_tokens": 77
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "f95f4256-70cd-4efc-bf3a-3e38d30a6a91"
+            "response_id": "33555abd-6ac0-42a9-8fa6-5ac74519c084"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -151,15 +151,15 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce.",
+                  "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I need to call final_result with title, category, summary. No tools to search needed — just produce structured result.\n\nLet me create: title \"Seattle Rust Meetup\", category \"Meetup\" or \"Technology\", summary describing a local Rust programmers meetup in Seattle.\n\nI should be concise.",
                   "role": "assistant",
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Meetup\", \"summary\": \"A local gathering of Rust developers and enthusiasts in Seattle. Expect lightning talks, a show-and-tell of side projects, and open networking for beginners and experienced systems programmers alike. Free to attend; bring a laptop if you'd like to pair on code.\"}",
+                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology / Developer Meetup\", \"summary\": \"A local gathering for Rust programmers in Seattle, featuring community talks, live coding, and networking for developers of all experience levels. Held regularly at a downtown Seattle venue; free to attend, with refreshments provided.\"}",
                         "name": "final_result"
                       },
-                      "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168",
+                      "id": "call_00_zghun6cNjC2nvYPdjhuS7781",
                       "index": 0,
                       "type": "function"
                     }
@@ -168,22 +168,22 @@
               }
             ],
             "created": 0,
-            "id": "f95f4256-70cd-4efc-bf3a-3e38d30a6a91",
+            "id": "33555abd-6ac0-42a9-8fa6-5ac74519c084",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 165,
+              "completion_tokens": 195,
               "completion_tokens_details": {
-                "reasoning_tokens": 41
+                "reasoning_tokens": 77
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 401,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 145,
               "prompt_tokens": 401,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 256
               },
-              "total_tokens": 566
+              "total_tokens": 596
             }
           }
         }

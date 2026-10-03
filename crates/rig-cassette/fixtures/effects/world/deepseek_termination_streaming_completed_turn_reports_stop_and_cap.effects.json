@@ -113,7 +113,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "38f7edaf-b6a7-479c-ab12-9856a8cb9c3a"
+            "response_id": "2bf5b388-8e69-4417-a14c-3e14fe4540b6"
           },
           "finish_reason": "stop",
           "raw": {
@@ -128,7 +128,7 @@
               "total_tokens": 27
             },
             "finish_reason": "stop",
-            "response_id": "38f7edaf-b6a7-479c-ab12-9856a8cb9c3a",
+            "response_id": "2bf5b388-8e69-4417-a14c-3e14fe4540b6",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

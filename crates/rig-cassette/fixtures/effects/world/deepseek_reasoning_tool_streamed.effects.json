@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -50,19 +50,11 @@
         }
       },
       {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -94,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -102,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -126,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -162,39 +154,7 @@
         }
       },
       {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 45,
+        "batch": 36,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -202,21 +162,21 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 36,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 46,
+        "batch": 37,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 50,
+        "batch": 43,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -224,7 +184,7 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -232,7 +192,7 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -358,18 +318,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
+              "text": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
               "native": {
                 "item": {
-                  "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
+                  "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add."
                 },
-                "fingerprint": "7f1b58aa7efb120b"
+                "fingerprint": "cf96ce7b3f7a048c"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_JHnN3J09SqsA1CXdUIfQ2480"
+                "provider": "call_00_YoKgf5kjEngBBLmLXnbY9542"
               },
               "function": {
                 "name": "add",
@@ -384,33 +344,33 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
+                  "id": "call_00_YoKgf5kjEngBBLmLXnbY9542",
                   "type": "function"
                 },
-                "fingerprint": "9fdd775c55e26bcd"
+                "fingerprint": "f54db5ab5ae957fa"
               }
             }
           ],
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 78,
-            "total_tokens": 439,
+            "output_tokens": 73,
+            "total_tokens": 434,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 25
+            "reasoning_tokens": 20
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "c12a54d0-dfbc-4240-8f84-38c74005ad57"
+            "response_id": "1f0db891-4fca-4bed-8102-5eece7f3c962"
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "completion_tokens": 78,
+              "completion_tokens": 73,
               "completion_tokens_details": {
-                "reasoning_tokens": 25
+                "reasoning_tokens": 20
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233,
@@ -418,10 +378,10 @@
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "total_tokens": 439
+              "total_tokens": 434
             },
             "finish_reason": "tool_calls",
-            "response_id": "c12a54d0-dfbc-4240-8f84-38c74005ad57",
+            "response_id": "1f0db891-4fca-4bed-8102-5eece7f3c962",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -477,7 +437,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Need"
+            "text": " Must"
           }
         },
         {
@@ -517,7 +477,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Simple"
+            "text": " Need"
           }
         },
         {
@@ -525,15 +485,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " Then"
+            "text": " then"
           }
         },
         {
@@ -573,7 +525,15 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " Need"
+            "text": " Let"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "'s"
           }
         },
         {
@@ -597,46 +557,6 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " with"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "17"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "25"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
             "text": "."
           }
         },
@@ -647,12 +567,12 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "text": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
+              "text": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
               "native": {
                 "item": {
-                  "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
+                  "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add."
                 },
-                "fingerprint": "7f1b58aa7efb120b"
+                "fingerprint": "cf96ce7b3f7a048c"
               }
             }
           }
@@ -681,7 +601,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_JHnN3J09SqsA1CXdUIfQ2480"
+                "provider": "call_00_YoKgf5kjEngBBLmLXnbY9542"
               },
               "function": {
                 "name": "add",
@@ -696,10 +616,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
+                  "id": "call_00_YoKgf5kjEngBBLmLXnbY9542",
                   "type": "function"
                 },
-                "fingerprint": "9fdd775c55e26bcd"
+                "fingerprint": "f54db5ab5ae957fa"
               }
             }
           }
@@ -764,18 +684,18 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "text": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
+                  "text": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
                   "native": {
                     "item": {
-                      "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
+                      "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add."
                     },
-                    "fingerprint": "7f1b58aa7efb120b"
+                    "fingerprint": "cf96ce7b3f7a048c"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_JHnN3J09SqsA1CXdUIfQ2480"
+                    "provider": "call_00_YoKgf5kjEngBBLmLXnbY9542"
                   },
                   "function": {
                     "name": "add",
@@ -790,10 +710,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_JHnN3J09SqsA1CXdUIfQ2480",
+                      "id": "call_00_YoKgf5kjEngBBLmLXnbY9542",
                       "type": "function"
                     },
-                    "fingerprint": "9fdd775c55e26bcd"
+                    "fingerprint": "f54db5ab5ae957fa"
                   }
                 }
               ],
@@ -802,7 +722,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c12a54d0-dfbc-4240-8f84-38c74005ad57"
+                "response_id": "1f0db891-4fca-4bed-8102-5eece7f3c962"
               },
               "stop": "tool_use"
             },
@@ -812,7 +732,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_JHnN3J09SqsA1CXdUIfQ2480"
+                    "provider": "call_00_YoKgf5kjEngBBLmLXnbY9542"
                   },
                   "name": "add",
                   "content": [
@@ -871,9 +791,9 @@
             }
           ],
           "usage": {
-            "input_tokens": 452,
+            "input_tokens": 447,
             "output_tokens": 2,
-            "total_tokens": 454,
+            "total_tokens": 449,
             "cached_input_tokens": 256,
             "reasoning_tokens": 0
           },
@@ -882,7 +802,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "dbcd8f2d-843b-4883-b5ff-a9f3bcfd0bd9"
+            "response_id": "13923399-cdbc-43e6-958f-4bf99042a574"
           },
           "finish_reason": "stop",
           "raw": {
@@ -892,15 +812,15 @@
                 "reasoning_tokens": 0
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 196,
-              "prompt_tokens": 452,
+              "prompt_cache_miss_tokens": 191,
+              "prompt_tokens": 447,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 454
+              "total_tokens": 449
             },
             "finish_reason": "stop",
-            "response_id": "dbcd8f2d-843b-4883-b5ff-a9f3bcfd0bd9",
+            "response_id": "13923399-cdbc-43e6-958f-4bf99042a574",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

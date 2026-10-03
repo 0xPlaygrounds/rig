@@ -148,18 +148,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call.",
+              "text": "The user wants me to add 17 and 25 using the add tool.",
               "native": {
                 "item": {
-                  "reasoning_content": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call."
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool."
                 },
-                "fingerprint": "9d155d612d510cc8"
+                "fingerprint": "e49a7d20e8e980c0"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_LgHctJCpImd9K7GzWLLk4051"
+                "provider": "call_00_hYkBxLXTBJO7kMlNEpdD7034"
               },
               "function": {
                 "name": "add",
@@ -174,26 +174,26 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_LgHctJCpImd9K7GzWLLk4051",
+                  "id": "call_00_hYkBxLXTBJO7kMlNEpdD7034",
                   "type": "function"
                 },
-                "fingerprint": "244563381cfeed8f"
+                "fingerprint": "19d6968ca152f683"
               }
             }
           ],
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 77,
-            "total_tokens": 438,
+            "output_tokens": 69,
+            "total_tokens": 430,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 24
+            "reasoning_tokens": 16
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-reasoner",
             "response_model": "deepseek-flash",
-            "response_id": "bc22f0a8-679d-4ec3-b095-0b3eb93b6cbc"
+            "response_id": "5cc38f4f-7804-46f1-a7af-9abe881cede2"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -204,7 +204,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call.",
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -212,7 +212,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_LgHctJCpImd9K7GzWLLk4051",
+                      "id": "call_00_hYkBxLXTBJO7kMlNEpdD7034",
                       "index": 0,
                       "type": "function"
                     }
@@ -221,14 +221,14 @@
               }
             ],
             "created": 0,
-            "id": "bc22f0a8-679d-4ec3-b095-0b3eb93b6cbc",
+            "id": "5cc38f4f-7804-46f1-a7af-9abe881cede2",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 77,
+              "completion_tokens": 69,
               "completion_tokens_details": {
-                "reasoning_tokens": 24
+                "reasoning_tokens": 16
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233,
@@ -236,7 +236,7 @@
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "total_tokens": 438
+              "total_tokens": 430
             }
           }
         }
@@ -295,18 +295,18 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "text": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call.",
+                  "text": "The user wants me to add 17 and 25 using the add tool.",
                   "native": {
                     "item": {
-                      "reasoning_content": "We need to use add tool. Add 17 and 25. Then reply with just number. Let's call."
+                      "reasoning_content": "The user wants me to add 17 and 25 using the add tool."
                     },
-                    "fingerprint": "9d155d612d510cc8"
+                    "fingerprint": "e49a7d20e8e980c0"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_LgHctJCpImd9K7GzWLLk4051"
+                    "provider": "call_00_hYkBxLXTBJO7kMlNEpdD7034"
                   },
                   "function": {
                     "name": "add",
@@ -321,10 +321,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_LgHctJCpImd9K7GzWLLk4051",
+                      "id": "call_00_hYkBxLXTBJO7kMlNEpdD7034",
                       "type": "function"
                     },
-                    "fingerprint": "244563381cfeed8f"
+                    "fingerprint": "19d6968ca152f683"
                   }
                 }
               ],
@@ -333,7 +333,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-reasoner",
                 "response_model": "deepseek-flash",
-                "response_id": "bc22f0a8-679d-4ec3-b095-0b3eb93b6cbc"
+                "response_id": "5cc38f4f-7804-46f1-a7af-9abe881cede2"
               },
               "stop": "tool_use"
             },
@@ -343,7 +343,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_LgHctJCpImd9K7GzWLLk4051"
+                    "provider": "call_00_hYkBxLXTBJO7kMlNEpdD7034"
                   },
                   "name": "add",
                   "content": [
@@ -398,9 +398,9 @@
             }
           ],
           "usage": {
-            "input_tokens": 451,
+            "input_tokens": 443,
             "output_tokens": 2,
-            "total_tokens": 453,
+            "total_tokens": 445,
             "cached_input_tokens": 256,
             "reasoning_tokens": 0
           },
@@ -409,7 +409,7 @@
             "provider": "deepseek",
             "model": "deepseek-reasoner",
             "response_model": "deepseek-flash",
-            "response_id": "2f669286-d1e4-4dc2-9e3a-b0c0ff82492b"
+            "response_id": "9ef1f210-573c-4fc7-8a59-4b0a0c7243ff"
           },
           "finish_reason": "stop",
           "raw": {
@@ -426,7 +426,7 @@
               }
             ],
             "created": 0,
-            "id": "2f669286-d1e4-4dc2-9e3a-b0c0ff82492b",
+            "id": "9ef1f210-573c-4fc7-8a59-4b0a0c7243ff",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -436,12 +436,12 @@
                 "reasoning_tokens": 0
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 195,
-              "prompt_tokens": 451,
+              "prompt_cache_miss_tokens": 187,
+              "prompt_tokens": 443,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 453
+              "total_tokens": 445
             }
           }
         }

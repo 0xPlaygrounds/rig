@@ -143,7 +143,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_RKAoH7uoLZmhWoCK8NJy2946"
+                "provider": "call_00_4Ln6piPvUs8LmqcmAkAj3708"
               },
               "function": {
                 "name": "add",
@@ -158,10 +158,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_RKAoH7uoLZmhWoCK8NJy2946",
+                  "id": "call_00_4Ln6piPvUs8LmqcmAkAj3708",
                   "type": "function"
                 },
-                "fingerprint": "0aff4377d107a845"
+                "fingerprint": "1cf0b74842eb7574"
               }
             }
           ],
@@ -176,7 +176,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "3859771b-ba0b-4b7d-b285-21673cbc27ff"
+            "response_id": "ee0f8719-ed07-4c8a-ac29-0ac92d6b7112"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -194,7 +194,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_RKAoH7uoLZmhWoCK8NJy2946",
+                      "id": "call_00_4Ln6piPvUs8LmqcmAkAj3708",
                       "index": 0,
                       "type": "function"
                     }
@@ -203,7 +203,7 @@
               }
             ],
             "created": 0,
-            "id": "3859771b-ba0b-4b7d-b285-21673cbc27ff",
+            "id": "ee0f8719-ed07-4c8a-ac29-0ac92d6b7112",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -275,7 +275,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_RKAoH7uoLZmhWoCK8NJy2946"
+                    "provider": "call_00_4Ln6piPvUs8LmqcmAkAj3708"
                   },
                   "function": {
                     "name": "add",
@@ -290,10 +290,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_RKAoH7uoLZmhWoCK8NJy2946",
+                      "id": "call_00_4Ln6piPvUs8LmqcmAkAj3708",
                       "type": "function"
                     },
-                    "fingerprint": "0aff4377d107a845"
+                    "fingerprint": "1cf0b74842eb7574"
                   }
                 }
               ],
@@ -302,7 +302,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "3859771b-ba0b-4b7d-b285-21673cbc27ff"
+                "response_id": "ee0f8719-ed07-4c8a-ac29-0ac92d6b7112"
               },
               "stop": "tool_use"
             },
@@ -312,7 +312,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_RKAoH7uoLZmhWoCK8NJy2946"
+                    "provider": "call_00_4Ln6piPvUs8LmqcmAkAj3708"
                   },
                   "name": "add",
                   "content": [
@@ -363,7 +363,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "42"
+              "text": "99"
             }
           ],
           "usage": {
@@ -377,7 +377,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "41a0da62-b3ab-4b3c-893b-481780869e38"
+            "response_id": "499e6da8-5bae-4752-bd3d-94182188b33c"
           },
           "finish_reason": "stop",
           "raw": {
@@ -387,13 +387,13 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "42",
+                  "content": "99",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "41a0da62-b3ab-4b3c-893b-481780869e38",
+            "id": "499e6da8-5bae-4752-bd3d-94182188b33c",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

@@ -109,7 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_Wgrq5RxZOvsWdQR76XXL5749"
+                "provider": "call_00_zFUNbiRqgFd4AC1iu32g0159"
               },
               "function": {
                 "name": "lookup",
@@ -123,10 +123,10 @@
                     "arguments": "{\"q\": \"What is the capital of France?\"}",
                     "name": "lookup"
                   },
-                  "id": "call_00_Wgrq5RxZOvsWdQR76XXL5749",
+                  "id": "call_00_zFUNbiRqgFd4AC1iu32g0159",
                   "type": "function"
                 },
-                "fingerprint": "dcdab46712aaff8c"
+                "fingerprint": "af8416bde0a7a01e"
               }
             }
           ],
@@ -141,7 +141,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "16344669-74bf-4264-98ea-e645d64eb692"
+            "response_id": "4125d184-9145-4869-8009-f06d9f933648"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -156,7 +156,7 @@
               "total_tokens": 371
             },
             "finish_reason": "tool_calls",
-            "response_id": "16344669-74bf-4264-98ea-e645d64eb692",
+            "response_id": "4125d184-9145-4869-8009-f06d9f933648",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -191,7 +191,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_Wgrq5RxZOvsWdQR76XXL5749"
+                "provider": "call_00_zFUNbiRqgFd4AC1iu32g0159"
               },
               "function": {
                 "name": "lookup",
@@ -205,10 +205,10 @@
                     "arguments": "{\"q\": \"What is the capital of France?\"}",
                     "name": "lookup"
                   },
-                  "id": "call_00_Wgrq5RxZOvsWdQR76XXL5749",
+                  "id": "call_00_zFUNbiRqgFd4AC1iu32g0159",
                   "type": "function"
                 },
-                "fingerprint": "dcdab46712aaff8c"
+                "fingerprint": "af8416bde0a7a01e"
               }
             }
           }
@@ -297,7 +297,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "39eb49b3-6799-4e0f-8642-c09f71ca65ed"
+            "response_id": "f8ac2525-a670-4723-89c5-41a471ed1f62"
           },
           "finish_reason": "stop",
           "raw": {
@@ -313,7 +313,7 @@
               }
             ],
             "created": 0,
-            "id": "39eb49b3-6799-4e0f-8642-c09f71ca65ed",
+            "id": "f8ac2525-a670-4723-89c5-41a471ed1f62",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -360,7 +360,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Wgrq5RxZOvsWdQR76XXL5749"
+                    "provider": "call_00_zFUNbiRqgFd4AC1iu32g0159"
                   },
                   "function": {
                     "name": "lookup",
@@ -374,10 +374,10 @@
                         "arguments": "{\"q\": \"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "call_00_Wgrq5RxZOvsWdQR76XXL5749",
+                      "id": "call_00_zFUNbiRqgFd4AC1iu32g0159",
                       "type": "function"
                     },
-                    "fingerprint": "dcdab46712aaff8c"
+                    "fingerprint": "af8416bde0a7a01e"
                   }
                 }
               ],
@@ -386,7 +386,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "16344669-74bf-4264-98ea-e645d64eb692"
+                "response_id": "4125d184-9145-4869-8009-f06d9f933648"
               },
               "stop": "tool_use"
             },
@@ -396,7 +396,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Wgrq5RxZOvsWdQR76XXL5749"
+                    "provider": "call_00_zFUNbiRqgFd4AC1iu32g0159"
                   },
                   "name": "lookup",
                   "content": [
@@ -460,7 +460,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "90172eb3-65b8-4f19-94e7-3ba5bb7d8d47"
+            "response_id": "a08dad2c-749e-477e-9b9d-a1ecaea9df29"
           },
           "finish_reason": "stop",
           "raw": {
@@ -475,7 +475,7 @@
               "total_tokens": 385
             },
             "finish_reason": "stop",
-            "response_id": "90172eb3-65b8-4f19-94e7-3ba5bb7d8d47",
+            "response_id": "a08dad2c-749e-477e-9b9d-a1ecaea9df29",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

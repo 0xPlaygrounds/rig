@@ -151,7 +151,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_oxp9g0TTEccKnVOXfqDD1105"
+                "provider": "call_00_TKl1k4sufmfScQ49v9151389"
               },
               "function": {
                 "name": "add",
@@ -166,10 +166,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_oxp9g0TTEccKnVOXfqDD1105",
+                  "id": "call_00_TKl1k4sufmfScQ49v9151389",
                   "type": "function"
                 },
-                "fingerprint": "ceeb5801b1f48134"
+                "fingerprint": "66a548bc932bbc96"
               }
             }
           ],
@@ -184,7 +184,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "1521bd25-7169-41fb-9dc6-57b5ae900b8b"
+            "response_id": "9beff61e-b0cc-45d3-9169-4ed1206860b1"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -202,7 +202,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_oxp9g0TTEccKnVOXfqDD1105",
+                      "id": "call_00_TKl1k4sufmfScQ49v9151389",
                       "index": 0,
                       "type": "function"
                     }
@@ -211,7 +211,7 @@
               }
             ],
             "created": 0,
-            "id": "1521bd25-7169-41fb-9dc6-57b5ae900b8b",
+            "id": "9beff61e-b0cc-45d3-9169-4ed1206860b1",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -283,7 +283,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_oxp9g0TTEccKnVOXfqDD1105"
+                    "provider": "call_00_TKl1k4sufmfScQ49v9151389"
                   },
                   "function": {
                     "name": "add",
@@ -298,10 +298,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_oxp9g0TTEccKnVOXfqDD1105",
+                      "id": "call_00_TKl1k4sufmfScQ49v9151389",
                       "type": "function"
                     },
-                    "fingerprint": "ceeb5801b1f48134"
+                    "fingerprint": "66a548bc932bbc96"
                   }
                 }
               ],
@@ -310,7 +310,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "1521bd25-7169-41fb-9dc6-57b5ae900b8b"
+                "response_id": "9beff61e-b0cc-45d3-9169-4ed1206860b1"
               },
               "stop": "tool_use"
             },
@@ -320,7 +320,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_oxp9g0TTEccKnVOXfqDD1105"
+                    "provider": "call_00_TKl1k4sufmfScQ49v9151389"
                   },
                   "name": "add",
                   "content": [
@@ -386,7 +386,7 @@
             "provider": "deepseek",
             "model": "deepseek-reasoner",
             "response_model": "deepseek-flash",
-            "response_id": "12b5b138-ac76-40df-a703-0fd26ecbd5a7"
+            "response_id": "e2e34493-0032-4bf5-85fe-202ae83cae41"
           },
           "finish_reason": "stop",
           "raw": {
@@ -403,7 +403,7 @@
               }
             ],
             "created": 0,
-            "id": "12b5b138-ac76-40df-a703-0fd26ecbd5a7",
+            "id": "e2e34493-0032-4bf5-85fe-202ae83cae41",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

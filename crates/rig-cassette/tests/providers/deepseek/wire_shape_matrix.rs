@@ -343,10 +343,10 @@ async fn streaming_image_part_becomes_a_placeholder() {
 }
 
 #[tokio::test]
-async fn blocking_all_text_parts_still_flatten_to_a_string() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string";
+async fn blocking_all_text_parts_go_as_parts() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_all_text_parts_go_as_parts";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string",
+        "wire_shape_matrix/blocking_all_text_parts_go_as_parts",
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
@@ -366,30 +366,24 @@ async fn blocking_all_text_parts_still_flatten_to_a_string() {
         },
     )
     .await
-    .expect("blocking_all_text_parts_still_flatten_to_a_string should replay from its cassette");
+    .expect("blocking_all_text_parts_go_as_parts should replay from its cassette");
 
+    // DeepSeek reads every text part (checked live), so they go as parts.
     assert_eq!(
         recorded_first_user_part_types(SCENARIO),
-        None,
-        "an all-text array must still reach the wire as a plain string"
+        Some(vec!["text".to_owned(), "text".to_owned()]),
     );
-    let body = recorded_request(SCENARIO);
-    let user = body["messages"]
-        .as_array()
-        .and_then(|messages| messages.iter().find(|message| message["role"] == "user"))
-        .expect("a user message should be recorded")
-        .clone();
     assert_eq!(
-        user["content"],
+        recorded_first_user_text(SCENARIO),
         "Reply with exactly: parts-ok\nNothing else."
     );
 }
 
 #[tokio::test]
-async fn blocking_text_document_still_flattens_to_a_string() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_text_document_still_flattens_to_a_string";
+async fn blocking_text_document_goes_as_text() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_text_document_goes_as_text";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_text_document_still_flattens_to_a_string",
+        "wire_shape_matrix/blocking_text_document_goes_as_text",
         |client| async move {
             let model = client.completion(MODEL);
             let response = model
@@ -409,15 +403,13 @@ async fn blocking_text_document_still_flattens_to_a_string() {
         },
     )
     .await
-    .expect("blocking_text_document_still_flattens_to_a_string should replay from its cassette");
+    .expect("blocking_text_document_goes_as_text should replay from its cassette");
 
-    let body = recorded_request(SCENARIO);
-    for message in body["messages"].as_array().expect("messages") {
-        assert!(
-            message["content"].is_string(),
-            "every message must reach the wire as a plain string: {message}"
-        );
-    }
+    // A text document reaches the wire as text the model reads.
+    assert!(
+        recorded_first_user_text(SCENARIO).contains("periwinkle"),
+        "the document's text is sent"
+    );
 }
 
 #[tokio::test]
@@ -583,10 +575,9 @@ async fn rig_suppresses_a_forced_tool_choice_while_thinking_is_on() {
         "rig_suppresses_a_forced_tool_choice_while_thinking_is_on should replay from its cassette",
     );
 
-    assert_eq!(
-        recorded_request(SCENARIO)["tool_choice"],
-        Value::Null,
-        "the forced choice is suppressed to an explicit null, which the API accepts"
+    assert!(
+        recorded_request(SCENARIO).get("tool_choice").is_none(),
+        "the forced choice is dropped while thinking, which DeepSeek rejects"
     );
 }
 

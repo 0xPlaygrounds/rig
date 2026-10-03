@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,15 +10,7 @@
         }
       },
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -94,19 +86,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -122,7 +106,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -131,6 +115,30 @@
       },
       {
         "batch": 24,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -203,7 +211,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
+              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
             }
           ],
           "usage": {
@@ -217,7 +225,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "094dc69a-1292-4304-952d-562cd10b5b17"
+            "response_id": "a002b8de-ea4b-440f-97a1-db54fb2aeb66"
           },
           "finish_reason": "length",
           "raw": {
@@ -232,7 +240,7 @@
               "total_tokens": 40
             },
             "finish_reason": "length",
-            "response_id": "094dc69a-1292-4304-952d-562cd10b5b17",
+            "response_id": "a002b8de-ea4b-440f-97a1-db54fb2aeb66",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -352,7 +360,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " vibrant"
+            "text": " winged"
           }
         },
         {
@@ -360,7 +368,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " autumn"
+            "text": " seeds"
           }
         },
         {
@@ -368,7 +376,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " colors"
+            "text": " called"
           }
         },
         {
@@ -376,7 +384,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "."
+            "text": " sam"
           }
         },
         {
@@ -386,7 +394,7 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
+              "text": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam"
             }
           }
         }

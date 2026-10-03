@@ -159,7 +159,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "9339165b-c249-4716-bffe-66cf7cac835d"
+            "response_id": "9fcc452a-470b-4c0a-8132-5a3ed61b757c"
           },
           "finish_reason": "stop",
           "raw": {
@@ -175,7 +175,7 @@
               }
             ],
             "created": 0,
-            "id": "9339165b-c249-4716-bffe-66cf7cac835d",
+            "id": "9fcc452a-470b-4c0a-8132-5a3ed61b757c",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -226,7 +226,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "9339165b-c249-4716-bffe-66cf7cac835d"
+                "response_id": "9fcc452a-470b-4c0a-8132-5a3ed61b757c"
               },
               "stop": "stop"
             }
@@ -279,7 +279,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "9339165b-c249-4716-bffe-66cf7cac835d"
+                "response_id": "9fcc452a-470b-4c0a-8132-5a3ed61b757c"
               },
               "stop": "stop"
             }
@@ -323,7 +323,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "9339165b-c249-4716-bffe-66cf7cac835d"
+                "response_id": "9fcc452a-470b-4c0a-8132-5a3ed61b757c"
               },
               "stop": "stop"
             },
@@ -367,7 +367,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "ef8136aa-c2de-46e9-be8e-acaddddf7ab0"
+            "response_id": "9b98b7af-4192-4432-8139-a38ccdd1177e"
           },
           "finish_reason": "stop",
           "raw": {
@@ -383,7 +383,7 @@
               }
             ],
             "created": 0,
-            "id": "ef8136aa-c2de-46e9-be8e-acaddddf7ab0",
+            "id": "9b98b7af-4192-4432-8139-a38ccdd1177e",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -434,7 +434,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "ef8136aa-c2de-46e9-be8e-acaddddf7ab0"
+                "response_id": "9b98b7af-4192-4432-8139-a38ccdd1177e"
               },
               "stop": "stop"
             }

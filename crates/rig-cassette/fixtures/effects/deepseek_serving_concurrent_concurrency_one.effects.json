@@ -114,9 +114,13 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "I'll call both tools now."
+            },
+            {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_JfzXsInlk90VPM1uJyK18413"
+                "provider": "call_00_u2Ug4YeiUdfgnf3sGABX4518"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -128,16 +132,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_00_JfzXsInlk90VPM1uJyK18413",
+                  "id": "call_00_u2Ug4YeiUdfgnf3sGABX4518",
                   "type": "function"
                 },
-                "fingerprint": "ff504e6454d0f4a7"
+                "fingerprint": "4e846c4bb084a20b"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_01_X9cBQMDYS2AixGYpg7df0386"
+                "provider": "call_01_i7a93PtWr3ISPouzub7w6338"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -149,17 +153,17 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_01_X9cBQMDYS2AixGYpg7df0386",
+                  "id": "call_01_i7a93PtWr3ISPouzub7w6338",
                   "type": "function"
                 },
-                "fingerprint": "91a0dadb661947ea"
+                "fingerprint": "af27fc7723d21ad3"
               }
             }
           ],
           "usage": {
             "input_tokens": 395,
-            "output_tokens": 40,
-            "total_tokens": 435,
+            "output_tokens": 46,
+            "total_tokens": 441,
             "cached_input_tokens": 256
           },
           "origin": {
@@ -167,22 +171,22 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "71ba671f-8ffd-4c20-bf39-1b722d4f7069"
+            "response_id": "f5a7b8ed-8e6c-4ae3-8204-2c5b370e9b3d"
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "completion_tokens": 40,
+              "completion_tokens": 46,
               "prompt_cache_hit_tokens": 256,
               "prompt_cache_miss_tokens": 139,
               "prompt_tokens": 395,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 435
+              "total_tokens": 441
             },
             "finish_reason": "tool_calls",
-            "response_id": "71ba671f-8ffd-4c20-bf39-1b722d4f7069",
+            "response_id": "f5a7b8ed-8e6c-4ae3-8204-2c5b370e9b3d",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -267,9 +271,13 @@
               "role": "assistant",
               "content": [
                 {
+                  "type": "text",
+                  "text": "I'll call both tools now."
+                },
+                {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_JfzXsInlk90VPM1uJyK18413"
+                    "provider": "call_00_u2Ug4YeiUdfgnf3sGABX4518"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -281,16 +289,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_00_JfzXsInlk90VPM1uJyK18413",
+                      "id": "call_00_u2Ug4YeiUdfgnf3sGABX4518",
                       "type": "function"
                     },
-                    "fingerprint": "ff504e6454d0f4a7"
+                    "fingerprint": "4e846c4bb084a20b"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_01_X9cBQMDYS2AixGYpg7df0386"
+                    "provider": "call_01_i7a93PtWr3ISPouzub7w6338"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -302,10 +310,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_01_X9cBQMDYS2AixGYpg7df0386",
+                      "id": "call_01_i7a93PtWr3ISPouzub7w6338",
                       "type": "function"
                     },
-                    "fingerprint": "91a0dadb661947ea"
+                    "fingerprint": "af27fc7723d21ad3"
                   }
                 }
               ],
@@ -314,7 +322,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "71ba671f-8ffd-4c20-bf39-1b722d4f7069"
+                "response_id": "f5a7b8ed-8e6c-4ae3-8204-2c5b370e9b3d"
               },
               "stop": "tool_use"
             },
@@ -324,7 +332,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_JfzXsInlk90VPM1uJyK18413"
+                    "provider": "call_00_u2Ug4YeiUdfgnf3sGABX4518"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -337,7 +345,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_01_X9cBQMDYS2AixGYpg7df0386"
+                    "provider": "call_01_i7a93PtWr3ISPouzub7w6338"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -389,9 +397,9 @@
             }
           ],
           "usage": {
-            "input_tokens": 465,
+            "input_tokens": 471,
             "output_tokens": 17,
-            "total_tokens": 482,
+            "total_tokens": 488,
             "cached_input_tokens": 256
           },
           "origin": {
@@ -399,22 +407,22 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "d1ca9480-afa5-46eb-a4c8-1890da5abedd"
+            "response_id": "2fede560-2885-45db-b78d-61d75c193d89"
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
               "completion_tokens": 17,
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 209,
-              "prompt_tokens": 465,
+              "prompt_cache_miss_tokens": 215,
+              "prompt_tokens": 471,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 482
+              "total_tokens": 488
             },
             "finish_reason": "stop",
-            "response_id": "d1ca9480-afa5-46eb-a4c8-1890da5abedd",
+            "response_id": "2fede560-2885-45db-b78d-61d75c193d89",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

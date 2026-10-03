@@ -105,7 +105,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "6bae174a-66f6-4cb9-83bb-8d26c45d0344"
+            "response_id": "c6a52eb7-5f71-4e9f-884f-427ad68cacb4"
           },
           "finish_reason": "stop",
           "raw": {
@@ -121,7 +121,7 @@
               }
             ],
             "created": 0,
-            "id": "6bae174a-66f6-4cb9-83bb-8d26c45d0344",
+            "id": "c6a52eb7-5f71-4e9f-884f-427ad68cacb4",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":16,"messages":[{"content":"What colour is the attachment?\n(image omitted: model does not support images)","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"What colour is the attachment?","type":"text"},{"text":"(image omitted: model does not support images)","type":"text"}],"role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"I can''t see the attachment in this chat — the image wasn''t included in","role":"assistant"}}],"created":0,"id":"2d9a6ef6-8246-485a-b95c-c2480bc93122","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":19,"prompt_tokens":19,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":35}}'
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"I can''t see the attachment you''re referring to — the image didn''t come","role":"assistant"}}],"created":0,"id":"93a237d5-b1bf-413b-b09d-5ff10ce55a96","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":19,"prompt_tokens":19,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":35}}'

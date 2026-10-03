@@ -142,18 +142,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "We need answer. Need call add tool. Then reply just number. Let's do tool call.",
+              "text": "We need answer. Need use add tool. Then reply just number. We need call add.",
               "native": {
                 "item": {
-                  "reasoning_content": "We need answer. Need call add tool. Then reply just number. Let's do tool call."
+                  "reasoning_content": "We need answer. Need use add tool. Then reply just number. We need call add."
                 },
-                "fingerprint": "3818c7e05b626db8"
+                "fingerprint": "ded40c9e0056ad0e"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_41sbga2ves1CtqNy0HCq3888"
+                "provider": "call_00_dRdu6jzAPmyqaH06vVsY3778"
               },
               "function": {
                 "name": "add",
@@ -168,26 +168,26 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_41sbga2ves1CtqNy0HCq3888",
+                  "id": "call_00_dRdu6jzAPmyqaH06vVsY3778",
                   "type": "function"
                 },
-                "fingerprint": "14549e47e6a2fc27"
+                "fingerprint": "38697aaddc4b3303"
               }
             }
           ],
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 73,
-            "total_tokens": 434,
+            "output_tokens": 72,
+            "total_tokens": 433,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 20
+            "reasoning_tokens": 19
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "2d2a5fd7-421a-4929-ba62-1dbe31f26363"
+            "response_id": "1466176a-e04f-4b67-856c-2da9f42a7a44"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -198,7 +198,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need answer. Need call add tool. Then reply just number. Let's do tool call.",
+                  "reasoning_content": "We need answer. Need use add tool. Then reply just number. We need call add.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -206,7 +206,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_41sbga2ves1CtqNy0HCq3888",
+                      "id": "call_00_dRdu6jzAPmyqaH06vVsY3778",
                       "index": 0,
                       "type": "function"
                     }
@@ -215,14 +215,14 @@
               }
             ],
             "created": 0,
-            "id": "2d2a5fd7-421a-4929-ba62-1dbe31f26363",
+            "id": "1466176a-e04f-4b67-856c-2da9f42a7a44",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 73,
+              "completion_tokens": 72,
               "completion_tokens_details": {
-                "reasoning_tokens": 20
+                "reasoning_tokens": 19
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233,
@@ -230,7 +230,7 @@
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "total_tokens": 434
+              "total_tokens": 433
             }
           }
         }
@@ -289,18 +289,18 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "text": "We need answer. Need call add tool. Then reply just number. Let's do tool call.",
+                  "text": "We need answer. Need use add tool. Then reply just number. We need call add.",
                   "native": {
                     "item": {
-                      "reasoning_content": "We need answer. Need call add tool. Then reply just number. Let's do tool call."
+                      "reasoning_content": "We need answer. Need use add tool. Then reply just number. We need call add."
                     },
-                    "fingerprint": "3818c7e05b626db8"
+                    "fingerprint": "ded40c9e0056ad0e"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_41sbga2ves1CtqNy0HCq3888"
+                    "provider": "call_00_dRdu6jzAPmyqaH06vVsY3778"
                   },
                   "function": {
                     "name": "add",
@@ -315,10 +315,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_41sbga2ves1CtqNy0HCq3888",
+                      "id": "call_00_dRdu6jzAPmyqaH06vVsY3778",
                       "type": "function"
                     },
-                    "fingerprint": "14549e47e6a2fc27"
+                    "fingerprint": "38697aaddc4b3303"
                   }
                 }
               ],
@@ -327,7 +327,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "2d2a5fd7-421a-4929-ba62-1dbe31f26363"
+                "response_id": "1466176a-e04f-4b67-856c-2da9f42a7a44"
               },
               "stop": "tool_use"
             },
@@ -337,7 +337,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_41sbga2ves1CtqNy0HCq3888"
+                    "provider": "call_00_dRdu6jzAPmyqaH06vVsY3778"
                   },
                   "name": "add",
                   "content": [
@@ -391,33 +391,23 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "reasoning",
-              "text": "Need final just number.",
-              "native": {
-                "item": {
-                  "reasoning_content": "Need final just number."
-                },
-                "fingerprint": "8bc8f6adeadae476"
-              }
-            },
-            {
               "type": "text",
               "text": "42"
             }
           ],
           "usage": {
-            "input_tokens": 447,
-            "output_tokens": 7,
-            "total_tokens": 454,
+            "input_tokens": 446,
+            "output_tokens": 2,
+            "total_tokens": 448,
             "cached_input_tokens": 256,
-            "reasoning_tokens": 5
+            "reasoning_tokens": 0
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "f93d4df4-56e5-462f-9790-84013cd23ca7"
+            "response_id": "f428b94e-e684-48f1-b74e-505c45b4f4e8"
           },
           "finish_reason": "stop",
           "raw": {
@@ -428,28 +418,28 @@
                 "logprobs": null,
                 "message": {
                   "content": "42",
-                  "reasoning_content": "Need final just number.",
+                  "reasoning_content": "",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "f93d4df4-56e5-462f-9790-84013cd23ca7",
+            "id": "f428b94e-e684-48f1-b74e-505c45b4f4e8",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 7,
+              "completion_tokens": 2,
               "completion_tokens_details": {
-                "reasoning_tokens": 5
+                "reasoning_tokens": 0
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 191,
-              "prompt_tokens": 447,
+              "prompt_cache_miss_tokens": 190,
+              "prompt_tokens": 446,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 454
+              "total_tokens": 448
             }
           }
         }

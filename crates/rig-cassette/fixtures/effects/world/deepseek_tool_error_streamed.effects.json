@@ -2,11 +2,27 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -62,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -74,7 +90,7 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -82,15 +98,7 @@
         }
       },
       {
-        "batch": 18,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
+        "batch": 30,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -98,33 +106,17 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 30,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 31,
         "id": 1,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 33,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 34,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -132,7 +124,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -148,7 +140,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -156,7 +148,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -172,7 +164,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -180,7 +172,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -204,7 +196,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -212,7 +204,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -220,7 +212,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -229,14 +221,6 @@
         "kind": {
           "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 48,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -249,6 +233,14 @@
       },
       {
         "batch": 50,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 51,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -272,7 +264,7 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 55,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -280,15 +272,7 @@
         }
       },
       {
-        "batch": 58,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 58,
+        "batch": 55,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -411,7 +395,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_xAdqKklDVjCITNfMhjcU0567"
+                "provider": "call_00_bqQLC0MQQEpUXSi6fWiO5199"
               },
               "function": {
                 "name": "add",
@@ -426,10 +410,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
+                  "id": "call_00_bqQLC0MQQEpUXSi6fWiO5199",
                   "type": "function"
                 },
-                "fingerprint": "7d0aa761f421198b"
+                "fingerprint": "e919e40cf43acf1d"
               }
             }
           ],
@@ -444,7 +428,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "8bc102c6-295f-44db-9989-beb05afb5cfb"
+            "response_id": "733befe7-c1f7-417b-8477-a663bb5a04d3"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -459,7 +443,7 @@
               "total_tokens": 391
             },
             "finish_reason": "tool_calls",
-            "response_id": "8bc102c6-295f-44db-9989-beb05afb5cfb",
+            "response_id": "733befe7-c1f7-417b-8477-a663bb5a04d3",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -601,7 +585,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_xAdqKklDVjCITNfMhjcU0567"
+                "provider": "call_00_bqQLC0MQQEpUXSi6fWiO5199"
               },
               "function": {
                 "name": "add",
@@ -616,10 +600,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
+                  "id": "call_00_bqQLC0MQQEpUXSi6fWiO5199",
                   "type": "function"
                 },
-                "fingerprint": "7d0aa761f421198b"
+                "fingerprint": "e919e40cf43acf1d"
               }
             }
           }
@@ -697,7 +681,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_xAdqKklDVjCITNfMhjcU0567"
+                    "provider": "call_00_bqQLC0MQQEpUXSi6fWiO5199"
                   },
                   "function": {
                     "name": "add",
@@ -712,10 +696,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_xAdqKklDVjCITNfMhjcU0567",
+                      "id": "call_00_bqQLC0MQQEpUXSi6fWiO5199",
                       "type": "function"
                     },
-                    "fingerprint": "7d0aa761f421198b"
+                    "fingerprint": "e919e40cf43acf1d"
                   }
                 }
               ],
@@ -724,7 +708,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "8bc102c6-295f-44db-9989-beb05afb5cfb"
+                "response_id": "733befe7-c1f7-417b-8477-a663bb5a04d3"
               },
               "stop": "tool_use"
             },
@@ -734,7 +718,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_xAdqKklDVjCITNfMhjcU0567"
+                    "provider": "call_00_bqQLC0MQQEpUXSi6fWiO5199"
                   },
                   "name": "add",
                   "content": [
@@ -784,7 +768,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I did not call it again."
+              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
             }
           ],
           "usage": {
@@ -798,7 +782,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "f6637bd8-2626-4e42-9842-cef1117f2234"
+            "response_id": "64d86d46-9154-401c-b064-7ab4385ef604"
           },
           "finish_reason": "stop",
           "raw": {
@@ -813,7 +797,7 @@
               "total_tokens": 431
             },
             "finish_reason": "stop",
-            "response_id": "f6637bd8-2626-4e42-9842-cef1117f2234",
+            "response_id": "64d86d46-9154-401c-b064-7ab4385ef604",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -981,7 +965,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " did"
+            "text": " won"
           }
         },
         {
@@ -989,7 +973,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " not"
+            "text": "'t"
           }
         },
         {
@@ -1031,7 +1015,7 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I did not call it again."
+              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
             }
           }
         }

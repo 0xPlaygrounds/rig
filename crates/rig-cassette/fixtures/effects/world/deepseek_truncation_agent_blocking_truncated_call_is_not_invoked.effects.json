@@ -116,16 +116,18 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "I'll file that incident report for you now."
+            },
+            {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_JbVJNQ8A7CM1u4ccyIk63076"
+                "provider": "call_00_ri5S4VXko6ciGeKIx5St8061"
               },
               "function": {
                 "name": "file_report",
-                "arguments": {
-                  "summary": "Log this incident: the nightly build broke"
-                },
-                "invalid_arguments": "{\"summary\": \"Log this incident: the nightly build broke"
+                "arguments": {},
+                "invalid_arguments": "{\"summary\": "
               }
             }
           ],
@@ -133,14 +135,14 @@
             "input_tokens": 363,
             "output_tokens": 32,
             "total_tokens": 395,
-            "cached_input_tokens": 0
+            "cached_input_tokens": 128
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "b9afe9f4-38fd-4872-b767-34b3b4ed223d"
+            "response_id": "84799933-66a1-4961-bb79-813c6c415777"
           },
           "finish_reason": "length",
           "raw": {
@@ -150,15 +152,15 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "",
+                  "content": "I'll file that incident report for you now.",
                   "role": "assistant",
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"summary\": \"Log this incident: the nightly build broke",
+                        "arguments": "{\"summary\": ",
                         "name": "file_report"
                       },
-                      "id": "call_00_JbVJNQ8A7CM1u4ccyIk63076",
+                      "id": "call_00_ri5S4VXko6ciGeKIx5St8061",
                       "index": 0,
                       "type": "function"
                     }
@@ -167,17 +169,17 @@
               }
             ],
             "created": 0,
-            "id": "b9afe9f4-38fd-4872-b767-34b3b4ed223d",
+            "id": "84799933-66a1-4961-bb79-813c6c415777",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 32,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 363,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 235,
               "prompt_tokens": 363,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 128
               },
               "total_tokens": 395
             }

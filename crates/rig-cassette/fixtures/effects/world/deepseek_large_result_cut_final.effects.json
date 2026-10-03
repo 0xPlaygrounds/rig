@@ -119,7 +119,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_WegyznJqjgv9if2JGDrh0891"
+                "provider": "call_00_LEzLzRhzacVEFK90y9YA3630"
               },
               "function": {
                 "name": "checkpoint_large",
@@ -131,10 +131,10 @@
                     "arguments": "{}",
                     "name": "checkpoint_large"
                   },
-                  "id": "call_00_WegyznJqjgv9if2JGDrh0891",
+                  "id": "call_00_LEzLzRhzacVEFK90y9YA3630",
                   "type": "function"
                 },
-                "fingerprint": "6ce6eb5dd6b426ec"
+                "fingerprint": "532f8535671b8577"
               }
             }
           ],
@@ -149,7 +149,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "1fc734ff-1874-4652-9112-6a39863927c1"
+            "response_id": "89291307-3c64-425e-b90b-d8e7ff8d8cd2"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -167,7 +167,7 @@
                         "arguments": "{}",
                         "name": "checkpoint_large"
                       },
-                      "id": "call_00_WegyznJqjgv9if2JGDrh0891",
+                      "id": "call_00_LEzLzRhzacVEFK90y9YA3630",
                       "index": 0,
                       "type": "function"
                     }
@@ -176,7 +176,7 @@
               }
             ],
             "created": 0,
-            "id": "1fc734ff-1874-4652-9112-6a39863927c1",
+            "id": "89291307-3c64-425e-b90b-d8e7ff8d8cd2",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -248,7 +248,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_WegyznJqjgv9if2JGDrh0891"
+                    "provider": "call_00_LEzLzRhzacVEFK90y9YA3630"
                   },
                   "function": {
                     "name": "checkpoint_large",
@@ -260,10 +260,10 @@
                         "arguments": "{}",
                         "name": "checkpoint_large"
                       },
-                      "id": "call_00_WegyznJqjgv9if2JGDrh0891",
+                      "id": "call_00_LEzLzRhzacVEFK90y9YA3630",
                       "type": "function"
                     },
-                    "fingerprint": "6ce6eb5dd6b426ec"
+                    "fingerprint": "532f8535671b8577"
                   }
                 }
               ],
@@ -272,7 +272,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "1fc734ff-1874-4652-9112-6a39863927c1"
+                "response_id": "89291307-3c64-425e-b90b-d8e7ff8d8cd2"
               },
               "stop": "tool_use"
             },
@@ -282,7 +282,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_WegyznJqjgv9if2JGDrh0891"
+                    "provider": "call_00_LEzLzRhzacVEFK90y9YA3630"
                   },
                   "name": "checkpoint_large",
                   "content": [
@@ -339,7 +339,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "cafba2cc-64ee-4531-a0ff-8f6ef5cbf47a"
+            "response_id": "73bb3948-317a-4bcf-8525-b9afe01f21af"
           },
           "finish_reason": "stop",
           "raw": {
@@ -355,7 +355,7 @@
               }
             ],
             "created": 0,
-            "id": "cafba2cc-64ee-4531-a0ff-8f6ef5cbf47a",
+            "id": "73bb3948-317a-4bcf-8525-b9afe01f21af",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

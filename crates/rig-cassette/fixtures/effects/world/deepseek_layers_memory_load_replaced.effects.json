@@ -138,13 +138,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada."
+              "text": "Ada"
             }
           ],
           "usage": {
             "input_tokens": 38,
-            "output_tokens": 2,
-            "total_tokens": 40,
+            "output_tokens": 1,
+            "total_tokens": 39,
             "cached_input_tokens": 0
           },
           "origin": {
@@ -152,7 +152,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "db76bd87-d97c-4eb9-913e-ee10cf217200"
+            "response_id": "22e79bb0-246d-4077-9708-09d02e7784e8"
           },
           "finish_reason": "stop",
           "raw": {
@@ -162,25 +162,25 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "Ada.",
+                  "content": "Ada",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "db76bd87-d97c-4eb9-913e-ee10cf217200",
+            "id": "22e79bb0-246d-4077-9708-09d02e7784e8",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 2,
+              "completion_tokens": 1,
               "prompt_cache_hit_tokens": 0,
               "prompt_cache_miss_tokens": 38,
               "prompt_tokens": 38,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "total_tokens": 40
+              "total_tokens": 39
             }
           }
         }
@@ -211,7 +211,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Ada."
+                  "text": "Ada"
                 }
               ],
               "origin": {
@@ -219,7 +219,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "db76bd87-d97c-4eb9-913e-ee10cf217200"
+                "response_id": "22e79bb0-246d-4077-9708-09d02e7784e8"
               },
               "stop": "stop"
             }

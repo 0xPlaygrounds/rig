@@ -370,7 +370,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
               },
               "function": {
                 "name": "list_files",
@@ -382,10 +382,10 @@
                     "arguments": "{}",
                     "name": "list_files"
                   },
-                  "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                  "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                   "type": "function"
                 },
-                "fingerprint": "915f42af07dc2d7b"
+                "fingerprint": "5c11539cda5cee18"
               }
             }
           ],
@@ -400,7 +400,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+            "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -418,7 +418,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "index": 0,
                       "type": "function"
                     }
@@ -427,7 +427,7 @@
               }
             ],
             "created": 0,
-            "id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d",
+            "id": "d3246a8e-3acf-41c2-8193-68252170d9db",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -503,7 +503,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -515,10 +515,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -527,7 +527,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -537,7 +537,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -629,7 +629,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
               },
               "function": {
                 "name": "read_file",
@@ -643,10 +643,10 @@
                     "arguments": "{\"path\": \"README.md\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                  "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                   "type": "function"
                 },
-                "fingerprint": "46405a7622fd3855"
+                "fingerprint": "9220c913f82a6642"
               }
             }
           ],
@@ -661,7 +661,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+            "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -679,7 +679,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "index": 0,
                       "type": "function"
                     }
@@ -688,7 +688,7 @@
               }
             ],
             "created": 0,
-            "id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7",
+            "id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -764,7 +764,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -776,10 +776,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -788,7 +788,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -798,7 +798,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -816,7 +816,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -830,10 +830,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -842,7 +842,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -852,7 +852,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -987,7 +987,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -999,10 +999,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -1011,7 +1011,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -1021,7 +1021,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -1039,7 +1039,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -1053,10 +1053,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -1065,7 +1065,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -1075,7 +1075,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -1167,7 +1167,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
               },
               "function": {
                 "name": "read_file",
@@ -1181,10 +1181,10 @@
                     "arguments": "{\"path\": \"tests/basic.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                  "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                   "type": "function"
                 },
-                "fingerprint": "6e1ac0f51b28f5f7"
+                "fingerprint": "829694fe372e7b3b"
               }
             }
           ],
@@ -1199,7 +1199,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+            "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1217,7 +1217,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "index": 0,
                       "type": "function"
                     }
@@ -1226,7 +1226,7 @@
               }
             ],
             "created": 0,
-            "id": "6e2711f7-1750-4e38-9e81-b964203c3841",
+            "id": "58644ef1-9b88-4c86-925b-df2d52f8da90",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -1302,7 +1302,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -1314,10 +1314,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -1326,7 +1326,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -1336,7 +1336,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -1354,7 +1354,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -1368,10 +1368,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -1380,7 +1380,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -1390,7 +1390,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -1408,7 +1408,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -1422,10 +1422,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -1434,7 +1434,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -1444,7 +1444,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -1536,7 +1536,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
               },
               "function": {
                 "name": "read_file",
@@ -1550,10 +1550,10 @@
                     "arguments": "{\"path\": \"src/lib.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                  "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                   "type": "function"
                 },
-                "fingerprint": "68b17bd5d6472084"
+                "fingerprint": "207e0e7af6ae5457"
               }
             }
           ],
@@ -1568,7 +1568,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+            "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1586,7 +1586,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "index": 0,
                       "type": "function"
                     }
@@ -1595,7 +1595,7 @@
               }
             ],
             "created": 0,
-            "id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1",
+            "id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -1671,7 +1671,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -1683,10 +1683,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -1695,7 +1695,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -1705,7 +1705,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -1723,7 +1723,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -1737,10 +1737,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -1749,7 +1749,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -1759,7 +1759,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -1777,7 +1777,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -1791,10 +1791,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -1803,7 +1803,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -1813,7 +1813,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -1831,7 +1831,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "function": {
                     "name": "read_file",
@@ -1845,10 +1845,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "type": "function"
                     },
-                    "fingerprint": "68b17bd5d6472084"
+                    "fingerprint": "207e0e7af6ae5457"
                   }
                 }
               ],
@@ -1857,7 +1857,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+                "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
               },
               "stop": "tool_use"
             },
@@ -1867,7 +1867,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "name": "read_file",
                   "content": [
@@ -1959,7 +1959,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
               },
               "function": {
                 "name": "run_tests",
@@ -1971,10 +1971,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                  "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                   "type": "function"
                 },
-                "fingerprint": "d57b9c07bb963d93"
+                "fingerprint": "de4e41e80fac13ba"
               }
             }
           ],
@@ -1989,7 +1989,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "35eff6b7-e580-4634-ae4b-9192334d95d5"
+            "response_id": "0f5f4999-66d5-483a-b0fe-301511c08647"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2007,7 +2007,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                      "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                       "index": 0,
                       "type": "function"
                     }
@@ -2016,7 +2016,7 @@
               }
             ],
             "created": 0,
-            "id": "35eff6b7-e580-4634-ae4b-9192334d95d5",
+            "id": "0f5f4999-66d5-483a-b0fe-301511c08647",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -2092,7 +2092,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -2104,10 +2104,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -2116,7 +2116,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -2126,7 +2126,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -2144,7 +2144,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -2158,10 +2158,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -2170,7 +2170,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -2180,7 +2180,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -2198,7 +2198,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -2212,10 +2212,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -2224,7 +2224,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -2234,7 +2234,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -2252,7 +2252,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "function": {
                     "name": "read_file",
@@ -2266,10 +2266,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "type": "function"
                     },
-                    "fingerprint": "68b17bd5d6472084"
+                    "fingerprint": "207e0e7af6ae5457"
                   }
                 }
               ],
@@ -2278,7 +2278,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+                "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
               },
               "stop": "tool_use"
             },
@@ -2288,7 +2288,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "name": "read_file",
                   "content": [
@@ -2306,7 +2306,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2318,10 +2318,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                      "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                       "type": "function"
                     },
-                    "fingerprint": "d57b9c07bb963d93"
+                    "fingerprint": "de4e41e80fac13ba"
                   }
                 }
               ],
@@ -2330,7 +2330,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "35eff6b7-e580-4634-ae4b-9192334d95d5"
+                "response_id": "0f5f4999-66d5-483a-b0fe-301511c08647"
               },
               "stop": "tool_use"
             },
@@ -2340,7 +2340,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2432,7 +2432,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                "provider": "call_00_AgQZeklodrF848EcVIdf3900"
               },
               "function": {
                 "name": "write_file",
@@ -2447,10 +2447,10 @@
                     "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_00_fxnJZ8UYX1cI6VXqELIf5944",
+                  "id": "call_00_AgQZeklodrF848EcVIdf3900",
                   "type": "function"
                 },
-                "fingerprint": "c2334fd02908ebec"
+                "fingerprint": "f3706d0b42e3e985"
               }
             }
           ],
@@ -2465,7 +2465,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "4f494a41-9ee6-476c-91c6-fff9d50cf0e9"
+            "response_id": "b7369b80-cbd2-489e-ac31-d2f23556c6ac"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2483,7 +2483,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_fxnJZ8UYX1cI6VXqELIf5944",
+                      "id": "call_00_AgQZeklodrF848EcVIdf3900",
                       "index": 0,
                       "type": "function"
                     }
@@ -2492,7 +2492,7 @@
               }
             ],
             "created": 0,
-            "id": "4f494a41-9ee6-476c-91c6-fff9d50cf0e9",
+            "id": "b7369b80-cbd2-489e-ac31-d2f23556c6ac",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -2568,7 +2568,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -2580,10 +2580,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -2592,7 +2592,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -2602,7 +2602,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -2620,7 +2620,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -2634,10 +2634,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -2646,7 +2646,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -2656,7 +2656,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -2674,7 +2674,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -2688,10 +2688,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -2700,7 +2700,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -2710,7 +2710,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -2728,7 +2728,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "function": {
                     "name": "read_file",
@@ -2742,10 +2742,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "type": "function"
                     },
-                    "fingerprint": "68b17bd5d6472084"
+                    "fingerprint": "207e0e7af6ae5457"
                   }
                 }
               ],
@@ -2754,7 +2754,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+                "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
               },
               "stop": "tool_use"
             },
@@ -2764,7 +2764,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "name": "read_file",
                   "content": [
@@ -2782,7 +2782,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2794,10 +2794,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                      "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                       "type": "function"
                     },
-                    "fingerprint": "d57b9c07bb963d93"
+                    "fingerprint": "de4e41e80fac13ba"
                   }
                 }
               ],
@@ -2806,7 +2806,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "35eff6b7-e580-4634-ae4b-9192334d95d5"
+                "response_id": "0f5f4999-66d5-483a-b0fe-301511c08647"
               },
               "stop": "tool_use"
             },
@@ -2816,7 +2816,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2834,7 +2834,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "function": {
                     "name": "write_file",
@@ -2849,10 +2849,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_fxnJZ8UYX1cI6VXqELIf5944",
+                      "id": "call_00_AgQZeklodrF848EcVIdf3900",
                       "type": "function"
                     },
-                    "fingerprint": "c2334fd02908ebec"
+                    "fingerprint": "f3706d0b42e3e985"
                   }
                 }
               ],
@@ -2861,7 +2861,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f494a41-9ee6-476c-91c6-fff9d50cf0e9"
+                "response_id": "b7369b80-cbd2-489e-ac31-d2f23556c6ac"
               },
               "stop": "tool_use"
             },
@@ -2871,7 +2871,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "name": "write_file",
                   "content": [
@@ -2963,7 +2963,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
               },
               "function": {
                 "name": "run_tests",
@@ -2975,10 +2975,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_euH1h122mEvHdundyfLp9585",
+                  "id": "call_00_w5ZfcMEEJn8lnYTGltfT7759",
                   "type": "function"
                 },
-                "fingerprint": "b63ad63282faf89f"
+                "fingerprint": "7231179504b1f5ea"
               }
             }
           ],
@@ -2993,7 +2993,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "e2b8fc69-7e33-4442-8096-21fc8e7e136b"
+            "response_id": "b48b66dc-17c0-4c62-b350-36166a224ef6"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -3011,7 +3011,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_euH1h122mEvHdundyfLp9585",
+                      "id": "call_00_w5ZfcMEEJn8lnYTGltfT7759",
                       "index": 0,
                       "type": "function"
                     }
@@ -3020,7 +3020,7 @@
               }
             ],
             "created": 0,
-            "id": "e2b8fc69-7e33-4442-8096-21fc8e7e136b",
+            "id": "b48b66dc-17c0-4c62-b350-36166a224ef6",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -3096,7 +3096,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -3108,10 +3108,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -3120,7 +3120,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -3130,7 +3130,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -3148,7 +3148,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -3162,10 +3162,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -3174,7 +3174,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -3184,7 +3184,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -3202,7 +3202,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -3216,10 +3216,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -3228,7 +3228,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -3238,7 +3238,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -3256,7 +3256,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "function": {
                     "name": "read_file",
@@ -3270,10 +3270,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "type": "function"
                     },
-                    "fingerprint": "68b17bd5d6472084"
+                    "fingerprint": "207e0e7af6ae5457"
                   }
                 }
               ],
@@ -3282,7 +3282,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+                "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
               },
               "stop": "tool_use"
             },
@@ -3292,7 +3292,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "name": "read_file",
                   "content": [
@@ -3310,7 +3310,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3322,10 +3322,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                      "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                       "type": "function"
                     },
-                    "fingerprint": "d57b9c07bb963d93"
+                    "fingerprint": "de4e41e80fac13ba"
                   }
                 }
               ],
@@ -3334,7 +3334,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "35eff6b7-e580-4634-ae4b-9192334d95d5"
+                "response_id": "0f5f4999-66d5-483a-b0fe-301511c08647"
               },
               "stop": "tool_use"
             },
@@ -3344,7 +3344,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3362,7 +3362,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "function": {
                     "name": "write_file",
@@ -3377,10 +3377,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_fxnJZ8UYX1cI6VXqELIf5944",
+                      "id": "call_00_AgQZeklodrF848EcVIdf3900",
                       "type": "function"
                     },
-                    "fingerprint": "c2334fd02908ebec"
+                    "fingerprint": "f3706d0b42e3e985"
                   }
                 }
               ],
@@ -3389,7 +3389,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f494a41-9ee6-476c-91c6-fff9d50cf0e9"
+                "response_id": "b7369b80-cbd2-489e-ac31-d2f23556c6ac"
               },
               "stop": "tool_use"
             },
@@ -3399,7 +3399,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "name": "write_file",
                   "content": [
@@ -3417,7 +3417,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3429,10 +3429,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_euH1h122mEvHdundyfLp9585",
+                      "id": "call_00_w5ZfcMEEJn8lnYTGltfT7759",
                       "type": "function"
                     },
-                    "fingerprint": "b63ad63282faf89f"
+                    "fingerprint": "7231179504b1f5ea"
                   }
                 }
               ],
@@ -3441,7 +3441,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "e2b8fc69-7e33-4442-8096-21fc8e7e136b"
+                "response_id": "b48b66dc-17c0-4c62-b350-36166a224ef6"
               },
               "stop": "tool_use"
             },
@@ -3451,7 +3451,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3543,7 +3543,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_YqjofXAjEmpsPidsm5G44644"
+                "provider": "call_00_5b3RJwXcl0ZMy4UxRWl52663"
               },
               "function": {
                 "name": "read_file",
@@ -3557,10 +3557,10 @@
                     "arguments": "{\"path\": \"src/calendar.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_YqjofXAjEmpsPidsm5G44644",
+                  "id": "call_00_5b3RJwXcl0ZMy4UxRWl52663",
                   "type": "function"
                 },
-                "fingerprint": "371d6812bcb9ecab"
+                "fingerprint": "ebe6404f5162685b"
               }
             }
           ],
@@ -3575,7 +3575,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "fd3b5f7c-2c1f-4081-a1ca-47d1908dea05"
+            "response_id": "df5f03dd-54cc-46ac-8c00-d71c1b2a69d0"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -3593,7 +3593,7 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_YqjofXAjEmpsPidsm5G44644",
+                      "id": "call_00_5b3RJwXcl0ZMy4UxRWl52663",
                       "index": 0,
                       "type": "function"
                     }
@@ -3602,7 +3602,7 @@
               }
             ],
             "created": 0,
-            "id": "fd3b5f7c-2c1f-4081-a1ca-47d1908dea05",
+            "id": "df5f03dd-54cc-46ac-8c00-d71c1b2a69d0",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -3678,7 +3678,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -3690,10 +3690,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -3702,7 +3702,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -3712,7 +3712,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -3730,7 +3730,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -3744,10 +3744,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -3756,7 +3756,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -3766,7 +3766,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -3784,7 +3784,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -3798,10 +3798,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -3810,7 +3810,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -3820,7 +3820,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -3838,7 +3838,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "function": {
                     "name": "read_file",
@@ -3852,10 +3852,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "type": "function"
                     },
-                    "fingerprint": "68b17bd5d6472084"
+                    "fingerprint": "207e0e7af6ae5457"
                   }
                 }
               ],
@@ -3864,7 +3864,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+                "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
               },
               "stop": "tool_use"
             },
@@ -3874,7 +3874,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "name": "read_file",
                   "content": [
@@ -3892,7 +3892,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3904,10 +3904,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                      "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                       "type": "function"
                     },
-                    "fingerprint": "d57b9c07bb963d93"
+                    "fingerprint": "de4e41e80fac13ba"
                   }
                 }
               ],
@@ -3916,7 +3916,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "35eff6b7-e580-4634-ae4b-9192334d95d5"
+                "response_id": "0f5f4999-66d5-483a-b0fe-301511c08647"
               },
               "stop": "tool_use"
             },
@@ -3926,7 +3926,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3944,7 +3944,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "function": {
                     "name": "write_file",
@@ -3959,10 +3959,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_fxnJZ8UYX1cI6VXqELIf5944",
+                      "id": "call_00_AgQZeklodrF848EcVIdf3900",
                       "type": "function"
                     },
-                    "fingerprint": "c2334fd02908ebec"
+                    "fingerprint": "f3706d0b42e3e985"
                   }
                 }
               ],
@@ -3971,7 +3971,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f494a41-9ee6-476c-91c6-fff9d50cf0e9"
+                "response_id": "b7369b80-cbd2-489e-ac31-d2f23556c6ac"
               },
               "stop": "tool_use"
             },
@@ -3981,7 +3981,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "name": "write_file",
                   "content": [
@@ -3999,7 +3999,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4011,10 +4011,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_euH1h122mEvHdundyfLp9585",
+                      "id": "call_00_w5ZfcMEEJn8lnYTGltfT7759",
                       "type": "function"
                     },
-                    "fingerprint": "b63ad63282faf89f"
+                    "fingerprint": "7231179504b1f5ea"
                   }
                 }
               ],
@@ -4023,7 +4023,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "e2b8fc69-7e33-4442-8096-21fc8e7e136b"
+                "response_id": "b48b66dc-17c0-4c62-b350-36166a224ef6"
               },
               "stop": "tool_use"
             },
@@ -4033,7 +4033,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4051,7 +4051,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_YqjofXAjEmpsPidsm5G44644"
+                    "provider": "call_00_5b3RJwXcl0ZMy4UxRWl52663"
                   },
                   "function": {
                     "name": "read_file",
@@ -4065,10 +4065,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_YqjofXAjEmpsPidsm5G44644",
+                      "id": "call_00_5b3RJwXcl0ZMy4UxRWl52663",
                       "type": "function"
                     },
-                    "fingerprint": "371d6812bcb9ecab"
+                    "fingerprint": "ebe6404f5162685b"
                   }
                 }
               ],
@@ -4077,7 +4077,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "fd3b5f7c-2c1f-4081-a1ca-47d1908dea05"
+                "response_id": "df5f03dd-54cc-46ac-8c00-d71c1b2a69d0"
               },
               "stop": "tool_use"
             },
@@ -4087,7 +4087,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_YqjofXAjEmpsPidsm5G44644"
+                    "provider": "call_00_5b3RJwXcl0ZMy4UxRWl52663"
                   },
                   "name": "read_file",
                   "content": [
@@ -4179,7 +4179,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_uAT2vkwXzP6tABmFottE0510"
+                "provider": "call_00_iMBScYBZgJTYfNioBgcu9690"
               },
               "function": {
                 "name": "write_file",
@@ -4194,10 +4194,10 @@
                     "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_00_uAT2vkwXzP6tABmFottE0510",
+                  "id": "call_00_iMBScYBZgJTYfNioBgcu9690",
                   "type": "function"
                 },
-                "fingerprint": "9fff77a9368289f6"
+                "fingerprint": "818b009643d8dbe2"
               }
             }
           ],
@@ -4212,7 +4212,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "4984e76a-1b59-45d5-9c7d-e41395384da6"
+            "response_id": "b20e1b54-8beb-4bbe-a500-1d095f74e1f3"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -4230,7 +4230,7 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_uAT2vkwXzP6tABmFottE0510",
+                      "id": "call_00_iMBScYBZgJTYfNioBgcu9690",
                       "index": 0,
                       "type": "function"
                     }
@@ -4239,7 +4239,7 @@
               }
             ],
             "created": 0,
-            "id": "4984e76a-1b59-45d5-9c7d-e41395384da6",
+            "id": "b20e1b54-8beb-4bbe-a500-1d095f74e1f3",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -4315,7 +4315,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -4327,10 +4327,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -4339,7 +4339,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -4349,7 +4349,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -4367,7 +4367,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -4381,10 +4381,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -4393,7 +4393,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -4403,7 +4403,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -4421,7 +4421,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -4435,10 +4435,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -4447,7 +4447,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -4457,7 +4457,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -4475,7 +4475,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "function": {
                     "name": "read_file",
@@ -4489,10 +4489,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "type": "function"
                     },
-                    "fingerprint": "68b17bd5d6472084"
+                    "fingerprint": "207e0e7af6ae5457"
                   }
                 }
               ],
@@ -4501,7 +4501,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+                "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
               },
               "stop": "tool_use"
             },
@@ -4511,7 +4511,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "name": "read_file",
                   "content": [
@@ -4529,7 +4529,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4541,10 +4541,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                      "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                       "type": "function"
                     },
-                    "fingerprint": "d57b9c07bb963d93"
+                    "fingerprint": "de4e41e80fac13ba"
                   }
                 }
               ],
@@ -4553,7 +4553,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "35eff6b7-e580-4634-ae4b-9192334d95d5"
+                "response_id": "0f5f4999-66d5-483a-b0fe-301511c08647"
               },
               "stop": "tool_use"
             },
@@ -4563,7 +4563,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4581,7 +4581,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "function": {
                     "name": "write_file",
@@ -4596,10 +4596,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_fxnJZ8UYX1cI6VXqELIf5944",
+                      "id": "call_00_AgQZeklodrF848EcVIdf3900",
                       "type": "function"
                     },
-                    "fingerprint": "c2334fd02908ebec"
+                    "fingerprint": "f3706d0b42e3e985"
                   }
                 }
               ],
@@ -4608,7 +4608,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f494a41-9ee6-476c-91c6-fff9d50cf0e9"
+                "response_id": "b7369b80-cbd2-489e-ac31-d2f23556c6ac"
               },
               "stop": "tool_use"
             },
@@ -4618,7 +4618,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "name": "write_file",
                   "content": [
@@ -4636,7 +4636,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4648,10 +4648,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_euH1h122mEvHdundyfLp9585",
+                      "id": "call_00_w5ZfcMEEJn8lnYTGltfT7759",
                       "type": "function"
                     },
-                    "fingerprint": "b63ad63282faf89f"
+                    "fingerprint": "7231179504b1f5ea"
                   }
                 }
               ],
@@ -4660,7 +4660,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "e2b8fc69-7e33-4442-8096-21fc8e7e136b"
+                "response_id": "b48b66dc-17c0-4c62-b350-36166a224ef6"
               },
               "stop": "tool_use"
             },
@@ -4670,7 +4670,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4688,7 +4688,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_YqjofXAjEmpsPidsm5G44644"
+                    "provider": "call_00_5b3RJwXcl0ZMy4UxRWl52663"
                   },
                   "function": {
                     "name": "read_file",
@@ -4702,10 +4702,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_YqjofXAjEmpsPidsm5G44644",
+                      "id": "call_00_5b3RJwXcl0ZMy4UxRWl52663",
                       "type": "function"
                     },
-                    "fingerprint": "371d6812bcb9ecab"
+                    "fingerprint": "ebe6404f5162685b"
                   }
                 }
               ],
@@ -4714,7 +4714,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "fd3b5f7c-2c1f-4081-a1ca-47d1908dea05"
+                "response_id": "df5f03dd-54cc-46ac-8c00-d71c1b2a69d0"
               },
               "stop": "tool_use"
             },
@@ -4724,7 +4724,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_YqjofXAjEmpsPidsm5G44644"
+                    "provider": "call_00_5b3RJwXcl0ZMy4UxRWl52663"
                   },
                   "name": "read_file",
                   "content": [
@@ -4742,7 +4742,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uAT2vkwXzP6tABmFottE0510"
+                    "provider": "call_00_iMBScYBZgJTYfNioBgcu9690"
                   },
                   "function": {
                     "name": "write_file",
@@ -4757,10 +4757,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_uAT2vkwXzP6tABmFottE0510",
+                      "id": "call_00_iMBScYBZgJTYfNioBgcu9690",
                       "type": "function"
                     },
-                    "fingerprint": "9fff77a9368289f6"
+                    "fingerprint": "818b009643d8dbe2"
                   }
                 }
               ],
@@ -4769,7 +4769,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4984e76a-1b59-45d5-9c7d-e41395384da6"
+                "response_id": "b20e1b54-8beb-4bbe-a500-1d095f74e1f3"
               },
               "stop": "tool_use"
             },
@@ -4779,7 +4779,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uAT2vkwXzP6tABmFottE0510"
+                    "provider": "call_00_iMBScYBZgJTYfNioBgcu9690"
                   },
                   "name": "write_file",
                   "content": [
@@ -4871,7 +4871,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_AINaESdGyxQilaPZWszh0711"
+                "provider": "call_00_1iB9OaT3nvHnc7s76YQC1860"
               },
               "function": {
                 "name": "run_tests",
@@ -4883,10 +4883,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_AINaESdGyxQilaPZWszh0711",
+                  "id": "call_00_1iB9OaT3nvHnc7s76YQC1860",
                   "type": "function"
                 },
-                "fingerprint": "13a72061a76f5c6d"
+                "fingerprint": "df64a82feddfeaf8"
               }
             }
           ],
@@ -4901,7 +4901,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "eeb7e1e7-d71f-429f-9e43-247f7e9462a5"
+            "response_id": "6bc8c039-11c9-4d16-895f-c6849180d147"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -4919,7 +4919,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_AINaESdGyxQilaPZWszh0711",
+                      "id": "call_00_1iB9OaT3nvHnc7s76YQC1860",
                       "index": 0,
                       "type": "function"
                     }
@@ -4928,7 +4928,7 @@
               }
             ],
             "created": 0,
-            "id": "eeb7e1e7-d71f-429f-9e43-247f7e9462a5",
+            "id": "6bc8c039-11c9-4d16-895f-c6849180d147",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -5004,7 +5004,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "function": {
                     "name": "list_files",
@@ -5016,10 +5016,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_pvhr5qAKQNDlf5Pt55bh0534",
+                      "id": "call_00_cOC92tE9GyQvga8xNgBC8372",
                       "type": "function"
                     },
-                    "fingerprint": "915f42af07dc2d7b"
+                    "fingerprint": "5c11539cda5cee18"
                   }
                 }
               ],
@@ -5028,7 +5028,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "0d1d91c7-408d-4290-9e0f-f4d2611b459d"
+                "response_id": "d3246a8e-3acf-41c2-8193-68252170d9db"
               },
               "stop": "tool_use"
             },
@@ -5038,7 +5038,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_pvhr5qAKQNDlf5Pt55bh0534"
+                    "provider": "call_00_cOC92tE9GyQvga8xNgBC8372"
                   },
                   "name": "list_files",
                   "content": [
@@ -5056,7 +5056,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "function": {
                     "name": "read_file",
@@ -5070,10 +5070,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_Kpl0a9zhu0MdinkwWzeM3627",
+                      "id": "call_00_cTCTwl8jiv932fQkYP3q8034",
                       "type": "function"
                     },
-                    "fingerprint": "46405a7622fd3855"
+                    "fingerprint": "9220c913f82a6642"
                   }
                 }
               ],
@@ -5082,7 +5082,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b5d1c90f-2ee8-44fd-b958-1e6426c931f7"
+                "response_id": "ac6cd646-e6c0-4117-a525-e0a83f45fe5e"
               },
               "stop": "tool_use"
             },
@@ -5092,7 +5092,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Kpl0a9zhu0MdinkwWzeM3627"
+                    "provider": "call_00_cTCTwl8jiv932fQkYP3q8034"
                   },
                   "name": "read_file",
                   "content": [
@@ -5110,7 +5110,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "function": {
                     "name": "read_file",
@@ -5124,10 +5124,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_yFYzqZPdqrOm9dmUSrgT5430",
+                      "id": "call_00_JkuRh5IMhLeupRLM5pkb9130",
                       "type": "function"
                     },
-                    "fingerprint": "6e1ac0f51b28f5f7"
+                    "fingerprint": "829694fe372e7b3b"
                   }
                 }
               ],
@@ -5136,7 +5136,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "6e2711f7-1750-4e38-9e81-b964203c3841"
+                "response_id": "58644ef1-9b88-4c86-925b-df2d52f8da90"
               },
               "stop": "tool_use"
             },
@@ -5146,7 +5146,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_yFYzqZPdqrOm9dmUSrgT5430"
+                    "provider": "call_00_JkuRh5IMhLeupRLM5pkb9130"
                   },
                   "name": "read_file",
                   "content": [
@@ -5164,7 +5164,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "function": {
                     "name": "read_file",
@@ -5178,10 +5178,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nTv4YL4xBKpPrcOnMGou2767",
+                      "id": "call_00_0dxxO5nigAeseHr4yEOK0711",
                       "type": "function"
                     },
-                    "fingerprint": "68b17bd5d6472084"
+                    "fingerprint": "207e0e7af6ae5457"
                   }
                 }
               ],
@@ -5190,7 +5190,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8ff5109-71d9-439b-826c-2b27a9efb1e1"
+                "response_id": "75f0856a-9d94-478c-bdd5-475d92d0f9bb"
               },
               "stop": "tool_use"
             },
@@ -5200,7 +5200,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nTv4YL4xBKpPrcOnMGou2767"
+                    "provider": "call_00_0dxxO5nigAeseHr4yEOK0711"
                   },
                   "name": "read_file",
                   "content": [
@@ -5218,7 +5218,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5230,10 +5230,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_uGJhgkZlJuElChVfmQ1Q4633",
+                      "id": "call_00_1f2mRBdIyvxGWkAixtms9118",
                       "type": "function"
                     },
-                    "fingerprint": "d57b9c07bb963d93"
+                    "fingerprint": "de4e41e80fac13ba"
                   }
                 }
               ],
@@ -5242,7 +5242,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "35eff6b7-e580-4634-ae4b-9192334d95d5"
+                "response_id": "0f5f4999-66d5-483a-b0fe-301511c08647"
               },
               "stop": "tool_use"
             },
@@ -5252,7 +5252,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uGJhgkZlJuElChVfmQ1Q4633"
+                    "provider": "call_00_1f2mRBdIyvxGWkAixtms9118"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5270,7 +5270,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "function": {
                     "name": "write_file",
@@ -5285,10 +5285,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_fxnJZ8UYX1cI6VXqELIf5944",
+                      "id": "call_00_AgQZeklodrF848EcVIdf3900",
                       "type": "function"
                     },
-                    "fingerprint": "c2334fd02908ebec"
+                    "fingerprint": "f3706d0b42e3e985"
                   }
                 }
               ],
@@ -5297,7 +5297,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f494a41-9ee6-476c-91c6-fff9d50cf0e9"
+                "response_id": "b7369b80-cbd2-489e-ac31-d2f23556c6ac"
               },
               "stop": "tool_use"
             },
@@ -5307,7 +5307,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_fxnJZ8UYX1cI6VXqELIf5944"
+                    "provider": "call_00_AgQZeklodrF848EcVIdf3900"
                   },
                   "name": "write_file",
                   "content": [
@@ -5325,7 +5325,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5337,10 +5337,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_euH1h122mEvHdundyfLp9585",
+                      "id": "call_00_w5ZfcMEEJn8lnYTGltfT7759",
                       "type": "function"
                     },
-                    "fingerprint": "b63ad63282faf89f"
+                    "fingerprint": "7231179504b1f5ea"
                   }
                 }
               ],
@@ -5349,7 +5349,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "e2b8fc69-7e33-4442-8096-21fc8e7e136b"
+                "response_id": "b48b66dc-17c0-4c62-b350-36166a224ef6"
               },
               "stop": "tool_use"
             },
@@ -5359,7 +5359,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_euH1h122mEvHdundyfLp9585"
+                    "provider": "call_00_w5ZfcMEEJn8lnYTGltfT7759"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5377,7 +5377,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_YqjofXAjEmpsPidsm5G44644"
+                    "provider": "call_00_5b3RJwXcl0ZMy4UxRWl52663"
                   },
                   "function": {
                     "name": "read_file",
@@ -5391,10 +5391,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_YqjofXAjEmpsPidsm5G44644",
+                      "id": "call_00_5b3RJwXcl0ZMy4UxRWl52663",
                       "type": "function"
                     },
-                    "fingerprint": "371d6812bcb9ecab"
+                    "fingerprint": "ebe6404f5162685b"
                   }
                 }
               ],
@@ -5403,7 +5403,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "fd3b5f7c-2c1f-4081-a1ca-47d1908dea05"
+                "response_id": "df5f03dd-54cc-46ac-8c00-d71c1b2a69d0"
               },
               "stop": "tool_use"
             },
@@ -5413,7 +5413,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_YqjofXAjEmpsPidsm5G44644"
+                    "provider": "call_00_5b3RJwXcl0ZMy4UxRWl52663"
                   },
                   "name": "read_file",
                   "content": [
@@ -5431,7 +5431,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_uAT2vkwXzP6tABmFottE0510"
+                    "provider": "call_00_iMBScYBZgJTYfNioBgcu9690"
                   },
                   "function": {
                     "name": "write_file",
@@ -5446,10 +5446,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_uAT2vkwXzP6tABmFottE0510",
+                      "id": "call_00_iMBScYBZgJTYfNioBgcu9690",
                       "type": "function"
                     },
-                    "fingerprint": "9fff77a9368289f6"
+                    "fingerprint": "818b009643d8dbe2"
                   }
                 }
               ],
@@ -5458,7 +5458,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4984e76a-1b59-45d5-9c7d-e41395384da6"
+                "response_id": "b20e1b54-8beb-4bbe-a500-1d095f74e1f3"
               },
               "stop": "tool_use"
             },
@@ -5468,7 +5468,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_uAT2vkwXzP6tABmFottE0510"
+                    "provider": "call_00_iMBScYBZgJTYfNioBgcu9690"
                   },
                   "name": "write_file",
                   "content": [
@@ -5486,7 +5486,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_AINaESdGyxQilaPZWszh0711"
+                    "provider": "call_00_1iB9OaT3nvHnc7s76YQC1860"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5498,10 +5498,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_AINaESdGyxQilaPZWszh0711",
+                      "id": "call_00_1iB9OaT3nvHnc7s76YQC1860",
                       "type": "function"
                     },
-                    "fingerprint": "13a72061a76f5c6d"
+                    "fingerprint": "df64a82feddfeaf8"
                   }
                 }
               ],
@@ -5510,7 +5510,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "eeb7e1e7-d71f-429f-9e43-247f7e9462a5"
+                "response_id": "6bc8c039-11c9-4d16-895f-c6849180d147"
               },
               "stop": "tool_use"
             },
@@ -5520,7 +5520,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_AINaESdGyxQilaPZWszh0711"
+                    "provider": "call_00_1iB9OaT3nvHnc7s76YQC1860"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5625,7 +5625,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "8e29f3b7-4a47-4b92-8639-b27ee7730244"
+            "response_id": "798aec70-9fa8-42d0-affd-1651b08cc225"
           },
           "finish_reason": "stop",
           "raw": {
@@ -5641,7 +5641,7 @@
               }
             ],
             "created": 0,
-            "id": "8e29f3b7-4a47-4b92-8639-b27ee7730244",
+            "id": "798aec70-9fa8-42d0-affd-1651b08cc225",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

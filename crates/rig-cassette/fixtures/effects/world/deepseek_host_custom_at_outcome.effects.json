@@ -154,7 +154,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_B6YQpREksHeeHNIBNFxq3367"
+                "provider": "call_00_JWBlzmGxzaktG7w19WSH8255"
               },
               "function": {
                 "name": "add",
@@ -169,10 +169,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_B6YQpREksHeeHNIBNFxq3367",
+                  "id": "call_00_JWBlzmGxzaktG7w19WSH8255",
                   "type": "function"
                 },
-                "fingerprint": "bbcaa864131af484"
+                "fingerprint": "8254e519d6f70a1e"
               }
             }
           ],
@@ -187,7 +187,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "5850bd78-b4ef-4279-bbdd-5bad7824900c"
+            "response_id": "b2fb3d71-3f88-4286-899e-d83f589457ac"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -205,7 +205,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_B6YQpREksHeeHNIBNFxq3367",
+                      "id": "call_00_JWBlzmGxzaktG7w19WSH8255",
                       "index": 0,
                       "type": "function"
                     }
@@ -214,7 +214,7 @@
               }
             ],
             "created": 0,
-            "id": "5850bd78-b4ef-4279-bbdd-5bad7824900c",
+            "id": "b2fb3d71-3f88-4286-899e-d83f589457ac",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -308,7 +308,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_B6YQpREksHeeHNIBNFxq3367"
+                    "provider": "call_00_JWBlzmGxzaktG7w19WSH8255"
                   },
                   "function": {
                     "name": "add",
@@ -323,10 +323,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_B6YQpREksHeeHNIBNFxq3367",
+                      "id": "call_00_JWBlzmGxzaktG7w19WSH8255",
                       "type": "function"
                     },
-                    "fingerprint": "bbcaa864131af484"
+                    "fingerprint": "8254e519d6f70a1e"
                   }
                 }
               ],
@@ -335,7 +335,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "5850bd78-b4ef-4279-bbdd-5bad7824900c"
+                "response_id": "b2fb3d71-3f88-4286-899e-d83f589457ac"
               },
               "stop": "tool_use"
             },
@@ -345,7 +345,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_B6YQpREksHeeHNIBNFxq3367"
+                    "provider": "call_00_JWBlzmGxzaktG7w19WSH8255"
                   },
                   "name": "add",
                   "content": [
@@ -410,7 +410,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "c0e5458a-cb3d-4a4c-91ed-b2ae72d527a4"
+            "response_id": "63545a37-2513-462f-9e53-079d27ebbd21"
           },
           "finish_reason": "stop",
           "raw": {
@@ -426,7 +426,7 @@
               }
             ],
             "created": 0,
-            "id": "c0e5458a-cb3d-4a4c-91ed-b2ae72d527a4",
+            "id": "63545a37-2513-462f-9e53-079d27ebbd21",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

@@ -111,7 +111,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
+                "provider": "call_00_MRJnFXUmjSs4nmgVTIAQ8962"
               },
               "function": {
                 "name": "add",
@@ -126,10 +126,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
+                  "id": "call_00_MRJnFXUmjSs4nmgVTIAQ8962",
                   "type": "function"
                 },
-                "fingerprint": "b836b0ea51f088fb"
+                "fingerprint": "4e7a143090932b89"
               }
             }
           ],
@@ -144,7 +144,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "cdce42e1-b250-4ad4-8419-c79de0039b76"
+            "response_id": "90843b33-ba4d-474c-ad18-59a24dda40d5"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -159,7 +159,7 @@
               "total_tokens": 388
             },
             "finish_reason": "tool_calls",
-            "response_id": "cdce42e1-b250-4ad4-8419-c79de0039b76",
+            "response_id": "90843b33-ba4d-474c-ad18-59a24dda40d5",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -194,7 +194,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
+                "provider": "call_00_MRJnFXUmjSs4nmgVTIAQ8962"
               },
               "function": {
                 "name": "add",
@@ -209,10 +209,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
+                  "id": "call_00_MRJnFXUmjSs4nmgVTIAQ8962",
                   "type": "function"
                 },
-                "fingerprint": "b836b0ea51f088fb"
+                "fingerprint": "4e7a143090932b89"
               }
             }
           }
@@ -276,7 +276,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
+                    "provider": "call_00_MRJnFXUmjSs4nmgVTIAQ8962"
                   },
                   "function": {
                     "name": "add",
@@ -291,10 +291,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
+                      "id": "call_00_MRJnFXUmjSs4nmgVTIAQ8962",
                       "type": "function"
                     },
-                    "fingerprint": "b836b0ea51f088fb"
+                    "fingerprint": "4e7a143090932b89"
                   }
                 }
               ],
@@ -303,7 +303,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "cdce42e1-b250-4ad4-8419-c79de0039b76"
+                "response_id": "90843b33-ba4d-474c-ad18-59a24dda40d5"
               },
               "stop": "tool_use"
             },
@@ -313,7 +313,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
+                    "provider": "call_00_MRJnFXUmjSs4nmgVTIAQ8962"
                   },
                   "name": "add",
                   "content": [
@@ -378,7 +378,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "89b595f1-0346-47d7-8f49-579ad1841df3"
+            "response_id": "4c0b2228-17eb-4000-bdf7-074fab799358"
           },
           "finish_reason": "stop",
           "raw": {
@@ -393,7 +393,7 @@
               "total_tokens": 402
             },
             "finish_reason": "stop",
-            "response_id": "89b595f1-0346-47d7-8f49-579ad1841df3",
+            "response_id": "4c0b2228-17eb-4000-bdf7-074fab799358",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

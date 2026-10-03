@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 18,
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -132,7 +132,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_sgSlx446Ly8SCdOXTvCf3693"
+                "provider": "call_00_wvtspnUf7o1ltnIAvtoA9664"
               },
               "function": {
                 "name": "add",
@@ -147,10 +147,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
+                  "id": "call_00_wvtspnUf7o1ltnIAvtoA9664",
                   "type": "function"
                 },
-                "fingerprint": "8621eadc8475b11f"
+                "fingerprint": "2b2dc843c32553d1"
               }
             }
           ],
@@ -165,7 +165,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "4d0e3452-79f8-4c85-98f2-ff8b33800bdb"
+            "response_id": "275395ec-b99f-4e23-914b-c8ce83148957"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -180,7 +180,7 @@
               "total_tokens": 388
             },
             "finish_reason": "tool_calls",
-            "response_id": "4d0e3452-79f8-4c85-98f2-ff8b33800bdb",
+            "response_id": "275395ec-b99f-4e23-914b-c8ce83148957",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -215,7 +215,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_sgSlx446Ly8SCdOXTvCf3693"
+                "provider": "call_00_wvtspnUf7o1ltnIAvtoA9664"
               },
               "function": {
                 "name": "add",
@@ -230,10 +230,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_sgSlx446Ly8SCdOXTvCf3693",
+                  "id": "call_00_wvtspnUf7o1ltnIAvtoA9664",
                   "type": "function"
                 },
-                "fingerprint": "8621eadc8475b11f"
+                "fingerprint": "2b2dc843c32553d1"
               }
             }
           }

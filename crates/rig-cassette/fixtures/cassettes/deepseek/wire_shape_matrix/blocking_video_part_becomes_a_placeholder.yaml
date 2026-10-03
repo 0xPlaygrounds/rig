@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":16,"messages":[{"content":"What colour is the attachment?\n(video omitted: the provider cannot receive it in this form)","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"What colour is the attachment?","type":"text"},{"text":"(video omitted: the provider cannot receive it in this form)","type":"text"}],"role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"I can''t determine the colour of the attachment because the video wasn''t included in","role":"assistant"}}],"created":0,"id":"b51bdb37-586a-48d6-b952-c46432a8fc4d","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":23,"prompt_tokens":23,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":39}}'
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"I can’t determine the colour of the attachment because the video wasn’t","role":"assistant"}}],"created":0,"id":"a85416dd-38c4-4a87-ad27-03166cc9d1b0","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":23,"prompt_tokens":23,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":39}}'

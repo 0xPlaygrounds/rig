@@ -132,7 +132,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_KXLDY4kwyoXncplZ29tW6381"
+                "provider": "call_00_cpYe1U0EMcqTYEPvGnRw0877"
               },
               "function": {
                 "name": "add",
@@ -147,10 +147,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_KXLDY4kwyoXncplZ29tW6381",
+                  "id": "call_00_cpYe1U0EMcqTYEPvGnRw0877",
                   "type": "function"
                 },
-                "fingerprint": "3d83b4b73df8152b"
+                "fingerprint": "83eb4c47fc27e391"
               }
             }
           ],
@@ -165,7 +165,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "63a0c6a2-ac27-428d-a494-eda57eba6f57"
+            "response_id": "7ea1bde8-7d4d-4b92-9456-fdc6820ebe40"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -180,7 +180,7 @@
               "total_tokens": 388
             },
             "finish_reason": "tool_calls",
-            "response_id": "63a0c6a2-ac27-428d-a494-eda57eba6f57",
+            "response_id": "7ea1bde8-7d4d-4b92-9456-fdc6820ebe40",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -215,7 +215,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_KXLDY4kwyoXncplZ29tW6381"
+                "provider": "call_00_cpYe1U0EMcqTYEPvGnRw0877"
               },
               "function": {
                 "name": "add",
@@ -230,10 +230,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_KXLDY4kwyoXncplZ29tW6381",
+                  "id": "call_00_cpYe1U0EMcqTYEPvGnRw0877",
                   "type": "function"
                 },
-                "fingerprint": "3d83b4b73df8152b"
+                "fingerprint": "83eb4c47fc27e391"
               }
             }
           }

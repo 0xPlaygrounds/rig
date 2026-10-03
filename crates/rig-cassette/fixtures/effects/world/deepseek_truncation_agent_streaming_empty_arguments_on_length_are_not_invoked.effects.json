@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 10,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -120,7 +120,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630"
+                "provider": "call_00_OLKCNNpBVvi9GSsf1CYz0755"
               },
               "function": {
                 "name": "file_report",
@@ -132,10 +132,10 @@
                     "arguments": "",
                     "name": "file_report"
                   },
-                  "id": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630",
+                  "id": "call_00_OLKCNNpBVvi9GSsf1CYz0755",
                   "type": "function"
                 },
-                "fingerprint": "ebbf59f80352454d"
+                "fingerprint": "3a3728dd64612c4a"
               }
             }
           ],
@@ -150,7 +150,7 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "38ab9160-89fb-4c7d-9125-4ad998bdd1e0"
+            "response_id": "7349978a-4914-4223-962d-d592139a38d1"
           },
           "finish_reason": "length",
           "raw": {
@@ -165,7 +165,7 @@
               "total_tokens": 362
             },
             "finish_reason": "length",
-            "response_id": "38ab9160-89fb-4c7d-9125-4ad998bdd1e0",
+            "response_id": "7349978a-4914-4223-962d-d592139a38d1",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -200,7 +200,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630"
+                "provider": "call_00_OLKCNNpBVvi9GSsf1CYz0755"
               },
               "function": {
                 "name": "file_report",
@@ -212,10 +212,10 @@
                     "arguments": "",
                     "name": "file_report"
                   },
-                  "id": "call_00_JyyQF1ZwiSfmbYNJrJ3x6630",
+                  "id": "call_00_OLKCNNpBVvi9GSsf1CYz0755",
                   "type": "function"
                 },
-                "fingerprint": "ebbf59f80352454d"
+                "fingerprint": "3a3728dd64612c4a"
               }
             }
           }
