@@ -124,6 +124,10 @@ impl crate::completion::ReplayTarget for Interactions {
         accepts(model)
     }
 
+    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+        encodes(media)
+    }
+
     /// A request naming `previous_interaction_id` continues an interaction
     /// the API stored, which holds the calls its first results answer.
     fn continues_stored(&self, request: &CompletionRequest) -> bool {
@@ -153,6 +157,32 @@ fn accepts(model: &str) -> crate::completion::Accepts {
         tool_result_images: !model.to_ascii_lowercase().starts_with("gemini")
             || super::completion::gemini_3_or_later(model),
         ..crate::completion::Accepts::ALL
+    }
+}
+
+/// Whether this API takes `media`: data or a URL with a media type, an
+/// image of a type Gemini reads, and a document other than a PDF only as a
+/// string, which is sent as text. A file id is never taken.
+fn encodes(media: crate::completion::Media<'_>) -> bool {
+    use crate::completion::Media;
+    use message::DocumentSourceKind as Source;
+    let carried = |source: &Source| {
+        matches!(
+            source,
+            Source::Url(_) | Source::Base64(_) | Source::String(_)
+        )
+    };
+    match media {
+        Media::Image(image, place) => {
+            super::completion::reads_image(image.media_type.as_ref(), place) && carried(&image.data)
+        }
+        Media::Audio(audio) => audio.media_type.is_some() && carried(&audio.data),
+        Media::Video(video) => video.media_type.is_some() && carried(&video.data),
+        Media::Document(document) => match (&document.media_type, &document.data) {
+            (None, _) => false,
+            (Some(message::DocumentMediaType::PDF), data) => carried(data),
+            (Some(_), data) => matches!(data, Source::String(_)),
+        },
     }
 }
 
@@ -610,12 +640,9 @@ fn split_data_uri(
         message::DocumentSourceKind::String(data) => {
             Ok((Some(BASE64_STANDARD.encode(data.as_bytes())), None))
         }
-        message::DocumentSourceKind::Raw(data) => Ok((Some(BASE64_STANDARD.encode(data)), None)),
-        message::DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
-            "Provider file IDs are not supported for Gemini Interactions inputs".to_string(),
-        )),
-        message::DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
-            "Unknown content source".to_string(),
+        // `encodes` refuses every other source, so the adapter passes none.
+        _ => Err(message::MessageError::ConversionError(
+            "Gemini Interactions cannot receive this media in its form".to_string(),
         )),
     }
 }
@@ -632,7 +659,6 @@ pub mod interactions_api_types {
     use crate::completion::Usage;
     use crate::error::EncodeError;
     use crate::message::{self, MimeType};
-    use base64::{Engine, prelude::BASE64_STANDARD};
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
 
@@ -1746,63 +1772,26 @@ pub mod interactions_api_types {
                 }
                 message::UserContent::Document(message::Document {
                     data, media_type, ..
-                }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for document is required for Gemini".to_string(),
-                        )
-                    })?;
-                    if matches!(media_type, message::DocumentMediaType::TXT) {
-                        let text = match data {
-                            message::DocumentSourceKind::String(text) => text,
-                            message::DocumentSourceKind::Base64(data) => {
-                                let decoded = BASE64_STANDARD.decode(data).map_err(|error| {
-                                    message::MessageError::ConversionError(format!(
-                                        "Failed to decode text document base64 data: {error}"
-                                    ))
-                                })?;
-                                String::from_utf8(decoded).map_err(|error| {
-                                    message::MessageError::ConversionError(format!(
-                                        "Text document data must be UTF-8: {error}"
-                                    ))
-                                })?
-                            }
-                            message::DocumentSourceKind::Raw(data) => String::from_utf8(data)
-                                .map_err(|error| {
-                                    message::MessageError::ConversionError(format!(
-                                        "Text document data must be UTF-8: {error}"
-                                    ))
-                                })?,
-                            message::DocumentSourceKind::Url(_) => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Text document URLs are not supported for Gemini Interactions inputs"
-                                        .to_string(),
-                                ));
-                            }
-                            message::DocumentSourceKind::FileId(_) => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Provider file IDs are not supported for Gemini Interactions inputs"
-                                        .to_string(),
-                                ));
-                            }
-                            message::DocumentSourceKind::Unknown => {
-                                return Err(message::MessageError::ConversionError(
-                                    "Unknown content source".to_string(),
-                                ));
-                            }
-                        };
-                        return Ok(Self::Text(TextContent {
+                }) => match (media_type, data) {
+                    // A text document goes as text, so that RAG context
+                    // reads as prose.
+                    (Some(media_type), message::DocumentSourceKind::String(text))
+                        if media_type != message::DocumentMediaType::PDF =>
+                    {
+                        Ok(Self::Text(TextContent {
                             text,
                             annotations: None,
-                        }));
+                        }))
                     }
-                    let (data, uri, mime_type) = media_parts(data, Some(media_type), "document")?;
-                    Ok(Self::Document(DocumentContent {
-                        data,
-                        uri,
-                        mime_type: Some(mime_type),
-                    }))
-                }
+                    (media_type, data) => {
+                        let (data, uri, mime_type) = media_parts(data, media_type, "document")?;
+                        Ok(Self::Document(DocumentContent {
+                            data,
+                            uri,
+                            mime_type: Some(mime_type),
+                        }))
+                    }
+                },
             }
         }
     }
