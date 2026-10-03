@@ -912,8 +912,8 @@ fn deepseek_states_its_reasoning_field() {
 
 /// chat NEW-7: late `reasoning_details` (Gemini through OpenRouter) fold to
 /// the same blocks from a whole message as from its stream: a detail that
-/// signs one of the message's calls follows the answer, as a stream sends
-/// it with the call.
+/// signs one of the message's calls opens the reasoning block after that
+/// call, as pi reads a delta's details after its calls.
 #[test]
 fn late_reasoning_details_fold_alike_whole_and_streamed() {
     let openrouter = wire(&OPENROUTER, "google/gemini-3-pro-preview");
@@ -959,8 +959,8 @@ fn late_reasoning_details_fold_alike_whole_and_streamed() {
         unary.choice.as_slice(),
         [
             AssistantContent::Text(_),
-            AssistantContent::Reasoning(_),
-            AssistantContent::ToolCall(_)
+            AssistantContent::ToolCall(_),
+            AssistantContent::Reasoning(_)
         ]
     ));
 }
@@ -1361,5 +1361,126 @@ fn perplexity_gets_orphans_dropped_blanks_gone_and_turns_apart() {
     for message in body["messages"].as_array().into_iter().flatten() {
         let content = message["content"].as_str().unwrap_or("x");
         assert!(!content.trim().is_empty(), "no blank message: {text}");
+    }
+}
+
+/// Round 5 generated-history finding 2: `reasoning_details` join the
+/// message's one reasoning block wherever they arrive, so a stream folds to
+/// the turn its whole message folds to. The first shape is the recorded
+/// Gemini 3 stream through OpenRouter
+/// (`openrouter/upstream_switch_matrix/switch_streamed.yaml`): a signature
+/// alone after the content. The second interleaves reasoning, the answer
+/// and a trailing ciphertext; the third has reasoning text after the
+/// answer; the fourth is the recorded OpenAI ciphertext ahead of a call
+/// (`openrouter/streaming_tools/stream_encrypted_reasoning_survives_into_the_next_turn.yaml`);
+/// the fifth signs the first of two parallel calls, as Gemini 3 does.
+/// Each replays the same bytes from either form.
+#[test]
+fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
+    let wire = wire(&OPENROUTER, "anthropic/claude-opus-5.5");
+    let signature = json!({"type": "reasoning.text", "signature": "AY89a19Q",
+        "format": "google-gemini-v1", "index": 0});
+    let signed = json!({"type": "reasoning.text", "text": "plan", "signature": "EsYF",
+        "format": "anthropic-claude-v1", "index": 0});
+    let encrypted = json!({"type": "reasoning.encrypted", "data": "enc",
+        "format": "openai-responses-v1", "index": 0, "id": "rs_1"});
+    let call = json!({"id": "call_1", "type": "function",
+        "function": {"name": "f", "arguments": "{}"}});
+    let mut streamed_call = call.clone();
+    streamed_call["index"] = json!(0);
+    let second = json!({"id": "call_2", "type": "function",
+        "function": {"name": "f", "arguments": "{}"}});
+    let mut streamed_second = second.clone();
+    streamed_second["index"] = json!(1);
+    let signs_call = json!({"type": "reasoning.encrypted", "data": "gsig",
+        "format": "google-gemini-v1", "index": 0, "id": "call_1"});
+    let cases = [
+        (
+            json!({"role": "assistant", "content": "The code is amber.",
+                "reasoning_details": [signature]}),
+            vec![
+                json!({"role": "assistant", "content": "The code is amber."}),
+                json!({"role": "assistant", "content": "", "reasoning_details": [signature]}),
+            ],
+            vec!["text", "reasoning"],
+        ),
+        (
+            json!({"role": "assistant", "content": "answer", "reasoning": "plan",
+                "reasoning_details": [signed, encrypted]}),
+            vec![
+                json!({"role": "assistant", "reasoning": "plan", "reasoning_details": [signed]}),
+                json!({"content": "answer"}),
+                json!({"reasoning_details": [encrypted]}),
+            ],
+            vec!["reasoning", "text"],
+        ),
+        (
+            json!({"role": "assistant", "content": "ab", "reasoning": "xy"}),
+            vec![
+                json!({"role": "assistant", "reasoning": "x"}),
+                json!({"content": "a"}),
+                json!({"reasoning": "y"}),
+                json!({"content": "b"}),
+            ],
+            vec!["reasoning", "text"],
+        ),
+        (
+            json!({"role": "assistant", "reasoning_details": [encrypted], "tool_calls": [call]}),
+            vec![
+                json!({"role": "assistant", "reasoning_details": [encrypted]}),
+                json!({"tool_calls": [streamed_call]}),
+            ],
+            vec!["reasoning", "call"],
+        ),
+        (
+            json!({"role": "assistant", "content": "Checking.", "tool_calls": [call, second],
+                "reasoning_details": [signs_call]}),
+            vec![
+                json!({"role": "assistant", "content": "Checking."}),
+                json!({"tool_calls": [streamed_call], "reasoning_details": [signs_call]}),
+                json!({"tool_calls": [streamed_second]}),
+            ],
+            vec!["text", "call", "reasoning", "call"],
+        ),
+    ];
+    for (message, deltas, kinds) in cases {
+        let finish = if message.get("tool_calls").is_some() {
+            "tool_calls"
+        } else {
+            "stop"
+        };
+        let unary = decode(&wire, Mode::Unary, vec![whole(message.clone(), finish)])
+            .expect("the whole reply decodes");
+        let mut frames: Vec<WireFrame> = deltas.into_iter().map(|d| chunk(d, None)).collect();
+        frames.push(chunk(json!({}), Some(finish)));
+        frames.push(WireFrame::Text("[DONE]".to_owned()));
+        let streamed = decode(&wire, Mode::Streaming, frames).expect("the stream decodes");
+        assert_eq!(unary.choice, streamed.choice, "{message}");
+        let found: Vec<&str> = streamed
+            .choice
+            .iter()
+            .map(|block| match block {
+                AssistantContent::Reasoning(_) => "reasoning",
+                AssistantContent::Text(_) => "text",
+                AssistantContent::ToolCall(_) => "call",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(found, kinds, "{message}");
+        let body = |response: &crate::completion::CompletionResponse| {
+            sent(
+                &wire,
+                vec![Message::user("q"), Message::Assistant(turn_of(response))],
+            )
+        };
+        let replayed = body(&streamed);
+        assert_eq!(body(&unary), replayed, "{message}");
+        for key in ["reasoning", "reasoning_details"] {
+            assert_eq!(
+                replayed["messages"][1].get(key),
+                message.get(key),
+                "{replayed}"
+            );
+        }
     }
 }

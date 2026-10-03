@@ -190,8 +190,8 @@ impl<Op: Operation> Streamed<Op> {
 
 /// The assistant content a stream's `items` delivered, as its partial reply
 /// holds it: every part that ended, in start order, and the text of a text
-/// part still open. The items hold no provider end, so no block keeps its
-/// provider item and the content replays canonically.
+/// or reasoning part still open. The items hold no provider end, so no
+/// block keeps its provider item and the content replays canonically.
 pub fn delivered(items: &[Item<StreamEvent>]) -> Vec<crate::message::AssistantContent> {
     use crate::wire::Fold;
     let mut turn = Turn::relayed("delivered");

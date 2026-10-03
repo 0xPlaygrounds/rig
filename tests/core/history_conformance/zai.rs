@@ -5,7 +5,7 @@
 use rig_core::providers::openai::wire::ZAI;
 use serde_json::{Value, json};
 
-use super::chat::{ChatHistory, call, call_deltas, interleaved_under};
+use super::chat::{ChatHistory, call, call_deltas};
 
 fn rich() -> Value {
     json!({
@@ -26,10 +26,6 @@ fn rich_deltas() -> Vec<Value> {
     deltas
 }
 
-fn interleaved() -> Vec<Value> {
-    interleaved_under("reasoning_content")
-}
-
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &ZAI,
     model: rig_core::providers::zai::GLM_4_5V,
@@ -37,7 +33,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     text_only_model: Some(rig_core::providers::zai::GLM_4_6),
     rich,
     rich_deltas,
-    interleaved: Some(interleaved),
+    interleaved: None,
     has_items: true,
 };
 

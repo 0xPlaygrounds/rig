@@ -24,8 +24,9 @@ pub struct ChatHistory {
     /// The same message as the deltas a stream sends.
     pub rich_deltas: fn() -> Vec<Value>,
     /// The deltas of a stream whose blocks are `[reasoning, text,
-    /// reasoning, call]`, on a dialect with reasoning. One message holds one
-    /// reasoning and one text, so only a stream can interleave them.
+    /// reasoning, call]`. Only Mistral's thinking parts can interleave: a
+    /// message's reasoning field and details are one block, as pi folds
+    /// them.
     pub interleaved: Option<fn() -> Vec<Value>>,
     /// Whether the dialect's messages carry items an invented type and field
     /// can sit on: content parts or tool calls.
@@ -40,18 +41,6 @@ pub fn call() -> Value {
         "type": "function",
         "function": {"name": "lookup", "arguments": "{\"q\":\"rig\"}"},
     })
-}
-
-/// A stream that reasons, answers, reasons again under `key`, and calls.
-pub fn interleaved_under(key: &str) -> Vec<Value> {
-    let mut whole = call();
-    whole["index"] = json!(0);
-    vec![
-        json!({"role": "assistant", key: "plan the lookup"}),
-        json!({"content": "looking it up"}),
-        json!({key: "check the arguments"}),
-        json!({"tool_calls": [whole]}),
-    ]
 }
 
 /// The call's two stream fragments: its opening and its arguments.

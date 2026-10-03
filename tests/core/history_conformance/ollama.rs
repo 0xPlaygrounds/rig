@@ -4,7 +4,7 @@
 use rig_core::providers::openai::wire::OLLAMA;
 use serde_json::{Value, json};
 
-use super::chat::{ChatHistory, call, interleaved_under};
+use super::chat::{ChatHistory, call};
 
 fn rich() -> Value {
     json!({
@@ -26,10 +26,6 @@ fn rich_deltas() -> Vec<Value> {
     ]
 }
 
-fn interleaved() -> Vec<Value> {
-    interleaved_under("reasoning")
-}
-
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &OLLAMA,
     model: "qwen3:4b",
@@ -37,7 +33,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     text_only_model: None,
     rich,
     rich_deltas,
-    interleaved: Some(interleaved),
+    interleaved: None,
     has_items: true,
 };
 

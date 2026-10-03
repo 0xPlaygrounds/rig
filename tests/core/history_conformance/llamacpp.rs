@@ -4,7 +4,7 @@
 use rig_core::providers::openai::wire::LLAMACPP;
 use serde_json::{Value, json};
 
-use super::chat::{ChatHistory, call, call_deltas, interleaved_under};
+use super::chat::{ChatHistory, call, call_deltas};
 
 fn rich() -> Value {
     json!({
@@ -25,10 +25,6 @@ fn rich_deltas() -> Vec<Value> {
     deltas
 }
 
-fn interleaved() -> Vec<Value> {
-    interleaved_under("reasoning_content")
-}
-
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &LLAMACPP,
     model: "Qwen3-VL-2B-Instruct-Q8_0",
@@ -36,7 +32,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     text_only_model: None,
     rich,
     rich_deltas,
-    interleaved: Some(interleaved),
+    interleaved: None,
     has_items: true,
 };
 

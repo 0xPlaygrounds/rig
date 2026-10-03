@@ -291,11 +291,11 @@ fn signature(detail: &str) -> String {
     )
 }
 
-/// A block closes when the next one starts, so a signature that arrives
-/// after the answer is reasoning of its own, and the message sent back
-/// holds the reasoning and the signature as one message did.
+/// A message's reasoning is one block, as pi keeps it, so a signature that
+/// arrives after the answer joins the reasoning before it, and the message
+/// sent back holds the reasoning and the signature as one message did.
 #[tokio::test]
-async fn a_late_signature_is_reasoning_after_the_answer() {
+async fn a_late_signature_joins_the_reasoning_before_the_answer() {
     let (_, response) = stream(
         &OPENROUTER,
         &[
@@ -311,19 +311,15 @@ async fn a_late_signature_is_reasoning_after_the_answer() {
     let [
         AssistantContent::Reasoning(first),
         AssistantContent::Text(answer),
-        AssistantContent::Reasoning(late),
     ] = response.choice.as_slice()
     else {
-        panic!(
-            "reasoning, the answer and the signature: {:?}",
-            response.choice
-        );
+        panic!("the reasoning and the answer: {:?}", response.choice);
     };
     assert_eq!(first.text, "thinking");
     assert_eq!(answer.text, "answer");
     let signed =
         json!([{"type": "reasoning.text", "text": "", "signature": "sig-late", "index": 0}]);
-    assert_eq!(details_of(late), signed);
+    assert_eq!(details_of(first), signed);
     let turn = crate::message::AssistantMessage {
         content: response.choice.clone(),
         ..response.head()

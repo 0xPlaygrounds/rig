@@ -241,8 +241,9 @@ pub struct Turn {
     by_index: Option<BTreeMap<usize, usize>>,
     // The fold.
     choice: Vec<Option<AssistantContent>>,
-    /// The text the consumer took of parts still open, by position.
-    open_text: BTreeMap<usize, String>,
+    /// The text the consumer took of text and reasoning parts still open,
+    /// by position.
+    open_text: BTreeMap<usize, AssistantContent>,
 }
 
 /// One open provider item.
@@ -836,11 +837,12 @@ impl Turn {
     }
 
     /// What arrived so far as a response: every part that ended, the text
-    /// the consumer already took of a text part still open, and the
-    /// provider's end when it arrived. A reply the provider did not end is a
-    /// failed turn: `failure` is the error that ended it, and without one the
-    /// caller stopped reading. Unless the provider ended the reply and the
-    /// consumer took every part, no block keeps its provider item.
+    /// the consumer already took of a text or reasoning part still open,
+    /// and the provider's end when it arrived. A reply the provider did not
+    /// end is a failed turn: `failure` is the error that ended it, and
+    /// without one the caller stopped reading. Unless the provider ended the
+    /// reply and the consumer took every part, no block keeps its provider
+    /// item.
     pub(crate) fn partial(
         &self,
         end: Option<&Finish>,
@@ -875,11 +877,7 @@ impl Turn {
             .iter()
             .enumerate()
             .map(|(index, part)| {
-                let part = part.clone().or_else(|| {
-                    self.open_text
-                        .get(&index)
-                        .map(|text| AssistantContent::text(text.clone()))
-                });
+                let part = part.clone().or_else(|| self.open_text.get(&index).cloned());
                 (index, part)
             })
             .collect();
@@ -1051,12 +1049,24 @@ impl Fold<Completion> for Turn {
                 self.open_text.remove(&part.index());
             }
             StreamEvent::Text { part, text } => {
-                self.open_text
+                if let AssistantContent::Text(open) = self
+                    .open_text
                     .entry(part.index())
-                    .or_default()
-                    .push_str(text);
+                    .or_insert_with(|| AssistantContent::text(""))
+                {
+                    open.text.push_str(text);
+                }
             }
-            StreamEvent::Reasoning { .. } | StreamEvent::Arguments { .. } => {}
+            StreamEvent::Reasoning { part, text } => {
+                if let AssistantContent::Reasoning(open) = self
+                    .open_text
+                    .entry(part.index())
+                    .or_insert_with(|| AssistantContent::reasoning(""))
+                {
+                    open.text.push_str(text);
+                }
+            }
+            StreamEvent::Arguments { .. } => {}
         }
         Ok(())
     }

@@ -4,7 +4,7 @@
 use rig_core::providers::openai::wire::MOONSHOT;
 use serde_json::{Value, json};
 
-use super::chat::{ChatHistory, call, call_deltas, interleaved_under};
+use super::chat::{ChatHistory, call, call_deltas};
 
 fn rich() -> Value {
     json!({
@@ -25,10 +25,6 @@ fn rich_deltas() -> Vec<Value> {
     deltas
 }
 
-fn interleaved() -> Vec<Value> {
-    interleaved_under("reasoning_content")
-}
-
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &MOONSHOT,
     model: rig_core::providers::moonshot::KIMI_K2_6,
@@ -36,7 +32,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     text_only_model: Some("kimi-k2-0905-preview"),
     rich,
     rich_deltas,
-    interleaved: Some(interleaved),
+    interleaved: None,
     has_items: true,
 };
 

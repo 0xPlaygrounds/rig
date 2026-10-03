@@ -348,6 +348,27 @@ fn delivered_content_keeps_a_text_part_still_open() {
     );
 }
 
+/// Reasoning the model was still writing is delivered too, so a reply cut
+/// while a Chat message's one reasoning block is open keeps its reasoning.
+#[test]
+fn delivered_content_keeps_a_reasoning_part_still_open() {
+    let items = Transcript::parse_prefix(serde_json::json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "reasoning"}},
+        {"item": "event", "value": {"event": "reasoning", "part": 0, "text": "plan"}},
+        {"item": "event", "value": {"event": "start", "part": 1, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 1, "text": "answer"}},
+    ]))
+    .expect("a stream prefix in order")
+    .into_items();
+    assert_eq!(
+        delivered(&items),
+        vec![
+            AssistantContent::reasoning("plan"),
+            AssistantContent::text("answer")
+        ]
+    );
+}
+
 /// What a stream delivered keeps no provider item, with or without a part
 /// still open: the stream has not ended, so a call never replays without
 /// the reasoning it follows.

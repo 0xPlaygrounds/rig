@@ -1121,11 +1121,12 @@ impl CallKind {
     }
 }
 
-/// The kind of block a decoder is writing.
+/// The kind of run a decoder is writing: answer text, or Mistral's
+/// thinking parts, which pi's `mistral-conversations` keeps apart.
 #[derive(Clone, Copy, PartialEq)]
 enum Writing {
     Text,
-    Reasoning,
+    Thinking,
 }
 
 /// A tool call the reply has open: its writer index, the id it states,
@@ -1151,21 +1152,23 @@ impl OpenCall {
 /// The chat-completions decoder: one state machine for a whole reply and a
 /// stream of chunks, reading every frame leniently as JSON. A whole reply
 /// is the one chunk carrying its message. As pi's `openai-completions`
-/// decodes a message, a run of reasoning is a block, a run of text a block,
-/// and each tool call, image and unknown content part a block of its own;
-/// a block closes when the next one starts. An answer's audio transcript
-/// is its text when it has no other, and its first text block holds the
-/// audio's id.
+/// decodes a message, all of its reasoning is one block, where the first
+/// of it arrived, open until the message ends. A run of text is a block,
+/// as is a run of Mistral thinking parts, and each tool call, image and
+/// unknown content part is a block of its own; a run closes when another
+/// block starts. An answer's audio transcript is its text when it has no
+/// other, and its first text block holds the audio's id.
 #[derive(Default)]
 pub struct ChatDecoder {
     quirks: Quirks,
-    /// The block being written, and its writer index.
+    /// The run being written, its writer index, and a thinking run's text.
     writing: Option<(Writing, usize)>,
-    /// The reasoning block's item as it will hold it: the field its text
-    /// arrived in, or Mistral's thinking part, its text, and its own
-    /// `reasoning_details`.
+    thinking_text: String,
+    /// The writer index of the message's reasoning block while it is open,
+    /// and its item as it will hold it: the field its text arrived in, its
+    /// text, and every `reasoning_details` entry in order.
+    reasoning: Option<usize>,
     reasoning_field: Option<&'static str>,
-    thinking_part: bool,
     reasoning_text: String,
     reasoning_details: Map<String, Value>,
     /// The id of the answer's audio.
@@ -1246,10 +1249,16 @@ impl ChatDecoder {
         Some(choice)
     }
 
-    /// One delta of the assistant message, in the order a stream sends it:
-    /// reasoning and the details that come with it, the content, the
-    /// details that sign one of the delta's calls (Gemini's, which arrive
-    /// with the call), images and calls.
+    /// One delta of the assistant message, in the order streams send its
+    /// parts, so a whole message folds as its stream does: reasoning text,
+    /// the content, images and calls. Its `reasoning_details` join the
+    /// reasoning block in their order, which they open where a stream sends
+    /// them: ahead of the answer, unless each signs what came before it,
+    /// then after the call one of them names, or else after the calls (a
+    /// signature with no text, as Gemini through OpenRouter sends after the
+    /// answer). pi reads a delta's content before its reasoning and its
+    /// details after its calls; a stream sends them in deltas of their own,
+    /// so only a whole message differs.
     fn delta(
         &mut self,
         delta: &Map<String, Value>,
@@ -1263,26 +1272,35 @@ impl ChatDecoder {
                 .map(|text| (*key, text))
         });
         if let Some((key, text)) = reasoning {
-            self.write(Writing::Reasoning, text, out)?;
+            self.reason(text, out)?;
             self.reasoning_field.get_or_insert(key);
         }
-        let calls = delta.get("tool_calls").and_then(Value::as_array);
-        let signs = |detail: &Value| {
-            detail.str("id").is_some_and(|id| {
-                calls
-                    .into_iter()
-                    .flatten()
-                    .any(|call| call.str("id") == Some(id))
-            })
-        };
-        let (signing, leading): (Vec<Value>, Vec<Value>) = delta
+        let calls = delta
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice);
+        let mut details = delta
             .get(REASONING_DETAILS)
             .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
             .cloned()
-            .partition(signs);
-        self.details(leading, out)?;
+            .unwrap_or_default();
+        let names = |detail: &Value, call: &Value| {
+            detail
+                .str("id")
+                .is_some_and(|id| call.str("id") == Some(id))
+        };
+        let signs = |detail: &Value| {
+            calls.iter().any(|call| names(detail, call))
+                || (detail.str("type") == Some("reasoning.text")
+                    && detail.str("text").is_none_or(str::is_empty)
+                    && detail.str("signature").is_some())
+        };
+        let signed = calls
+            .iter()
+            .position(|call| details.iter().any(|detail| names(detail, call)));
+        if !details.iter().all(signs) {
+            self.details(std::mem::take(&mut details), out)?;
+        }
         let audio = delta.get("audio");
         if let Some(id) = audio.and_then(|audio| audio.at("/id")) {
             self.audio_id = Some(id.clone());
@@ -1310,7 +1328,6 @@ impl ChatDecoder {
                 }
             }
         }
-        self.details(signing, out)?;
         for image in delta
             .get("images")
             .and_then(Value::as_array)
@@ -1319,23 +1336,58 @@ impl ChatDecoder {
         {
             self.image(image, out)?;
         }
-        for call in calls.into_iter().flatten() {
+        for (at, call) in calls.iter().enumerate() {
             self.call(call, out)?;
+            if signed == Some(at) {
+                self.details(std::mem::take(&mut details), out)?;
+            }
         }
-        Ok(())
+        self.details(details, out)
     }
 
-    /// Reasoning `details`, into the reasoning block.
+    /// Append `text` to the message's reasoning block, opening it first.
+    fn reason(&mut self, text: &str, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        let at = match self.reasoning {
+            Some(at) => at,
+            None => {
+                let at = out.fresh_index();
+                out.open(at, Block::Reasoning { redacted: false }, Value::Null)?;
+                self.reasoning = Some(at);
+                at
+            }
+        };
+        self.reasoning_text.push_str(text);
+        out.push(at, text)
+    }
+
+    /// Reasoning `details`, into the message's reasoning block.
     fn details(
         &mut self,
         details: Vec<Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        if !details.is_empty() {
-            self.write(Writing::Reasoning, "", out)?;
-            merge_details(&mut self.reasoning_details, details);
+        if details.is_empty() {
+            return Ok(());
         }
+        self.reason("", out)?;
+        merge_details(&mut self.reasoning_details, details);
         Ok(())
+    }
+
+    /// Close the message's reasoning block, holding its item: the field its
+    /// text arrived in and its details.
+    fn close_reasoning(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        let Some(at) = self.reasoning.take() else {
+            return Ok(());
+        };
+        let text = std::mem::take(&mut self.reasoning_text);
+        let mut item = Map::new();
+        if let Some(field) = self.reasoning_field.take() {
+            item.insert(field.to_owned(), text.into());
+        }
+        item.append(&mut self.reasoning_details);
+        out.edit(at, |slot| *slot = Value::Object(item))?;
+        out.finish(at)
     }
 
     /// Append `text` to a block of kind `writing`, first closing the block
@@ -1352,7 +1404,7 @@ impl ChatDecoder {
                 self.close_writing(out)?;
                 let index = out.fresh_index();
                 let block = match writing {
-                    Writing::Reasoning => Block::Reasoning { redacted: false },
+                    Writing::Thinking => Block::Reasoning { redacted: false },
                     Writing::Text => Block::Text,
                 };
                 out.open(index, block, Value::Null)?;
@@ -1360,14 +1412,14 @@ impl ChatDecoder {
                 index
             }
         };
-        if writing == Writing::Reasoning {
-            self.reasoning_text.push_str(text);
+        if writing == Writing::Thinking {
+            self.thinking_text.push_str(text);
         }
         out.push(index, text)
     }
 
-    /// Close the block being written, holding its item: the reasoning's
-    /// field or thinking part and its details, or the audio's id.
+    /// Close the run being written, holding its item: the thinking part,
+    /// or the audio's id.
     fn close_writing(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         let (index, item) = match self.writing.take() {
             None => return Ok(()),
@@ -1377,20 +1429,12 @@ impl ChatDecoder {
                     .take()
                     .map(|id| json!({ "audio": { "id": id } })),
             ),
-            Some((Writing::Reasoning, index)) => {
-                let text = std::mem::take(&mut self.reasoning_text);
-                let mut item = Map::new();
-                if std::mem::take(&mut self.thinking_part) {
-                    item.insert("type".to_owned(), "thinking".into());
-                    item.insert(
-                        "thinking".to_owned(),
-                        json!([{"type": "text", "text": text}]),
-                    );
-                } else if let Some(field) = self.reasoning_field.take() {
-                    item.insert(field.to_owned(), text.into());
-                }
-                item.append(&mut self.reasoning_details);
-                (index, Some(Value::Object(item)))
+            Some((Writing::Thinking, index)) => {
+                let text = std::mem::take(&mut self.thinking_text);
+                (
+                    index,
+                    Some(json!({"type": "thinking", "thinking": [{"type": "text", "text": text}]})),
+                )
             }
         };
         if let Some(item) = item {
@@ -1404,11 +1448,7 @@ impl ChatDecoder {
     fn part(&mut self, part: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         match Part::of(part) {
             Part::Text(text) => self.write(Writing::Text, &text, out),
-            Part::Thinking(text) => {
-                self.write(Writing::Reasoning, &text, out)?;
-                self.thinking_part = true;
-                Ok(())
-            }
+            Part::Thinking(text) => self.write(Writing::Thinking, &text, out),
             Part::Image => self.image(part, out),
             Part::Unknown => {
                 self.close_writing(out)?;
@@ -1595,6 +1635,7 @@ impl ChatDecoder {
         // A finish states the message complete.
         if self.finish.is_some() {
             self.close_writing(out)?;
+            self.close_reasoning(out)?;
         }
         if self.finish == Some(FinishReason::ToolCalls) {
             self.close_calls(out, false)?;
@@ -1637,6 +1678,7 @@ impl ChatDecoder {
     /// which the transport keeps.
     fn end(&mut self, mut out: Out<'_, Completion>, streamed: bool) -> Result<Flow, ProviderError> {
         self.close_writing(&mut out)?;
+        self.close_reasoning(&mut out)?;
         let usage = self
             .usage
             .as_ref()
