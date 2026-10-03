@@ -7,10 +7,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Return only valid JSON. No markdown.","role":"system"},{"content":"Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.","role":"user"}],"model":"mistral-small-latest","response_format":{"type":"json_object"}}'
+  body: '{"messages":[{"content":[{"text":"Return only valid JSON. No markdown.","type":"text"}],"role":"system"},{"content":"Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.","role":"user"}],"model":"mistral-small-latest","response_format":{"type":"json_object"}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"{\"release_lane\": \"canary\", \"risk\": \"low\", \"checks\": {\"compile\": true, \"replay\": true}}","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":31,"prompt_tokens":34,"prompt_tokens_details":{"cached_tokens":8},"total_tokens":65}}'
+  - name: mistral-correlation-id
+    value: 01a1032a-9013-768b-ba26-8441d6b7ff45
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"{\"release_lane\": \"canary\", \"risk\": \"low\", \"checks\": {\"compile\": true, \"replay\": true}}","role":"assistant","tool_calls":null}}],"created":0,"id":"c899c3748b154290b86080029155c334","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":31,"prompt_tokens":34,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":65}}'

@@ -90,6 +90,20 @@ fn user_message(content: Vec<UserContent>) -> Message {
 /// Read a recorded cassette back. Called *after* the wrapper returns, because
 /// record mode writes the fixture when the cassette finishes — so the same
 /// assertion holds whether the cell was just recorded or replayed.
+/// Every content chunk of the user messages in the recorded requests.
+fn recorded_user_chunks(scenario: &str) -> Vec<serde_json::Value> {
+    let cassette = recorded(scenario);
+    cassette
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("body: '"))
+        .filter_map(|body| body.strip_suffix('\''))
+        .filter_map(|body| serde_json::from_str::<serde_json::Value>(&body.replace("''", "'")).ok())
+        .flat_map(|body| body["messages"].as_array().cloned().unwrap_or_default())
+        .filter(|message| message["role"] == "user")
+        .flat_map(|message| message["content"].as_array().cloned().unwrap_or_default())
+        .collect()
+}
+
 fn recorded(scenario: &str) -> String {
     let path = crate::cassettes::cassette_path("mistral", scenario);
     std::fs::read_to_string(&path)
@@ -156,10 +170,13 @@ fn assert_recorded_lacks(scenario: &str, needle: &str, why: &str) {
     );
 }
 
-/// Assert exactly `expected` chunks of one type reached the wire.
+/// Assert exactly `expected` chunks of one type reached the wire in the
+/// recorded requests' user messages.
 fn assert_recorded_chunk_count(scenario: &str, chunk_type: &str, expected: usize) {
-    let needle = format!("\"type\":\"{chunk_type}\"");
-    let found = recorded(scenario).matches(&needle).count();
+    let found = recorded_user_chunks(scenario)
+        .iter()
+        .filter(|chunk| chunk["type"] == chunk_type)
+        .count();
     assert_eq!(
         found, expected,
         "the recorded request for {scenario} should carry {expected} {chunk_type} chunk(s), \
