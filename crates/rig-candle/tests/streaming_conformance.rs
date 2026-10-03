@@ -9,8 +9,8 @@
 #![allow(clippy::expect_used)]
 
 use rig_candle::{
-    CandleCompletionResponse, CandleFrame, FinishReason as CandleFinishReason, Generation,
-    GenerationEvent,
+    CandleCompletionResponse, CandleFrame, ConversationProtocol,
+    FinishReason as CandleFinishReason, Generation, GenerationEvent,
 };
 use rig_core::completion::{CompletionRequest, FinishReason};
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
@@ -59,8 +59,12 @@ fn driver() -> WireDriver {
                     Err(error) => Err(ProviderError::Http(error.into())),
                 })
                 .collect();
+            let generation = Generation {
+                model: "qwen3-scripted".to_owned(),
+                protocol: ConversationProtocol::Qwen3,
+            };
             let stream = Model::new(
-                Generation,
+                generation,
                 Scripted(std::sync::Arc::new(std::sync::Mutex::new(events))),
             )
             .stream(CompletionRequest::new("hello"))?;

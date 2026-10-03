@@ -72,6 +72,37 @@ fn qwen_renderer_preserves_schemas_and_tool_history() {
     assert!(prompt.ends_with("<|im_start|>assistant\n<think>\n\n</think>\n\n"));
 }
 
+/// The adapter merges a result and the user text after it into one user
+/// message; Qwen3 reads them as a tool-response turn and then a user turn.
+#[test]
+fn qwen_renders_a_merged_result_and_text_as_two_turns() {
+    let call = ToolCall::new(
+        CallId::from_wire("call-1"),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("calculate").expect("tool name"),
+            serde_json::json!({"value": 2}),
+        ),
+    );
+    let merged = Message::User {
+        content: vec![
+            UserContent::ToolResult(call.result(vec![ToolResultContent::text("2")])),
+            UserContent::text("next"),
+        ],
+    };
+    let request = request(vec![
+        Message::user("calculate"),
+        Message::from(call),
+        merged,
+    ]);
+    let prompt = render_prompt(&request, ConversationProtocol::Qwen3).expect("render Qwen3");
+    assert!(
+        prompt.contains(
+            "<|im_start|>user\n<tool_response>\n2\n</tool_response><|im_end|>\n<|im_start|>user\nnext<|im_end|>\n"
+        ),
+        "{prompt}"
+    );
+}
+
 #[test]
 fn qwen_documents_follow_system_tools_and_precede_conversation() {
     let mut request = request(vec![
@@ -83,6 +114,16 @@ fn qwen_documents_follow_system_tools_and_precede_conversation() {
         text: "document-marker".to_string(),
         additional_props: HashMap::new(),
     });
+    // Preparing folds the documents into the history, as the driver does.
+    let wire = crate::Generation {
+        model: "qwen3-test".to_owned(),
+        protocol: ConversationProtocol::Qwen3,
+    };
+    let request = <rig_core::operation::Completion as rig_core::wire::Operation>::prepare(
+        request,
+        &rig_core::wire::Wire::describe(&wire),
+    )
+    .expect("the request prepares");
     let prompt = render_prompt(&request, ConversationProtocol::Qwen3).expect("render documents");
     let system = prompt.find("system-marker").expect("system marker");
     let tools = prompt.find("# Tools").expect("tools marker");
@@ -557,7 +598,11 @@ fn every_renderer_takes_any_media_the_adapter_hands_over() {
             ),
         ],
     }];
-    let adapted = rig_core::completion::adapt(&history, &crate::Generation);
+    let generation = crate::Generation {
+        model: "qwen3-test".to_owned(),
+        protocol: ConversationProtocol::Qwen3,
+    };
+    let adapted = rig_core::completion::adapt(&history, &generation);
     for protocol in [
         ConversationProtocol::Llama3,
         ConversationProtocol::SmolLm2,

@@ -97,9 +97,6 @@ fn validate_protocol_inputs(
     request: &CompletionRequest,
     protocol: ConversationProtocol,
 ) -> Result<(), CandleError> {
-    for document in &request.documents {
-        validate_protocol_text(&document.to_string(), "document", protocol)?;
-    }
     for tool in &request.tools {
         validate_protocol_text(&tool.description, "tool description", protocol)?;
         validate_protocol_text(
@@ -206,21 +203,7 @@ pub(crate) fn parse_assistant(
     }
 }
 
-/// The model a local runtime addresses: the one it loaded.
-pub(crate) const LOCAL_MODEL: &str = "local";
-
 fn validate_common_request(request: &CompletionRequest) -> Result<(), CandleError> {
-    // The prepared request names the loaded model itself; any other is an
-    // override.
-    if let Some(model) = request
-        .model
-        .as_deref()
-        .filter(|model| *model != LOCAL_MODEL)
-    {
-        return Err(CandleError::UnsupportedFeature(format!(
-            "model override `{model}`; byte-loaded models do not support request-time model selection"
-        )));
-    }
     if request.output_schema.is_some() {
         return Err(CandleError::UnsupportedFeature(
             "direct output_schema requires constrained decoding; use Rig's tool output mode"
@@ -329,24 +312,6 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
     Ok(())
 }
 
-fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
-    let mut messages = request.chat_history.clone();
-    if !request.documents.is_empty() {
-        let context = request
-            .documents
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
-        let insertion = messages
-            .iter()
-            .position(|message| !matches!(message, Message::System { .. }))
-            .unwrap_or(messages.len());
-        messages.insert(insertion, Message::user(context));
-    }
-    messages
-}
-
 fn render_plain_chat(
     request: &CompletionRequest,
     family: ConversationProtocol,
@@ -361,7 +326,7 @@ fn render_plain_chat(
             "tool_choice requires the Qwen3 conversation protocol".to_string(),
         ));
     }
-    let messages = messages_with_documents(request);
+    let messages = &request.chat_history;
     type Pieces = &'static [&'static str];
     let (turn_start, role_suffix, turn_end, mut rendered): (&str, Pieces, Pieces, String) =
         match family {
@@ -388,7 +353,7 @@ fn render_plain_chat(
             }
         };
     for message in messages {
-        let (role, content) = render_plain_message(&message)?;
+        let (role, content) = render_plain_message(message)?;
         for piece in [&[turn_start, role][..], role_suffix, &[&content], turn_end].concat() {
             rendered.push_str(piece);
         }
@@ -449,7 +414,7 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
 
 fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
     let (tools, require_call) = selected_tools(request)?;
-    let messages = messages_with_documents(request);
+    let messages = &request.chat_history;
     let mut rendered = String::new();
     let mut first_message = 0;
 
@@ -499,7 +464,7 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
     let mut answered = HashSet::<CallId>::new();
     let mut rendered_messages = Vec::new();
     for message in messages.iter().skip(first_message) {
-        rendered_messages.push(render_qwen_message(
+        rendered_messages.extend(render_qwen_message(
             message,
             &mut aliases,
             &mut unresolved,
@@ -560,12 +525,12 @@ fn render_qwen_message(
     aliases: &mut HashMap<String, CallId>,
     unresolved: &mut HashSet<CallId>,
     answered: &mut HashSet<CallId>,
-) -> Result<RenderedMessage, CandleError> {
+) -> Result<Vec<RenderedMessage>, CandleError> {
     match message {
-        Message::System { content } => Ok(RenderedMessage::Normal {
+        Message::System { content } => Ok(vec![RenderedMessage::Normal {
             role: "system",
             content: content.clone(),
-        }),
+        }]),
         Message::Assistant(turn) => {
             let mut rendered = String::new();
             let mut call_count = 0usize;
@@ -624,17 +589,28 @@ fn render_qwen_message(
                     }
                 }
             }
-            Ok(RenderedMessage::Normal {
+            Ok(vec![RenderedMessage::Normal {
                 role: "assistant",
                 content: rendered,
-            })
+            }])
         }
         Message::User { content } => {
-            let mut text = Vec::new();
-            let mut results = Vec::new();
+            // A user message the adapter merged holds results and then text:
+            // the results render as one tool-response turn and the text as
+            // the user turn after it, in their order.
+            let mut segments: Vec<RenderedMessage> = Vec::new();
             for item in content.iter() {
                 match item {
-                    UserContent::Text(value) => text.push(value.text.clone()),
+                    UserContent::Text(value) => match segments.last_mut() {
+                        Some(RenderedMessage::Normal { content, .. }) => {
+                            content.push('\n');
+                            content.push_str(&value.text);
+                        }
+                        _ => segments.push(RenderedMessage::Normal {
+                            role: "user",
+                            content: value.text.clone(),
+                        }),
+                    },
                     UserContent::ToolResult(result) => {
                         let canonical_by_id = unresolved.get(&result.call);
                         // A recycled provider handle must not redirect a stale
@@ -693,24 +669,22 @@ fn render_qwen_message(
                                 }
                             }
                         }
-                        results.push(items.join("\n"));
+                        let result = items.join("\n");
+                        match segments.last_mut() {
+                            Some(RenderedMessage::ToolResults(results)) => results.push(result),
+                            _ => segments.push(RenderedMessage::ToolResults(vec![result])),
+                        }
                     }
                     unsupported => return Err(unsupported_user_content(unsupported)),
                 }
             }
-            if !text.is_empty() && !results.is_empty() {
-                return Err(CandleError::UnsupportedPromptContent(
-                    "mixed text and tool-result user message",
-                ));
-            }
-            if results.is_empty() {
-                Ok(RenderedMessage::Normal {
+            if segments.is_empty() {
+                segments.push(RenderedMessage::Normal {
                     role: "user",
-                    content: text.join("\n"),
-                })
-            } else {
-                Ok(RenderedMessage::ToolResults(results))
+                    content: String::new(),
+                });
             }
+            Ok(segments)
         }
     }
 }

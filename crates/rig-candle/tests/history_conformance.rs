@@ -1,12 +1,14 @@
-//! The history conformance suite for candle's local generation wire. A local
-//! model keeps no provider items, so the rows that check verbatim replay
-//! check that nothing breaks; every other invariant holds as on any wire.
+//! The history conformance suite for candle's local generation wire, on the
+//! Qwen3 protocol, which renders reasoning and tools. A local model keeps no
+//! provider items, so the rows that check verbatim replay check that nothing
+//! breaks. The body is the prompt the model reads, beside the model the
+//! request addresses.
 
 #![allow(clippy::expect_used)]
 
 use rig_candle::{
-    CandleCompletionResponse, CandleFrame, FinishReason as CandleFinishReason, Generation,
-    GenerationEvent,
+    CandleCompletionResponse, CandleFrame, ConversationProtocol,
+    FinishReason as CandleFinishReason, Generation, GenerationEvent,
 };
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
@@ -42,25 +44,35 @@ fn call(arguments: &str) -> GenerationEvent {
 impl HistoryFixture for CandleHistory {
     type Wire = Generation;
 
-    fn wire(&self, _model: &str) -> Generation {
-        Generation
+    fn wire(&self, model: &str) -> Generation {
+        Generation {
+            model: model.to_owned(),
+            protocol: ConversationProtocol::Qwen3,
+        }
     }
 
     fn model(&self) -> &'static str {
-        "qwen3-local"
+        "qwen3-00000000000000a1"
     }
 
     fn other_model(&self) -> &'static str {
-        "llama-local"
+        "qwen3-00000000000000b2"
     }
 
+    /// The payload is the request itself, rendered by the runtime; the body
+    /// is that rendered prompt and the model the request addresses, which
+    /// the runtime refuses when it is not the loaded one.
     fn body(
         &self,
         wire: &Generation,
         request: CompletionRequest,
         mode: Mode,
     ) -> Result<Value, EncodeError> {
-        Ok(serde_json::to_value(wire.encode(request, mode)?)?)
+        let request = wire.encode(request, mode)?;
+        let prompt = wire
+            .prompt(&request)
+            .map_err(|error| EncodeError::request(error.to_string()))?;
+        Ok(serde_json::json!({"model": request.model, "prompt": prompt}))
     }
 
     /// The generator restates nothing: a whole reply is its events, read at

@@ -46,7 +46,7 @@ fn model() -> Result<Model<Generation, CandleModel>, Box<dyn std::error::Error +
     });
     result
         .clone()
-        .map(|candle| Model::new(Generation, candle))
+        .map(|candle| candle.completion())
         .map_err(Into::into)
 }
 

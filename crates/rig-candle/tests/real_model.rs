@@ -3,8 +3,7 @@
 use std::path::PathBuf;
 
 use futures::StreamExt;
-use rig_candle::{CandleCompletionResponse, CandleModel, Generation, ModelData};
-use rig_core::Model;
+use rig_candle::{CandleCompletionResponse, CandleModel, ModelData};
 use rig_core::completion::CompletionRequest;
 use rig_core::streaming::{Item, StreamEvent};
 
@@ -29,7 +28,11 @@ async fn loads_and_generates_with_a_real_local_model()
     } else {
         CandleModel::builder(data)
     };
-    let model = Model::new(Generation, builder.temperature(0.0).max_tokens(16).build()?);
+    let model = builder
+        .temperature(0.0)
+        .max_tokens(16)
+        .build()?
+        .completion();
 
     let is_gguf = directory.join("model.gguf").is_file();
     let prompt = if is_gguf {
