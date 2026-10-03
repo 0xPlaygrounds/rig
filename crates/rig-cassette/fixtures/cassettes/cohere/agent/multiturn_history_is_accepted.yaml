@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":32,"messages":[{"content":[{"text":"Remember the code word cobalt-orchid for my next question.","type":"text"}],"role":"user"},{"content":[{"text":"Understood. I will remember the code word cobalt-orchid.","type":"text"}],"role":"assistant","tool_calls":[]},{"content":[{"text":"What code word did I ask you to remember?","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+  body: '{"max_tokens":32,"messages":[{"content":"Remember the code word cobalt-orchid for my next question.","role":"user"},{"content":"Understood. I will remember the code word cobalt-orchid.","role":"assistant"},{"content":"What code word did I ask you to remember?","role":"user"}],"model":"command-a-03-2025"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"ae7b8cf3-4417-40d5-9922-40972fb4dc9c","message":{"content":[{"text":"The code word you asked me to remember is **cobalt-orchid**.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":37,"output_tokens":16},"cached_tokens":448,"tokens":{"input_tokens":540,"output_tokens":20}}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"You asked me to remember the code word **cobalt-orchid**.","role":"assistant"}}],"created":0,"id":"861905bd-3067-4e5a-90d3-c60f6eb30e05","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":15,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":37,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":52}}'

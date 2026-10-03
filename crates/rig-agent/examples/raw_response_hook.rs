@@ -4,7 +4,7 @@
 //! `CompletionResponse` deliberately carries only what every provider has in
 //! common — so some of what a provider says would have nowhere to land:
 //! OpenAI's `system_fingerprint` and `service_tier`, Anthropic's
-//! `stop_sequence`, Ollama's timings, and so on.
+//! `stop_sequence`, llama.cpp's timings, and so on.
 //!
 //! It lands anyway: the provider's own response for every attempt, serialized,
 //! arrives as `CompletionResponse::raw` — on the response an `on_outcome` hook

@@ -20,7 +20,7 @@ async fn streaming_tools_smoke() {
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
-                .additional_params(serde_json::json!({ "think": false }))
+                .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                 .build();
 
             let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(3).stream();

@@ -1,4 +1,4 @@
-//! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
+//! Canonical streaming-grammar coverage for Cohere's Chat dialect, asserted
 //! through the *normalized* path: the aggregated
 //! [`Streamed::finish`](rig::streaming::Streamed::finish) response, the terminal `CompletionResponse`
 //! record, usage, and finish reason.

@@ -1,0 +1,28 @@
+when:
+  path: /compatibility/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Reply with exactly this one word and nothing else: streamed","role":"user"}],"model":"command-a-03-2025","stream":true,"stream_options":{"include_usage":true},"temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"4347a70c-c41f-44f7-9088-286f3818ff57","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
+
+    data: {"choices":[{"delta":{"content":"stream"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"4347a70c-c41f-44f7-9088-286f3818ff57","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
+
+    data: {"choices":[{"delta":{"content":"ed"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"4347a70c-c41f-44f7-9088-286f3818ff57","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
+
+    data: {"choices":[{"delta":{},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"4347a70c-c41f-44f7-9088-286f3818ff57","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
+
+    data: {"choices":[],"created":0,"id":"4347a70c-c41f-44f7-9088-286f3818ff57","model":"command-a-03-2025","object":"chat.completion.chunk","usage":{"completion_tokens":2,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":11,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":13}}
+
+    data: [DONE]
+

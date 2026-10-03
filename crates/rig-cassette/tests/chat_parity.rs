@@ -19,8 +19,8 @@ macro_rules! parity {
 }
 
 parity!(
-    copilot, deepseek, doubleword, groq, llamacpp, mistral, mistralrs, openai, openrouter,
-    perplexity, venice,
+    cohere, copilot, deepseek, doubleword, groq, llamacpp, mistral, mistralrs, ollama, openai,
+    openrouter, perplexity, venice,
 );
 
 /// The same recorded frames fold to the same response through `call` and
@@ -96,34 +96,6 @@ fn every_recorded_whole_reply_agrees_with_its_restatement_as_a_stream() {
             assert_restated_agrees(&wire, [frame], chat_parity::restate_chat(&body));
             compared += 1;
         }
-    }
-    let cohere = rig::providers::cohere::Chat {
-        provider: rig::providers::cohere::CohereConfig::new("parity-key"),
-        model: "parity".to_owned(),
-    };
-    for interaction in chat_parity::interactions_at("cohere", "/v2/chat") {
-        let Some((body, frame)) = whole(&interaction).filter(|_| !interaction.streaming) else {
-            continue;
-        };
-        if decode(&cohere, Mode::Unary, [frame.clone()]).is_err() {
-            continue;
-        }
-        assert_restated_agrees(&cohere, [frame], chat_parity::restate_cohere(&body));
-        compared += 1;
-    }
-    let ollama = rig::providers::ollama::Chat {
-        provider: rig::providers::ollama::OllamaConfig::new(),
-        model: "parity".to_owned(),
-    };
-    for interaction in chat_parity::interactions_at("ollama", "/api/chat") {
-        let Some((body, frame)) = whole(&interaction).filter(|_| !interaction.streaming) else {
-            continue;
-        };
-        if decode(&ollama, Mode::Unary, [frame.clone()]).is_err() {
-            continue;
-        }
-        assert_restated_agrees(&ollama, [frame], chat_parity::restate_ollama(&body));
-        compared += 1;
     }
     assert!(
         compared > 100,

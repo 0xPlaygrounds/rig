@@ -1,0 +1,16 @@
+when:
+  path: /compatibility/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Reply with exactly this one word and nothing else: captured","role":"user"}],"model":"command-a-03-2025","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"captured","role":"assistant"}}],"created":0,"id":"3bc128d5-ea86-4c2e-ab45-0d33cd4a0869","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":1,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":11,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":12}}'

@@ -1,26 +1,35 @@
-//! The replay findings of the Ollama audit, each as the test that closes
-//! it: the message is rebuilt from its blocks, arguments are always an
-//! object, and nothing the adapter hands over is refused.
+//! The replay findings of the Ollama audit on its Chat dialect: arguments
+//! are always an object, and images Ollama does not read are downgraded
+//! rather than refused.
 
 use serde_json::{Value, json};
 
-use super::{Chat, OllamaConfig};
-use crate::completion::{CompletionRequest, Message};
+use super::OllamaConfig;
+use crate::completion::{CompletionRequest, Message, ToolDefinition};
 use crate::message::{
     AssistantContent, AssistantMessage, CallId, DocumentSourceKind, Image, ImageMediaType, Origin,
-    Reasoning, StopReason, Text, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
+    StopReason, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
 };
+use crate::providers::openai::wire::Chat;
 use crate::test_utils::history::decode;
 use crate::test_utils::json_body;
 use crate::wire::{Mode, Operation, Wire, WireFrame};
 
+const MODEL: &str = "qwen3:4b";
+
 fn wire() -> Chat {
-    OllamaConfig::new().completion("qwen3:4b")
+    OllamaConfig::new().completion(MODEL)
 }
 
 fn sent(history: Vec<Message>) -> Value {
     let wire = wire();
-    let mut request = CompletionRequest::new("next");
+    // The request declares the tools, so calls and results stay calls.
+    let mut request = CompletionRequest::new("next").tools(
+        ["add", "shot"]
+            .into_iter()
+            .map(|tool| ToolDefinition::new(name(tool), "a tool", json!({"type": "object"})))
+            .collect(),
+    );
     request.chat_history = history;
     request.chat_history.push(Message::user("next"));
     let request = crate::operation::Completion::prepare(request, &wire.describe())
@@ -32,80 +41,66 @@ fn name(name: &str) -> ToolName {
     ToolName::new(name).expect("a tool name")
 }
 
-fn same_model(content: Vec<AssistantContent>) -> AssistantMessage {
-    AssistantMessage {
-        content,
-        origin: Some(Origin::new("ollama.chat", "ollama", "qwen3:4b")),
-        stop: Some(StopReason::Stop),
-    }
-}
-
-/// chatA NEW-5: every reasoning block reaches `thinking`, joined with a
-/// newline, and text blocks join with nothing between them, as pi joins
-/// them.
-#[test]
-fn the_rebuild_keeps_every_reasoning_block_and_joins_text_as_pi_does() {
-    let turn = same_model(vec![
-        AssistantContent::Reasoning(Reasoning::new("first thought")),
-        AssistantContent::Text(Text::new("a")),
-        AssistantContent::Reasoning(Reasoning::new("second thought")),
-        AssistantContent::Text(Text::new("b")),
-    ]);
-    let body = sent(vec![Message::user("q"), Message::Assistant(turn)]);
-    assert_eq!(
-        body["messages"][1],
-        json!({"role": "assistant", "content": "ab", "thinking": "first thought\nsecond thought"})
+/// One `/v1/chat/completions` reply whose only call states `arguments`, in
+/// the shape `ollama/tools/optional_argument.yaml` records.
+fn reply(arguments: Value) -> ToolCall {
+    let frame = WireFrame::Text(
+        json!({"id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": MODEL,
+            "system_fingerprint": "fp_ollama",
+            "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
+                "role": "assistant", "content": "",
+                "tool_calls": [{"id": "call_1", "index": 0, "type": "function",
+                    "function": {"name": "add", "arguments": arguments}}]}}]})
+        .to_string(),
     );
+    let response = decode(&wire(), Mode::Unary, vec![frame]).expect("a call never fails");
+    let calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
+    let [call] = calls.as_slice() else {
+        panic!("the call is kept: {:?}", response.choice);
+    };
+    call.clone()
 }
 
 /// #1085, #2447, #2554 on Ollama: double-stringified arguments are an
-/// object, malformed ones and a nameless call never fail the reply, and
-/// `null` ones go back as an object.
+/// object, malformed ones never fail the reply, and `null` ones go back as
+/// an object.
 #[test]
 fn arguments_are_always_an_object() {
-    let reply = |arguments: Value| {
-        let frame = WireFrame::Text(
-            json!({"model": "qwen3:4b", "done": true, "done_reason": "stop", "message": {
-                "role": "assistant", "content": "",
-                "tool_calls": [{"function": {"name": "add", "arguments": arguments}},
-                    {"function": {"arguments": {}}}]}})
-            .to_string(),
-        );
-        let response = decode(&wire(), Mode::Unary, vec![frame]).expect("a call never fails");
-        let calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
-        let [call] = calls.as_slice() else {
-            panic!(
-                "the named call is kept, the nameless one dropped: {:?}",
-                response.choice
-            );
-        };
-        call.clone()
-    };
     assert_eq!(
-        reply(json!("{\"x\":1}")).function.arguments_value(),
+        reply(json!("\"{\\\"x\\\":1}\"")).function.arguments_value(),
         json!({"x": 1})
     );
     let malformed = reply(json!("{\"x\": 1"));
     assert_eq!(malformed.function.arguments_value(), json!({"x": 1}));
     assert!(malformed.function.invalid_arguments.is_some());
-    assert_eq!(reply(Value::Null).function.arguments_value(), json!({}));
-    let turn = same_model(vec![AssistantContent::ToolCall(ToolCall::new(
-        CallId::from_wire("call_1"),
-        ToolFunction::new(name("add"), Value::Null),
-    ))]);
+    assert_eq!(reply(json!("null")).function.arguments_value(), json!({}));
+    let turn = AssistantMessage {
+        content: vec![AssistantContent::ToolCall(ToolCall::new(
+            CallId::from_wire("call_1"),
+            ToolFunction::new(name("add"), Value::Null),
+        ))],
+        origin: Some(Origin::new("openai.chat", "ollama", MODEL)),
+        stop: Some(StopReason::ToolUse),
+    };
     let body = sent(vec![Message::user("q"), Message::Assistant(turn)]);
     assert_eq!(
         body["messages"][1]["tool_calls"][0]["function"]["arguments"],
-        json!({})
+        "{}"
     );
 }
 
 /// chatA NEW-1, NEW-2, #2380 on Ollama: another model's assistant image and
-/// a tool result's image reach Ollama downgraded, never refused.
+/// a tool result's image reach Ollama downgraded, never refused, and an
+/// image Ollama would have to fetch becomes a placeholder.
 #[test]
 fn images_ollama_does_not_read_are_downgraded() {
     let image = Image {
         data: DocumentSourceKind::base64("iVBORw0KGgo="),
+        media_type: Some(ImageMediaType::PNG),
+        ..Image::default()
+    };
+    let linked = Image {
+        data: DocumentSourceKind::Url("https://example.com/a.png".to_owned()),
         media_type: Some(ImageMediaType::PNG),
         ..Image::default()
     };
@@ -114,7 +109,9 @@ fn images_ollama_does_not_read_are_downgraded() {
         ToolFunction::new(name("shot"), json!({})),
     );
     let history = vec![
-        Message::user("look"),
+        Message::User {
+            content: vec![UserContent::text("look"), UserContent::Image(linked)],
+        },
         Message::Assistant(AssistantMessage {
             content: vec![
                 AssistantContent::Image(image.clone()),
@@ -130,14 +127,19 @@ fn images_ollama_does_not_read_are_downgraded() {
         },
     ];
     let body = sent(history);
+    assert!(
+        body["messages"][0]
+            .to_string()
+            .contains(crate::completion::history::IMAGE_UNSENDABLE),
+        "{body}"
+    );
     assert_eq!(
         body["messages"][2]["content"],
         crate::completion::history::TOOL_IMAGE_ATTACHED,
         "{body}"
     );
     assert_eq!(
-        body["messages"][3]["images"],
-        json!(["iVBORw0KGgo="]),
+        body["messages"][3]["content"][1]["image_url"]["url"], "data:image/png;base64,iVBORw0KGgo=",
         "{body}"
     );
 }

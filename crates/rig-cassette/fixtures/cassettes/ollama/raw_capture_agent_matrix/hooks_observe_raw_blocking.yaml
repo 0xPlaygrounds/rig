@@ -1,5 +1,5 @@
 when:
-  path: /api/chat
+  path: /v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b","options":{"num_predict":64},"stream":false,"think":false}'
+  body: '{"max_tokens":64,"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b","reasoning_effort":"none"}'
 then:
   status: 200
   header:
   - name: content-type
-    value: application/json; charset=utf-8
-  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":64,"eval_duration":1042406831,"load_duration":4621555375,"message":{"content":"Hmm, the user just asked me to reply with exactly the single word \"pong\". \n\nOkay, this seems like a very specific request. They want me to output only the word \"pong\" without any additional text or punctuation. \n\nI recall that \"pong\" is a common term in computing and gaming contexts - it","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":18,"prompt_eval_duration":3446877583,"total_duration":9219392292}'
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"Hmm, the user just asked me to reply with exactly the single word \"pong\". That''s very specific. \n\nOkay, let me think about this. They want a precise response without any extra text. The word \"pong\" is usually an echo sound or a simple game term, but in this context, it''s","role":"assistant"}}],"created":0,"id":"chatcmpl-169","model":"qwen3:4b","object":"chat.completion","system_fingerprint":"fp_ollama","usage":{"completion_tokens":64,"prompt_tokens":18,"total_tokens":82}}'

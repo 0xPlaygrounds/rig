@@ -20,8 +20,8 @@ use rig::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig::error::ErrorKind;
 use rig::message::AssistantContent;
 use rig::providers::openai::wire::{
-    Chat, DEEPSEEK, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OPENROUTER, OpenAIConfig,
-    PERPLEXITY, VENICE,
+    COHERE, Chat, DEEPSEEK, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OLLAMA, OPENAI,
+    OPENROUTER, OpenAIConfig, PERPLEXITY, VENICE,
 };
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig::wire::{Encoded, Framing, WireFrame};
@@ -32,6 +32,7 @@ const REGENERATE: &str = "RIG_REGENERATE_PARITY";
 /// The provider directories whose recorded chat-completions replies decode
 /// through the chat wire.
 pub const PROVIDERS: &[&str] = &[
+    "cohere",
     "copilot",
     "deepseek",
     "doubleword",
@@ -39,6 +40,7 @@ pub const PROVIDERS: &[&str] = &[
     "llamacpp",
     "mistral",
     "mistralrs",
+    "ollama",
     "openai",
     "openrouter",
     "perplexity",
@@ -48,6 +50,7 @@ pub const PROVIDERS: &[&str] = &[
 /// The dialect each provider directory was recorded under.
 pub fn dialect(provider: &str) -> Dialect {
     match provider {
+        "cohere" => COHERE,
         "copilot" => rig::providers::copilot::wire::DIALECT,
         "deepseek" => DEEPSEEK,
         "doubleword" => DOUBLEWORD,
@@ -55,6 +58,7 @@ pub fn dialect(provider: &str) -> Dialect {
         "llamacpp" => LLAMACPP,
         "mistral" => MISTRAL,
         "mistralrs" | "openai" => OPENAI,
+        "ollama" => OLLAMA,
         "openrouter" => OPENROUTER,
         "perplexity" => PERPLEXITY,
         "venice" => VENICE,
@@ -466,110 +470,5 @@ pub fn restate_chat(body: &Value) -> Vec<WireFrame> {
         .into_iter()
         .map(|frame| WireFrame::Text(frame.to_string()))
         .chain([WireFrame::Text("[DONE]".to_owned())])
-        .collect()
-}
-
-/// A whole Cohere `/v2/chat` reply restated as its events: the message's
-/// opening fields, the tool plan in two pieces, each content item opened
-/// with its text in two pieces, each call opened with its arguments in two
-/// pieces, each citation whole, and the end.
-pub fn restate_cohere(reply: &Value) -> Vec<WireFrame> {
-    let mut message = reply["message"].as_object().cloned().unwrap_or_default();
-    let mut take = |key: &str| match message.get_mut(key) {
-        Some(Value::Array(items)) => std::mem::take(items),
-        _ => Vec::new(),
-    };
-    let (content, calls, citations) = (take("content"), take("tool_calls"), take("citations"));
-    let plan = message.shift_remove("tool_plan");
-    let mut events =
-        vec![json!({"type": "message-start", "id": reply["id"], "delta": {"message": message}})];
-    if let Some(Value::String(plan)) = plan {
-        for half in halves(&plan) {
-            events.push(
-                json!({"type": "tool-plan-delta", "delta": {"message": {"tool_plan": half}}}),
-            );
-        }
-    }
-    for (index, item) in content.iter().enumerate() {
-        let key = if item.get("thinking").is_some() {
-            "thinking"
-        } else {
-            "text"
-        };
-        let mut opening = item.clone();
-        let text = item[key].as_str().map(halves);
-        if text.is_some() {
-            opening[key] = json!("");
-        }
-        events.push(json!({"type": "content-start", "index": index, "delta": {"message": {"content": opening}}}));
-        for half in text.into_iter().flatten() {
-            events.push(json!({"type": "content-delta", "index": index, "delta": {"message": {"content": {key: half}}}}));
-        }
-        events.push(json!({"type": "content-end", "index": index}));
-    }
-    for (index, call) in calls.iter().enumerate() {
-        let mut opening = call.clone();
-        let arguments = call["function"]["arguments"].as_str().map(halves);
-        if arguments.is_some() {
-            opening["function"]["arguments"] = json!("");
-        }
-        events.push(json!({"type": "tool-call-start", "index": index, "delta": {"message": {"tool_calls": opening}}}));
-        for half in arguments.into_iter().flatten() {
-            events.push(json!({"type": "tool-call-delta", "index": index, "delta": {"message": {"tool_calls": {"function": {"arguments": half}}}}}));
-        }
-        events.push(json!({"type": "tool-call-end", "index": index}));
-    }
-    for (index, citation) in citations.iter().enumerate() {
-        events.push(json!({"type": "citation-start", "index": index, "delta": {"message": {"citations": citation}}}));
-        events.push(json!({"type": "citation-end", "index": index}));
-    }
-    events.push(json!({"type": "message-end", "delta": {"finish_reason": reply["finish_reason"], "usage": reply["usage"]}}));
-    events
-        .into_iter()
-        .map(|event| WireFrame::Text(event.to_string()))
-        .collect()
-}
-
-/// A whole Ollama `/api/chat` record restated as the lines a stream of the
-/// same turn carries: the message's thinking and content in two pieces
-/// each, its tool calls on one line, and the `done` record with the
-/// counters.
-pub fn restate_ollama(record: &Value) -> Vec<WireFrame> {
-    let message = record["message"].as_object().cloned().unwrap_or_default();
-    let line = |message: Value, done: bool| json!({"model": record["model"], "created_at": record["created_at"], "message": message, "done": done});
-    let mut first = serde_json::Map::new();
-    let mut later = Vec::new();
-    // A stream thinks before it answers, and answers before it calls.
-    let rank = |key: &str| match key {
-        "thinking" => 0,
-        "content" => 1,
-        _ => 2,
-    };
-    let mut fields: Vec<_> = message.iter().collect();
-    fields.sort_by_key(|(key, _)| rank(key));
-    for (key, value) in fields {
-        match value {
-            Value::String(text) if matches!(key.as_str(), "content" | "thinking") => {
-                first.insert(key.clone(), json!(""));
-                for half in halves(text) {
-                    later.push(json!({"role": "assistant", key.clone(): half}));
-                }
-            }
-            Value::Array(_) if key == "tool_calls" => {
-                later.push(json!({"role": "assistant", "tool_calls": value}));
-            }
-            value => {
-                first.insert(key.clone(), value.clone());
-            }
-        }
-    }
-    let mut lines = vec![line(Value::Object(first), false)];
-    lines.extend(later.into_iter().map(|message| line(message, false)));
-    let mut done = record.clone();
-    done["message"] = json!({"role": "assistant", "content": ""});
-    lines.push(done);
-    lines
-        .into_iter()
-        .map(|line| WireFrame::Text(line.to_string()))
         .collect()
 }

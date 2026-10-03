@@ -123,7 +123,7 @@ where
     decode_known(data)
 }
 
-/// Classify one line of an undiscriminated NDJSON wire (Ollama).
+/// Classify one line of an undiscriminated JSON wire.
 ///
 /// The wire has no discriminator at all: a line either decodes as the
 /// response shape (`Known`) or is `Corrupt`. This family never produces

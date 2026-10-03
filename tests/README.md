@@ -736,9 +736,9 @@ would have sent is pinned by the recording's owning test, not by the cell.
 Every HTTP wire threads the witness's `AdapterContext` through its request,
 so a native cell reads the adapter's boundary facts (the request, the
 status, the provider's verdict, usage and error envelope, the closure) for
-Gemini, the OpenAI Chat Completions and Responses wires and Anthropic;
-Cohere, Ollama and the Gemini Interactions wire report the transport facts
-without a payload projection. Error classification follows the one funnel in
+Gemini, the OpenAI Chat Completions and Responses wires (Cohere and Ollama
+among the Chat dialects) and Anthropic; the Gemini Interactions wire reports
+the transport facts without a payload projection. Error classification follows the one funnel in
 `rig_core::provider_response` (see `AGENTS.md`, Error Handling).
 
 Consumed cassettes and goldens remain in Git; historical execution logs, proof

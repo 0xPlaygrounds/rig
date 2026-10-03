@@ -680,15 +680,19 @@ impl crate::completion::ReplayTarget for Chat {
     /// typed data; audio as data; video as a URL or typed data, except to
     /// OpenAI, Azure and Mistral; a PDF as data, or as a URL OpenRouter or
     /// Mistral fetches; a file id where the dialect takes one; and a string
-    /// document as text. DeepSeek and Mira take text only, and Perplexity
-    /// takes no media but images.
+    /// document as text. DeepSeek and Mira take text only; Perplexity and
+    /// Cohere take no media but images, and Ollama only images as data.
     fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::Media;
         use crate::message::{DocumentMediaType, DocumentSourceKind as Source};
         let dialect = &self.provider.dialect;
         let rewrite = dialect.quirks.rewrite;
         let parts = !matches!(rewrite, BodyRewrite::DeepSeek | BodyRewrite::Mira);
-        let files = parts && rewrite != BodyRewrite::Perplexity;
+        // Cohere and Ollama read images and text, and no other media.
+        let files = parts
+            && rewrite != BodyRewrite::Perplexity
+            && ![super::dialects::COHERE.name, super::dialects::OLLAMA.name]
+                .contains(&dialect.name);
         let linked = |source: &Source, typed: bool| match source {
             Source::Url(_) => true,
             Source::Base64(_) => typed,
@@ -699,6 +703,9 @@ impl crate::completion::ReplayTarget for Chat {
                 parts
                     && place != crate::completion::Place::Assistant
                     && linked(&image.data, image.media_type.is_some())
+                    // Ollama reads an image as data and never fetches a URL.
+                    && !(dialect.name == super::dialects::OLLAMA.name
+                        && matches!(image.data, Source::Url(_)))
             }
             Media::Audio(audio) => files && matches!(audio.data, Source::Base64(_)),
             Media::Video(video) => {
@@ -802,6 +809,7 @@ fn vendor_reads_images(vendor: &str, model: &str) -> bool {
         "openai" | "azure.openai" => {
             !(model.starts_with("gpt-3.5") || OPENAI_TEXT_ONLY.iter().any(|id| is_model(model, id)))
         }
+        "cohere" => crate::providers::cohere::reads_images(model),
         "zai" | "z-ai" => zai::reads_images(model),
         "moonshot" | "moonshotai" => moonshot::reads_images(model),
         "minimax" => minimax::reads_images(model),

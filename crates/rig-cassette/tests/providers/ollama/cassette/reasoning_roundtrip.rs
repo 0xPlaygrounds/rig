@@ -10,7 +10,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 const MODEL: &str = "qwen3:4b";
 
 fn think_params() -> Option<serde_json::Value> {
-    Some(serde_json::json!({ "think": true }))
+    None
 }
 
 #[tokio::test]

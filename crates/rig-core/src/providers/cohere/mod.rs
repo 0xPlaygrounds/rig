@@ -1,4 +1,8 @@
-//! Cohere configuration, endpoint wires, and model identifiers.
+//! Cohere configuration, model identifiers, and embedding wires.
+//!
+//! Chat goes through Cohere's OpenAI Compatibility API on the shared Chat
+//! Completions wire, as the [`COHERE`](crate::providers::openai::wire::COHERE)
+//! dialect. Text and image embeddings use Cohere's own `/v1/embed`.
 //!
 //! ```no_run
 //! use rig_core::providers::cohere;
@@ -11,16 +15,15 @@
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! Pair a wire with a transport in a [`crate::Model`] to send it.
 
-pub mod completion;
 pub mod embeddings;
-pub mod streaming;
 pub mod wire;
 
 pub use crate::client::cohere::Cohere;
-pub use wire::{Chat, CohereConfig, Embeddings, ImageEmbeddings};
+pub use wire::{CohereConfig, Embeddings, ImageEmbeddings};
+
+/// Stable descriptor name recorded on normalized responses and telemetry.
+pub(crate) const PROVIDER_NAME: &str = "cohere";
 
 /// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";
@@ -49,6 +52,12 @@ pub const EMBED_ENGLISH_LIGHT_V3: &str = "embed-english-light-v3.0";
 pub const EMBED_MULTILINGUAL_V3: &str = "embed-multilingual-v3.0";
 /// `embed-multilingual-light-v3.0` embedding model
 pub const EMBED_MULTILINGUAL_LIGHT_V3: &str = "embed-multilingual-light-v3.0";
+
+/// Whether `model` reads user images: Cohere's vision models (Command A
+/// Vision, Aya Vision) do, and its text models do not.
+pub(crate) fn reads_images(model: &str) -> bool {
+    model.contains("vision")
+}
 
 pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {

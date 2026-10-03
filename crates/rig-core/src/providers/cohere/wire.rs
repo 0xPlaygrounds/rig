@@ -1,4 +1,4 @@
-//! Cohere configuration and chat, text-embedding, and image-embedding wires.
+//! Cohere configuration and its text-embedding and image-embedding wires.
 //!
 //! ```no_run
 //! use rig_core::providers::cohere::{Cohere, EMBED_V4};
@@ -7,11 +7,10 @@
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
-use crate::json_utils;
-use crate::operation::{Completion, Embedding, ImageEmbedding};
+use crate::operation::{Embedding, ImageEmbedding};
+use crate::providers::openai::wire::{COHERE, Chat, OpenAIConfig};
 use crate::wire::Flow;
 use crate::wire::{
     Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
@@ -19,7 +18,7 @@ use crate::wire::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::completion::{CohereCompletionRequest, PROVIDER_NAME};
+use super::PROVIDER_NAME;
 
 use super::embeddings::{
     EmbeddingResponse as CohereEmbeddingResponse,
@@ -29,6 +28,9 @@ use crate::providers::internal::wire::classify_reply_or_message_envelope;
 
 /// Cohere's API root.
 const BASE_URL: &str = "https://api.cohere.ai";
+
+/// Where Cohere's OpenAI Compatibility API sits under the API root.
+const COMPATIBILITY_PATH: &str = "/compatibility/v1";
 
 /// The environment variable carrying the API key.
 const API_KEY_ENV: &str = "COHERE_API_KEY";
@@ -64,12 +66,12 @@ impl CohereConfig {
         self
     }
 
-    /// The chat wire for `model`.
+    /// The Chat Completions wire for `model`, on Cohere's OpenAI
+    /// Compatibility API under this API root.
     pub(crate) fn completion(&self, model: impl Into<String>) -> Chat {
-        Chat {
-            provider: self.clone(),
-            model: model.into(),
-        }
+        OpenAIConfig::with_key(&COHERE, self.api_key.clone())
+            .with_base_url(format!("{}{COMPATIBILITY_PATH}", self.base_url))
+            .chat(model)
     }
 
     /// Build a text-embedding wire reporting the supplied or known model width,
@@ -105,98 +107,6 @@ impl CohereConfig {
                 http::header::AUTHORIZATION,
                 format!("Bearer {}", self.api_key.expose()),
             )
-    }
-}
-
-/// The chat wire: `POST /v2/chat`, SSE when streamed.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Chat {
-    /// The provider this wire speaks to.
-    pub provider: CohereConfig,
-    /// The model to address.
-    pub model: String,
-}
-
-impl Wire for Chat {
-    type Op = Completion;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = super::streaming::ChatDecoder;
-
-    fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME)
-            .model(self.model.as_str())
-            .replay(self)
-    }
-
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let mut body = CohereCompletionRequest::try_from((self.model.as_str(), request))?;
-        if mode == Mode::Streaming {
-            body.additional_params = Some(json_utils::merge(
-                body.additional_params
-                    .take()
-                    .unwrap_or_else(|| serde_json::json!({})),
-                serde_json::json!({ "stream": true }),
-            ));
-        }
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Cohere completion request",
-            &body,
-        );
-        let request = self
-            .provider
-            .post("/v2/chat")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
-        // Cohere reports no request-id response header: its
-        // `x-debug-trace-id` is a debug trace handle, not a documented
-        // request id, so the normalized id stays unset by design.
-        Ok(Encoded::new(
-            request,
-            match mode {
-                Mode::Unary => Framing::Whole,
-                Mode::Streaming => Framing::Sse,
-            },
-        ))
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        super::streaming::ChatDecoder::default()
-    }
-}
-
-impl crate::completion::ReplayTarget for Chat {
-    fn api(&self) -> crate::message::Api {
-        crate::message::Api::from_static("cohere.chat")
-    }
-
-    fn provider(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn model(&self) -> &str {
-        &self.model
-    }
-
-    /// Cohere's chat reads text and tools, and user images on its vision
-    /// models (Command A Vision, Aya Vision).
-    fn accepts(&self, model: &str) -> crate::completion::Accepts {
-        crate::completion::Accepts {
-            user_images: model.contains("vision"),
-            ..crate::completion::Accepts::TEXT
-        }
-    }
-
-    /// Cohere reads an image by URL or as base64 data of a named type, and
-    /// no audio, video or document in a message.
-    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
-        use crate::message::DocumentSourceKind;
-        matches!(
-            media,
-            crate::completion::Media::Image(image, _)
-                if matches!(image.data, DocumentSourceKind::Url(_))
-                    || (matches!(image.data, DocumentSourceKind::Base64(_))
-                        && image.media_type.is_some())
-        )
     }
 }
 

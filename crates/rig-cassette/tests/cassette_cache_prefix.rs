@@ -1052,9 +1052,8 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
     ),
     (
         "ollama",
-        "Ollama's /api/chat usage payload carries no cached-token field of any kind, and rig's \
-         Ollama provider therefore has no cache mapping to test — there is nothing for a cache \
-         suite to assert",
+        "Ollama's usage payload carries no cached-token field of any kind, so there is no \
+         cache mapping to test and nothing for a cache suite to assert",
     ),
     (
         "voyageai",

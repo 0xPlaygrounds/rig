@@ -30,7 +30,7 @@ async fn tool_call_roundtrip() {
 }
 
 /// Asserted on a single completion rather than through the agent loop: Cohere
-/// applies `REQUIRED` to every turn, so an agent configured this way is forced to
+/// applies a required choice to every turn, so an agent configured this way is forced to
 /// keep calling tools and never reaches a final text answer.
 #[tokio::test]
 async fn required_tool_choice_is_accepted() {
@@ -93,7 +93,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
                 .tool(rig::tool::tool_definition(&IntegerAdder))
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::Required)
-                .max_tokens(128);
+                .max_tokens(512);
 
             let response = model
                 .call(request)
@@ -189,17 +189,17 @@ async fn strict_required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/strict_required_tool_choice_is_accepted",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let mut model = client.completion(CASSETTE_MODEL);
+            model.wire = model.wire.with_strict_tools();
             let request = CompletionRequest::new("Use the subtract tool to calculate 11 - 6.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::Required)
-                .additional_params(serde_json::json!({"strict_tools": true}))
                 .max_tokens(128);
 
             let response = model
                 .call(request)
                 .await
-                .expect("strict_tools should compose with REQUIRED");
+                .expect("strict tools should compose with a required choice");
             let tool_call = response
                 .choice
                 .iter()

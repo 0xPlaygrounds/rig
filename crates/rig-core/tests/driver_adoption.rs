@@ -538,11 +538,8 @@ const RAW_SERDE_MARKERS: &[&str] = &[
 /// drift, not security boundaries: an aliased import could evade them, and
 /// that aliasing would itself be reviewable. AST-grade enforcement is
 /// deliberately not attempted.
-const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
-    "providers/ollama.rs",
-    "providers/copilot/mod.rs",
-    "providers/chatgpt/mod.rs",
-];
+const SINGLE_FILE_STREAMING_MODULES: &[&str] =
+    &["providers/copilot/mod.rs", "providers/chatgpt/mod.rs"];
 
 /// Identifiers a file cannot mention without participating in wire handling.
 const WIRE_MACHINERY_MARKERS: &[&str] = &["WireEvent", "WireFrame", "triage("];
@@ -1016,7 +1013,6 @@ fn provider_streaming_modules_never_raw_parse_the_wire() {
     // basename pattern, broken content scoping) is a vacuous pass.
     for suffix in [
         "rig-core/src/providers/anthropic/streaming.rs",
-        "rig-core/src/providers/ollama.rs",
         "rig-core/src/providers/openai/responses_api/streaming.rs",
         "rig-bedrock/src/streaming.rs",
         // A provider's classify layer: guard 1's policy home is guard 2's

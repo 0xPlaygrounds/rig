@@ -194,21 +194,6 @@ fn merge_content(existing: &mut serde_json::Value, more: &serde_json::Value) {
     *existing = Value::Array(merged);
 }
 
-/// Open the block `slot` names, once: its writer index.
-pub(crate) fn open_once(
-    slot: &mut Option<usize>,
-    block: crate::operation::Block,
-    out: &mut crate::wire::Out<'_, crate::operation::Completion>,
-) -> Result<usize, crate::error::ProviderError> {
-    if let Some(index) = *slot {
-        return Ok(index);
-    }
-    let index = out.fresh_index();
-    out.open(index, block, serde_json::Value::Null)?;
-    *slot = Some(index);
-    Ok(index)
-}
-
 /// The text a message or delta carries as a string: its `content`, falling
 /// back to the sibling `refusal` when there is no content. Content-part
 /// arrays go through the decoder's part dispatcher instead.

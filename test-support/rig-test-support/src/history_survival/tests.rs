@@ -135,7 +135,7 @@ data: [DONE]\n\n";
 }
 
 #[test]
-fn gemini_and_ollama_records_deliver_their_opaque_fields() {
+fn gemini_records_deliver_their_opaque_fields() {
     let gemini = json!({ "candidates": [{ "content": { "parts": [
         { "text": "t", "thoughtSignature": "ts-1" },
         { "functionCall": { "name": "f", "args": {}, "id": "call_g" } },
@@ -144,12 +144,6 @@ fn gemini_and_ollama_records_deliver_their_opaque_fields() {
     assert_eq!(
         kinds(&response_tokens(Dialect::GeminiGenerateContent, &gemini)),
         [("thought_signature", "ts-1"), ("tool_call_id", "call_g")]
-    );
-    let ollama = "{\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_o\",\"function\":{\"name\":\"f\",\"arguments\":{}}}]},\"done\":false}\n\
-{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true}\n";
-    assert_eq!(
-        kinds(&response_tokens(Dialect::OllamaChat, ollama)),
-        [("tool_call_id", "call_o")]
     );
 }
 
@@ -208,18 +202,7 @@ fn responses_parallel_calls_form_one_assistant_run() {
 }
 
 #[test]
-fn ollama_and_gemini_pair_by_name_in_order() {
-    let ollama = json!({ "messages": [
-        { "role": "assistant", "content": "", "tool_calls": [
-            { "function": { "name": "add", "arguments": {} } },
-            { "function": { "name": "multiply", "arguments": {} } },
-        ]},
-        { "role": "tool", "tool_name": "add", "content": "10" },
-    ]});
-    let unpaired = unpaired_tool_calls(Dialect::OllamaChat, &ollama);
-    assert_eq!(unpaired.len(), 1);
-    assert_eq!(unpaired[0].label, "multiply");
-
+fn gemini_pairs_by_name_in_order() {
     let gemini = json!({ "contents": [
         { "role": "model", "parts": [{ "functionCall": { "name": "f", "args": {} } }] },
         { "role": "user", "parts": [{ "functionResponse": { "name": "f", "response": {} } }] },

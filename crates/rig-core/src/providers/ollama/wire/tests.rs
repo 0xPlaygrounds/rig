@@ -1,173 +1,7 @@
 use super::*;
-use crate::message::AssistantContent;
-use crate::test_utils::json_body;
-use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
+use crate::completion::CompletionRequest;
+use crate::test_utils::RecordingHttpClient;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
-use futures::StreamExt;
-
-/// The recorded request of `crates/rig-cassette/fixtures/cassettes/ollama/agent/max_tokens.yaml`
-/// (`POST /api/chat`): `max_tokens` rides in `options.num_predict`, and
-/// `stream` is spelled out.
-const RECORDED_REQUEST: &str = r#"{"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"qwen3:4b","options":{"num_predict":24},"stream":false,"think":false}"#;
-
-/// That cassette's recorded reply, byte for byte.
-const UNARY_BODY: &str = r#"{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":24,"eval_duration":318697665,"load_duration":4220408500,"message":{"content":"Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":42,"prompt_eval_duration":2035633750,"total_duration":6668117083}"#;
-
-/// The same turn as a stream. The record shapes are verbatim from
-/// `crates/rig-cassette/fixtures/cassettes/ollama/streaming/streaming_smoke.yaml` — content
-/// records with `"done":false`, then an empty-content `"done":true` record
-/// carrying the counters — and they carry the unary reply's text, model,
-/// counters and `done_reason`. Ollama records the two modes from separate
-/// calls, so a byte-identical turn only exists when it is built this way,
-/// and the property under test is that the two fold alike.
-const STREAM_BODY: &str = concat!(
-    r#"{"model":"qwen3:4b","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"Hmm, the user wants a concise explanation of Rust and why memory safety matters."},"done":false}"#,
-    "\n",
-    r#"{"model":"qwen3:4b","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":" They specifically asked for one or two sentences"},"done":false}"#,
-    "\n",
-    r#"{"model":"qwen3:4b","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"length","total_duration":6668117083,"load_duration":4220408500,"prompt_eval_count":42,"prompt_eval_duration":2035633750,"eval_count":24,"eval_duration":318697665}"#,
-    "\n",
-);
-
-/// The request the recorded cell sent: a preamble, a prompt, 24 tokens, and
-/// `think: false` through the provider escape hatch.
-fn recorded_request() -> CompletionRequest {
-    CompletionRequest::from(vec![
-        crate::message::Message::system("You are a concise assistant. Answer directly."),
-        crate::message::Message::user(
-            "In one or two sentences, explain what Rust programming language is and why \
-                 memory safety matters.",
-        ),
-    ])
-    .max_tokens(24)
-    .additional_params(serde_json::json!({ "think": false }))
-}
-
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|block| match block {
-            AssistantContent::Text(text) => Some(text.text.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-#[tokio::test]
-async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_turn() {
-    let buffered = crate::driver::Model::new(
-        OllamaConfig::new().completion("qwen3:4b"),
-        RecordingHttpClient::new(UNARY_BODY),
-    )
-    .call(recorded_request())
-    .await
-    .expect("the recorded reply decodes");
-
-    let streaming = crate::driver::Model::new(
-        OllamaConfig::new().completion("qwen3:4b"),
-        MockStreamingClient {
-            sse_bytes: bytes::Bytes::from_static(STREAM_BODY.as_bytes()),
-        },
-    );
-    let mut response = streaming
-        .stream(recorded_request())
-        .expect("the stream opens");
-    while response.next().await.is_some() {}
-    let streamed = response
-        .finish()
-        .await
-        .expect("the stream produced a terminal record");
-
-    // Two recordings of one turn: the same blocks, each holding its own
-    // reply's provider item.
-    let canonical = |choice: &[AssistantContent]| {
-        choice
-            .iter()
-            .map(AssistantContent::canonical)
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(canonical(&buffered.choice), canonical(&streamed.choice));
-    assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    assert_eq!(buffered.model(), streamed.model());
-    assert_eq!(
-        text_of(&buffered.choice),
-        "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They \
-         specifically asked for one or two sentences"
-    );
-    assert_eq!(buffered.usage.input_tokens, Some(42));
-    assert_eq!(buffered.usage.output_tokens, Some(24));
-    assert_eq!(buffered.usage.total_tokens, Some(66));
-    assert_eq!(
-        buffered.finish_reason(),
-        Some(crate::completion::FinishReason::Length)
-    );
-    assert_eq!(buffered.model(), Some("qwen3:4b"));
-}
-
-/// The mode picks `stream` and the framer, and changes nothing else. Both
-/// spellings are recorded (`agent/max_tokens.yaml` false,
-/// `streaming/streaming_smoke.yaml` true).
-#[test]
-fn the_mode_is_the_only_difference_between_the_two_requests() {
-    let wire = OllamaConfig::new().completion("qwen3:4b");
-    let unary = wire
-        .encode(recorded_request(), Mode::Unary)
-        .expect("the request encodes");
-    let streamed = wire
-        .encode(recorded_request(), Mode::Streaming)
-        .expect("the request encodes");
-
-    assert_eq!(
-        json_body(&unary.request),
-        serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST).expect("the fixture is JSON")
-    );
-    assert_eq!(unary.framing, Framing::Whole);
-
-    let mut expected =
-        serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST).expect("the fixture is JSON");
-    expected["stream"] = serde_json::Value::Bool(true);
-    assert_eq!(json_body(&streamed.request), expected);
-    // A streamed reply is newline-delimited JSON, never SSE.
-    assert_eq!(streamed.framing, Framing::Ndjson);
-}
-
-/// A stream whose content opens a `<think>` block is held until the block
-/// closes, then split as a whole reply of the same content is: the reasoning
-/// one block, the answer another.
-#[tokio::test]
-async fn a_streamed_inline_reasoning_block_splits_once_it_closes() {
-    let stream = concat!(
-        r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing"},"done":false}"#,
-        "\n",
-        r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":" it up</think>the answer"},"done":false}"#,
-        "\n",
-        r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#,
-        "\n",
-    );
-    let bound = crate::driver::Model::new(
-        OllamaConfig::new().completion("deepseek-r1"),
-        MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(stream),
-        },
-    );
-    let mut response = bound.stream(recorded_request()).expect("the stream opens");
-    while response.next().await.is_some() {}
-    let streamed = response
-        .finish()
-        .await
-        .expect("the stream produced a terminal record");
-
-    assert_eq!(text_of(&streamed.choice), "the answer");
-    assert!(
-        streamed.choice.iter().any(|block| matches!(
-            block,
-            AssistantContent::Reasoning(reasoning) if reasoning.text == "weighing it up"
-        )),
-        "{:?}",
-        streamed.choice
-    );
-}
 
 /// A config is data a host persists, so what survives the round trip is the
 /// part that is not a credential: a reloaded wire addresses the same daemon
@@ -179,10 +13,14 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
         .with_base_url("http://ollama.internal:11434")
         .completion("qwen3:4b");
     let serialized = serde_json::to_string(&wire).expect("the wire serializes");
-    let restored: Chat = serde_json::from_str(&serialized).expect("the wire deserializes");
+    let restored: crate::providers::openai::wire::Chat =
+        serde_json::from_str(&serialized).expect("the wire deserializes");
 
     assert_eq!(restored.model, wire.model);
-    assert_eq!(restored.provider.base_url, "http://ollama.internal:11434");
+    assert_eq!(
+        restored.provider.base_url,
+        "http://ollama.internal:11434/v1"
+    );
 
     // A proxied daemon does take a credential, and that one never travels.
     a_config_reloads_without_its_credential(
@@ -196,16 +34,16 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
 fn a_local_daemon_sends_no_authorization_header() {
     let encoded = OllamaConfig::new()
         .completion("qwen3:4b")
-        .encode(recorded_request(), Mode::Unary)
+        .encode(CompletionRequest::new("hi"), Mode::Unary)
         .expect("the request encodes");
     let request = &encoded.request;
-    assert_eq!(request.uri(), "http://localhost:11434/api/chat");
+    assert_eq!(request.uri(), "http://localhost:11434/v1/chat/completions");
     assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
 
     let encoded = OllamaConfig::new()
         .with_api_key("ollama-proxy-key")
         .completion("qwen3:4b")
-        .encode(recorded_request(), Mode::Unary)
+        .encode(CompletionRequest::new("hi"), Mode::Unary)
         .expect("the request encodes");
     let request = &encoded.request;
     assert_eq!(
@@ -310,80 +148,4 @@ async fn an_embedding_reply_keeps_its_whole_body_as_raw() {
         serde_json::from_str::<serde_json::Value>(body).expect("the body is JSON")
     );
     assert_eq!(response.raw["unmodeled"], "kept");
-}
-
-/// A message field rig has never seen, and a field it has never seen on a
-/// tool call, survive decoding in both modes and go back to the daemon.
-#[test]
-fn an_invented_call_field_replays_and_an_invented_message_field_does_not() {
-    use crate::message::{AssistantMessage, Message};
-    use crate::wire::{Mode, Wire, WireFrame};
-
-    let wire = OllamaConfig::new().completion("qwen3");
-    let call = serde_json::json!({"id": "call_1", "function": {"name": "add", "arguments": {"x": 1}}, "x_call_probe": 1});
-    let record = |message: serde_json::Value, done: bool| {
-        WireFrame::Text(
-            serde_json::json!({"model": "qwen3", "created_at": "1970-01-01T00:00:00Z", "message": message, "done": done, "done_reason": "stop"})
-                .to_string(),
-        )
-    };
-    let whole = record(
-        serde_json::json!({"role": "assistant", "thinking": "plan", "content": "adding", "x_message_probe": [1], "tool_calls": [call]}),
-        true,
-    );
-    let streamed = vec![
-        record(
-            serde_json::json!({"role": "assistant", "thinking": "pl", "content": "", "x_message_probe": [1]}),
-            false,
-        ),
-        record(
-            serde_json::json!({"role": "assistant", "thinking": "an"}),
-            false,
-        ),
-        record(
-            serde_json::json!({"role": "assistant", "content": "adding"}),
-            false,
-        ),
-        record(
-            serde_json::json!({"role": "assistant", "tool_calls": [call]}),
-            false,
-        ),
-        record(
-            serde_json::json!({"role": "assistant", "content": ""}),
-            true,
-        ),
-    ];
-    crate::test_utils::history::assert_restated_agrees(&wire, [whole.clone()], streamed.clone());
-    for (mode, frames) in [(Mode::Unary, vec![whole]), (Mode::Streaming, streamed)] {
-        let response =
-            crate::test_utils::history::decode(&wire, mode, frames).expect("the reply decodes");
-        let turn = AssistantMessage {
-            content: response.choice.clone(),
-            ..response.head()
-        };
-        let mut request = CompletionRequest::new("and then?");
-        request.chat_history = crate::completion::history::adapt(
-            &[
-                Message::user("add one"),
-                Message::Assistant(turn),
-                Message::tool_result(
-                    crate::message::CallId::from_wire("call_1"),
-                    crate::message::ToolName::new("add").expect("tool name"),
-                    "1",
-                ),
-                Message::user("and then?"),
-            ],
-            &wire,
-        );
-        let body = json_body(&wire.encode(request, Mode::Unary).expect("encodes").request);
-        let replayed = &body["messages"][1];
-        // The message is rebuilt from its blocks: a field only the reply
-        // carries never goes back, while the call's own item does.
-        assert!(
-            replayed.get("x_message_probe").is_none(),
-            "{mode:?}: {replayed}"
-        );
-        assert_eq!(replayed["tool_calls"][0]["x_call_probe"], 1, "{mode:?}");
-        assert_eq!(replayed["thinking"], "plan", "{mode:?}");
-    }
 }

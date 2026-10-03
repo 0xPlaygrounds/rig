@@ -195,8 +195,6 @@ pub const WIRE_FAMILIES: &[&str] = &[
     "gemini_rest",
     "gemini_interactions",
     "gemini_grpc",
-    "cohere",
-    "ollama",
     "xai",
     "copilot",
     "bedrock",
@@ -678,7 +676,7 @@ impl BufferedBodyDriver {
 /// Per-provider wire frames for the shared scenario set.
 ///
 /// `Option` fields cover sequence shapes a wire family cannot spell (e.g.
-/// ollama's NDJSON has no event types, so no "unknown event type" frame).
+/// an NDJSON wire has no event types, so no "unknown event type" frame).
 pub struct ProviderWireFixture {
     /// The provider's full pipeline.
     pub driver: WireDriver,
@@ -1653,10 +1651,6 @@ pub mod fixtures {
         WireInput::Bytes(Bytes::from(format!("data: {data}\n\n")))
     }
 
-    fn ndjson(frame: &serde_json::Value) -> WireInput {
-        WireInput::Bytes(Bytes::from(format!("{frame}\n")))
-    }
-
     /// The frame's SSE text, for buffered-body pipelines that re-parse a
     /// whole body string.
     fn frame_text(frame: &WireInput) -> String {
@@ -2541,231 +2535,6 @@ pub mod fixtures {
                 delta_less_prelude_frame: None,
                 refusal: None,
                 interleaved_reasoning: None,
-            }
-        }
-    }
-
-    /// Cohere v2 chat SSE wire.
-    pub mod cohere {
-        use super::*;
-
-        fn driver() -> WireDriver {
-            byte_driver("cohere", |transport| {
-                crate::driver::Model::new(
-                    crate::providers::cohere::wire::CohereConfig::new("test-key")
-                        .completion(crate::providers::cohere::COMMAND_R_08_2024),
-                    transport,
-                )
-            })
-        }
-
-        /// The Cohere fixture.
-        pub fn fixture() -> ProviderWireFixture {
-            ProviderWireFixture {
-                driver: driver(),
-                text_frames: vec![
-                    sse(&json!({"type": "message-start", "id": "msg_1"})),
-                    sse(&json!({
-                        "type": "content-delta",
-                        "delta": {"message": {"content": {"text": "hi"}}},
-                    })),
-                ],
-                expected_texts: vec!["hi"],
-                tool_call_frames: vec![
-                    sse(&json!({
-                        "type": "tool-call-start",
-                        "delta": {"message": {"tool_calls": {
-                            "id": "call_1",
-                            "function": {"name": "get_weather", "arguments": ""},
-                        }}},
-                    })),
-                    sse(&json!({
-                        "type": "tool-call-delta",
-                        "delta": {"message": {"tool_calls": {
-                            "function": {"arguments": "{\"city\":\"Tokyo\"}"},
-                        }}},
-                    })),
-                    sse(&json!({"type": "tool-call-end"})),
-                ],
-                expected_tool_name: "get_weather",
-                partial_tool_call_frames: Some(vec![sse(&json!({
-                    "type": "tool-call-start",
-                    "delta": {"message": {"tool_calls": {
-                        "id": "call_1",
-                        "function": {"name": "get_weather", "arguments": "{\"cit"},
-                    }}},
-                }))]),
-                terminal_frames: vec![sse(&json!({
-                    "type": "message-end",
-                    "delta": {
-                        "finish_reason": "COMPLETE",
-                        "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
-                    },
-                }))],
-                expected_usage_total: 14,
-                expected_finish_reason: Some(FinishReason::Stop),
-                zero_usage_terminal_frames: Some(vec![sse(&json!({"type": "message-end"}))]),
-                bare_terminal_frames: None,
-                malformed_frame: Some(sse_raw("{not json")),
-                // Citations are modeled, so the unknown frame is an invented
-                // event type.
-                unknown_event_frame: Some(sse(&json!({
-                    "type": "x-unmodeled-event",
-                    "delta": {"message": {}},
-                }))),
-                defective_known_frame: Some(sse_raw(r#"{"type":"content-delta","delta":42}"#)),
-                delta_less_prelude_frame: None,
-                refusal: None,
-                interleaved_reasoning: Some(interleaved_thinking_fixture()),
-            }
-        }
-
-        /// Thinking delta, interleaved tool call, thinking delta, terminal —
-        /// the constant-id (`reasoning-0`) interleaving shape on the Cohere
-        /// v2 SSE wire.
-        fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
-            let frames = vec![
-                sse(&json!({"type": "message-start", "id": "msg_1"})),
-                sse(&json!({
-                    "type": "content-delta",
-                    "delta": {"message": {"content": {"thinking": "before tool"}}},
-                })),
-                sse(&json!({
-                    "type": "tool-call-start",
-                    "delta": {"message": {"tool_calls": {
-                        "id": "call_1",
-                        "function": {"name": "get_weather", "arguments": "{\"city\":\"Tokyo\"}"},
-                    }}},
-                })),
-                sse(&json!({"type": "tool-call-end"})),
-                sse(&json!({
-                    "type": "content-delta",
-                    "delta": {"message": {"content": {"thinking": "after tool"}}},
-                })),
-                sse(&json!({
-                    "type": "message-end",
-                    "delta": {
-                        "finish_reason": "COMPLETE",
-                        "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
-                    },
-                })),
-            ];
-            InterleavedReasoningFixture {
-                frames,
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
-            }
-        }
-    }
-
-    /// Ollama `/api/chat` NDJSON wire.
-    pub mod ollama {
-        use super::*;
-
-        fn driver() -> WireDriver {
-            byte_driver("ollama", |transport| {
-                crate::driver::Model::new(
-                    crate::providers::ollama::wire::OllamaConfig::new().completion("llama3.2"),
-                    transport,
-                )
-            })
-        }
-
-        /// The Ollama fixture.
-        pub fn fixture() -> ProviderWireFixture {
-            ProviderWireFixture {
-                driver: driver(),
-                text_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "hi"},
-                    "done": false,
-                }))],
-                expected_texts: vec!["hi"],
-                tool_call_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "", "tool_calls": [{
-                        "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
-                    }]},
-                    "done": false,
-                }))],
-                expected_tool_name: "get_weather",
-                // NDJSON delivers tool calls whole; arguments never stream.
-                partial_tool_call_frames: None,
-                terminal_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 10,
-                    "eval_count": 4,
-                }))],
-                expected_usage_total: 14,
-                expected_finish_reason: Some(FinishReason::Stop),
-                zero_usage_terminal_frames: Some(vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                }))]),
-                bare_terminal_frames: None,
-                malformed_frame: Some(WireInput::Bytes(Bytes::from_static(b"{not json\n"))),
-                unknown_event_frame: None,
-                defective_known_frame: Some(ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:46.499127Z",
-                    "message": {"role": "assistant", "content": 42},
-                    "done": false,
-                }))),
-                delta_less_prelude_frame: None,
-                refusal: None,
-                interleaved_reasoning: Some(interleaved_thinking_fixture()),
-            }
-        }
-
-        /// Thinking delta, interleaved tool call, thinking delta, terminal —
-        /// the constant-id (`reasoning-0`) interleaving shape on NDJSON.
-        fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
-            let frames = vec![
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "", "thinking": "before tool"},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.599127Z",
-                    "message": {"role": "assistant", "content": "", "tool_calls": [{
-                        "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
-                    }]},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.699127Z",
-                    "message": {"role": "assistant", "content": "", "thinking": "after tool"},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 10,
-                    "eval_count": 4,
-                })),
-            ];
-            InterleavedReasoningFixture {
-                frames,
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
             }
         }
     }

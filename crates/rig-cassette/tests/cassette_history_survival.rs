@@ -143,15 +143,6 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
         "xai/prompt_caching/streaming_probe.yaml",
         "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
     ),
-    (
-        "ollama/tools/optional_argument.yaml",
-        "the model wrote its reasoning inline in content; both modes split it into `thinking`, \
-         which the turn replays",
-    ),
-    (
-        "ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml",
-        "the same inline reasoning split into `thinking`",
-    ),
 ];
 
 /// Scenarios whose recorded requests deliberately carry unpaired calls.
@@ -480,9 +471,6 @@ fn output_items(dialect: Dialect, body: &str) -> Option<Vec<Value>> {
         Dialect::ChatCompletions => {
             Value::Array(vec![reply.pointer("/choices/0/message")?.clone()])
         }
-        Dialect::OllamaChat | Dialect::CohereChat => {
-            Value::Array(vec![reply.get("message")?.clone()])
-        }
         Dialect::Unmodeled => return None,
     };
     match items {
@@ -521,14 +509,12 @@ fn replayed_items(dialect: Dialect, request: &Value) -> Vec<Value> {
 
 /// The item a same-model replay sends for the reply item `item`. An
 /// item-shaped wire sends its items as they came. A message-shaped wire
-/// (Chat, Ollama, Cohere) rebuilds the message from its blocks, as pi's
+/// (Chat) rebuilds the message from its blocks, as pi's
 /// `openai-completions` does, so the item is the projection of the reply's
 /// message that rebuild sends: never the whole message.
 fn as_replayed(scenario: &str, dialect: Dialect, item: Value) -> Value {
     match dialect {
         Dialect::ChatCompletions => chat_projection(provider_of(scenario), &item),
-        Dialect::OllamaChat => ollama_projection(&item),
-        Dialect::CohereChat => cohere_projection(&item),
         Dialect::AnthropicMessages
         | Dialect::GeminiGenerateContent
         | Dialect::GeminiInteractions
@@ -641,61 +627,6 @@ fn chat_projection(provider: &str, message: &Value) -> Value {
         out.entry("content").or_insert_with(|| "".into());
     }
     Value::Object(out)
-}
-
-/// The message Ollama's rebuild sends for a reply's `message`: its text,
-/// its thinking when it has some, and each call with object arguments.
-fn ollama_projection(message: &Value) -> Value {
-    let text = message
-        .get("content")
-        .and_then(Value::as_str)
-        .filter(|text| !text.trim().is_empty())
-        .unwrap_or_default();
-    let mut out = serde_json::json!({"role": "assistant", "content": text});
-    if let Some(thinking) = message
-        .get("thinking")
-        .and_then(Value::as_str)
-        .filter(|thinking| !thinking.trim().is_empty())
-    {
-        out["thinking"] = thinking.into();
-    }
-    let calls: Vec<Value> = message
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|call| replayed_call(call, false, true))
-        .collect();
-    if !calls.is_empty() {
-        out["tool_calls"] = calls.into();
-    }
-    out
-}
-
-/// The message Cohere's rebuild sends for a reply's `message`: each content
-/// item as it came, the tool plan when it has one, and each call with its
-/// arguments as JSON text.
-fn cohere_projection(message: &Value) -> Value {
-    let calls: Vec<Value> = message
-        .get("tool_calls")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|call| replayed_call(call, true, true))
-        .collect();
-    let mut out = serde_json::json!({
-        "role": "assistant",
-        "content": message.get("content").cloned().unwrap_or_else(|| Value::Array(Vec::new())),
-        "tool_calls": calls,
-    });
-    if let Some(plan) = message
-        .get("tool_plan")
-        .and_then(Value::as_str)
-        .filter(|plan| !plan.trim().is_empty())
-    {
-        out["tool_plan"] = plan.into();
-    }
-    out
 }
 
 #[test]

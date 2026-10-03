@@ -53,6 +53,8 @@ pub(crate) const OPENAI_DIALECTS: &[&openai::wire::Dialect] = &[
     &openai::wire::MINIMAX,
     &openai::wire::MOONSHOT,
     &openai::wire::XIAOMIMIMO,
+    &openai::wire::COHERE,
+    &openai::wire::OLLAMA,
     &crate::providers::xai::DIALECT,
     &crate::providers::chatgpt::DIALECT,
     &crate::providers::copilot::wire::DIALECT,

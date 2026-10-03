@@ -6,8 +6,9 @@
 //!
 //! The non-streaming test additionally asserts the assistant's reasoning is
 //! preserved in the caller-owned chat history — this is the direct regression
-//! for #1926 (non-streaming responses used to drop `thinking`, so it never
-//! entered history and was never sent back to Ollama).
+//! for #1926 (non-streaming responses used to drop the reasoning, so it never
+//! entered history and was never sent back to Ollama). Thinking is the
+//! daemon's default for `qwen3:4b`.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
@@ -20,10 +21,6 @@ use crate::reasoning::{self, WeatherTool};
 
 const MODEL: &str = "qwen3:4b";
 
-fn think_params() -> serde_json::Value {
-    serde_json::json!({ "think": true })
-}
-
 #[tokio::test]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -33,7 +30,6 @@ async fn nonstreaming() {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(think_params())
                 .default_max_turns(2)
                 .build();
 
@@ -72,7 +68,6 @@ async fn streaming() {
         let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .tool(WeatherTool::new(call_count.clone()))
-            .additional_params(think_params())
             .build();
 
         let stream = agent

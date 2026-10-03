@@ -6,6 +6,9 @@ mod streaming_tools;
 mod structured_output;
 mod support;
 
+/// The local model every Ollama cassette was recorded against.
+const CASSETTE_MODEL: &str = "qwen3:4b";
+
 mod cassette {
     mod agent;
     mod agentic;

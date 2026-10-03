@@ -453,6 +453,25 @@ pub const XIAOMIMIMO: Dialect = Dialect {
     )
 };
 
+/// Cohere's OpenAI Compatibility API. Cohere's embedding endpoints are its
+/// own wires.
+pub const COHERE: Dialect = Dialect::gateway(
+    "cohere",
+    "https://api.cohere.ai/compatibility/v1",
+    "COHERE_API_KEY",
+);
+
+/// An Ollama daemon's OpenAI-compatible API. Its embedding and model-listing
+/// endpoints are its own wires.
+pub const OLLAMA: Dialect = Dialect {
+    quirks: Quirks {
+        // A local daemon takes no credential; a proxied one takes a token.
+        auth: Auth::OptionalBearer,
+        ..Quirks::openai()
+    },
+    ..Dialect::gateway("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY")
+};
+
 /// The dialect named `name`, or `None` when this build has no such provider.
 pub fn by_name(name: &str) -> Option<&'static Dialect> {
     all().find(|dialect| dialect.name == name)

@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,16 +7,16 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"}],"model":"command-a-03-2025","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"TOOL_CALL","id":"5d373827-b841-4335-866f-c873a4fcde1a","message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_zqkjwv1wsq3k","type":"function"}],"tool_plan":"I will use the subtract tool to calculate 2 - 5."},"usage":{"billed_units":{"input_tokens":135,"output_tokens":24},"cached_tokens":1536,"tokens":{"input_tokens":1610,"output_tokens":56}}}'
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_g2fv44rx1t7g","type":"function"}]}}],"created":0,"id":"5a5f3e63-2675-499c-aefe-a642e63cc8bf","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":24,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":135,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":159}}'
 ---
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -24,10 +24,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_zqkjwv1wsq3k","type":"function"}],"tool_plan":"I will use the subtract tool to calculate 2 - 5."},{"content":[{"text":"-3","type":"text"}],"role":"tool","tool_call_id":"subtract_zqkjwv1wsq3k"}],"model":"command-a-03-2025","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_g2fv44rx1t7g","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"subtract_g2fv44rx1t7g"}],"model":"command-a-03-2025","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"36e7294b-ec19-4b8d-acfa-d27242c8e7b3","message":{"citations":[{"end":2,"sources":[{"id":"subtract_zqkjwv1wsq3k:0","tool_output":{"content":"-3"},"type":"tool"}],"start":0,"text":"-3","type":"TEXT_CONTENT"}],"content":[{"text":"-3 is the result of 2 - 5.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":153,"output_tokens":12},"cached_tokens":112,"tokens":{"input_tokens":1715,"output_tokens":25}}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"-3","role":"assistant"}}],"created":0,"id":"f4cf5560-63c3-423b-a9a6-a46d67420074","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":2,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":139,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":141}}'

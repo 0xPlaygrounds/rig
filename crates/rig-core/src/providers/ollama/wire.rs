@@ -1,4 +1,4 @@
-//! Ollama daemon configuration and chat, embedding, and model-listing wires.
+//! Ollama daemon configuration and its embedding and model-listing wires.
 //!
 //! ```
 //! use rig_core::providers::ollama::OllamaConfig;
@@ -7,11 +7,11 @@
 //! ```
 
 use crate::client::env::{self, EnvError};
-use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::model::{ModelInfo, ModelList};
-use crate::operation::{Completion, Embedding, ModelListing, ModelPage};
+use crate::operation::{Embedding, ModelListing, ModelPage};
+use crate::providers::openai::wire::{Chat, OLLAMA, OpenAIConfig};
 use crate::wire::Flow;
 use crate::wire::{
     Body, Capabilities, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent,
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     EmbeddingResponse as OllamaEmbeddingResponse, ListModelsResponse, OLLAMA_API_BASE_URL,
-    OllamaCompletionRequest, PROVIDER_NAME, model_dimensions_from_identifier,
+    PROVIDER_NAME, model_dimensions_from_identifier,
 };
 
 /// The environment variable overriding the daemon's address.
@@ -30,6 +30,9 @@ const BASE_URL_ENV: &str = "OLLAMA_API_BASE_URL";
 /// The environment variable carrying the bearer token a proxied daemon
 /// requires. A local daemon needs none.
 const API_KEY_ENV: &str = "OLLAMA_API_KEY";
+
+/// Where the daemon serves its OpenAI-compatible API.
+const OPENAI_COMPATIBLE_PATH: &str = "/v1";
 
 /// The most texts `POST /api/embed` accepts in one call.
 const MAX_DOCUMENTS: usize = 1024;
@@ -87,12 +90,12 @@ impl OllamaConfig {
         self
     }
 
-    /// The chat wire for `model`.
+    /// The Chat Completions wire for `model`, on the daemon's
+    /// OpenAI-compatible API. The credential is sent only when there is one.
     pub(crate) fn completion(&self, model: impl Into<String>) -> Chat {
-        Chat {
-            provider: self.clone(),
-            model: model.into(),
-        }
+        OpenAIConfig::with_key(&OLLAMA, self.api_key.clone())
+            .with_base_url(format!("{}{OPENAI_COMPATIBLE_PATH}", self.base_url))
+            .chat(model)
     }
 
     /// Build an embedding wire reporting the supplied width, known model width,
@@ -129,87 +132,6 @@ impl OllamaConfig {
                 http::header::AUTHORIZATION,
                 format!("Bearer {}", self.api_key.expose()),
             )
-        }
-    }
-}
-
-/// The chat wire: `POST /api/chat`, NDJSON when streamed.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Chat {
-    /// The daemon this wire speaks to.
-    pub provider: OllamaConfig,
-    /// The model to address.
-    pub model: String,
-}
-
-impl Wire for Chat {
-    type Op = Completion;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = super::OllamaDecoder;
-
-    fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME)
-            .model(self.model.as_str())
-            .replay(self)
-    }
-
-    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let mut body = OllamaCompletionRequest::try_from((self.model.as_str(), request))?;
-        body.stream = mode == Mode::Streaming;
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Ollama completion request",
-            &body,
-        );
-        let request = self
-            .provider
-            .request(http::Method::POST, "/api/chat")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
-        // Both modes decode the same record shape; streaming needs NDJSON framing.
-        Ok(Encoded::new(
-            request,
-            match mode {
-                Mode::Unary => Framing::Whole,
-                Mode::Streaming => Framing::Ndjson,
-            },
-        ))
-    }
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        super::OllamaDecoder::default()
-    }
-}
-
-impl crate::completion::ReplayTarget for Chat {
-    fn api(&self) -> crate::message::Api {
-        crate::message::Api::from_static("ollama.chat")
-    }
-
-    fn provider(&self) -> &str {
-        PROVIDER_NAME
-    }
-
-    fn model(&self) -> &str {
-        &self.model
-    }
-
-    /// Ollama reads images in user messages only.
-    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
-        crate::completion::Accepts {
-            user_images: true,
-            ..crate::completion::Accepts::TEXT
-        }
-    }
-
-    /// The daemon takes an image as base64 data and a document as its
-    /// text, and no audio or video.
-    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
-        use crate::completion::Media;
-        use crate::message::DocumentSourceKind;
-        match media {
-            Media::Image(image, _) => matches!(image.data, DocumentSourceKind::Base64(_)),
-            Media::Document(document) => matches!(document.data, DocumentSourceKind::String(_)),
-            Media::Audio(_) | Media::Video(_) => false,
         }
     }
 }

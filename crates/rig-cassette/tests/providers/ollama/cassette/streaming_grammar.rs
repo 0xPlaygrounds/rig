@@ -99,7 +99,8 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     );
 }
 
-/// Thinking and a tool call in ONE stream (`think: true`): the reasoning part
+/// Thinking and a tool call in ONE stream (thinking is the daemon's default
+/// for this model): the reasoning part
 /// and the tool call survive aggregation as discrete siblings.
 #[tokio::test]
 async fn thinking_and_tool_call_in_one_stream() {
@@ -109,14 +110,13 @@ async fn thinking_and_tool_call_in_one_stream() {
             let model = client.completion(MODEL);
             let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .additional_params(serde_json::json!({ "think": true }));
+                .tool(rig::tool::tool_definition(&AlphaSignal));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
                 !run.reasoning_delta.is_empty() || !run.reasoning_blocks.is_empty(),
-                "think:true should surface reasoning on the stream"
+                "a thinking model should surface reasoning on the stream"
             );
             let streamed = run
                 .tool_calls
@@ -178,7 +178,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .tool(rig::tool::tool_definition(&BetaSignal))
-            .additional_params(serde_json::json!({ "think": false }));
+            .additional_params(serde_json::json!({ "reasoning_effort": "none" }));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -264,7 +264,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
                     .to_string(),
             )
             .tool(rig::tool::tool_definition(&Adder))
-            .additional_params(serde_json::json!({ "think": false }));
+            .additional_params(serde_json::json!({ "reasoning_effort": "none" }));
         let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
@@ -372,7 +372,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     )
                     .tool(rig::tool::tool_definition(&Adder))
                     .messages(history)
-                    .additional_params(serde_json::json!({ "think": false }));
+                    .additional_params(serde_json::json!({ "reasoning_effort": "none" }));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),

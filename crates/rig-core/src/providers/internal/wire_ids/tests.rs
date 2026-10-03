@@ -4,9 +4,6 @@
 use super::*;
 use crate::message::{ToolCall, ToolFunction, ToolResult};
 
-/// The provider id the shared adapter history's second call carries.
-const SHARED: &str = "call_shared";
-
 fn call(id: CallId) -> Message {
     Message::Assistant(crate::message::AssistantMessage::new(vec![
         AssistantContent::ToolCall(ToolCall::new(
@@ -36,96 +33,6 @@ fn provider(id: &str) -> CallId {
 
 fn local() -> CallId {
     CallId::from_wire("")
-}
-
-/// A history whose calls are answered out of order across text: a
-/// rig-issued call, a provider call, and another rig-issued call a turn
-/// later.
-pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
-    let id = local();
-    let later = local();
-    crate::completion::CompletionRequest::from(vec![
-        Message::system("system"),
-        call(id.clone()),
-        call(provider(SHARED)),
-        result(provider(SHARED)),
-        Message::assistant("intervening text"),
-        result(id),
-        call(later.clone()),
-        result(later),
-    ])
-    .max_tokens(128)
-}
-
-pub(crate) fn assert_adapter_pairs(wire: serde_json::Value) {
-    fn visit(value: &serde_json::Value, calls: &mut Vec<String>, results: &mut Vec<String>) {
-        match value {
-            serde_json::Value::Array(values) => {
-                for value in values {
-                    visit(value, calls, results);
-                }
-            }
-            serde_json::Value::Object(object) => {
-                let kind = object.get("type").and_then(serde_json::Value::as_str);
-                let reference = match kind {
-                    Some("function_call") => object
-                        .get("call_id")
-                        .or_else(|| object.get("id"))
-                        .map(|id| (true, id)),
-                    Some("tool_use") => object.get("id").map(|id| (true, id)),
-                    Some("function_call_output" | "function_result") => {
-                        object.get("call_id").map(|id| (false, id))
-                    }
-                    Some("tool_result") => object.get("tool_use_id").map(|id| (false, id)),
-                    _ => None,
-                };
-                if let Some((is_call, id)) = reference {
-                    let id = id.as_str().expect("wire identity is a string").to_owned();
-                    if is_call {
-                        calls.push(id);
-                    } else {
-                        results.push(id);
-                    }
-                }
-                if object.get("role").and_then(serde_json::Value::as_str) == Some("tool") {
-                    results.push(object["tool_call_id"].as_str().unwrap().to_owned());
-                }
-                if let Some(array) = object
-                    .get("tool_calls")
-                    .and_then(serde_json::Value::as_array)
-                {
-                    calls.extend(
-                        array
-                            .iter()
-                            .map(|call| call["id"].as_str().unwrap().to_owned()),
-                    );
-                }
-                for value in object.values() {
-                    visit(value, calls, results);
-                }
-            }
-            _ => {}
-        }
-    }
-    let mut calls = Vec::new();
-    let mut results = Vec::new();
-    visit(&wire, &mut calls, &mut results);
-    assert_eq!(calls.len(), 3, "{wire}");
-    assert_eq!(
-        results,
-        [calls[1].clone(), calls[0].clone(), calls[2].clone()],
-        "{wire}"
-    );
-    assert_eq!(calls[1], SHARED);
-    assert_eq!(
-        calls.iter().collect::<std::collections::HashSet<_>>().len(),
-        3,
-        "{wire}"
-    );
-}
-
-pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
-    vec![adapter_request()]
 }
 
 #[test]

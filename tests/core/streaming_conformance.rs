@@ -11,9 +11,7 @@
 use rig::completion::CompletionRequest;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance,
-    fixtures::{
-        anthropic, cohere, gemini_rest, interactions, ollama, openai_chat, openai_responses,
-    },
+    fixtures::{anthropic, gemini_rest, interactions, openai_chat, openai_responses},
 };
 
 /// Lower fixture frames onto the byte transport a
@@ -147,7 +145,7 @@ mod chatgpt {
 }
 
 // The in-crate wire families (openai_chat, openai_responses, gemini_rest,
-// gemini_interactions, anthropic, cohere, ollama) expand their canonical
+// gemini_interactions, anthropic) expand their canonical
 // suites in `streaming_conformance_suites.rs`; the families below reuse those
 // fixtures' frames with their own pipeline drivers, through the same
 // declarative macro (with anti-tamper and capability checks). Capability rows
@@ -246,8 +244,6 @@ mod grammar_guards {
     exactly_one_text_block_test!(openai_chat, openai_chat::fixture);
     exactly_one_text_block_test!(openai_responses, openai_responses::fixture);
     exactly_one_text_block_test!(gemini_rest, gemini_rest::fixture);
-    exactly_one_text_block_test!(cohere, cohere::fixture);
-    exactly_one_text_block_test!(ollama, ollama::fixture);
     exactly_one_text_block_test!(anthropic, anthropic::fixture);
     exactly_one_text_block_test!(interactions, interactions::fixture);
     exactly_one_text_block_test!(xai, super::xai::fixture);
@@ -627,131 +623,7 @@ mod interleaved_constant_id_reasoning {
         .expect("scenario should hold");
     }
 
-    /// Two calls to the SAME tool in one turn on the id-less Ollama wire
-    /// (#2258 A2): rig fabricates no identifier — not from an index and not
-    /// from the tool name — so both calls survive as distinct parts with
-    /// their own arguments and distinct internal correlation ids, and both
-    /// replay with the durable id absent. The name-as-id scheme collapsed
-    /// exactly this shape.
-    #[tokio::test]
-    async fn ollama_two_calls_to_the_same_tool_stay_distinct() {
-        use rig_core::message::AssistantContent;
-        use rig_core::streaming::StreamEvent;
-        use serde_json::json;
-
-        let ndjson = |frame: &serde_json::Value| {
-            conformance::WireInput::Bytes(bytes::Bytes::from(format!("{frame}\n")))
-        };
-        let frames = vec![
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:45.499127Z",
-                "message": {"role": "assistant", "content": "", "tool_calls": [
-                    {"function": {"name": "get_weather", "arguments": {"city": "Tokyo"}}},
-                    {"function": {"name": "get_weather", "arguments": {"city": "Paris"}}},
-                ]},
-                "done": false,
-            })),
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:47.499127Z",
-                "message": {"role": "assistant", "content": ""},
-                "done": true,
-                "done_reason": "stop",
-            })),
-        ];
-
-        let drained = ollama::fixture()
-            .driver
-            .drive(conformance::ok_chunks(frames))
-            .await
-            .expect("stream should drive");
-        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
-        let mut minted_ids = Vec::new();
-        let mut cities = Vec::new();
-        for item in drained.items.iter().flatten() {
-            if let rig::streaming::Item::Event(StreamEvent::End {
-                content: AssistantContent::ToolCall(tool_call),
-                ..
-            }) = item
-            {
-                assert_eq!(tool_call.function.name, "get_weather");
-                assert!(
-                    tool_call.id.is_local(),
-                    "id-less calls surface a minted durable id"
-                );
-                assert_eq!(tool_call.id.provider(), None, "no fabricated provider id");
-                minted_ids.push(tool_call.id.clone());
-                cities.push(tool_call.function.arguments["city"].clone());
-            }
-        }
-        assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
-        minted_ids.dedup();
-        assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
-        assert_eq!(
-            drained
-                .choice
-                .iter()
-                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
-                .count(),
-            2,
-            "both same-name calls must survive as distinct aggregated parts"
-        );
-    }
-
-    /// Two id-less calls arriving in SEPARATE records must also stay
-    /// distinct: a per-record index enumeration handed both `Minted(Tool,0)`
-    /// and one call silently swallowed the other (round-5 O3 bonus). The
-    /// per-stream minter counts across records.
-    #[tokio::test]
-    async fn ollama_id_less_calls_in_separate_records_stay_distinct() {
-        use rig_core::message::AssistantContent;
-        use serde_json::json;
-
-        let ndjson = |frame: &serde_json::Value| {
-            conformance::WireInput::Bytes(bytes::Bytes::from(format!("{frame}\n")))
-        };
-        let record = |city: &str| {
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:45.499127Z",
-                "message": {"role": "assistant", "content": "", "tool_calls": [
-                    {"function": {"name": "get_weather", "arguments": {"city": city}}},
-                ]},
-                "done": false,
-            }))
-        };
-        let frames = vec![
-            record("Tokyo"),
-            record("Paris"),
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:47.499127Z",
-                "message": {"role": "assistant", "content": ""},
-                "done": true,
-                "done_reason": "stop",
-            })),
-        ];
-
-        let drained = ollama::fixture()
-            .driver
-            .drive(conformance::ok_chunks(frames))
-            .await
-            .expect("stream should drive");
-        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
-        assert_eq!(
-            drained
-                .choice
-                .iter()
-                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
-                .count(),
-            2,
-            "calls from separate records must survive as distinct parts"
-        );
-    }
-
-    /// The gemini-interactions twin of the same-name pin above: two id-less
-    /// calls to one tool in a single turn stay distinct — no name-as-id
+    /// Two id-less calls to one tool in a single turn stay distinct — no name-as-id
     /// collapse, no fabricated durable id.
     #[tokio::test]
     async fn interactions_two_id_less_calls_to_the_same_tool_stay_distinct() {

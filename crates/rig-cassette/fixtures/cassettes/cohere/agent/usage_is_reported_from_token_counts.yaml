@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"command-a-03-2025"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"85ab36b8-213a-452f-b913-e7ae298e1924","message":{"content":[{"text":"Rust is a systems programming language that focuses on safety, speed, and concurrency, achieving memory safety without a garbage collector through its ownership model. Memory safety matters because it prevents common bugs like null pointer dereferencing, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, and unpredictable behavior in software.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":27,"output_tokens":66},"cached_tokens":512,"tokens":{"input_tokens":556,"output_tokens":69}}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Rust is a systems programming language that focuses on safety, speed, and concurrency, ensuring memory safety through its ownership model and type system, which prevents data races and null pointer dereferencing at compile time. Memory safety matters because it eliminates common vulnerabilities like buffer overflows and use-after-free errors, enhancing software reliability and security.","role":"assistant"}}],"created":0,"id":"d52a1b14-7157-4fc7-b812-6e673b121047","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":67,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":27,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":94}}'
