@@ -25,14 +25,11 @@ use rig_core::error::EncodeError;
 use rig_core::error::ProviderError;
 use rig_core::message;
 use rig_core::operation::Completion;
-use rig_core::providers::gemini::completion::conversation;
-use rig_core::providers::gemini::completion::gemini_api_types::{
-    Schema as GeminiSchema, tool_parameters_to_schema,
-};
+use rig_core::providers::gemini::completion as rest;
 use rig_core::wire::{Descriptor, Mode, Wire};
 
 use super::GeminiGrpc;
-use super::proto::{self, GenerateContentRequest, GenerateContentResponse};
+use super::proto::{GenerateContentRequest, GenerateContentResponse};
 
 /// The `GenerateContent` endpoint for one model: `GenerateContent` for a
 /// unary call, `StreamGenerateContent` for a streamed one.
@@ -61,13 +58,18 @@ impl Wire for GenerateContent {
             .replay(self)
     }
 
+    /// The REST wire's request, transcoded: every field the shared encoder
+    /// builds reaches the protobuf request, and one the proto does not
+    /// declare is an error rather than dropped.
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        create_grpc_request(&model, request)
+        let mut body = rest::request_body(request, self, &model)?;
+        body.insert("model".to_owned(), format!("models/{model}").into());
+        Ok(crate::rest::from_rest(serde_json::Value::Object(body))?)
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -90,12 +92,12 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
 
     /// What the model reads, as on every GenerateContent wire.
     fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
-        rig_core::providers::gemini::completion::accepts(model)
+        rest::accepts(model)
     }
 
     /// The media the Gemini API takes, as on the REST wire.
     fn encodes(&self, _model: &str, media: rig_core::completion::Media<'_>) -> bool {
-        rig_core::providers::gemini::completion::encodes(media, false)
+        rest::encodes(media, false)
     }
 
     fn normalize_tool_call_id(
@@ -104,7 +106,11 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         model: &str,
         _source: Option<&message::Origin>,
     ) -> String {
-        rig_core::providers::gemini::completion::normalize_tool_call_id(model, id)
+        rest::normalize_tool_call_id(model, id)
+    }
+
+    fn call_id_slot(&self) -> Option<&'static str> {
+        rest::CALL_ID_SLOT
     }
 }
 
@@ -148,21 +154,6 @@ impl Transport<GenerateContent> for GeminiGrpc {
 /// Stable descriptor name reported on normalized responses from this provider.
 pub const PROVIDER_NAME: &str = "gemini-grpc";
 
-/// Build a non-thought `proto::Part` around the given data payload.
-pub(crate) fn data_part(data: proto::part::Data) -> proto::Part {
-    proto::Part {
-        data: Some(data),
-        thought: false,
-        thought_signature: Vec::new(),
-        part_metadata: None,
-    }
-}
-
-/// Build a plain (non-thought) text `proto::Part`.
-pub(crate) fn text_part(text: String) -> proto::Part {
-    data_part(proto::part::Data::Text(text))
-}
-
 /// Preserves tonic status display text with RPC code and retry classification.
 /// Transport failures use the same provider-body representation.
 pub(crate) fn rpc_error(status: &tonic::Status) -> ProviderError {
@@ -197,129 +188,11 @@ pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
     )
 }
 
-/// The request `completion_request` sends to `model`. Its contents are
-/// the shared Gemini encoder's REST JSON, read back as protobuf messages.
-pub(crate) fn create_grpc_request(
-    model: &str,
-    completion_request: CompletionRequest,
-) -> Result<GenerateContentRequest, EncodeError> {
-    let (history_system, contents) = conversation(&completion_request, model)?;
-    let contents = contents
-        .into_iter()
-        .map(crate::rest::from_rest::<proto::Content>)
-        .collect::<Result<Vec<_>, _>>()?;
-    let CompletionRequest {
-        model: _,
-        chat_history: _,
-        documents: _,
-        tools,
-        temperature,
-        max_tokens,
-        tool_choice: _,
-        additional_params: _,
-        output_schema: _,
-        record_telemetry_content: _,
-    } = completion_request;
-
-    let mut system_parts = Vec::new();
-    for content in history_system {
-        if !content.is_empty() {
-            system_parts.push(text_part(content));
-        }
-    }
-    let system_instruction = if system_parts.is_empty() {
-        None
-    } else {
-        Some(proto::Content {
-            parts: system_parts,
-            role: "model".to_string(),
-        })
-    };
-
-    let generation_config = if temperature.is_some() || max_tokens.is_some() {
-        Some(proto::GenerationConfig {
-            temperature: temperature.map(|t| t as f32),
-            max_output_tokens: max_tokens.map(|t| t as i32),
-            ..Default::default()
-        })
-    } else {
-        None
-    };
-
-    let tools = if !tools.is_empty() {
-        let function_declarations = tools
-            .into_iter()
-            .map(|tool| {
-                Ok(proto::FunctionDeclaration {
-                    name: tool.name.into(),
-                    description: tool.description,
-                    parameters: tool_parameters_to_proto_schema(&tool.parameters)?,
-                    ..Default::default()
-                })
-            })
-            .collect::<Result<Vec<_>, EncodeError>>()?;
-
-        vec![proto::Tool {
-            function_declarations,
-            code_execution: None,
-        }]
-    } else {
-        vec![]
-    };
-
-    Ok(GenerateContentRequest {
-        model: format!("models/{model}"),
-        contents,
-        tools,
-        safety_settings: vec![],
-        generation_config,
-        tool_config: None,
-        system_instruction,
-        cached_content: String::new(),
-    })
-}
-
-/// Converts tool parameters to protobuf schema through the shared Gemini conversion.
-/// Empty object schemas map to `None`.
-fn tool_parameters_to_proto_schema(
-    value: &serde_json::Value,
-) -> Result<Option<proto::Schema>, EncodeError> {
-    tool_parameters_to_schema(value.clone()).map(|schema| schema.map(gemini_schema_to_proto_schema))
-}
-
-fn gemini_schema_to_proto_schema(schema: GeminiSchema) -> proto::Schema {
-    proto::Schema {
-        r#type: json_type_to_proto_type(&schema.r#type) as i32,
-        format: schema.format.unwrap_or_default(),
-        description: schema.description.unwrap_or_default(),
-        nullable: schema.nullable.unwrap_or(false),
-        r#enum: schema.r#enum.unwrap_or_default(),
-        items: schema
-            .items
-            .map(|items| Box::new(gemini_schema_to_proto_schema(*items))),
-        properties: schema
-            .properties
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(name, schema)| (name, gemini_schema_to_proto_schema(schema)))
-            .collect(),
-        required: schema.required.unwrap_or_default(),
-    }
-}
-
-fn json_type_to_proto_type(t: &str) -> proto::Type {
-    match t {
-        "string" => proto::Type::String,
-        "number" => proto::Type::Number,
-        "integer" => proto::Type::Integer,
-        "boolean" => proto::Type::Boolean,
-        "array" => proto::Type::Array,
-        "object" => proto::Type::Object,
-        "null" => proto::Type::Null,
-        _ => proto::Type::Unspecified,
-    }
-}
-
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::indexing_slicing
+)]
 pub(crate) mod tests;

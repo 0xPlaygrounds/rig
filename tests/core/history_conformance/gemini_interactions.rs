@@ -4,11 +4,11 @@
 
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
-use rig_core::message::{AssistantContent, AssistantMessage};
+use rig_core::message::AssistantContent;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::interactions_api::Interactions;
 use rig_core::wire::{Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Value, json};
 
 pub struct InteractionsHistory;
@@ -160,28 +160,6 @@ fn stream(steps: &[Value], status: &str) -> Vec<WireFrame> {
     events.into_iter().map(frame).collect()
 }
 
-/// The item a block holds for replay: its native as stored, current or
-/// not, or an opaque block's item.
-fn held(block: &AssistantContent) -> Option<&Value> {
-    match block {
-        AssistantContent::Text(text) => text.native.as_ref().map(|native| &native.item),
-        AssistantContent::Reasoning(reasoning) => {
-            reasoning.native.as_ref().map(|native| &native.item)
-        }
-        AssistantContent::ToolCall(call) => call.native.as_ref().map(|native| &native.item),
-        AssistantContent::Image(image) => image.native.as_ref().map(|native| &native.item),
-        AssistantContent::Opaque(opaque) => Some(&opaque.item),
-    }
-}
-
-/// How many content items a model output step holds.
-fn items_in(step: &Value) -> usize {
-    match step["type"].as_str() {
-        Some("model_output") => step["content"].as_array().map_or(0, Vec::len),
-        _ => 0,
-    }
-}
-
 impl HistoryFixture for InteractionsHistory {
     type Wire = Interactions;
 
@@ -283,39 +261,56 @@ impl HistoryFixture for InteractionsHistory {
         })
     }
 
-    /// Each provider step once: the blocks of one model output step share
-    /// it, and send it once while every one of them is current. An edited
-    /// member sends the step's blocks rebuilt, so the step is not expected.
-    fn replayed(&self, turn: &AssistantMessage) -> Vec<Value> {
-        let mut sent = Vec::new();
-        let mut rest = turn.content.as_slice();
-        while let Some((block, tail)) = rest.split_first() {
-            let Some(step) = held(block).filter(|step| items_in(step) > 1) else {
-                if let AssistantContent::Opaque(opaque) = block {
-                    if opaque.replay {
-                        sent.push(opaque.item.clone());
-                    }
-                } else if let Some(item) = block.native_item() {
-                    sent.push(item.clone());
-                }
-                rest = tail;
-                continue;
-            };
-            let run = rest
-                .iter()
-                .take(items_in(step))
-                .take_while(|member| held(member) == Some(step))
-                .count();
-            let (members, tail) = rest.split_at(run);
-            let current = members.iter().all(|member| {
-                matches!(member, AssistantContent::Opaque(_)) || member.native_item().is_some()
-            });
-            if run == items_in(step) && current {
-                sent.push(step.clone());
+    /// A step is its own whole interaction.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let step = block.native_item()?.clone();
+        let response = rig_core::test_utils::history::decode(
+            &self.wire(MODEL),
+            Mode::Unary,
+            [frame(resource(vec![step], "completed"))],
+        )
+        .ok()?;
+        response.choice.into_iter().next()
+    }
+
+    /// Two calls to `weather`: listed in one resource, or streamed as two
+    /// steps, at their own indices or both at index 0.
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<WireFrame>> {
+        let weather = |id: &str, city: &str| {
+            json!({"type": "function_call", "id": id, "name": "weather",
+                "arguments": {"city": city}})
+        };
+        let calls = vec![weather("a1", "Paris"), weather("b2", "Rome")];
+        match (shape, mode) {
+            (CallShape::WholeList, Mode::Unary) => {
+                Some(vec![frame(resource(calls, "requires_action"))])
             }
-            rest = tail;
+            (CallShape::WholeList, Mode::Streaming) => Some(stream(&calls, "requires_action")),
+            (CallShape::ReusedIndex, Mode::Streaming) => {
+                let mut events: Vec<Value> =
+                    calls.iter().flat_map(|call| step_events(0, call)).collect();
+                events.push(json!({"event_type": "interaction.completed",
+                    "interaction": {"id": "int_1", "model": MODEL, "status": "requires_action"}}));
+                Some(events.into_iter().map(frame).collect())
+            }
+            _ => None,
         }
-        sent
+    }
+
+    fn empty_reply(&self, mode: Mode) -> Option<Vec<WireFrame>> {
+        Some(match mode {
+            Mode::Unary => vec![frame(resource(Vec::new(), "completed"))],
+            Mode::Streaming => stream(&[], "completed"),
+        })
+    }
+
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        Some("/status")
+    }
+
+    fn error_frame(&self) -> Option<WireFrame> {
+        Some(frame(json!({"event_type": "error",
+            "error": {"code": "unavailable", "message": "overloaded"}})))
     }
 }
 

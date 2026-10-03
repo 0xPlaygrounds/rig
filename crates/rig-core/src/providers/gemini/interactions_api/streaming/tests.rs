@@ -44,38 +44,85 @@ fn streamed(frames: Vec<WireFrame>) -> crate::completion::CompletionResponse {
     decode(&wire(), Mode::Streaming, frames).expect("the stream decodes")
 }
 
-/// The steps the decoded turn of `response` encodes to for the same model:
-/// what follows the user's prompt, without the results the request
-/// boundary adds for its calls.
+/// The steps the decoded turn of `response` encodes to for the same model,
+/// with the tools its calls name declared: what follows the user's prompt,
+/// without the results the request boundary adds for its calls.
 fn replayed(response: &crate::completion::CompletionResponse) -> Vec<serde_json::Value> {
-    let history = vec![Message::user("hello"), response.message().expect("a turn")];
+    let turn = response.message().expect("a turn");
+    let tools = match &turn {
+        Message::Assistant(turn) => turn
+            .tool_calls()
+            .map(|call| crate::completion::ToolDefinition {
+                name: call.function.name.clone(),
+                description: "A tool.".to_owned(),
+                parameters: json!({"type": "object", "properties": {}}),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let mut request =
+        crate::completion::CompletionRequest::from(vec![Message::user("hello"), turn]);
+    request.tools = tools;
     let request = <Completion as crate::wire::Operation>::prepare(
-        crate::completion::CompletionRequest::from(history),
+        request,
         &crate::wire::Wire::describe(&wire()),
     )
     .expect("the request is valid");
-    let mut steps = create_request_body("gemini-2.5-pro".to_owned(), request, None)
-        .expect("the request builds")
-        .input;
+    let body = create_request_body(&wire(), request, None).expect("the request builds");
+    let mut steps = body["input"].as_array().cloned().unwrap_or_default();
     steps.remove(0);
     steps.retain(|step| step["type"] != "function_result");
     steps
 }
 
-#[test]
-fn test_streaming_completion_response_has_model_version() {
-    let response = StreamingCompletionResponse {
-        usage: None,
-        interaction: None,
-        model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
-    };
-    let json = serde_json::to_string(&response).expect("serializes");
-    let deserialized: StreamingCompletionResponse =
-        serde_json::from_str(&json).expect("deserializes");
-    assert_eq!(
-        deserialized.model_version.as_deref(),
-        Some("gemini-2.5-pro-preview-05-06")
-    );
+/// How a step decodes, by its `type`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StepKind {
+    /// `thought`: reasoning, its signature kept in the step.
+    Thought,
+    /// `model_output`: one block per content item.
+    Output,
+    /// `function_call`: a call the client answers.
+    Call,
+    /// Input a reply restates (`user_input`, `function_result`): kept,
+    /// never sent back.
+    Input,
+    /// A hosted-tool step, or a step type rig does not know: sent back to
+    /// the model that produced it.
+    Other,
+}
+
+fn step_kind(step: &serde_json::Value) -> StepKind {
+    match step.get("type").and_then(serde_json::Value::as_str) {
+        Some("thought") => StepKind::Thought,
+        Some("model_output") => StepKind::Output,
+        Some("function_call") => StepKind::Call,
+        Some("user_input" | "function_result") => StepKind::Input,
+        _ => StepKind::Other,
+    }
+}
+
+/// How a model output content item decodes, by its `type`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ContentKind {
+    Text,
+    /// An image block, or an opaque one when it states no data or URI.
+    Image,
+    /// Audio, video, a document, or a type rig does not know.
+    Other,
+}
+
+fn content_kind(content: &serde_json::Value) -> ContentKind {
+    match content.get("type").and_then(serde_json::Value::as_str) {
+        Some("text") => ContentKind::Text,
+        Some("image") => ContentKind::Image,
+        _ => ContentKind::Other,
+    }
+}
+
+/// How the decoder classifies the frame `data`.
+fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
+    InteractionsDecoder::default().classify(WireFrame::Text(data.to_owned()))
 }
 
 /// The Interactions wire bound to a transport answering with `frames` as

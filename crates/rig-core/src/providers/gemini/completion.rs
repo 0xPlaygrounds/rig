@@ -1,4 +1,7 @@
-//! Completion wires and types for the [Gemini GenerateContent API](https://ai.google.dev/api/generate-content).
+//! The [Gemini GenerateContent API](https://ai.google.dev/api/generate-content)
+//! completion wire. Its request is built as REST JSON by [`request_body`],
+//! which the Vertex AI and gRPC wires transcode, and its replies are read by
+//! [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder).
 //!
 //! ```no_run
 //! use rig_core::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
@@ -8,6 +11,7 @@
 //! # Ok(())
 //! # }
 //! ```
+
 /// `gemini-3.8-flash` completion model
 pub const GEMINI_3_8_FLASH: &str = "gemini-3.8-flash";
 /// `gemini-3.1-flash-lite-preview` completion model
@@ -35,22 +39,19 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 /// `gemini-2.0-flash` completion model
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
-use self::gemini_api_types::tool_parameters_to_schema;
-use crate::completion::{self, CompletionRequest};
-use crate::error::EncodeError;
-use crate::error::ProviderError;
-use crate::operation::Completion;
-use crate::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, FunctionCallingMode, ToolConfig,
+use serde_json::{Map, Value, json};
+
+use crate::completion::{Accepts, CompletionRequest, Media, Place, Replay, ReplayTarget};
+use crate::error::{EncodeError, ProviderError};
+use crate::json_utils::Lenient;
+use crate::message::{
+    AssistantContent, DocumentMediaType, DocumentSourceKind as Source, Message, MimeType,
+    ToolChoice, ToolResultContent, UserContent,
 };
+use crate::operation::Completion;
+use crate::providers::internal::wire_ids::WireIds;
 use crate::telemetry::GenAiOperation;
 use crate::wire::{Body, Descriptor, Encoded, Framing, Mode, Wire};
-use gemini_api_types::{
-    Content, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part, Role, Tool,
-    assistant_part, user_part,
-};
-use serde_json::{Map, Value};
-use std::convert::TryFrom;
 
 /// Provider name used in normalized responses, streams, and telemetry.
 pub const PROVIDER_NAME: &str = "gcp.gemini";
@@ -136,22 +137,15 @@ impl<T> crate::driver::Model<GenerateContent, T> {
 /// content: the turns the model has finished. Only the signature keys go;
 /// every other field is unchanged.
 fn drop_finished_signatures(contents: &mut [Value]) {
-    fn parts(content: &Value) -> impl Iterator<Item = &Value> {
-        content
-            .get("parts")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-    }
     let current = contents.iter().rposition(|content| {
-        content.get("role").and_then(Value::as_str) == Some("user")
-            && parts(content).any(|part| part.get("text").is_some())
-            && !parts(content).any(|part| part.get("functionResponse").is_some())
+        let parts = content.arr("parts");
+        content.str("role") == Some("user")
+            && parts.iter().any(|part| part.get("text").is_some())
+            && !parts
+                .iter()
+                .any(|part| part.get("functionResponse").is_some())
     });
-    let Some(current) = current else {
-        return;
-    };
-    for content in contents.iter_mut().take(current) {
+    for content in contents.iter_mut().take(current.unwrap_or(0)) {
         let parts = content.get_mut("parts").and_then(Value::as_array_mut);
         for part in parts.into_iter().flatten().filter_map(Value::as_object_mut) {
             part.shift_remove("thoughtSignature");
@@ -161,7 +155,7 @@ fn drop_finished_signatures(contents: &mut [Value]) {
 
 impl Wire for GenerateContent {
     type Op = Completion;
-    type Payload = crate::wire::Encoded;
+    type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = super::streaming::GenerateContentDecoder;
 
@@ -177,30 +171,30 @@ impl Wire for GenerateContent {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         // The request may name a model of its own; the wire's is the default.
-        let model = resolve_request_model(&self.model, &request);
-        let mut body = create_request_body(request, &model)?;
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let mut body = request_body(request, self, &model)?;
         if let Some(name) = self.cached_content.as_deref() {
-            body.with_cached_content(name)?;
+            with_cached_content(&mut body, name)?;
         }
-        if self.thought_replay == ThoughtReplay::CurrentTurn {
-            drop_finished_signatures(&mut body.contents);
+        if let (ThoughtReplay::CurrentTurn, Some(Value::Array(contents))) =
+            (self.thought_replay, body.get_mut("contents"))
+        {
+            drop_finished_signatures(contents);
         }
-        let (path, framing, target) = match mode {
-            Mode::Unary => (
-                completion_endpoint(&model),
-                Framing::Whole,
-                crate::providers::internal::LogTarget::Completions,
-            ),
-            // `alt=sse` is what makes the streamed reply an event stream
-            // rather than a JSON array of the same chunks.
+        use crate::providers::internal::LogTarget;
+        // `alt=sse` is what makes the streamed reply an event stream rather
+        // than a JSON array of the same chunks.
+        let (verb, framing, target) = match mode {
+            Mode::Unary => ("generateContent", Framing::Whole, LogTarget::Completions),
             Mode::Streaming => (
-                format!("{}?alt=sse", streaming_endpoint(&model)),
+                "streamGenerateContent?alt=sse",
                 Framing::Sse,
-                crate::providers::internal::LogTarget::Streaming,
+                LogTarget::Streaming,
             ),
         };
         crate::providers::internal::trace_json(target, "Gemini completion request", &body);
-        let request = http::Request::post(self.provider.uri(&path))
+        let uri = self.provider.uri(&format!("/v1beta/models/{model}:{verb}"));
+        let request = http::Request::post(uri)
             .header("Content-Type", "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // Gemini supplies no transport request-id response header.
@@ -208,12 +202,13 @@ impl Wire for GenerateContent {
             .with_projection(super::streaming::GenerateContentDecoder::project)
             .with_analysis_only(super::streaming::GenerateContentDecoder::is_analysis_only))
     }
+
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         super::streaming::GenerateContentDecoder::default()
     }
 }
 
-impl crate::completion::ReplayTarget for GenerateContent {
+impl ReplayTarget for GenerateContent {
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("gemini.generate_content")
     }
@@ -226,13 +221,11 @@ impl crate::completion::ReplayTarget for GenerateContent {
         &self.model
     }
 
-    /// Gemini reads images in every role, and inside function responses
-    /// from Gemini 3 on.
-    fn accepts(&self, model: &str) -> crate::completion::Accepts {
+    fn accepts(&self, model: &str) -> Accepts {
         accepts(model)
     }
 
-    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+    fn encodes(&self, _model: &str, media: Media<'_>) -> bool {
         encodes(media, false)
     }
 
@@ -244,24 +237,52 @@ impl crate::completion::ReplayTarget for GenerateContent {
     ) -> String {
         normalize_tool_call_id(model, id)
     }
+
+    fn call_id_slot(&self) -> Option<&'static str> {
+        CALL_ID_SLOT
+    }
+}
+
+/// Where a GenerateContent part holds its call's id, on every wire that
+/// speaks it.
+pub const CALL_ID_SLOT: Option<&str> = Some("/functionCall/id");
+
+/// The major version of a Gemini model id, read past a `models/` prefix:
+/// `gemini-<major>…` or `gemini-live-<major>…`. An alias such as
+/// `gemini-flash-latest` names none.
+fn gemini_major(model: &str) -> Option<u32> {
+    let model = model.to_ascii_lowercase();
+    let model = model.strip_prefix("models/").unwrap_or(&model);
+    let rest = model.strip_prefix("gemini-")?;
+    let rest = rest.strip_prefix("live-").unwrap_or(rest);
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    rest.get(..end)?.parse().ok()
+}
+
+/// Whether `model` is Gemini 3 or later, which validates the thought
+/// signatures of function calls.
+pub(super) fn gemini_3_or_later(model: &str) -> bool {
+    gemini_major(model).is_some_and(|major| major >= 3)
 }
 
 /// Whether `model` takes function-call ids on its calls and their
-/// responses: Claude, gpt-oss, and Gemini 3 or later.
+/// responses: Claude, gpt-oss, and Gemini 3 or later (pi's rule).
 pub fn requires_tool_call_id(model: &str) -> bool {
     let model = model.to_ascii_lowercase();
     model.starts_with("claude-") || model.starts_with("gpt-oss-") || gemini_3_or_later(&model)
 }
 
-/// What `model` reads on every GenerateContent wire (REST, Vertex AI and
-/// gRPC): images in every role, and images inside function responses only
-/// from Gemini 3 on. Gemini 2 reads no multimodal function responses, so
-/// the adapter moves their images to a user message after the results.
-/// A model that is not Gemini (Claude behind Vertex AI) reads them.
-pub fn accepts(model: &str) -> crate::completion::Accepts {
-    crate::completion::Accepts {
+/// What `model` reads on every Gemini wire (REST, Vertex AI, gRPC and
+/// Interactions): images in every role, and images inside function
+/// responses only from Gemini 3 on. A model that names no Gemini version
+/// (an alias, or Claude behind Vertex AI) is assumed to read them, as pi
+/// assumes.
+pub fn accepts(model: &str) -> Accepts {
+    Accepts {
         tool_result_images: gemini_major(model).is_none_or(|major| major >= 3),
-        ..crate::completion::Accepts::ALL
+        ..Accepts::ALL
     }
 }
 
@@ -271,9 +292,7 @@ pub fn accepts(model: &str) -> crate::completion::Accepts {
 /// sends its text. A function response takes image data, and a URL only when
 /// `response_files`: Vertex AI declares `fileData` there and the Gemini API
 /// does not.
-pub fn encodes(media: crate::completion::Media<'_>, response_files: bool) -> bool {
-    use crate::completion::{Media, Place};
-    use crate::message::{DocumentMediaType, DocumentSourceKind as Source};
+pub fn encodes(media: Media<'_>, response_files: bool) -> bool {
     match media {
         Media::Image(image, place) => {
             reads_image(image.media_type.as_ref(), place)
@@ -305,30 +324,13 @@ pub fn encodes(media: crate::completion::Media<'_>, response_files: bool) -> boo
 /// WEBP, HEIC or HEIF, and only the first three in a function response.
 pub(crate) fn reads_image(
     media_type: Option<&crate::message::ImageMediaType>,
-    place: crate::completion::Place,
+    place: Place,
 ) -> bool {
     use crate::message::ImageMediaType::{HEIC, HEIF, JPEG, PNG, WEBP};
     match place {
-        crate::completion::Place::ToolResult => matches!(media_type, Some(JPEG | PNG | WEBP)),
+        Place::ToolResult => matches!(media_type, Some(JPEG | PNG | WEBP)),
         _ => matches!(media_type, Some(JPEG | PNG | WEBP | HEIC | HEIF)),
     }
-}
-
-/// The major version of a `gemini-<major>…` or `gemini-live-<major>…` model.
-fn gemini_major(model: &str) -> Option<u32> {
-    let model = model.to_ascii_lowercase();
-    let rest = model.strip_prefix("gemini-")?;
-    let rest = rest.strip_prefix("live-").unwrap_or(rest);
-    let end = rest
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(rest.len());
-    rest.get(..end)?.parse::<u32>().ok()
-}
-
-/// Whether `model` is Gemini 3 or later, which validates the thought
-/// signatures of function calls.
-pub(super) fn gemini_3_or_later(model: &str) -> bool {
-    gemini_major(model).is_some_and(|major| major >= 3)
 }
 
 /// `id` as `model` takes another model's call id: when the model takes ids
@@ -339,338 +341,505 @@ pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
         return id.to_owned();
     }
     id.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '_' | '-') {
-                c
-            } else {
-                '_'
-            }
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' => c,
+            _ => '_',
         })
         .take(64)
         .collect()
 }
 
-/// The request body for `completion_request` sent to `model`, which decides
-/// whether calls carry ids.
-pub(crate) fn create_request_body(
-    completion_request: CompletionRequest,
+/// The REST `GenerateContentRequest` body `request` sends to `model` on
+/// `target`, a GenerateContent wire. The REST wire sends it; the Vertex AI
+/// and gRPC wires transcode it into their SDK and protobuf requests.
+///
+/// System messages become the system instruction, and the rest the
+/// contents. `additional_params` is merged into the body: its `tools` add
+/// to the request's, its `generationConfig` is the base the typed fields
+/// override, and a `cachedContent` handle is checked as
+/// [`GenerateContent::with_cached_content`] checks one.
+///
+/// # Errors
+///
+/// When `additional_params` is malformed, a tool's parameters are no
+/// schema Gemini reads, or a field is set two ways.
+pub fn request_body(
+    request: CompletionRequest,
+    target: &dyn ReplayTarget,
     model: &str,
-) -> Result<GenerateContentRequest, EncodeError> {
-    let (history_system, contents) = conversation(&completion_request, model)?;
-
+) -> Result<Map<String, Value>, EncodeError> {
     let CompletionRequest {
-        model: _,
-        chat_history: _,
-        documents: _,
-        tools: function_tools,
+        chat_history,
+        tools,
         temperature,
         max_tokens,
         tool_choice,
-        mut additional_params,
+        additional_params,
         output_schema,
-        record_telemetry_content: _,
-    } = completion_request;
-
-    let mut additional_params_payload = additional_params
-        .take()
-        .unwrap_or_else(|| Value::Object(Map::new()));
-    let mut additional_tools =
-        extract_tools_from_additional_params(&mut additional_params_payload)?;
-    // Validate both proto JSON spellings through the typed cache field so
-    // flattened parameters cannot bypass conflicts or specify competing handles.
-    let mut smuggled_cached_content = Vec::new();
+        ..
+    } = request;
+    let mut params = match additional_params {
+        None | Some(Value::Null) => Map::new(),
+        Some(Value::Object(params)) => params,
+        Some(other) => return Err(invalid("additional_params", "an object", &other)),
+    };
+    let mut extra_tools = match params.shift_remove("tools") {
+        None => Vec::new(),
+        Some(Value::Array(tools)) => tools,
+        Some(other) => return Err(invalid("additional_params.tools", "a list", &other)),
+    };
+    let mut handles = Vec::new();
     for spelling in CACHED_CONTENT {
-        let Some(value) = additional_params_payload
-            .as_object_mut()
-            .and_then(|object| object.shift_remove(spelling))
-        else {
-            continue;
-        };
-        match value {
-            Value::String(name) => smuggled_cached_content.push(name),
-            other => {
-                return Err(EncodeError::request(format!(
-                    "additional_params.{spelling} should be a string, got {other}"
-                )));
+        match params.shift_remove(spelling) {
+            None => {}
+            Some(Value::String(name)) => handles.push(name),
+            Some(other) => {
+                return Err(invalid(
+                    &format!("additional_params.{spelling}"),
+                    "a string",
+                    &other,
+                ));
             }
         }
     }
-    // Preserve untyped instructions and tool configuration verbatim; typed
-    // conversion could discard restrictions or reject unmodeled provider values.
-    let smuggled_system_instruction =
-        smuggled_field(&additional_params_payload, &SYSTEM_INSTRUCTION);
-    let smuggled_tool_config = smuggled_field(&additional_params_payload, &TOOL_CONFIG);
-
-    let AdditionalParameters {
-        mut generation_config,
-        additional_params,
-    } = serde_json::from_value::<AdditionalParameters>(additional_params_payload)?;
-
+    let mut config = match params.shift_remove("generationConfig") {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(config)) => Some(config),
+        Some(other) => return Err(invalid("generationConfig", "an object", &other)),
+    };
     if let Some(schema) = output_schema {
-        let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
-        cfg.response_mime_type = Some("application/json".to_string());
-        cfg.response_json_schema = Some(schema.to_value());
+        let config = config.get_or_insert_default();
+        config.insert("responseMimeType".into(), json!("application/json"));
+        config.insert("responseJsonSchema".into(), schema.to_value());
     }
-
-    // Explicit limits must work without additional generation parameters.
-    // Unset fields remain absent so model defaults still apply.
-    if temperature.is_some() || max_tokens.is_some() {
-        let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
-
-        if let Some(temp) = temperature {
-            cfg.temperature = Some(temp);
-        }
-
-        if let Some(max_tokens) = max_tokens {
-            cfg.max_output_tokens = Some(max_tokens);
-        }
+    if let Some(temperature) = temperature {
+        config
+            .get_or_insert_default()
+            .insert("temperature".into(), json!(temperature));
     }
-
-    let mut system_parts: Vec<Part> = Vec::new();
-    for content in history_system {
-        if !content.is_empty() {
-            system_parts.push(content.into());
-        }
+    if let Some(max_tokens) = max_tokens {
+        config
+            .get_or_insert_default()
+            .insert("maxOutputTokens".into(), json!(max_tokens));
     }
-    let system_instruction = if system_parts.is_empty() {
-        None
-    } else {
-        Some(Content {
-            parts: system_parts,
-            role: Some(Role::Model),
+    let (system, history): (Vec<Message>, Vec<Message>) = chat_history
+        .into_iter()
+        .partition(|message| matches!(message, Message::System { .. }));
+    let system: Vec<Value> = system
+        .into_iter()
+        .filter_map(|message| match message {
+            Message::System { content } if !content.is_empty() => Some(text_part(content)),
+            _ => None,
         })
-    };
-    // Gemini rejects duplicate system-instruction fields rather than selecting one.
-    if let (Some(typed), Some(spelling)) = (&system_instruction, smuggled_system_instruction) {
-        return Err(EncodeError::request(format!(
-            "a Gemini request set the system instruction twice — once as a preamble or \
-                 system message ({} part(s)) and once through `additional_params.{spelling}`. \
-                 Both would reach the wire, and Gemini rejects that outright: \
-                 `system_instruction` is an optional proto field, so a second one is `oneof \
-                 field '_system_instruction' is already set`. Set it one way or the other",
-            typed.parts.len()
-        )));
-    }
-
-    let mut tools = if function_tools.is_empty() {
-        Vec::new()
-    } else {
-        vec![serde_json::to_value(Tool::try_from(function_tools)?)?]
-    };
-    tools.append(&mut additional_tools);
-    let tools = if tools.is_empty() { None } else { Some(tools) };
-
-    let tool_config = if let Some(cfg) = tool_choice {
-        Some(ToolConfig {
-            function_calling_config: Some(FunctionCallingMode::try_from(cfg)?),
-        })
-    } else {
-        None
-    };
-    // Same rule as the system instruction above: `tool_choice` and
-    // `additional_params.toolConfig` are one field reached two ways.
-    if tool_config.is_some()
-        && let Some(spelling) = smuggled_tool_config
+        .collect();
+    // Gemini rejects a field set twice, and merges a tool choice set twice,
+    // which unions the allowed functions.
+    if !system.is_empty()
+        && let Some(spelling) = present(&params, &SYSTEM_INSTRUCTION)
     {
         return Err(EncodeError::request(format!(
-            "a Gemini request set the tool choice twice — once as `tool_choice` and once \
-                 through `additional_params.{spelling}`. Both would reach the wire, and Gemini \
-                 does not take the last — it *merges* them, so the two allowed-function lists \
-                 are unioned and the narrower `tool_choice` silently stops restricting anything. \
-                 Set it one way or the other"
+            "a Gemini request set the system instruction twice: as a preamble or system \
+             message and as `additional_params.{spelling}`. Set it one way or the other"
         )));
     }
-
-    let mut request = GenerateContentRequest {
-        contents,
-        generation_config,
-        safety_settings: None,
-        tools,
-        tool_config,
-        system_instruction,
-        cached_content: None,
-        additional_params,
-    };
-
-    for name in smuggled_cached_content {
-        request.with_cached_content(&name)?;
+    if tool_choice.is_some()
+        && let Some(spelling) = present(&params, &TOOL_CONFIG)
+    {
+        return Err(EncodeError::request(format!(
+            "a Gemini request set the tool choice twice: as `tool_choice` and as \
+             `additional_params.{spelling}`, which Gemini merges. Set it one way or the other"
+        )));
     }
-
-    Ok(request)
+    let mut declared = Vec::with_capacity(tools.len());
+    for tool in tools {
+        let mut declaration = json!({ "name": tool.name, "description": tool.description });
+        let parameters = tool_parameters_to_schema(tool.parameters).map_err(|error| {
+            let reason = std::error::Error::source(&error)
+                .map_or_else(|| error.to_string(), ToString::to_string);
+            EncodeError::request(format!(
+                "Tool '{}' could not be converted to a schema: {reason}",
+                tool.name
+            ))
+        })?;
+        if let (Some(parameters), Some(declaration)) = (parameters, declaration.as_object_mut()) {
+            declaration.insert("parameters".into(), parameters);
+        }
+        declared.push(declaration);
+    }
+    let mut all_tools = Vec::new();
+    if !declared.is_empty() {
+        all_tools.push(json!({ "functionDeclarations": declared, "codeExecution": null }));
+    }
+    all_tools.append(&mut extra_tools);
+    let mut body = Map::from_iter([
+        (
+            "contents".to_owned(),
+            Value::Array(contents(history, target, model)?),
+        ),
+        (
+            "generationConfig".to_owned(),
+            config.map_or(Value::Null, Value::Object),
+        ),
+        ("safetySettings".to_owned(), Value::Null),
+        (
+            "toolConfig".to_owned(),
+            tool_choice.map_or(Value::Null, calling_config),
+        ),
+        (
+            "systemInstruction".to_owned(),
+            match system.is_empty() {
+                true => Value::Null,
+                false => json!({ "parts": system, "role": "model" }),
+            },
+        ),
+    ]);
+    if !all_tools.is_empty() {
+        body.insert("tools".to_owned(), Value::Array(all_tools));
+    }
+    body.extend(params);
+    for name in handles {
+        with_cached_content(&mut body, &name)?;
+    }
+    Ok(body)
 }
 
-/// What `request` sends to `model` as its conversation: the text of every
-/// system message, for the system instruction, and the contents of the
-/// rest, with the request's documents opening the first user message.
-/// Shared by the GenerateContent wires (REST, Vertex AI and gRPC).
-pub fn conversation(
-    request: &CompletionRequest,
+fn invalid(field: &str, expected: &str, got: &Value) -> EncodeError {
+    EncodeError::request(format!("Gemini `{field}` should be {expected}, got {got}"))
+}
+
+/// Proto3 JSON accepts both lowerCamelCase and original proto field names.
+const SYSTEM_INSTRUCTION: [&str; 2] = ["systemInstruction", "system_instruction"];
+const TOOL_CONFIG: [&str; 2] = ["toolConfig", "tool_config"];
+const CACHED_CONTENT: [&str; 2] = ["cachedContent", "cached_content"];
+
+/// The first of `spellings` set to a value other than `null` in `body`.
+fn present<'a>(body: &Map<String, Value>, spellings: &[&'a str]) -> Option<&'a str> {
+    spellings
+        .iter()
+        .find(|spelling| body.get(**spelling).is_some_and(|value| !value.is_null()))
+        .copied()
+}
+
+/// The `functionCallingConfig` of `choice`.
+fn calling_config(choice: ToolChoice) -> Value {
+    let config = match choice {
+        ToolChoice::Auto => json!({ "mode": "AUTO" }),
+        ToolChoice::None => json!({ "mode": "NONE" }),
+        ToolChoice::Required => json!({ "mode": "ANY" }),
+        ToolChoice::Specific { function_names } => {
+            json!({ "mode": "ANY", "allowed_function_names": function_names })
+        }
+    };
+    json!({ "functionCallingConfig": config })
+}
+
+/// Set `name`, a `cachedContents/<id>` handle, as the prefix `body` reads.
+///
+/// # Errors
+///
+/// When `name` is not a handle, `body` names another one, or it sets a
+/// system instruction, tools or a tool choice, which the cache owns.
+pub fn with_cached_content(body: &mut Map<String, Value>, name: &str) -> Result<(), EncodeError> {
+    if !name.starts_with("cachedContents/") {
+        return Err(EncodeError::request(format!(
+            "gemini cached content handle should look like `cachedContents/<id>`, got `{name}`"
+        )));
+    }
+    if let Some(existing) = body.get("cachedContent").and_then(Value::as_str)
+        && existing != name
+    {
+        return Err(EncodeError::request(format!(
+            "a Gemini request set cached content twice, to `{existing}` and `{name}`: set it \
+             one way or the other"
+        )));
+    }
+    let mut conflicts = Vec::new();
+    if present(body, &SYSTEM_INSTRUCTION).is_some() {
+        conflicts.push("a system instruction (preamble)");
+    }
+    if present(body, &["tools"]).is_some() {
+        conflicts.push("tools");
+    }
+    if present(body, &TOOL_CONFIG).is_some() {
+        conflicts.push("a tool choice");
+    }
+    if !conflicts.is_empty() {
+        let tools = body
+            .get("tools")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten();
+        let declares_functions = tools.into_iter().any(|tool| {
+            ["functionDeclarations", "function_declarations"]
+                .iter()
+                .any(|spelling| !tool.arr(spelling).is_empty())
+        });
+        // Cached function declarations need caller-side dispatch; hosted
+        // tools run on Gemini's side.
+        let caveat = if declares_functions {
+            " Function declarations in a cache are declarations only: an `Agent` dispatches \
+             only tools it advertised, so a cached function tool runs only when you drive \
+             `GenerateContent` yourself. Hosted tools such as `codeExecution` are fine to cache."
+        } else {
+            ""
+        };
+        return Err(EncodeError::request(format!(
+            "a Gemini request using cached content `{name}` also set {}. The cached content \
+             owns the system instruction, tools and tool choice of every request that uses \
+             it: move them into the cache, or drop the cache handle.{caveat}",
+            conflicts.join(" and ")
+        )));
+    }
+    body.insert("cachedContent".to_owned(), Value::String(name.to_owned()));
+    Ok(())
+}
+
+/// The Gemini contents for `history`, a history without system messages,
+/// sent to `model` on `target`. A user message's function responses and
+/// its other parts go in contents of their own, in order, as pi sends
+/// them: Gemini answers text that shares a content with function responses
+/// poorly. Calls and their responses carry the ids [`WireIds`] spells when
+/// `model` takes ids.
+fn contents(
+    history: Vec<Message>,
+    target: &dyn ReplayTarget,
     model: &str,
-) -> Result<(Vec<String>, Vec<Value>), EncodeError> {
-    let (system, history) =
-        split_system_messages_from_history(request.chat_history_with_documents());
-    Ok((system, contents(history, model)?))
-}
-
-/// The Gemini contents for `history`. A user part is converted, and a
-/// system message becomes user text. A user message's function responses
-/// and its other parts go in separate contents, in order. An assistant block is sent as the
-/// provider item it was decoded from while that is current, and rebuilt
-/// from its canonical fields otherwise. Calls and their responses carry ids
-/// when `model` takes them, an id rig issued spelled as a request-local
-/// alias so the same history always encodes the same bytes. Shared with
-/// sibling Gemini transports (e.g. `rig-gemini-grpc`).
-pub fn contents(history: Vec<completion::Message>, model: &str) -> Result<Vec<Value>, EncodeError> {
-    let ids = requires_tool_call_id(model)
-        .then(|| crate::providers::internal::wire_ids::WireIds::new(&history));
-    let sign = gemini_3_or_later(model);
-    let id = |message: usize, content: usize| ids.as_ref()?.get(message, content);
-    let content =
-        |role: &Role, parts: Vec<Value>| serde_json::json!({ "parts": parts, "role": role });
+) -> Result<Vec<Value>, EncodeError> {
+    let ids = WireIds::for_target(&history, target, model);
+    let with_ids = requires_tool_call_id(model);
+    let content = |role: &str, parts: Vec<Value>| json!({ "parts": parts, "role": role });
     let mut contents = Vec::with_capacity(history.len());
-    for (at, message) in history.into_iter().enumerate() {
+    for message in history {
         match message {
-            completion::Message::System { content: text } => contents.push(content(
-                &Role::User,
-                vec![serde_json::to_value(Part::from(text))?],
-            )),
-            // Function responses and the user's own parts go in contents of
-            // their own, as pi sends them: Gemini answers text that shares a
-            // content with function responses poorly, often with nothing.
-            completion::Message::User { content: parts } => {
-                let mut run: Vec<Value> = Vec::new();
+            Message::System { content: text } => {
+                contents.push(content("user", vec![text_part(text)]))
+            }
+            Message::User { content: parts } => {
+                let mut run = Vec::new();
                 let mut responses = false;
-                for (index, part) in parts.into_iter().enumerate() {
-                    let response = matches!(part, crate::message::UserContent::ToolResult(_));
+                for part in parts {
+                    let response = matches!(part, UserContent::ToolResult(_));
                     if response != responses && !run.is_empty() {
-                        contents.push(content(&Role::User, std::mem::take(&mut run)));
+                        contents.push(content("user", std::mem::take(&mut run)));
                     }
                     responses = response;
-                    run.push(serde_json::to_value(user_part(part, id(at, index))?)?);
+                    let id = match &part {
+                        UserContent::ToolResult(result) if with_ids => ids.of(&result.call),
+                        _ => None,
+                    };
+                    run.push(user_part(part, id)?);
                 }
                 if !run.is_empty() {
-                    contents.push(content(&Role::User, run));
+                    contents.push(content("user", run));
                 }
             }
-            completion::Message::Assistant(turn) => {
-                let parts = turn
-                    .content
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, block)| {
-                        assistant_part(block, id(at, index), sign).transpose()
-                    })
-                    .collect::<Result<_, _>>()?;
-                contents.push(content(&Role::Model, parts));
+            Message::Assistant(turn) => {
+                let mut parts = Vec::with_capacity(turn.content.len());
+                for block in &turn.content {
+                    parts.extend(assistant_part(block, target, &ids, model)?);
+                }
+                contents.push(content("model", parts));
             }
         }
     }
     Ok(contents)
 }
 
-/// Split system messages out of a chat history, keeping their contents in
-/// order. Shared with sibling Gemini transports (e.g. `rig-gemini-grpc`).
-pub fn split_system_messages_from_history(
-    history: Vec<completion::Message>,
-) -> (Vec<String>, Vec<completion::Message>) {
-    let mut system = Vec::new();
-    let mut remaining = Vec::new();
+fn text_part(text: String) -> Value {
+    json!({ "text": text, "thought": false })
+}
 
-    for message in history {
-        match message {
-            completion::Message::System { content } => system.push(content),
-            other => remaining.push(other),
+fn mime<M: MimeType>(media_type: Option<M>) -> Option<String> {
+    media_type.map(|media_type| media_type.to_mime_type().to_owned())
+}
+
+/// Where `source` puts media on every Gemini wire, REST and Interactions
+/// alike: a URL by reference (`true`) and base64 data inline. A string is
+/// inline as it stands when `verbatim`, else as the base64 of its bytes.
+/// Each wire's `encodes` refuses every other form, so the adapter passes
+/// none.
+pub(super) fn carried(source: Source, verbatim: bool) -> Result<(bool, String), EncodeError> {
+    match source {
+        Source::Url(uri) => Ok((true, uri)),
+        Source::Base64(data) => Ok((false, data)),
+        Source::String(data) if verbatim => Ok((false, data)),
+        Source::String(data) => Ok((
+            false,
+            base64::Engine::encode(&base64::prelude::BASE64_STANDARD, data),
+        )),
+        _ => Err(EncodeError::request(
+            "Gemini cannot receive this media in its form",
+        )),
+    }
+}
+
+/// `source` of `mime_type` as GenerateContent part data: file data by URI,
+/// or inline data, which needs a media type.
+fn media(
+    mime_type: Option<String>,
+    source: Source,
+    string_is_data: bool,
+) -> Result<Value, EncodeError> {
+    let (uri, data) = carried(source, string_is_data)?;
+    Ok(match (uri, mime_type) {
+        (true, mime_type) => json!({ "fileData": { "mimeType": mime_type, "fileUri": data } }),
+        (false, Some(mime_type)) => {
+            json!({ "inlineData": { "mimeType": mime_type, "data": data } })
         }
-    }
-
-    (system, remaining)
-}
-
-/// Proto3 JSON accepts both lowerCamelCase and original proto field names.
-const SYSTEM_INSTRUCTION: [&str; 2] = ["systemInstruction", "system_instruction"];
-
-/// Both spellings Gemini accepts for `toolConfig`. See [`SYSTEM_INSTRUCTION`].
-const TOOL_CONFIG: [&str; 2] = ["toolConfig", "tool_config"];
-
-/// Both spellings Gemini accepts for `cachedContent`. See [`SYSTEM_INSTRUCTION`].
-const CACHED_CONTENT: [&str; 2] = ["cachedContent", "cached_content"];
-
-/// The shared proto and JSON spelling of the tools field.
-const TOOLS: [&str; 1] = ["tools"];
-
-/// Return the first spelling present with a non-null value in `payload`.
-/// Inspect presence without narrowing untyped provider fields.
-fn smuggled_field<'a>(payload: &Value, spellings: &[&'a str]) -> Option<&'a str> {
-    let object = payload.as_object()?;
-    spellings
-        .iter()
-        .find(|spelling| object.get(**spelling).is_some_and(|value| !value.is_null()))
-        .copied()
-}
-
-fn extract_tools_from_additional_params(
-    additional_params: &mut Value,
-) -> Result<Vec<Value>, EncodeError> {
-    if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_tools) = map.shift_remove("tools")
-    {
-        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            EncodeError::request(format!(
-                "Invalid Gemini `additional_params.tools` payload: {err}"
-            ))
-        });
-    }
-
-    Ok(Vec::new())
-}
-
-pub(crate) fn resolve_request_model(
-    default_model: &str,
-    completion_request: &CompletionRequest,
-) -> String {
-    completion_request
-        .model
-        .clone()
-        .unwrap_or_else(|| default_model.to_string())
-}
-
-pub(crate) fn completion_endpoint(model: &str) -> String {
-    format!("/v1beta/models/{model}:generateContent")
-}
-
-pub(crate) fn streaming_endpoint(model: &str) -> String {
-    format!("/v1beta/models/{model}:streamGenerateContent")
-}
-
-impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
-    type Error = EncodeError;
-
-    fn try_from(tools: Vec<completion::ToolDefinition>) -> Result<Self, Self::Error> {
-        let mut function_declarations = Vec::new();
-
-        for tool in tools {
-            let parameters = tool_parameters_to_schema(tool.parameters).map_err(|error| {
-                // The reason without the inner error's own `RequestError:` prefix.
-                let reason = std::error::Error::source(&error)
-                    .map_or_else(|| error.to_string(), ToString::to_string);
-                EncodeError::request(format!(
-                    "Tool '{}' could not be converted to a schema: {reason}",
-                    tool.name
-                ))
-            })?;
-
-            function_declarations.push(FunctionDeclaration {
-                name: tool.name.into(),
-                description: tool.description,
-                parameters,
-            });
+        (false, None) => {
+            return Err(EncodeError::request(
+                "Gemini cannot receive media without its type",
+            ));
         }
+    })
+}
 
-        Ok(Self {
-            function_declarations,
-            code_execution: None,
-        })
+/// [`media`] as a whole part.
+fn media_part(
+    mime_type: Option<String>,
+    source: Source,
+    string_is_data: bool,
+) -> Result<Value, EncodeError> {
+    let mut part = media(mime_type, source, string_is_data)?;
+    if let Some(part) = part.as_object_mut() {
+        part.insert("thought".into(), Value::Bool(false));
     }
+    Ok(part)
+}
+
+/// A user part as Gemini takes it. A function response carries `id`, its
+/// call's wire spelling, when the model takes ids, and the error key when
+/// the tool failed, as the Gemini SDKs spell a function's failure. Images
+/// the adapter leaves in a result (a model that reads them) go in its
+/// `parts`, in order.
+fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> {
+    Ok(match part {
+        UserContent::Text(text) => text_part(text.text),
+        UserContent::ToolResult(result) => {
+            let mut values = Vec::new();
+            let mut parts = Vec::new();
+            for item in result.content {
+                match item {
+                    ToolResultContent::Text(text) => values.push(Value::String(text.text)),
+                    ToolResultContent::Json { value } => values.push(value),
+                    ToolResultContent::Image(image) => {
+                        parts.push(media(mime(image.media_type), image.data, true)?);
+                    }
+                }
+            }
+            let mut response = Map::from_iter([("name".to_owned(), json!(result.name))]);
+            if let Some(id) = id {
+                response.insert("id".to_owned(), json!(id));
+            }
+            let key = if result.is_error { "error" } else { "result" };
+            let value = match values.len() {
+                0 => None,
+                1 => values.pop(),
+                _ => Some(Value::Array(values)),
+            };
+            if let Some(value) = value {
+                response.insert("response".to_owned(), json!({ key: value }));
+            }
+            if !parts.is_empty() {
+                response.insert("parts".to_owned(), Value::Array(parts));
+            }
+            json!({ "functionResponse": response, "thought": false })
+        }
+        UserContent::Image(image) => media_part(mime(image.media_type), image.data, true)?,
+        // A text document goes as text, so that RAG context reads as prose.
+        UserContent::Document(document) => match (document.media_type, document.data) {
+            (Some(media_type), Source::String(text)) if media_type != DocumentMediaType::PDF => {
+                text_part(text)
+            }
+            (media_type, data) => media_part(mime(media_type), data, true)?,
+        },
+        UserContent::Audio(audio) => media_part(mime(audio.media_type), audio.data, false)?,
+        UserContent::Video(video) => {
+            let mut part = media_part(mime(video.media_type), video.data, false)?;
+            if let (Some(Value::Object(extra)), Some(part)) =
+                (video.additional_params, part.as_object_mut())
+            {
+                part.extend(extra);
+            }
+            part
+        }
+    })
+}
+
+/// One assistant block as a Gemini part: its provider item while that is
+/// current, else a part rebuilt from its canonical fields, or `None` when
+/// it has nothing to send. Calls carry ids only when `model` takes them. A
+/// rebuilt call on Gemini 3 carries Google's placeholder signature, since
+/// Gemini 3 rejects a call it did not sign without one ("Function call is
+/// missing a thought_signature in functionCall parts").
+fn assistant_part(
+    block: &AssistantContent,
+    target: &dyn ReplayTarget,
+    ids: &WireIds,
+    model: &str,
+) -> Result<Option<Value>, EncodeError> {
+    let with_ids = requires_tool_call_id(model);
+    if let Replay::Item(item) = block.replay(target, ids) {
+        let mut item = item.into_owned();
+        if let Some(part) = item.as_object_mut() {
+            if !with_ids && let Some(Value::Object(call)) = part.get_mut("functionCall") {
+                call.shift_remove("id");
+            }
+            // Gemini rejects the whole request over a signature that is
+            // not base64 ("Base64 decoding failed").
+            if part
+                .get("thoughtSignature")
+                .and_then(Value::as_str)
+                .is_some_and(|sig| !is_base64(sig))
+            {
+                part.shift_remove("thoughtSignature");
+            }
+        }
+        return Ok(Some(item));
+    }
+    Ok(Some(match block {
+        AssistantContent::Text(text) => json!({ "text": text.text }),
+        AssistantContent::Reasoning(reasoning)
+            if reasoning.redacted || reasoning.text.trim().is_empty() =>
+        {
+            return Ok(None);
+        }
+        AssistantContent::Reasoning(reasoning) => {
+            json!({ "thought": true, "text": reasoning.text })
+        }
+        AssistantContent::ToolCall(call) => {
+            let mut function_call =
+                json!({ "name": call.function.name, "args": call.function.arguments });
+            if let (true, Some(id), Some(fields)) =
+                (with_ids, ids.of(&call.id), function_call.as_object_mut())
+            {
+                fields.insert("id".to_owned(), json!(id));
+            }
+            let mut part = json!({ "functionCall": function_call });
+            if let (true, Some(part)) = (gemini_3_or_later(model), part.as_object_mut()) {
+                part.insert(
+                    "thoughtSignature".into(),
+                    json!("skip_thought_signature_validator"),
+                );
+            }
+            part
+        }
+        AssistantContent::Image(image) => {
+            media_part(mime(image.media_type.clone()), image.data.clone(), true)?
+        }
+        AssistantContent::Opaque(opaque) => opaque.item.clone(),
+    }))
+}
+
+/// Whether `text` is padded standard base64.
+fn is_base64(text: &str) -> bool {
+    let body = text.trim_end_matches('=');
+    !body.is_empty()
+        && text.len().is_multiple_of(4)
+        && text.len() - body.len() <= 2
+        && body
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/'))
 }
 
 /// Convert a specified prompt block reason into a provider error with its
@@ -696,25 +865,21 @@ pub(crate) fn blocked_prompt_error(feedback: &Value) -> Option<ProviderError> {
         Some(other) => other.to_string(),
         None => "<unset>".to_owned(),
     };
-    let ratings = feedback
-        .get("safetyRatings")
-        .and_then(Value::as_array)
-        .filter(|ratings| !ratings.is_empty())
-        .map(|ratings| {
-            ratings
-                .iter()
-                .map(|rating| {
-                    format!(
-                        "{}={}",
-                        spelled(rating.get("category")),
-                        spelled(rating.get("probability"))
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(", ")
+    let ratings: Vec<String> = feedback
+        .arr("safetyRatings")
+        .iter()
+        .map(|rating| {
+            format!(
+                "{}={}",
+                spelled(rating.get("category")),
+                spelled(rating.get("probability"))
+            )
         })
-        .map(|ratings| format!(", safety_ratings=[{ratings}]"))
-        .unwrap_or_default();
+        .collect();
+    let ratings = match ratings.is_empty() {
+        true => String::new(),
+        false => format!(", safety_ratings=[{}]", ratings.join(", ")),
+    };
     let message = format!("Gemini blocked the prompt: block_reason={reason}{ratings}");
     let error = crate::provider_response::ProviderResponseError::without_status(message)
         .with_code(Some(reason.clone()));
@@ -725,19 +890,211 @@ pub(crate) fn blocked_prompt_error(feedback: &Value) -> Option<ProviderError> {
     }))
 }
 
-pub mod gemini_api_types {
-    use crate::error::EncodeError;
-    use std::{collections::HashMap, convert::Infallible, str::FromStr};
+/// `parameters`, a tool's JSON Schema, as the schema Gemini's `parameters`
+/// reads, or `None` for a tool that takes no arguments.
+///
+/// # Errors
+///
+/// When the schema is not an object or a reference does not resolve.
+pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Value>, EncodeError> {
+    if parameters.is_null() || parameters == json!({"type": "object", "properties": {}}) {
+        Ok(None)
+    } else {
+        schema(parameters).map(Some)
+    }
+}
 
-    use serde::{Deserialize, Serialize};
-    use serde_json::{Value, json};
-
-    use crate::message::{DocumentSourceKind, MessageError, MimeType};
-    use crate::{
-        message,
-        providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
+/// `value`, a JSON Schema, as the OpenAPI subset Gemini reads: references
+/// inlined, the type inferred from a composition or the keys present, a
+/// union with `null` as `nullable`, and an array without `items` given
+/// string items, which Gemini requires.
+fn schema(value: Value) -> Result<Value, EncodeError> {
+    const COMPOSITIONS: [&str; 3] = ["anyOf", "oneOf", "allOf"];
+    let value = flatten_schema(value)?;
+    let Some(object) = value.as_object() else {
+        return Err(EncodeError::request("Expected a JSON object for Schema"));
     };
+    let alternatives = |key: &str| {
+        object
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_object)
+            .filter(|alternative| !is_null(alternative))
+    };
+    let composed = COMPOSITIONS.iter().find_map(|key| alternatives(key).next());
+    let source = match object.contains_key("properties") {
+        true => object,
+        false => composed.unwrap_or(object),
+    };
+    let kind = object
+        .get("type")
+        .and_then(type_name)
+        .or_else(|| {
+            COMPOSITIONS.iter().find_map(|key| {
+                alternatives(key).find_map(|alternative| {
+                    alternative
+                        .get("type")
+                        .and_then(type_name)
+                        .or_else(|| shape_type(alternative))
+                })
+            })
+        })
+        .or_else(|| shape_type(object))
+        .unwrap_or_default();
+    let get = |key: &str| object.get(key).or_else(|| source.get(key));
+    fn strings(value: Option<&Value>) -> Option<Vec<&str>> {
+        Some(
+            value?
+                .as_array()?
+                .iter()
+                .filter_map(Value::as_str)
+                .collect(),
+        )
+    }
+    let mut schema = Map::from_iter([("type".to_owned(), json!(kind))]);
+    for key in ["format", "description"] {
+        if let Some(text) = get(key).and_then(Value::as_str) {
+            schema.insert(key.to_owned(), json!(text));
+        }
+    }
+    if nullable(object) || composed.is_some_and(nullable) {
+        schema.insert("nullable".to_owned(), Value::Bool(true));
+    }
+    if let Some(values) = strings(get("enum")) {
+        schema.insert("enum".to_owned(), json!(values));
+    }
+    for key in ["maxItems", "minItems"] {
+        if let Some(count) = object.get(key).and_then(Value::as_i64) {
+            schema.insert(key.to_owned(), json!(count as i32));
+        }
+    }
+    if let Some(properties) = source.get("properties").and_then(Value::as_object) {
+        // Sorted, so the bytes and the cache prefix they key stay stable.
+        let properties: std::collections::BTreeMap<&String, Value> = properties
+            .iter()
+            .filter_map(|(name, value)| Some((name, self::schema(value.clone()).ok()?)))
+            .collect();
+        schema.insert("properties".to_owned(), json!(properties));
+    }
+    if let Some(required) = strings(source.get("required")) {
+        schema.insert("required".to_owned(), json!(required));
+    }
+    let items = get("items").and_then(|items| self::schema(items.clone()).ok());
+    if let Some(items) = items.or_else(|| (kind == "array").then(|| json!({ "type": "string" }))) {
+        schema.insert("items".to_owned(), items);
+    }
+    Ok(Value::Object(schema))
+}
 
+/// The type a schema's `type` names: the string, or in a list the first
+/// name other than `null`.
+fn type_name(value: &Value) -> Option<String> {
+    if let Some(name) = value.as_str() {
+        return Some(name.to_owned());
+    }
+    let names: Vec<&str> = value.as_array()?.iter().filter_map(Value::as_str).collect();
+    names
+        .iter()
+        .find(|name| **name != "null")
+        .or(names.first())
+        .map(|name| (*name).to_owned())
+}
+
+fn is_null(schema: &Map<String, Value>) -> bool {
+    schema.get("type").and_then(type_name).as_deref() == Some("null")
+}
+
+fn shape_type(schema: &Map<String, Value>) -> Option<String> {
+    if schema.contains_key("properties") {
+        Some("object".to_owned())
+    } else if schema.contains_key("enum") {
+        Some("string".to_owned())
+    } else {
+        None
+    }
+}
+
+fn nullable(schema: &Map<String, Value>) -> bool {
+    schema
+        .get("nullable")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || schema
+            .get("type")
+            .and_then(Value::as_array)
+            .is_some_and(|names| names.iter().any(|name| name.as_str() == Some("null")))
+        || ["anyOf", "oneOf", "allOf"].iter().any(|key| {
+            schema
+                .get(*key)
+                .and_then(Value::as_array)
+                .is_some_and(|items| items.iter().filter_map(Value::as_object).any(is_null))
+        })
+}
+
+/// Inline references from `$defs` or `definitions` and remove those sections.
+/// Return unchanged input if neither section exists. Callers must supply
+/// acyclic references.
+///
+/// # Errors
+///
+/// For a non-object definitions section, a reference path other than
+/// `#/$defs/` or `#/definitions/`, or a missing definition.
+pub fn flatten_schema(mut schema: Value) -> Result<Value, EncodeError> {
+    let Some(defs) = schema
+        .as_object()
+        .and_then(|object| object.get("$defs").or_else(|| object.get("definitions")))
+        .cloned()
+    else {
+        return Ok(schema);
+    };
+    let Some(defs) = defs.as_object() else {
+        return Err(EncodeError::request("$defs must be an object"));
+    };
+    resolve_refs(&mut schema, defs)?;
+    if let Some(object) = schema.as_object_mut() {
+        object.shift_remove("$defs");
+        object.shift_remove("definitions");
+    }
+    Ok(schema)
+}
+
+fn resolve_refs(value: &mut Value, defs: &Map<String, Value>) -> Result<(), EncodeError> {
+    match value {
+        Value::Object(object) => {
+            if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
+                let name = reference
+                    .strip_prefix("#/$defs/")
+                    .or_else(|| reference.strip_prefix("#/definitions/"))
+                    .ok_or_else(|| {
+                        EncodeError::request(format!("Unsupported reference format: {reference}"))
+                    })?;
+                let mut resolved = defs.get(name).cloned().ok_or_else(|| {
+                    EncodeError::request(format!("Reference not found: {reference}"))
+                })?;
+                resolve_refs(&mut resolved, defs)?;
+                *value = resolved;
+                return Ok(());
+            }
+            object
+                .values_mut()
+                .try_for_each(|value| resolve_refs(value, defs))
+        }
+        Value::Array(items) => items
+            .iter_mut()
+            .try_for_each(|value| resolve_refs(value, defs)),
+        _ => Ok(()),
+    }
+}
+
+/// The configuration types a Gemini request's `additional_params` takes,
+/// and the readers of Gemini's finish reasons and usage.
+pub mod gemini_api_types {
+    use serde::{Deserialize, Serialize};
+    use serde_json::Value;
+
+    /// The `additional_params` of a Gemini request.
     #[derive(Debug, Deserialize, Serialize, Default)]
     #[serde(rename_all = "camelCase")]
     pub struct AdditionalParameters {
@@ -745,855 +1102,21 @@ pub mod gemini_api_types {
         pub generation_config: Option<GenerationConfig>,
         /// Any additional parameters that you want.
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
-        pub additional_params: Option<serde_json::Value>,
+        pub additional_params: Option<Value>,
     }
 
     impl AdditionalParameters {
+        /// These parameters with `cfg` as the generation config.
         pub fn with_config(mut self, cfg: GenerationConfig) -> Self {
             self.generation_config = Some(cfg);
             self
         }
 
-        pub fn with_params(mut self, params: serde_json::Value) -> Self {
+        /// These parameters with `params` merged into the request.
+        pub fn with_params(mut self, params: Value) -> Self {
             self.additional_params = Some(params);
             self
         }
-    }
-
-    /// The GenerateContent reply document: the whole `generateContent`
-    /// body, and equally one `streamGenerateContent` chunk, which is the
-    /// same document delivered in pieces.
-    ///
-    /// Safety ratings and content filtering are reported for the prompt in
-    /// `prompt_feedback` and for each candidate in `finish_reason` and
-    /// `safety_ratings`. The API returns either all requested candidates or
-    /// none of them, and none at all only when something was wrong with the
-    /// prompt.
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct GenerateContentResponse {
-        #[serde(default)]
-        pub response_id: String,
-        /// Candidate responses from the model.
-        #[serde(default)]
-        pub candidates: Vec<ContentCandidate>,
-        /// The prompt's content-filter verdict. A set `blockReason` means the
-        /// prompt was refused and no candidate follows.
-        pub prompt_feedback: Option<PromptFeedback>,
-        /// Output only. Metadata on the generation requests' token usage.
-        pub usage_metadata: Option<UsageMetadata>,
-        pub model_version: Option<String>,
-        /// Gemini's error envelope, sent as a frame of its own when the
-        /// service aborts a stream in-band (`{"error":{"code":500,"message":
-        /// …,"status":"INTERNAL"}}`). Kept raw so every field (code, status,
-        /// message, details) survives into the report.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub error: Option<Value>,
-    }
-
-    /// Iterate over visible text in wire order, excluding thought and non-text parts.
-    /// Callers choose how to join part boundaries.
-    pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
-        content.parts.iter().filter_map(|part| match &part.part {
-            PartKind::Text(text) if !part.thought.unwrap_or(false) => Some(text.as_str()),
-            _ => None,
-        })
-    }
-
-    /// A response candidate generated from the model.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ContentCandidate {
-        /// Output only. Generated content returned from the model.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub content: Option<Content>,
-        /// Optional. Output only. The reason why the model stopped generating tokens.
-        /// If empty, the model has not stopped generating tokens.
-        pub finish_reason: Option<FinishReason>,
-        /// List of ratings for the safety of a response candidate.
-        /// There is at most one rating per category.
-        pub safety_ratings: Option<Vec<SafetyRating>>,
-        /// Output only. Citation information for model-generated candidate.
-        /// This field may be populated with recitation information for any text included in the content.
-        /// These are passages that are "recited" from copyrighted material in the foundational LLM's training data.
-        pub citation_metadata: Option<CitationMetadata>,
-        /// Output only. Token count for this candidate.
-        pub token_count: Option<i32>,
-        /// Output only.
-        pub avg_logprobs: Option<f64>,
-        /// Output only. Log-likelihood scores for the response tokens and top tokens
-        pub logprobs_result: Option<LogprobsResult>,
-        /// Output only. Index of the candidate in the list of response candidates.
-        pub index: Option<i32>,
-        /// Output only. Additional information about why the model stopped generating tokens.
-        pub finish_message: Option<String>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct Content {
-        /// Ordered Parts that constitute a single message. Parts may have different MIME types.
-        #[serde(default)]
-        pub parts: Vec<Part>,
-        /// The producer of the content. Must be either 'user' or 'model'.
-        /// Useful to set for multi-turn conversations, otherwise can be left blank or unset.
-        pub role: Option<Role>,
-    }
-
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "lowercase")]
-    pub enum Role {
-        User,
-        Model,
-    }
-
-    #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "camelCase")]
-    pub struct Part {
-        /// Whether this part contains reasoning rather than visible output.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thought: Option<bool>,
-        /// Opaque base64 signature required to replay the thought.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thought_signature: Option<String>,
-        #[serde(flatten)]
-        pub part: PartKind,
-        #[serde(flatten, skip_serializing_if = "Option::is_none")]
-        pub additional_params: Option<Value>,
-    }
-
-    /// One content payload in a multipart [`Content`] message.
-    /// Inline media requires an IANA MIME type.
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "camelCase")]
-    pub enum PartKind {
-        Text(String),
-        InlineData(Blob),
-        FunctionCall(FunctionCall),
-        FunctionResponse(FunctionResponse),
-        FileData(FileData),
-        ExecutableCode(ExecutableCode),
-        CodeExecutionResult(CodeExecutionResult),
-    }
-
-    impl Default for PartKind {
-        fn default() -> Self {
-            Self::Text(String::new())
-        }
-    }
-
-    impl From<String> for Part {
-        fn from(text: String) -> Self {
-            Self {
-                thought: Some(false),
-                thought_signature: None,
-                part: PartKind::Text(text),
-                additional_params: None,
-            }
-        }
-    }
-
-    impl From<&str> for Part {
-        fn from(text: &str) -> Self {
-            Self::from(text.to_string())
-        }
-    }
-
-    impl FromStr for Part {
-        type Err = Infallible;
-
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            Ok(s.into())
-        }
-    }
-
-    /// `source` as a Gemini part of `mime_type`: a URL as file data, and
-    /// base64 data, or a string when `string_is_data`, inline.
-    /// [`super::encodes`] refuses every other form, so the adapter passes
-    /// none.
-    fn media_part(
-        mime_type: Option<String>,
-        source: DocumentSourceKind,
-        string_is_data: bool,
-    ) -> Result<Part, MessageError> {
-        let part = match (mime_type, source) {
-            (mime_type, DocumentSourceKind::Url(file_uri)) => PartKind::FileData(FileData {
-                mime_type,
-                file_uri,
-            }),
-            (Some(mime_type), DocumentSourceKind::Base64(data)) => {
-                PartKind::InlineData(Blob { mime_type, data })
-            }
-            (Some(mime_type), DocumentSourceKind::String(data)) if string_is_data => {
-                PartKind::InlineData(Blob { mime_type, data })
-            }
-            _ => return Err(unsendable()),
-        };
-        Ok(Part {
-            thought: Some(false),
-            part,
-            ..Default::default()
-        })
-    }
-
-    /// The error for media [`super::encodes`] refuses.
-    fn unsendable() -> MessageError {
-        MessageError::ConversionError("Gemini cannot receive this media in its form".to_owned())
-    }
-
-    /// An image as a Gemini part, in either role.
-    fn image_to_part(image: message::Image) -> Result<Part, MessageError> {
-        let mime_type = image
-            .media_type
-            .map(|media_type| media_type.to_mime_type().to_owned());
-        media_part(mime_type, image.data, true)
-    }
-
-    /// A user part as Gemini takes it. A tool result carries `id`, its
-    /// call's wire spelling, when the model takes ids.
-    pub(crate) fn user_part(
-        content: message::UserContent,
-        id: Option<&str>,
-    ) -> Result<Part, message::MessageError> {
-        match content {
-            message::UserContent::Text(message::Text { text, .. }) => Ok(Part {
-                thought: Some(false),
-                thought_signature: None,
-                part: PartKind::Text(text),
-                additional_params: None,
-            }),
-            message::UserContent::ToolResult(message::ToolResult {
-                name,
-                content,
-                is_error,
-                ..
-            }) => {
-                let mut response_values = Vec::new();
-                let mut parts: Vec<FunctionResponsePart> = Vec::new();
-
-                for item in content {
-                    match item {
-                        message::ToolResultContent::Text(text) => {
-                            response_values.push(Value::String(text.text));
-                        }
-                        message::ToolResultContent::Json { value } => {
-                            response_values.push(value);
-                        }
-                        // The adapter leaves images here only for a model
-                        // that reads them (Gemini 3 on). Gemini rejects
-                        // synthetic `$ref` links for inline function-response
-                        // media, so the parts keep their order directly. A
-                        // URL is sent as file data, which Vertex AI reads.
-                        message::ToolResultContent::Image(image) => {
-                            let mime_type = image
-                                .media_type
-                                .map(|media_type| media_type.to_mime_type().to_owned());
-                            parts.push(match (mime_type, image.data) {
-                                (mime_type, DocumentSourceKind::Url(file_uri)) => {
-                                    FunctionResponsePart {
-                                        inline_data: None,
-                                        file_data: Some(FileData {
-                                            mime_type,
-                                            file_uri,
-                                        }),
-                                    }
-                                }
-                                (
-                                    Some(mime_type),
-                                    DocumentSourceKind::Base64(data)
-                                    | DocumentSourceKind::String(data),
-                                ) => FunctionResponsePart {
-                                    inline_data: Some(FunctionResponseInlineData {
-                                        mime_type,
-                                        data,
-                                        display_name: None,
-                                    }),
-                                    file_data: None,
-                                },
-                                _ => return Err(unsendable()),
-                            });
-                        }
-                    }
-                }
-
-                let result = match <[Value; 1]>::try_from(response_values) {
-                    Ok([single]) => Some(single),
-                    Err(values) if values.is_empty() => None,
-                    Err(values) => Some(Value::Array(values)),
-                };
-                // A failed tool's text goes under `error`, as the Gemini
-                // SDKs spell a function's failure.
-                let key = if is_error { "error" } else { "result" };
-                let response_json = result.map(|result| json!({ key: result }));
-
-                Ok(Part {
-                    thought: Some(false),
-                    thought_signature: None,
-                    part: PartKind::FunctionResponse(FunctionResponse {
-                        name: name.into(),
-                        id: id.map(str::to_owned),
-                        response: response_json,
-                        parts: if parts.is_empty() { None } else { Some(parts) },
-                    }),
-                    additional_params: None,
-                })
-            }
-            message::UserContent::Image(image) => image_to_part(image),
-            message::UserContent::Document(message::Document {
-                data, media_type, ..
-            }) => {
-                // A text document goes as text, so that RAG context reads
-                // as prose.
-                match (media_type, data) {
-                    (Some(media_type), DocumentSourceKind::String(text))
-                        if media_type != message::DocumentMediaType::PDF =>
-                    {
-                        Ok(Part::from(text))
-                    }
-                    (media_type, data) => media_part(
-                        media_type.map(|media_type| media_type.to_mime_type().to_owned()),
-                        data,
-                        true,
-                    ),
-                }
-            }
-            message::UserContent::Audio(message::Audio {
-                data, media_type, ..
-            }) => media_part(
-                media_type.map(|media_type| media_type.to_mime_type().to_owned()),
-                data,
-                false,
-            ),
-            message::UserContent::Video(message::Video {
-                data,
-                media_type,
-                additional_params,
-                ..
-            }) => Ok(Part {
-                additional_params,
-                ..media_part(
-                    media_type.map(|media_type| media_type.to_mime_type().to_owned()),
-                    data,
-                    false,
-                )?
-            }),
-        }
-    }
-
-    /// One assistant block as a Gemini part: the provider item it was
-    /// decoded from while that is current, else a part rebuilt from its
-    /// canonical fields, or `None` when it has nothing to send. A rebuilt
-    /// call carries `id`, its wire spelling, when the model takes ids, and
-    /// Google's placeholder signature when `sign`: Gemini 3 rejects a call
-    /// it did not sign without one ("Function call is missing a
-    /// thought_signature in functionCall parts").
-    pub fn assistant_part(
-        block: &message::AssistantContent,
-        id: Option<&str>,
-        sign: bool,
-    ) -> Result<Option<Value>, EncodeError> {
-        use message::AssistantContent;
-        if let Some(item) = block.native_item() {
-            return Ok(Some(input_form(item)));
-        }
-        Ok(match block {
-            // A blank text part has nothing to send, and a canonical one
-            // carries no signature that would need it.
-            AssistantContent::Text(text) if text.text.trim().is_empty() => None,
-            AssistantContent::Text(text) => Some(json!({ "text": text.text })),
-            AssistantContent::Reasoning(reasoning)
-                if reasoning.redacted || reasoning.text.trim().is_empty() =>
-            {
-                None
-            }
-            AssistantContent::Reasoning(reasoning) => {
-                Some(json!({ "thought": true, "text": reasoning.text }))
-            }
-            AssistantContent::ToolCall(call) => {
-                let mut function_call = json!({
-                    "name": call.function.name,
-                    "args": call.function.arguments,
-                });
-                if let (Some(id), Some(function_call)) = (id, function_call.as_object_mut()) {
-                    function_call.insert("id".to_owned(), json!(id));
-                }
-                let mut part = json!({ "functionCall": function_call });
-                if let (true, Some(part)) = (sign, part.as_object_mut()) {
-                    part.insert(
-                        "thoughtSignature".to_owned(),
-                        json!("skip_thought_signature_validator"),
-                    );
-                }
-                Some(part)
-            }
-            AssistantContent::Image(image) => {
-                Some(serde_json::to_value(image_to_part(image.clone())?)?)
-            }
-            AssistantContent::Opaque(opaque) => Some(opaque.item.clone()),
-        })
-    }
-
-    /// `item` as Gemini takes it back. A `thoughtSignature` that is not
-    /// base64 is left out: Gemini rejects the whole request over one
-    /// ("Invalid value at 'contents[1].parts[0].thought_signature'
-    /// (TYPE_BYTES), Base64 decoding failed").
-    fn input_form(item: &Value) -> Value {
-        let mut item = item.clone();
-        if let Some(part) = item.as_object_mut()
-            && part
-                .get("thoughtSignature")
-                .and_then(Value::as_str)
-                .is_some_and(|signature| !is_base64(signature))
-        {
-            part.shift_remove("thoughtSignature");
-        }
-        item
-    }
-
-    /// Whether `text` is padded standard base64.
-    fn is_base64(text: &str) -> bool {
-        let body = text.trim_end_matches('=');
-        !body.is_empty()
-            && text.len().is_multiple_of(4)
-            && text.len() - body.len() <= 2
-            && body
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/'))
-    }
-
-    /// Raw media bytes.
-    /// Text should not be sent as raw bytes, use the 'text' field.
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "camelCase")]
-    pub struct Blob {
-        /// The IANA standard MIME type of the source data. Examples: - image/png - image/jpeg
-        /// If an unsupported MIME type is provided, an error will be returned.
-        pub mime_type: String,
-        /// Raw bytes for media formats. A base64-encoded string.
-        pub data: String,
-    }
-
-    /// A model-requested function call with its name, arguments, and optional identifier.
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    pub struct FunctionCall {
-        /// Required. The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores
-        /// and dashes, with a maximum length of 63.
-        pub name: String,
-        /// Optional. The function parameters and values in JSON object format.
-        pub args: serde_json::Value,
-        /// Provider-supplied identifier used to correlate the function response.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Result of a model-requested function call, returned as context to the model.
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    pub struct FunctionResponse {
-        /// The name of the function to call. Must be a-z, A-Z, 0-9, or contain underscores and dashes,
-        /// with a maximum length of 63.
-        pub name: String,
-        /// Provider-supplied identifier from the corresponding function call.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-        /// The function response in JSON object format.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub response: Option<serde_json::Value>,
-        /// Multimodal parts for the function response (e.g., images).
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub parts: Option<Vec<FunctionResponsePart>>,
-    }
-
-    /// A part of a multimodal function response.
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "camelCase")]
-    pub struct FunctionResponsePart {
-        /// Inline data containing base64-encoded media content.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub inline_data: Option<FunctionResponseInlineData>,
-        /// File data containing a URI reference.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub file_data: Option<FileData>,
-    }
-
-    /// Inline data for function response parts.
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "camelCase")]
-    pub struct FunctionResponseInlineData {
-        /// The IANA standard MIME type of the source data.
-        pub mime_type: String,
-        /// Raw bytes for media formats. A base64-encoded string.
-        pub data: String,
-        /// Optional display name for the content.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub display_name: Option<String>,
-    }
-
-    /// URI based data.
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "camelCase")]
-    pub struct FileData {
-        /// Optional. The IANA standard MIME type of the source data.
-        pub mime_type: Option<String>,
-        /// Required. URI.
-        pub file_uri: String,
-    }
-
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    pub struct SafetyRating {
-        pub category: HarmCategory,
-        pub probability: HarmProbability,
-    }
-
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum HarmProbability {
-        HarmProbabilityUnspecified,
-        Negligible,
-        Low,
-        Medium,
-        High,
-        /// A probability this crate does not know yet, carried verbatim so
-        /// a rating (and the chunk that carries it) stays deserializable.
-        #[serde(untagged)]
-        Unknown(String),
-    }
-
-    #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum HarmCategory {
-        HarmCategoryUnspecified,
-        HarmCategoryDerogatory,
-        HarmCategoryToxicity,
-        HarmCategoryViolence,
-        HarmCategorySexually,
-        HarmCategoryMedical,
-        HarmCategoryDangerous,
-        HarmCategoryHarassment,
-        HarmCategoryHateSpeech,
-        HarmCategorySexuallyExplicit,
-        HarmCategoryDangerousContent,
-        HarmCategoryCivicIntegrity,
-        /// An unrecognized category, preserved verbatim without rejecting the rating.
-        #[serde(untagged)]
-        Unknown(String),
-    }
-
-    #[derive(Debug, Deserialize, Clone, Default, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct UsageMetadata {
-        #[serde(default)]
-        pub prompt_token_count: i32,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub cached_content_token_count: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub candidates_token_count: Option<i32>,
-        #[serde(default)]
-        pub total_token_count: i32,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub thoughts_token_count: Option<i32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub cache_tokens_details: Option<Vec<ModalityTokenCount>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub candidates_tokens_details: Option<Vec<ModalityTokenCount>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub tool_use_prompt_token_count: Option<i32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub tool_use_prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub traffic_type: Option<TrafficType>,
-        /// Fields this crate does not model, such as `serviceTier`, kept
-        /// verbatim.
-        #[serde(flatten)]
-        pub additional_fields: serde_json::Map<String, Value>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ModalityTokenCount {
-        #[serde(default)]
-        pub modality: Modality,
-        #[serde(default)]
-        pub token_count: i32,
-    }
-
-    #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum Modality {
-        #[default]
-        ModalityUnspecified,
-        Text,
-        Image,
-        Video,
-        Audio,
-        Document,
-        /// A modality this crate does not know yet, carried verbatim.
-        #[serde(untagged)]
-        Unknown(String),
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum TrafficType {
-        TrafficTypeUnspecified,
-        OnDemand,
-        ProvisionedThroughput,
-        /// A traffic type this crate does not know yet, carried verbatim.
-        #[serde(untagged)]
-        Unknown(String),
-    }
-
-    /// The usage [`usage_of`] reads from this metadata's JSON.
-    impl From<&UsageMetadata> for crate::completion::Usage {
-        fn from(value: &UsageMetadata) -> crate::completion::Usage {
-            usage_of(&serde_json::to_value(value).unwrap_or(Value::Null))
-        }
-    }
-
-    /// A set of the feedback metadata the prompt specified in [GenerateContentRequest.contents](GenerateContentRequest).
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct PromptFeedback {
-        /// Optional. If set, the prompt was blocked and no candidates are returned. Rephrase the prompt.
-        pub block_reason: Option<BlockReason>,
-        /// Ratings for safety of the prompt. There is at most one rating per category.
-        pub safety_ratings: Option<Vec<SafetyRating>>,
-    }
-
-    /// Reason why a prompt was blocked by the model
-    #[derive(Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum BlockReason {
-        /// Default value. This value is unused.
-        BlockReasonUnspecified,
-        /// Prompt was blocked due to safety reasons. Inspect safetyRatings to understand which safety category blocked it.
-        Safety,
-        /// Prompt was blocked due to unknown reasons.
-        Other,
-        /// Prompt was blocked due to the terms which are included from the terminology blocklist.
-        Blocklist,
-        /// Prompt was blocked due to prohibited content.
-        ProhibitedContent,
-        /// A block reason this crate does not know yet. Google adds wire
-        /// values without notice; carrying the spelling verbatim keeps the
-        /// whole payload deserializable instead of failing on the new value.
-        #[serde(untagged)]
-        Unknown(String),
-    }
-
-    impl BlockReason {
-        /// The exact spelling Gemini uses for this reason on the wire (see
-        /// [`FinishReason::as_wire_str`] for why it is spelled out).
-        pub fn as_wire_str(&self) -> &str {
-            match self {
-                Self::BlockReasonUnspecified => "BLOCK_REASON_UNSPECIFIED",
-                Self::Safety => "SAFETY",
-                Self::Other => "OTHER",
-                Self::Blocklist => "BLOCKLIST",
-                Self::ProhibitedContent => "PROHIBITED_CONTENT",
-                Self::Unknown(raw) => raw.as_str(),
-            }
-        }
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum FinishReason {
-        /// Default value. This value is unused.
-        FinishReasonUnspecified,
-        /// Natural stop point of the model or provided stop sequence.
-        Stop,
-        /// The maximum number of tokens as specified in the request was reached.
-        MaxTokens,
-        /// The response candidate content was flagged for safety reasons.
-        Safety,
-        /// The response candidate content was flagged for recitation reasons.
-        Recitation,
-        /// The response candidate content was flagged for using an unsupported language.
-        Language,
-        /// Unknown reason.
-        Other,
-        /// Token generation stopped because the content contains forbidden terms.
-        Blocklist,
-        /// Token generation stopped for potentially containing prohibited content.
-        ProhibitedContent,
-        /// Token generation stopped because the content potentially contains Sensitive Personally Identifiable Information (SPII).
-        Spii,
-        /// The function call generated by the model is invalid.
-        MalformedFunctionCall,
-        /// The model emitted a tool call that was not expected by the request.
-        UnexpectedToolCall,
-        /// The response omitted a thought signature required for a tool-calling turn.
-        MissingThoughtSignature,
-        /// The model emitted more tool calls than the provider allows for the request.
-        TooManyToolCalls,
-        /// The provider could not parse the generated response into a valid protocol shape.
-        MalformedResponse,
-        /// An unrecognized finish reason, preserved verbatim without rejecting the response.
-        #[serde(untagged)]
-        Unknown(String),
-    }
-
-    impl FinishReason {
-        /// The exact spelling Gemini uses for this reason on the wire.
-        ///
-        /// Spelled out rather than derived from `Debug` (which would yield
-        /// `MaxTokens`, not `MAX_TOKENS`) so the string that reaches
-        /// [`crate::completion::FinishReason::Other`] is the provider's own.
-        pub fn as_wire_str(&self) -> &str {
-            match self {
-                Self::FinishReasonUnspecified => "FINISH_REASON_UNSPECIFIED",
-                Self::Stop => "STOP",
-                Self::MaxTokens => "MAX_TOKENS",
-                Self::Safety => "SAFETY",
-                Self::Recitation => "RECITATION",
-                Self::Language => "LANGUAGE",
-                Self::Other => "OTHER",
-                Self::Blocklist => "BLOCKLIST",
-                Self::ProhibitedContent => "PROHIBITED_CONTENT",
-                Self::Spii => "SPII",
-                Self::MalformedFunctionCall => "MALFORMED_FUNCTION_CALL",
-                Self::UnexpectedToolCall => "UNEXPECTED_TOOL_CALL",
-                Self::MissingThoughtSignature => "MISSING_THOUGHT_SIGNATURE",
-                Self::TooManyToolCalls => "TOO_MANY_TOOL_CALLS",
-                Self::MalformedResponse => "MALFORMED_RESPONSE",
-                Self::Unknown(reason) => reason,
-            }
-        }
-    }
-
-    /// Every `finishReason` Gemini and Vertex AI document that ends a turn
-    /// as a failure: content filters, recitation, unsupported language,
-    /// image failures, tool-protocol failures and the unused zero value.
-    /// The turn keeps what arrived and is never replayed.
-    pub const FAILURE_FINISHES: &[&str] = &[
-        "FINISH_REASON_UNSPECIFIED",
-        "SAFETY",
-        "RECITATION",
-        "LANGUAGE",
-        "OTHER",
-        "BLOCKLIST",
-        "PROHIBITED_CONTENT",
-        "SPII",
-        "MALFORMED_FUNCTION_CALL",
-        "IMAGE_SAFETY",
-        "IMAGE_PROHIBITED_CONTENT",
-        "IMAGE_OTHER",
-        "NO_IMAGE",
-        "IMAGE_RECITATION",
-        "UNEXPECTED_TOOL_CALL",
-        "TOO_MANY_TOOL_CALLS",
-        "MISSING_THOUGHT_SIGNATURE",
-        "MALFORMED_RESPONSE",
-        "ESCALATION",
-        "PUP_LIMITED_DISABLED",
-        "MODEL_ARMOR",
-    ];
-
-    /// Map a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.
-    /// `STOP` is a stop (a tool use when the turn holds calls) and
-    /// `MAX_TOKENS` a length stop. Every other reason, documented in
-    /// [`FAILURE_FINISHES`] or unknown, is a failure: the content filters
-    /// as [`ContentFilter`](crate::completion::FinishReason::ContentFilter),
-    /// the rest as [`Other`](crate::completion::FinishReason::Other) with
-    /// the reason's name.
-    pub fn map_google_finish_reason(wire_name: &str) -> crate::completion::FinishReason {
-        match wire_name {
-            "STOP" => crate::completion::FinishReason::Stop,
-            "MAX_TOKENS" => crate::completion::FinishReason::Length,
-            "SAFETY"
-            | "BLOCKLIST"
-            | "PROHIBITED_CONTENT"
-            | "SPII"
-            | "IMAGE_SAFETY"
-            | "IMAGE_PROHIBITED_CONTENT"
-            | "MODEL_ARMOR" => crate::completion::FinishReason::ContentFilter,
-            other => crate::completion::FinishReason::Other(other.to_owned()),
-        }
-    }
-
-    /// Map a Gemini REST `finishReason` onto rig's normalized vocabulary.
-    pub fn map_finish_reason(reason: &FinishReason) -> crate::completion::FinishReason {
-        map_google_finish_reason(reason.as_wire_str())
-    }
-
-    /// Rig's usage for a `usageMetadata` document, read leniently: a count
-    /// that is absent or not a non-negative integer is unreported, and no
-    /// other field is read, so usage never fails a reply. Rig's input is the
-    /// prompt plus the tool-use prompt, its output the candidates plus the
-    /// thoughts, and its total their sum, which is `totalTokenCount`. A
-    /// count Gemini leaves out is zero in those sums, as its JSON omits
-    /// zeros (a reply that only thought carries no candidates count). The
-    /// REST, Vertex AI and gRPC wires all read usage here.
-    pub fn usage_of(usage: &Value) -> crate::completion::Usage {
-        let count = |key: &str| usage.get(key).and_then(Value::as_u64);
-        // Cached tokens are counted against the prompt and the tool-use
-        // prompt, so without the tool-use part they could exceed input.
-        let tool_use = count("toolUsePromptTokenCount");
-        let input = count("promptTokenCount")
-            .unwrap_or(0)
-            .saturating_add(tool_use.unwrap_or(0));
-        let thoughts = count("thoughtsTokenCount");
-        let output = count("candidatesTokenCount")
-            .unwrap_or(0)
-            .saturating_add(thoughts.unwrap_or(0));
-        crate::completion::Usage {
-            input_tokens: Some(input),
-            output_tokens: Some(output),
-            cached_input_tokens: count("cachedContentTokenCount"),
-            reasoning_tokens: thoughts,
-            tool_use_prompt_tokens: tool_use,
-            total_tokens: Some(input.saturating_add(output)),
-            cache_creation_input_tokens: None,
-        }
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct CitationMetadata {
-        #[serde(default)]
-        pub citation_sources: Vec<CitationSource>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct CitationSource {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub start_index: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub end_index: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub license: Option<String>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct LogprobsResult {
-        #[serde(default)]
-        pub top_candidates: Vec<TopCandidate>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub log_probability_sum: Option<f64>,
-        #[serde(default)]
-        pub chosen_candidates: Vec<LogProbCandidate>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct TopCandidate {
-        #[serde(default)]
-        pub candidates: Vec<LogProbCandidate>,
-    }
-
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct LogProbCandidate {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub token: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub token_id: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub log_probability: Option<f64>,
     }
 
     /// Model generation options from the [Gemini API](https://ai.google.dev/api/generate-content#generationconfig).
@@ -1602,71 +1125,58 @@ pub mod gemini_api_types {
     #[derive(Debug, Default, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {
-        /// Up to five stop sequences. Generation ends at the first match,
-        /// excluding that sequence from the response.
+        /// Up to five stop sequences.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub stop_sequences: Option<Vec<String>>,
-        /// Output MIME type: `text/plain` by default, `application/json` for JSON,
-        /// or `text/x.enum` for a string enum.
+        /// Output MIME type: `text/plain` by default, `application/json` for JSON.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_mime_type: Option<String>,
-        /// OpenAPI-subset output schema for objects, primitives, or arrays.
-        /// Requires `response_mime_type` to be `application/json`.
+        /// OpenAPI-subset output schema.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub response_schema: Option<Schema>,
-        /// Optional. The output schema of the generated response.
-        /// This is an alternative to responseSchema that accepts a standard JSON Schema.
-        /// If this is set, responseSchema must be omitted.
-        /// Compatible MIME type: application/json.
-        /// Supported properties: $id, $defs, $ref, type, properties, etc.
+        pub response_schema: Option<Value>,
+        /// The legacy spelling of `response_json_schema`.
         #[serde(
             skip_serializing_if = "Option::is_none",
             rename = "_responseJsonSchema"
         )]
         pub _response_json_schema: Option<Value>,
-        /// Internal or alternative representation for `response_json_schema`.
+        /// A standard JSON Schema for the output; excludes `response_schema`.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_json_schema: Option<Value>,
-        /// Number of generated responses to return. Currently, this value can only be set to 1. If
-        /// unset, this will default to 1.
+        /// Number of generated responses to return; only 1 is supported.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub candidate_count: Option<i32>,
-        /// Maximum output tokens per candidate. The provider default depends on the model.
+        /// Maximum output tokens per candidate.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub max_output_tokens: Option<u64>,
-        /// Sampling temperature in `[0.0, 2.0]`. The provider default depends on the model.
+        /// Sampling temperature in `[0.0, 2.0]`.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub temperature: Option<f64>,
         /// Maximum cumulative token probability for nucleus sampling.
-        /// The provider default depends on the model.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub top_p: Option<f64>,
         /// Maximum number of likely tokens considered for sampling.
-        /// Set only for models whose metadata reports top-k support.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub top_k: Option<i32>,
-        /// Penalty for tokens already present in the response, independent of frequency.
-        /// Positive values discourage reuse; negative values encourage it.
+        /// Penalty for tokens already present in the response.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub presence_penalty: Option<f64>,
         /// Penalty scaled by each token's frequency in the response.
-        /// Positive values discourage repetition; negative values encourage it
-        /// and may produce repetition until the output limit.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub frequency_penalty: Option<f64>,
-        /// If true, export the logprobs results in response.
+        /// Whether to return log probabilities.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_logprobs: Option<bool>,
-        /// Only valid if responseLogprobs=True. This sets the number of top logprobs to return at each decoding step in
-        /// [Candidate.logprobs_result].
+        /// Top log probabilities per step, with `response_logprobs`.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub logprobs: Option<i32>,
-        /// Configuration for thinking/reasoning.
+        /// Configuration for thinking.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_config: Option<ThinkingConfig>,
-        /// Response modalities requested from models that support multimodal output.
+        /// Response modalities of multimodal output models.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub response_modalities: Option<Vec<ResponseModality>>,
+        /// Image output configuration.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub image_config: Option<ImageConfig>,
     }
@@ -1690,576 +1200,83 @@ pub mod gemini_api_types {
         High,
     }
 
-    /// Configuration for the model's thinking/reasoning process.
-    /// Note: `thinking_budget` (Gemini 2.5) and `thinking_level` (Gemini 3) are mutually exclusive
-    /// and cannot be set in the same request.
+    /// Configuration for the model's thinking. `thinking_budget` (Gemini
+    /// 2.5) and `thinking_level` (Gemini 3) are mutually exclusive.
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ThinkingConfig {
-        /// Token budget for thinking. Used by Gemini 2.5 models. Range: 0 to 32768.
+        /// Token budget for thinking, 0 to 32768.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_budget: Option<u32>,
-        /// Thinking depth level. Used by Gemini 3 models.
+        /// Thinking depth level.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub thinking_level: Option<ThinkingLevel>,
-        /// When true, includes summarized versions of the model's reasoning in the response.
+        /// Whether the response includes summaries of the model's reasoning.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub include_thoughts: Option<bool>,
     }
 
+    /// Image output configuration.
     #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ImageConfig {
+        /// The output aspect ratio, such as `16:9`.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub aspect_ratio: Option<String>,
+        /// The output size, such as `2K`.
         #[serde(skip_serializing_if = "Option::is_none")]
         pub image_size: Option<String>,
     }
 
-    /// The Schema object allows the definition of input and output data types. These types can be objects, but also
-    /// primitives and arrays. Represents a select subset of an OpenAPI 3.0 schema object.
-    /// From [Gemini API Reference](https://ai.google.dev/api/caching#Schema)
-    #[derive(Debug, Deserialize, Serialize, Clone)]
-    pub struct Schema {
-        pub r#type: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub format: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub description: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub nullable: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub r#enum: Option<Vec<String>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub max_items: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub min_items: Option<i32>,
-        /// Argument properties, serialized in sorted key order to stabilize cache prefixes.
-        #[serde(
-            skip_serializing_if = "Option::is_none",
-            serialize_with = "crate::json_utils::serialize_optional_map_sorted"
-        )]
-        pub properties: Option<HashMap<String, Schema>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub required: Option<Vec<String>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub items: Option<Box<Schema>>,
-    }
-
-    /// Converts Rig tool parameters into Gemini's schema representation.
-    ///
-    /// Gemini does not need a `parameters` object for no-argument tools, and it
-    /// does not support JSON Schema references, so this helper keeps those
-    /// conventions centralized for all Gemini transports.
-    pub fn tool_parameters_to_schema(parameters: Value) -> Result<Option<Schema>, EncodeError> {
-        if parameters.is_null() || parameters == json!({"type": "object", "properties": {}}) {
-            Ok(None)
-        } else {
-            parameters.try_into().map(Some)
+    /// Map a Google `finishReason` in its SCREAMING_SNAKE_CASE wire spelling.
+    /// `STOP` is a stop (a tool use when the turn holds calls) and
+    /// `MAX_TOKENS` a length stop. Every other reason, documented or not, is
+    /// a failure: the content filters as
+    /// [`ContentFilter`](crate::completion::FinishReason::ContentFilter),
+    /// the rest as [`Other`](crate::completion::FinishReason::Other) with
+    /// the reason's name.
+    pub fn map_google_finish_reason(wire_name: &str) -> crate::completion::FinishReason {
+        use crate::completion::FinishReason;
+        match wire_name {
+            "STOP" => FinishReason::Stop,
+            "MAX_TOKENS" => FinishReason::Length,
+            "SAFETY"
+            | "BLOCKLIST"
+            | "PROHIBITED_CONTENT"
+            | "SPII"
+            | "IMAGE_SAFETY"
+            | "IMAGE_PROHIBITED_CONTENT"
+            | "MODEL_ARMOR" => FinishReason::ContentFilter,
+            other => FinishReason::Other(other.to_owned()),
         }
     }
 
-    /// Inline references from `$defs` or `definitions` and remove those sections.
-    /// Return unchanged input if neither section exists. Return an error for a
-    /// non-object definitions section, unsupported reference paths, or missing definitions.
-    /// Callers must supply acyclic references.
-    pub fn flatten_schema(mut schema: Value) -> Result<Value, EncodeError> {
-        let defs = schema
-            .as_object()
-            .and_then(|obj| obj.get("$defs").or_else(|| obj.get("definitions")))
-            .cloned();
-
-        let Some(defs_value) = defs else {
-            return Ok(schema);
-        };
-
-        let Some(defs_obj) = defs_value.as_object() else {
-            return Err(EncodeError::request("$defs must be an object"));
-        };
-
-        resolve_refs(&mut schema, defs_obj)?;
-
-        if let Some(obj) = schema.as_object_mut() {
-            obj.shift_remove("$defs");
-            obj.shift_remove("definitions");
+    /// Rig's usage for a `usageMetadata` document, read leniently: a count
+    /// that is absent or not a non-negative integer is unreported, and no
+    /// other field is read, so usage never fails a reply. Rig's input is the
+    /// prompt plus the tool-use prompt, its output the candidates plus the
+    /// thoughts, and its total their sum. A count Gemini leaves out is zero
+    /// in those sums, as its JSON omits zeros. The REST, Vertex AI and gRPC
+    /// wires all read usage here.
+    pub fn usage_of(usage: &Value) -> crate::completion::Usage {
+        let count = |key: &str| usage.get(key).and_then(Value::as_u64);
+        let tool_use = count("toolUsePromptTokenCount");
+        let input = count("promptTokenCount")
+            .unwrap_or(0)
+            .saturating_add(tool_use.unwrap_or(0));
+        let thoughts = count("thoughtsTokenCount");
+        let output = count("candidatesTokenCount")
+            .unwrap_or(0)
+            .saturating_add(thoughts.unwrap_or(0));
+        crate::completion::Usage {
+            input_tokens: Some(input),
+            output_tokens: Some(output),
+            cached_input_tokens: count("cachedContentTokenCount"),
+            reasoning_tokens: thoughts,
+            tool_use_prompt_tokens: tool_use,
+            total_tokens: Some(input.saturating_add(output)),
+            cache_creation_input_tokens: None,
         }
-
-        Ok(schema)
-    }
-
-    /// Recursively resolves all `$ref` references in a JSON value by
-    /// replacing them with their definitions.
-    fn resolve_refs(
-        value: &mut Value,
-        defs: &serde_json::Map<String, Value>,
-    ) -> Result<(), EncodeError> {
-        match value {
-            Value::Object(obj) => {
-                if let Some(ref_value) = obj.get("$ref")
-                    && let Some(ref_str) = ref_value.as_str()
-                {
-                    let def_name = parse_ref_path(ref_str)?;
-
-                    let def = defs.get(&def_name).ok_or_else(|| {
-                        EncodeError::request(format!("Reference not found: {ref_str}"))
-                    })?;
-
-                    let mut resolved = def.clone();
-                    resolve_refs(&mut resolved, defs)?;
-                    *value = resolved;
-                    return Ok(());
-                }
-
-                for (_, v) in obj.iter_mut() {
-                    resolve_refs(v, defs)?;
-                }
-            }
-            Value::Array(arr) => {
-                for item in arr.iter_mut() {
-                    resolve_refs(item, defs)?;
-                }
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
-
-    /// Extract the suffix of `#/$defs/` or `#/definitions/`.
-    /// Return a request error for any other reference prefix.
-    fn parse_ref_path(ref_str: &str) -> Result<String, EncodeError> {
-        if let Some(fragment) = ref_str.strip_prefix('#') {
-            if let Some(name) = fragment.strip_prefix("/$defs/") {
-                Ok(name.to_string())
-            } else if let Some(name) = fragment.strip_prefix("/definitions/") {
-                Ok(name.to_string())
-            } else {
-                Err(EncodeError::request(format!(
-                    "Unsupported reference format: {ref_str}"
-                )))
-            }
-        } else {
-            Err(EncodeError::request(format!(
-                "Only fragment references (#/...) are supported: {ref_str}"
-            )))
-        }
-    }
-
-    /// Helper function to extract the type string from a JSON value.
-    /// Handles both direct string types and array types.
-    fn extract_type(type_value: &Value) -> Option<String> {
-        if let Some(t) = type_value.as_str() {
-            return Some(t.to_string());
-        }
-
-        type_value.as_array().and_then(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str())
-                .find(|t| *t != "null")
-                .or_else(|| arr.iter().find_map(|v| v.as_str()))
-                .map(str::to_owned)
-        })
-    }
-
-    fn schema_is_null(obj: &serde_json::Map<String, Value>) -> bool {
-        obj.get("type")
-            .and_then(extract_type)
-            .as_deref()
-            .is_some_and(|t| t == "null")
-    }
-
-    fn schema_is_nullable(obj: &serde_json::Map<String, Value>) -> bool {
-        obj.get("nullable")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false)
-            || obj
-                .get("type")
-                .and_then(|v| v.as_array())
-                .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some("null")))
-            || ["anyOf", "oneOf", "allOf"].iter().any(|key| {
-                obj.get(*key).and_then(|v| v.as_array()).is_some_and(|arr| {
-                    arr.iter()
-                        .filter_map(|schema| schema.as_object())
-                        .any(schema_is_null)
-                })
-            })
-    }
-
-    /// Helper function to extract type from anyOf, oneOf, or allOf schemas.
-    /// Returns the type of the first non-null schema found.
-    fn extract_type_from_composition(composition: &Value) -> Option<String> {
-        composition.as_array().and_then(|arr| {
-            arr.iter().find_map(|schema| {
-                let obj = schema.as_object()?;
-                if schema_is_null(obj) {
-                    return None;
-                }
-
-                obj.get("type").and_then(extract_type).or_else(|| {
-                    if obj.contains_key("properties") {
-                        Some("object".to_string())
-                    } else if obj.contains_key("enum") {
-                        // Enum schemas without explicit type are string-backed
-                        Some("string".to_string())
-                    } else {
-                        None
-                    }
-                })
-            })
-        })
-    }
-
-    /// Helper function to extract the first non-null schema from anyOf, oneOf, or allOf.
-    /// Returns the schema object that should be used for properties, required, etc.
-    fn extract_schema_from_composition(
-        composition: &Value,
-    ) -> Option<serde_json::Map<String, Value>> {
-        composition.as_array().and_then(|arr| {
-            arr.iter().find_map(|schema| {
-                let obj = schema.as_object()?;
-                if schema_is_null(obj) {
-                    None
-                } else {
-                    Some(obj.clone())
-                }
-            })
-        })
-    }
-
-    fn extract_schema_from_composition_obj(
-        obj: &serde_json::Map<String, Value>,
-    ) -> Option<serde_json::Map<String, Value>> {
-        obj.get("anyOf")
-            .and_then(extract_schema_from_composition)
-            .or_else(|| obj.get("oneOf").and_then(extract_schema_from_composition))
-            .or_else(|| obj.get("allOf").and_then(extract_schema_from_composition))
-    }
-
-    /// Helper function to infer the type of a schema object.
-    /// Checks for explicit type, then anyOf/oneOf/allOf, then infers from properties.
-    fn infer_type(obj: &serde_json::Map<String, Value>) -> String {
-        if let Some(type_val) = obj.get("type")
-            && let Some(type_str) = extract_type(type_val)
-        {
-            return type_str;
-        }
-
-        if let Some(any_of) = obj.get("anyOf")
-            && let Some(type_str) = extract_type_from_composition(any_of)
-        {
-            return type_str;
-        }
-
-        if let Some(one_of) = obj.get("oneOf")
-            && let Some(type_str) = extract_type_from_composition(one_of)
-        {
-            return type_str;
-        }
-
-        if let Some(all_of) = obj.get("allOf")
-            && let Some(type_str) = extract_type_from_composition(all_of)
-        {
-            return type_str;
-        }
-
-        if obj.contains_key("properties") {
-            "object".to_string()
-        } else if obj.contains_key("enum") {
-            "string".to_string()
-        } else {
-            String::new()
-        }
-    }
-
-    impl TryFrom<Value> for Schema {
-        type Error = EncodeError;
-
-        fn try_from(value: Value) -> Result<Self, Self::Error> {
-            let flattened_val = flatten_schema(value)?;
-            if let Some(obj) = flattened_val.as_object() {
-                let composition_source = extract_schema_from_composition_obj(obj);
-                let props_source = if obj.get("properties").is_none() {
-                    composition_source.clone().unwrap_or_else(|| obj.clone())
-                } else {
-                    obj.clone()
-                };
-
-                let schema_type = infer_type(obj);
-                let items = obj
-                    .get("items")
-                    .or_else(|| props_source.get("items"))
-                    .and_then(|v| v.clone().try_into().ok())
-                    .map(Box::new);
-
-                // Gemini requires `items` on array-typed schemas; default to
-                // string items when the source schema omits it.
-                let items = if schema_type == "array" && items.is_none() {
-                    Some(Box::new(Schema {
-                        r#type: "string".to_string(),
-                        format: None,
-                        description: None,
-                        nullable: None,
-                        r#enum: None,
-                        max_items: None,
-                        min_items: None,
-                        properties: None,
-                        required: None,
-                        items: None,
-                    }))
-                } else {
-                    items
-                };
-
-                Ok(Schema {
-                    r#type: schema_type,
-                    format: obj
-                        .get("format")
-                        .or_else(|| props_source.get("format"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                    description: obj
-                        .get("description")
-                        .or_else(|| props_source.get("description"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                    nullable: if schema_is_nullable(obj)
-                        || composition_source.as_ref().is_some_and(schema_is_nullable)
-                    {
-                        Some(true)
-                    } else {
-                        None
-                    },
-                    r#enum: obj
-                        .get("enum")
-                        .or_else(|| props_source.get("enum"))
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect()
-                        }),
-                    max_items: obj
-                        .get("maxItems")
-                        .and_then(serde_json::Value::as_i64)
-                        .map(|v| v as i32),
-                    min_items: obj
-                        .get("minItems")
-                        .and_then(serde_json::Value::as_i64)
-                        .map(|v| v as i32),
-                    properties: props_source
-                        .get("properties")
-                        .and_then(|v| v.as_object())
-                        .map(|map| {
-                            map.iter()
-                                .filter_map(|(k, v)| {
-                                    v.clone().try_into().ok().map(|schema| (k.clone(), schema))
-                                })
-                                .collect()
-                        }),
-                    required: props_source
-                        .get("required")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(String::from))
-                                .collect()
-                        }),
-                    items,
-                })
-            } else {
-                Err(EncodeError::request("Expected a JSON object for Schema"))
-            }
-        }
-    }
-
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct GenerateContentRequest {
-        /// The conversation, one content per message.
-        pub contents: Vec<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub tools: Option<Vec<Value>>,
-        pub tool_config: Option<ToolConfig>,
-        /// Optional. Configuration options for model generation and outputs.
-        pub generation_config: Option<GenerationConfig>,
-        /// Safety thresholds applied to request content and response candidates.
-        /// Supply at most one setting per category; omitted categories retain defaults.
-        /// Supported categories are hate speech, sexually explicit content,
-        /// dangerous content, and harassment.
-        pub safety_settings: Option<Vec<SafetySetting>>,
-        /// Optional. Developer set system instruction(s). Currently, text only.
-        /// From [Gemini API Reference](https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest)
-        pub system_instruction: Option<Content>,
-        /// Cache handle whose content prefixes this request (`cachedContents/<id>`).
-        /// Use [`Self::with_cached_content`] to validate conflicts with system
-        /// instructions, tools, and tool configuration.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub cached_content: Option<String>,
-        /// Additional parameters.
-        #[serde(flatten, skip_serializing_if = "Option::is_none")]
-        pub additional_params: Option<serde_json::Value>,
-    }
-
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct Tool {
-        pub function_declarations: Vec<FunctionDeclaration>,
-        pub code_execution: Option<CodeExecution>,
-    }
-
-    #[derive(Debug, Serialize, Clone)]
-    #[serde(rename_all = "camelCase")]
-    pub struct FunctionDeclaration {
-        pub name: String,
-        pub description: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub parameters: Option<Schema>,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ToolConfig {
-        pub function_calling_config: Option<FunctionCallingMode>,
-    }
-
-    #[derive(Debug, Serialize, Deserialize, Default)]
-    #[serde(tag = "mode", rename_all = "UPPERCASE")]
-    pub enum FunctionCallingMode {
-        #[default]
-        Auto,
-        None,
-        Any {
-            #[serde(skip_serializing_if = "Option::is_none")]
-            allowed_function_names: Option<Vec<String>>,
-        },
-    }
-
-    impl TryFrom<message::ToolChoice> for FunctionCallingMode {
-        type Error = EncodeError;
-        fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
-            let res = match value {
-                message::ToolChoice::Auto => Self::Auto,
-                message::ToolChoice::None => Self::None,
-                message::ToolChoice::Required => Self::Any {
-                    allowed_function_names: None,
-                },
-                message::ToolChoice::Specific { function_names } => Self::Any {
-                    allowed_function_names: Some(
-                        function_names.into_iter().map(String::from).collect(),
-                    ),
-                },
-            };
-
-            Ok(res)
-        }
-    }
-
-    #[derive(Debug, Serialize)]
-    pub struct CodeExecution {}
-
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct SafetySetting {
-        pub category: HarmCategory,
-        pub threshold: HarmBlockThreshold,
-    }
-
-    #[derive(Debug, Serialize)]
-    #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    pub enum HarmBlockThreshold {
-        HarmBlockThresholdUnspecified,
-        BlockLowAndAbove,
-        BlockMediumAndAbove,
-        BlockOnlyHigh,
-        BlockNone,
-        Off,
-    }
-}
-
-impl gemini_api_types::GenerateContentRequest {
-    /// Set an explicit cache handle, requiring the `cachedContents/` prefix.
-    /// Return a request error for a different existing handle or for system
-    /// instructions, tools, or tool configuration in typed or additional fields.
-    pub fn with_cached_content(&mut self, name: &str) -> Result<(), EncodeError> {
-        if !name.starts_with("cachedContents/") {
-            return Err(EncodeError::request(format!(
-                "gemini cached content handle should look like `cachedContents/<id>`, got \
-                     `{name}`"
-            )));
-        }
-
-        // Reject competing handles rather than silently choose a cache.
-        if let Some(existing) = self.cached_content.as_deref()
-            && existing != name
-        {
-            return Err(EncodeError::request(format!(
-                "a Gemini request set cached content twice, to `{existing}` and `{name}` — \
-                     set it one way or the other"
-            )));
-        }
-
-        // Hand-built requests can retain conflicting fields in flattened parameters,
-        // so validation must inspect both typed and untyped fields.
-        let blob = self.additional_params.as_ref();
-        let smuggled = |spellings: &'static [&'static str]| {
-            blob.and_then(|payload| smuggled_field(payload, spellings))
-        };
-
-        let mut conflicts = Vec::new();
-        if self.system_instruction.is_some() || smuggled(&SYSTEM_INSTRUCTION).is_some() {
-            conflicts.push("a system instruction (preamble)");
-        }
-        let smuggled_tools = smuggled(&TOOLS);
-        if self.tools.is_some() || smuggled_tools.is_some() {
-            conflicts.push("tools");
-        }
-        if self.tool_config.is_some() || smuggled(&TOOL_CONFIG).is_some() {
-            conflicts.push("a tool choice");
-        }
-        if !conflicts.is_empty() {
-            // Cached function declarations need caller-side dispatch, whereas
-            // provider-hosted tools remain executable without an agent tool registry.
-            let declares_function = |tool: &Value| {
-                ["functionDeclarations", "function_declarations"]
-                    .iter()
-                    .any(|spelling| {
-                        tool.get(spelling)
-                            .and_then(Value::as_array)
-                            .is_some_and(|declarations| !declarations.is_empty())
-                    })
-            };
-            let declares_functions = self
-                .tools
-                .iter()
-                .flatten()
-                .chain(
-                    smuggled_tools
-                        .and_then(|spelling| blob?.get(spelling))
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten(),
-                )
-                .any(declares_function);
-            let tool_caveat = if declares_functions {
-                " Note that function declarations in a cache are declarations only — rig's \
-                 `Agent` can only dispatch tools it advertised, so a cached function tool set is \
-                 never executable from an agent; it is usable only when you drive \
-                 `GenerateContent` yourself and run the tool loop. (Provider-hosted tools such \
-                 as `codeExecution` run on Gemini's side and are fine to keep in the cache.)"
-            } else {
-                ""
-            };
-            return Err(EncodeError::request(format!(
-                "a Gemini request using cached content `{name}` also set {}. The cached \
-                     content already owns the system instruction, tools and tool choice for every \
-                     request that uses it — move them into the cache, or drop the cache \
-                     handle.{tool_caveat}",
-                conflicts.join(" and ")
-            )));
-        }
-
-        self.cached_content = Some(name.to_owned());
-        Ok(())
     }
 }
 

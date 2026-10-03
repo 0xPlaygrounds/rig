@@ -4,13 +4,30 @@ use futures::StreamExt;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
-use rig::providers::gemini::interactions_api::{AdditionalParameters, Interaction, Tool};
+use rig::providers::gemini::interactions_api::{AdditionalParameters, Tool};
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
-use serde::Deserialize;
 
 use crate::support::assert_nonempty_response;
 use rig::completion::CompletionRequest;
+
+/// Whether the interaction's steps carry a Google Search call or result, as a
+/// step of its own or as an item of a model output step.
+fn has_google_search_exchange(steps: &[serde_json::Value]) -> bool {
+    let is_search = |item: &serde_json::Value| {
+        matches!(
+            item["type"].as_str(),
+            Some("google_search_call" | "google_search_result")
+        )
+    };
+    steps.iter().any(|step| {
+        is_search(step)
+            || (step["type"] == "model_output"
+                && step["content"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(is_search)))
+    })
+}
 
 fn extract_text(choice: &[AssistantContent]) -> String {
     choice
@@ -53,15 +70,16 @@ async fn basic_interaction_returns_id() {
             // `previous_interaction_id`), not an assistant message id: it is
             // on the interaction document `raw` carries, and the decoder
             // reports that very value as the response id.
-            let document = Interaction::deserialize(&response.raw)
+            let id = response.raw["id"]
+                .as_str()
                 .expect("raw is the Interactions API's own document");
             assert!(
-                !document.id.is_empty(),
+                !id.is_empty(),
                 "interactions api should return an interaction id"
             );
             assert_eq!(
                 response.response_id(),
-                Some(document.id.as_str()),
+                Some(id),
                 "the continuation handle is what the normalized response names"
             );
         },
@@ -139,10 +157,11 @@ async fn google_search_tool_interaction() {
                 .await
                 .expect("search completion should succeed");
 
-            let document = Interaction::deserialize(&response.raw)
+            let steps = response.raw["steps"]
+                .as_array()
                 .expect("raw is the Interactions API's own document");
             assert!(
-                !document.google_search_exchanges().is_empty(),
+                has_google_search_exchange(steps),
                 "expected a search-backed exchange"
             );
 
@@ -550,12 +569,22 @@ fn recorded_interactions_agree_in_both_modes_and_replay_verbatim() {
             );
             let response = rig_core::test_utils::history::decode(&wire, Mode::Unary, whole)
                 .unwrap_or_else(|error| panic!("{scenario} decodes: {error}"));
+            // The request declares the tools the turn called, so its calls
+            // go back as calls.
+            let tools = response
+                .tool_calls()
+                .map(|call| rig_core::completion::ToolDefinition {
+                    name: call.function.name.clone(),
+                    description: String::new(),
+                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                })
+                .collect();
             let history = vec![
                 Message::user("again"),
                 response.message().expect("the reply is a turn"),
             ];
             let request = rig_core::operation::Completion::prepare(
-                CompletionRequest::from(history),
+                CompletionRequest::from(history).tools(tools),
                 &wire.describe(),
             )
             .expect("the request is valid");

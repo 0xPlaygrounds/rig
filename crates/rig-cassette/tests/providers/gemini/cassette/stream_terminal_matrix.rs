@@ -428,7 +428,7 @@ async fn two_terminal_stream_through_raw_stream() {
                 .max_tokens(2000)
                 .additional_params(code_execution_params());
 
-            // The terminal record carries Gemini's own terminal type on
+            // The terminal record carries Gemini's own terminal record on
             // `raw`, so this pins the fix on the provider-native record as
             // well as the normalized one.
             let mut stream = model.stream(request).expect("stream should open");
@@ -444,14 +444,19 @@ async fn two_terminal_stream_through_raw_stream() {
                 .finish()
                 .await
                 .expect("the stream should end with a terminal record");
-            let native: gemini::streaming::StreamingCompletionResponse =
-                serde_json::from_value(record.raw.clone())
-                    .expect("the terminal's raw should decode as Gemini's native terminal");
+            assert!(
+                record
+                    .raw
+                    .get("usage_metadata")
+                    .is_some_and(|usage| usage.is_object()),
+                "the terminal's raw should be Gemini's native terminal record, got {}",
+                record.raw
+            );
             assert_eq!(
-                native
-                    .finish_reason
-                    .as_ref()
-                    .map(|reason| reason.as_wire_str()),
+                record
+                    .raw
+                    .get("finish_reason")
+                    .and_then(|reason| reason.as_str()),
                 Some("STOP"),
                 "the native terminal reports the reason the turn actually ended on"
             );

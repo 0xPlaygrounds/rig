@@ -3,16 +3,21 @@
 //! Gemini rejects `cachedContent` alongside `system_instruction`, `tools` or
 //! `tool_config` with a single 400 that does not say which one you set. Rig
 //! checks all three before the request leaves the process, so the matrix is
-//! exhaustive and free — no socket, no fixture.
+//! exhaustive and needs no socket or fixture.
 
-use super::gemini_api_types::GenerateContentRequest;
+use serde_json::{Map, Value};
+
+use super::{GenerateContent, request_body, with_cached_content};
 use crate::completion::{CompletionRequest, ToolDefinition};
 use crate::message::{Message, ToolChoice, UserContent};
+use crate::providers::gemini::GeminiConfig;
 
 const HANDLE: &str = "cachedContents/matrix";
 
-fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest {
-    super::create_request_body(
+const MODEL: &str = "gemini-2.5-flash";
+
+fn build(system: bool, tools: bool, tool_choice: bool) -> Map<String, Value> {
+    request_body(
         CompletionRequest {
             tool_choice: tool_choice.then_some(ToolChoice::Auto),
             ..CompletionRequest::from(
@@ -34,7 +39,8 @@ fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest
                 vec![]
             })
         },
-        "gemini-2.5-flash",
+        &GenerateContent::new(GeminiConfig::new("k"), MODEL),
+        MODEL,
     )
     .expect("request should build")
 }
@@ -47,16 +53,17 @@ fn every_combination_of_owned_fields_is_classified() {
         for tools in [false, true] {
             for tool_choice in [false, true] {
                 let mut request = build(system, tools, tool_choice);
-                let outcome = request.with_cached_content(HANDLE);
+                let outcome = with_cached_content(&mut request, HANDLE);
                 let label = format!("system={system} tools={tools} tool_choice={tool_choice}");
 
                 if !system && !tools && !tool_choice {
                     outcome.unwrap_or_else(|error| {
                         panic!("{label}: a clean request must accept a handle: {error}")
                     });
-                    let body = serde_json::to_value(&request).expect("serialize");
                     assert_eq!(
-                        body.get("cachedContent").and_then(|value| value.as_str()),
+                        request
+                            .get("cachedContent")
+                            .and_then(|value| value.as_str()),
                         Some(HANDLE),
                         "{label}: the handle should reach the wire"
                     );
@@ -65,14 +72,8 @@ fn every_combination_of_owned_fields_is_classified() {
                         "{label}: the cache owns these fields, so this must be refused"
                     ));
                     let message = error.to_string();
-                    // Assert against the conflict clause, not the whole
-                    // message: the sentence that follows it names all three
-                    // fields unconditionally ("already owns the system
-                    // instruction, tools and tool choice"), so a naive
-                    // `message.contains("tools")` passed for every cell in
-                    // the matrix, including the ones that set no tools. The
-                    // clause is the only part that varies per cell, which is
-                    // the whole advantage over the provider's own 400.
+                    // The sentence after the conflict clause names all three
+                    // fields unconditionally, so only the clause varies.
                     let clause = message
                         .split_once(". The cached content")
                         .map(|(head, _)| head)
@@ -113,7 +114,7 @@ fn handle_syntax_is_validated() {
         (" cachedContents/abc", false),
     ] {
         let mut request = build(false, false, false);
-        let outcome = request.with_cached_content(handle);
+        let outcome = with_cached_content(&mut request, handle);
         assert_eq!(
             outcome.is_ok(),
             accepted,

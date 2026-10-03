@@ -4,9 +4,9 @@
 //! # The feature
 //!
 //! Raw capture is always on: the Interactions decoder builds its terminal
-//! record from the `interaction.completed` event — the API's own
-//! [`StreamingCompletionResponse`], carrying the finished interaction
-//! verbatim, its usage and the model version — and puts it on the terminal
+//! record from the `interaction.completed` event — a JSON object carrying the
+//! finished interaction verbatim under `interaction`, its `usage` and the
+//! `model_version` — and puts it on the terminal
 //! [`rig::completion::CompletionResponse::raw`] its `finish` returns.
 //! There is no opt-in and nothing about it reaches the wire; `raw` is
 //! `Value::Null` only on a terminal constructed without a provider stream
@@ -22,7 +22,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `raw` holds the completed interaction verbatim, and `StreamingCompletionResponse::deserialize(&raw)` agrees with the normalized terminal | recorded |
+//! | 1 | `raw_roundtrips_streaming_completion_response` | document access | `raw` holds the completed interaction verbatim, and its `model_version`, `interaction.id` and `usage` agree with the normalized terminal | recorded |
 //! | 2 | `raw_exposes_terminal_only_fields` | un-normalized terminal fields | `interaction.status` spelled `"completed"`, `interaction.object`, `usage.total_tokens` == completed event, absent from the normalized terminal | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
@@ -34,10 +34,8 @@
 
 use futures::StreamExt;
 use rig::completion::FinishReason;
-use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
-use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -118,7 +116,7 @@ fn contains_key(value: &Value, needle: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// 1: typed access is recoverable
+// 1: the terminal record is recoverable
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -135,20 +133,22 @@ async fn raw_roundtrips_streaming_completion_response() {
 
             let raw = &terminal.raw;
 
-            let typed = StreamingCompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into the Interactions streaming terminal type");
+            assert!(
+                raw.get("interaction").is_some_and(Value::is_object),
+                "raw must carry the Interactions streaming terminal's interaction, got {raw}"
+            );
 
-            // The typed value agrees with the normalized terminal next to it.
-            assert_eq!(typed.model_version.as_deref(), terminal.model());
+            // The record agrees with the normalized terminal next to it.
             assert_eq!(
-                typed
-                    .interaction
-                    .as_ref()
-                    .map(|interaction| interaction.id.as_str()),
+                raw.get("model_version").and_then(Value::as_str),
+                terminal.model()
+            );
+            assert_eq!(
+                raw.pointer("/interaction/id").and_then(Value::as_str),
                 terminal.response_id()
             );
             assert_eq!(
-                typed.usage.as_ref().and_then(|usage| usage.total_tokens),
+                raw.pointer("/usage/total_tokens").and_then(Value::as_u64),
                 terminal.usage.total_tokens
             );
             *sink.lock().expect("observation lock") = Some(raw.clone());

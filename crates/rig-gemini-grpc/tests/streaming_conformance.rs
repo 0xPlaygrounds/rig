@@ -94,6 +94,7 @@ fn text_part(text: &str) -> proto::Part {
         thought: false,
         thought_signature: Vec::new(),
         part_metadata: None,
+        metadata: None,
         data: Some(proto::part::Data::Text(text.to_string())),
     }
 }
@@ -113,6 +114,7 @@ fn function_call_part(name: &str) -> proto::Part {
         thought: false,
         thought_signature: Vec::new(),
         part_metadata: None,
+        metadata: None,
         data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
             name: name.to_string(),
             args: Some(args),
@@ -126,6 +128,7 @@ fn thought_part(text: &str) -> proto::Part {
         thought: true,
         thought_signature: Vec::new(),
         part_metadata: None,
+        metadata: None,
         data: Some(proto::part::Data::Text(text.to_string())),
     }
 }

@@ -20,7 +20,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
+use serde_json::{Value, json};
+
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::Whole;
@@ -94,13 +95,13 @@ pub struct NewCachedContent {
     /// uses the cache must name the same model.
     model: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    contents: Vec<Content>,
+    contents: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    system_instruction: Option<Content>,
+    system_instruction: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<Tool>>,
+    tools: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_config: Option<ToolConfig>,
+    tool_config: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,39 +125,39 @@ impl NewCachedContent {
 
     /// Append a user-role text content block.
     pub fn content(mut self, text: impl Into<String>) -> Self {
-        self.contents.push(Content {
-            parts: vec![Part::from(text.into())],
-            role: Some(Role::User),
-        });
+        let text = text.into();
+        self.contents
+            .push(json!({ "parts": [{ "text": text, "thought": false }], "role": "user" }));
         self
     }
 
-    /// Append an already-built content block (multimodal payloads).
-    pub fn content_block(mut self, content: Content) -> Self {
+    /// Append a content block in Gemini's REST JSON (multimodal payloads).
+    pub fn content_block(mut self, content: Value) -> Self {
         self.contents.push(content);
         self
     }
 
     pub fn system_instruction(mut self, text: impl Into<String>) -> Self {
-        self.system_instruction = Some(Content {
-            parts: vec![Part::from(text.into())],
-            role: Some(Role::Model),
-        });
+        let text = text.into();
+        self.system_instruction =
+            Some(json!({ "parts": [{ "text": text, "thought": false }], "role": "model" }));
         self
     }
 
-    /// Set the tools inherited by requests using this cache.
+    /// Set the tools inherited by requests using this cache, in Gemini's
+    /// REST JSON.
     /// Requests must not supply their own tools. Cached function declarations
     /// require a caller-managed tool loop; provider-hosted tools do not.
-    pub fn tools(mut self, tools: Vec<Tool>) -> Self {
+    pub fn tools(mut self, tools: Vec<Value>) -> Self {
         self.tools = Some(tools);
         self
     }
 
-    /// Set the tool configuration inherited by requests using this cache.
+    /// Set the tool configuration inherited by requests using this cache,
+    /// in Gemini's REST JSON.
     /// Requests must not supply their own tool configuration. May be set
     /// without a tool set.
-    pub fn tool_config(mut self, tool_config: ToolConfig) -> Self {
+    pub fn tool_config(mut self, tool_config: Value) -> Self {
         self.tool_config = Some(tool_config);
         self
     }

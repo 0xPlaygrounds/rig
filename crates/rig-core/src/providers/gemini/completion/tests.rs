@@ -1,50 +1,45 @@
-use crate::{
-    message,
-    providers::gemini::completion::gemini_api_types::{
-        BlockReason, CitationMetadata, ContentCandidate, FinishReason, GenerateContentResponse,
-        LogprobsResult, ModalityTokenCount, PartKind, PromptFeedback, Schema, TopCandidate,
-        UsageMetadata, flatten_schema, map_finish_reason, tool_parameters_to_schema,
-    },
-};
+use crate::message;
+use crate::providers::gemini::completion::gemini_api_types::{map_google_finish_reason, usage_of};
 
 use super::*;
 use serde_json::json;
 
 /// `message` as the content the REST wire sends Gemini 2.5 for it.
-fn to_content(message: impl Into<message::Message>) -> Result<Content, EncodeError> {
+fn to_content(message: impl Into<message::Message>) -> Result<Value, EncodeError> {
     to_content_for("gemini-2.5-flash", message)
 }
 
-/// The contents of `request`, typed.
-fn typed(request: &GenerateContentRequest) -> Vec<Content> {
-    request
-        .contents
-        .iter()
-        .map(|content| serde_json::from_value(content.clone()).expect("a Gemini content"))
-        .collect()
-}
-
 /// `message` as the content the REST wire sends `model` for it.
-fn to_content_for(
-    model: &str,
-    message: impl Into<message::Message>,
-) -> Result<Content, EncodeError> {
-    let contents = contents(vec![message.into()], model)?;
-    let content = contents
+fn to_content_for(model: &str, message: impl Into<message::Message>) -> Result<Value, EncodeError> {
+    contents_for(vec![message.into()], model)?
         .into_iter()
         .next()
-        .ok_or_else(|| EncodeError::request("no content"))?;
-    Ok(serde_json::from_value(content)?)
+        .ok_or_else(|| EncodeError::request("no content"))
+}
+
+/// The contents the REST wire sends `model` for `history`.
+fn contents_for(history: Vec<message::Message>, model: &str) -> Result<Vec<Value>, EncodeError> {
+    contents(history, &wire(model), model)
+}
+
+/// The request body the REST wire builds for `request` to `model`.
+fn body_for(request: CompletionRequest, model: &str) -> Map<String, Value> {
+    request_body(request, &wire(model), model).expect("the request encodes")
+}
+
+/// The parts of `content`.
+fn parts(content: &Value) -> &[Value] {
+    content["parts"].as_array().map_or(&[], Vec::as_slice)
 }
 
 #[test]
-fn test_usage_metadata_deserializes_without_total_token_count() {
+fn test_usage_metadata_reads_without_total_token_count() {
     // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
     // so `totalTokenCount` is absent on short/empty/blocked generations.
-    let usage: UsageMetadata =
-        serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
-    assert_eq!(usage.total_token_count, 0);
-    assert_eq!(usage.prompt_token_count, 12);
+    let usage = usage_of(&json!({"promptTokenCount": 12}));
+    assert_eq!(usage.input_tokens, Some(12));
+    assert_eq!(usage.output_tokens, Some(0));
+    assert_eq!(usage.total_tokens, Some(12));
 }
 
 #[tokio::test]
@@ -56,11 +51,6 @@ async fn test_generate_content_response_deserializes_without_candidates_or_respo
             "blockReason": "SAFETY"
         }
     });
-    let response: GenerateContentResponse =
-        serde_json::from_value(body.clone()).expect("blocked prompt response should deserialize");
-
-    assert!(response.response_id.is_empty());
-    assert!(response.candidates.is_empty());
 
     // A set `blockReason` is the provider's verdict on the prompt: the
     // error names it instead of reporting a generic missing-candidate parse
@@ -145,279 +135,54 @@ async fn test_no_candidates_without_prompt_feedback_is_still_a_response_error() 
     assert_eq!(error.kind(), crate::error::ErrorKind::Response);
 }
 
-#[test]
-fn test_modality_token_count_deserializes_without_zero_token_count() {
-    let count: ModalityTokenCount = serde_json::from_value(json!({
-        "modality": "TEXT"
-    }))
-    .expect("zero tokenCount may be omitted");
-
-    assert_eq!(count.token_count, 0);
-}
-
-#[test]
-fn test_response_metadata_repeated_fields_deserialize_when_omitted() {
-    let citation_metadata: CitationMetadata =
-        serde_json::from_value(json!({})).expect("empty citation metadata should deserialize");
-    assert!(citation_metadata.citation_sources.is_empty());
-
-    let logprobs: LogprobsResult =
-        serde_json::from_value(json!({})).expect("empty logprobs result should deserialize");
-    assert!(logprobs.top_candidates.is_empty());
-    assert_eq!(logprobs.log_probability_sum, None);
-    assert!(logprobs.chosen_candidates.is_empty());
-
-    let top_candidate: TopCandidate =
-        serde_json::from_value(json!({})).expect("empty top candidate should deserialize");
-    assert!(top_candidate.candidates.is_empty());
-}
-
-#[test]
-fn test_logprobs_result_deserializes_official_json_field_names() {
-    let logprobs: LogprobsResult = serde_json::from_value(json!({
-        "topCandidates": [
-            {
-                "candidates": [
-                    {
-                        "token": "Hello",
-                        "tokenId": 123,
-                        "logProbability": -0.1
-                    },
-                    {
-                        "token": "Hi",
-                        "tokenId": 124,
-                        "logProbability": -1.25
-                    }
-                ]
-            }
-        ],
-        "logProbabilitySum": -0.1,
-        "chosenCandidates": [
-            {
-                "token": "Hello",
-                "tokenId": 123,
-                "logProbability": -0.1
-            }
-        ]
-    }))
-    .expect("official Gemini logprobs result should deserialize");
-
-    assert_eq!(logprobs.top_candidates.len(), 1);
-    assert_eq!(logprobs.top_candidates[0].candidates.len(), 2);
-    assert_eq!(
-        logprobs.top_candidates[0].candidates[0].token.as_deref(),
-        Some("Hello")
-    );
-    assert_eq!(logprobs.top_candidates[0].candidates[0].token_id, Some(123));
-    assert_eq!(
-        logprobs.top_candidates[0].candidates[0].log_probability,
-        Some(-0.1)
-    );
-    assert_eq!(logprobs.log_probability_sum, Some(-0.1));
-    assert_eq!(logprobs.chosen_candidates.len(), 1);
-    assert_eq!(
-        logprobs.chosen_candidates[0].token.as_deref(),
-        Some("Hello")
-    );
-    assert_eq!(logprobs.chosen_candidates[0].token_id, Some(123));
-    assert_eq!(logprobs.chosen_candidates[0].log_probability, Some(-0.1));
-}
-
+/// The model a request names outranks the wire's, on both endpoints.
 #[test]
 fn test_resolve_request_model_uses_override() {
-    let request = CompletionRequest::new("Hello").model("gemini-2.5-flash".to_string());
-
-    let request_model = resolve_request_model("gemini-2.0-flash", &request);
-    assert_eq!(request_model, "gemini-2.5-flash");
-    assert_eq!(
-        completion_endpoint(&request_model),
-        "/v1beta/models/gemini-2.5-flash:generateContent"
-    );
-    assert_eq!(
-        streaming_endpoint(&request_model),
-        "/v1beta/models/gemini-2.5-flash:streamGenerateContent"
-    );
+    let wire = wire("gemini-2.0-flash");
+    for (mode, path) in [
+        (
+            Mode::Unary,
+            "/v1beta/models/gemini-2.5-flash:generateContent",
+        ),
+        (
+            Mode::Streaming,
+            "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+        ),
+    ] {
+        let request = CompletionRequest::new("Hello").model("gemini-2.5-flash".to_string());
+        let encoded = wire.encode(request, mode).expect("the request encodes");
+        assert_eq!(sole(&encoded).uri().path(), path, "{mode:?}");
+    }
 }
 
 #[test]
 fn test_resolve_request_model_uses_default_when_unset() {
-    let request = CompletionRequest::new("Hello");
-
+    let encoded = wire("gemini-2.0-flash")
+        .encode(CompletionRequest::new("Hello"), Mode::Unary)
+        .expect("the request encodes");
     assert_eq!(
-        resolve_request_model("gemini-2.0-flash", &request),
-        "gemini-2.0-flash"
+        sole(&encoded).uri().path(),
+        "/v1beta/models/gemini-2.0-flash:generateContent"
     );
-}
-
-#[test]
-fn test_deserialize_message_user() {
-    let raw_message = r#"{
-            "parts": [
-                {"text": "Hello, world!"},
-                {"inlineData": {"mimeType": "image/png", "data": "base64encodeddata"}},
-                {"functionCall": {"name": "test_function", "args": {"arg1": "value1"}}},
-                {"functionResponse": {"name": "test_function", "response": {"result": "success"}}},
-                {"fileData": {"mimeType": "application/pdf", "fileUri": "http://example.com/file.pdf"}},
-                {"executableCode": {"code": "print('Hello, world!')", "language": "PYTHON"}},
-                {"codeExecutionResult": {"output": "Hello, world!", "outcome": "OUTCOME_OK"}}
-            ],
-            "role": "user"
-        }"#;
-
-    let content: Content = {
-        let jd = &mut serde_json::Deserializer::from_str(raw_message);
-        serde_path_to_error::deserialize(jd).unwrap_or_else(|err| {
-            panic!("Deserialization error at {}: {}", err.path(), err);
-        })
-    };
-    assert_eq!(content.role, Some(Role::User));
-    assert_eq!(content.parts.len(), 7);
-
-    let parts: Vec<Part> = content.parts.into_iter().collect();
-
-    if let Part {
-        part: PartKind::Text(text),
-        ..
-    } = &parts[0]
-    {
-        assert_eq!(text, "Hello, world!");
-    } else {
-        panic!("Expected text part");
-    }
-
-    if let Part {
-        part: PartKind::InlineData(inline_data),
-        ..
-    } = &parts[1]
-    {
-        assert_eq!(inline_data.mime_type, "image/png");
-        assert_eq!(inline_data.data, "base64encodeddata");
-    } else {
-        panic!("Expected inline data part");
-    }
-
-    if let Part {
-        part: PartKind::FunctionCall(function_call),
-        ..
-    } = &parts[2]
-    {
-        assert_eq!(function_call.name, "test_function");
-        assert_eq!(
-            function_call.args.as_object().unwrap().get("arg1").unwrap(),
-            "value1"
-        );
-    } else {
-        panic!("Expected function call part");
-    }
-
-    if let Part {
-        part: PartKind::FunctionResponse(function_response),
-        ..
-    } = &parts[3]
-    {
-        assert_eq!(function_response.name, "test_function");
-        assert_eq!(
-            function_response
-                .response
-                .as_ref()
-                .unwrap()
-                .get("result")
-                .unwrap(),
-            "success"
-        );
-    } else {
-        panic!("Expected function response part");
-    }
-
-    if let Part {
-        part: PartKind::FileData(file_data),
-        ..
-    } = &parts[4]
-    {
-        assert_eq!(file_data.mime_type.as_ref().unwrap(), "application/pdf");
-        assert_eq!(file_data.file_uri, "http://example.com/file.pdf");
-    } else {
-        panic!("Expected file data part");
-    }
-
-    if let Part {
-        part: PartKind::ExecutableCode(executable_code),
-        ..
-    } = &parts[5]
-    {
-        assert_eq!(executable_code.code, "print('Hello, world!')");
-    } else {
-        panic!("Expected executable code part");
-    }
-
-    if let Part {
-        part: PartKind::CodeExecutionResult(code_execution_result),
-        ..
-    } = &parts[6]
-    {
-        assert_eq!(
-            code_execution_result.clone().output.unwrap(),
-            "Hello, world!"
-        );
-    } else {
-        panic!("Expected code execution result part");
-    }
-}
-
-#[test]
-fn test_deserialize_message_model() {
-    let json_data = json!({
-        "parts": [{"text": "Hello, user!"}],
-        "role": "model"
-    });
-
-    let content: Content = serde_json::from_value(json_data).unwrap();
-    assert_eq!(content.role, Some(Role::Model));
-    assert_eq!(content.parts.len(), 1);
-    if let Some(Part {
-        part: PartKind::Text(text),
-        ..
-    }) = content.parts.first()
-    {
-        assert_eq!(text, "Hello, user!");
-    } else {
-        panic!("Expected text part");
-    }
 }
 
 #[test]
 fn test_message_conversion_user() {
     let msg = message::Message::user("Hello, world!");
-    let content: Content = to_content(msg).unwrap();
-    assert_eq!(content.role, Some(Role::User));
-    assert_eq!(content.parts.len(), 1);
-    if let Some(Part {
-        part: PartKind::Text(text),
-        ..
-    }) = &content.parts.first()
-    {
-        assert_eq!(text, "Hello, world!");
-    } else {
-        panic!("Expected text part");
-    }
+    let content = to_content(msg).unwrap();
+    assert_eq!(content["role"], "user");
+    assert_eq!(parts(&content).len(), 1);
+    assert_eq!(parts(&content)[0]["text"], "Hello, world!");
 }
 
 #[test]
 fn test_message_conversion_model() {
     let msg = message::Message::assistant("Hello, user!");
 
-    let content: Content = to_content(msg).unwrap();
-    assert_eq!(content.role, Some(Role::Model));
-    assert_eq!(content.parts.len(), 1);
-    if let Some(Part {
-        part: PartKind::Text(text),
-        ..
-    }) = &content.parts.first()
-    {
-        assert_eq!(text, "Hello, user!");
-    } else {
-        panic!("Expected text part");
-    }
+    let content = to_content(msg).unwrap();
+    assert_eq!(content["role"], "model");
+    assert_eq!(parts(&content).len(), 1);
+    assert_eq!(parts(&content)[0]["text"], "Hello, user!");
 }
 
 #[tokio::test]
@@ -502,95 +267,57 @@ fn test_finish_reason_maps_every_wire_variant() {
     use crate::completion::FinishReason as Normalized;
 
     for (wire, expected) in [
-        (FinishReason::Stop, Normalized::Stop),
-        (FinishReason::MaxTokens, Normalized::Length),
-        (FinishReason::Safety, Normalized::ContentFilter),
-        (FinishReason::Blocklist, Normalized::ContentFilter),
-        (FinishReason::ProhibitedContent, Normalized::ContentFilter),
-        (FinishReason::Spii, Normalized::ContentFilter),
+        ("STOP", Normalized::Stop),
+        ("MAX_TOKENS", Normalized::Length),
+        ("SAFETY", Normalized::ContentFilter),
+        ("BLOCKLIST", Normalized::ContentFilter),
+        ("PROHIBITED_CONTENT", Normalized::ContentFilter),
+        ("SPII", Normalized::ContentFilter),
         // Everything Gemini reports that rig does not model survives in the
         // provider's own SCREAMING_SNAKE_CASE spelling.
+        ("RECITATION", Normalized::Other("RECITATION".to_string())),
+        ("LANGUAGE", Normalized::Other("LANGUAGE".to_string())),
+        ("OTHER", Normalized::Other("OTHER".to_string())),
         (
-            FinishReason::Recitation,
-            Normalized::Other("RECITATION".to_string()),
-        ),
-        (
-            FinishReason::Language,
-            Normalized::Other("LANGUAGE".to_string()),
-        ),
-        (FinishReason::Other, Normalized::Other("OTHER".to_string())),
-        (
-            FinishReason::MalformedFunctionCall,
+            "MALFORMED_FUNCTION_CALL",
             Normalized::Other("MALFORMED_FUNCTION_CALL".to_string()),
         ),
         (
-            FinishReason::UnexpectedToolCall,
+            "UNEXPECTED_TOOL_CALL",
             Normalized::Other("UNEXPECTED_TOOL_CALL".to_string()),
         ),
         (
-            FinishReason::MissingThoughtSignature,
+            "MISSING_THOUGHT_SIGNATURE",
             Normalized::Other("MISSING_THOUGHT_SIGNATURE".to_string()),
         ),
         (
-            FinishReason::TooManyToolCalls,
+            "TOO_MANY_TOOL_CALLS",
             Normalized::Other("TOO_MANY_TOOL_CALLS".to_string()),
         ),
         (
-            FinishReason::MalformedResponse,
+            "MALFORMED_RESPONSE",
             Normalized::Other("MALFORMED_RESPONSE".to_string()),
         ),
     ] {
-        assert_eq!(map_finish_reason(&wire), expected, "wire reason {wire:?}");
+        assert_eq!(
+            map_google_finish_reason(wire),
+            expected,
+            "wire reason {wire}"
+        );
     }
 
     // The unused zero value names no clean stop, so it is a failure.
     assert_eq!(
-        map_finish_reason(&FinishReason::FinishReasonUnspecified),
+        map_google_finish_reason("FINISH_REASON_UNSPECIFIED"),
         Normalized::Other("FINISH_REASON_UNSPECIFIED".to_owned())
     );
 }
 
 #[test]
-fn test_finish_reason_wire_spelling_matches_serde() {
-    // `as_wire_str` is hand-written; keep it honest against the serde
-    // representation the same enum deserializes from.
-    for reason in [
-        FinishReason::FinishReasonUnspecified,
-        FinishReason::Stop,
-        FinishReason::MaxTokens,
-        FinishReason::Safety,
-        FinishReason::Recitation,
-        FinishReason::Language,
-        FinishReason::Other,
-        FinishReason::Blocklist,
-        FinishReason::ProhibitedContent,
-        FinishReason::Spii,
-        FinishReason::MalformedFunctionCall,
-        FinishReason::UnexpectedToolCall,
-        FinishReason::MissingThoughtSignature,
-        FinishReason::TooManyToolCalls,
-        FinishReason::MalformedResponse,
-    ] {
-        let serialized = serde_json::to_value(&reason).expect("reason should serialize");
-        assert_eq!(serialized, json!(reason.as_wire_str()));
-    }
-}
-
-#[test]
 fn test_unknown_finish_reason_round_trips_verbatim() {
-    // A wire value this crate does not know must land in `Unknown` with
-    // the provider's spelling intact — and serialize back to the same
-    // string — so nothing is lost between deserialize and re-serialize.
-    let reason: FinishReason = serde_json::from_value(json!("FINISH_REASON_FUTURE"))
-        .expect("unknown finish reason should deserialize");
-    assert!(matches!(&reason, FinishReason::Unknown(s) if s == "FINISH_REASON_FUTURE"));
-    assert_eq!(reason.as_wire_str(), "FINISH_REASON_FUTURE");
+    // A wire value this crate does not know keeps the provider's spelling.
     assert_eq!(
-        serde_json::to_value(&reason).expect("reason should serialize"),
-        json!("FINISH_REASON_FUTURE")
-    );
-    assert_eq!(
-        map_finish_reason(&reason),
+        map_google_finish_reason("FINISH_REASON_FUTURE"),
         crate::completion::FinishReason::Other("FINISH_REASON_FUTURE".to_string())
     );
 }
@@ -599,21 +326,19 @@ fn test_unknown_finish_reason_round_trips_verbatim() {
 fn test_unknown_block_reason_deserializes_verbatim() {
     // Same contract for prompt feedback: a new block reason must not fail
     // the payload, and the spelling is preserved.
-    let feedback: PromptFeedback = serde_json::from_value(json!({
-        "blockReason": "BLOCK_REASON_FUTURE"
-    }))
-    .expect("unknown block reason should deserialize");
-    assert!(matches!(
-        feedback.block_reason,
-        Some(BlockReason::Unknown(ref s)) if s == "BLOCK_REASON_FUTURE"
-    ));
+    let error = blocked_prompt_error(&json!({ "blockReason": "BLOCK_REASON_FUTURE" }))
+        .expect("an unknown block reason is a block");
+    assert!(
+        matches!(&error, ProviderError::ProviderResponse(response) if response.code.as_deref() == Some("BLOCK_REASON_FUTURE")),
+        "{error:?}"
+    );
 }
 
 #[tokio::test]
 async fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
     // A finish reason Google ships tomorrow must not fail the whole
     // payload: content and usage stay intact, and the reason maps to
-    // `Other` verbatim — matching the gRPC crate's handling of unknowns.
+    // `Other` verbatim, matching the gRPC crate's handling of unknowns.
     let converted = unary(
         "gemini-2.5-flash",
         r#"{"responseId":"resp-future","candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"finishReason":"FINISH_REASON_FUTURE"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}"#,
@@ -633,24 +358,25 @@ async fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
     );
 }
 
-#[test]
-fn test_streaming_candidate_with_unknown_finish_reason_stays_parseable() {
-    // Streaming terminal chunks embed the same `ContentCandidate`; an
-    // unknown reason must leave the chunk deserializable so the terminal
-    // record is still produced.
-    let candidate: ContentCandidate = serde_json::from_value(json!({
-        "content": {
-            "parts": [{"text": "done"}],
-            "role": "model"
-        },
-        "finishReason": "FINISH_REASON_FUTURE"
-    }))
-    .expect("unknown finish reason should not fail the chunk");
+#[tokio::test]
+async fn test_streaming_candidate_with_unknown_finish_reason_stays_parseable() {
+    // A streamed terminal chunk with an unknown reason still produces the
+    // terminal record, with the reason verbatim.
+    let converted = streamed(
+        "gemini-2.5-flash",
+        concat!(
+            r#"data: {"candidates":[{"content":{"parts":[{"text":"done"}],"role":"model"},"finishReason":"FINISH_REASON_FUTURE"}]}"#,
+            "\r\n\r\n",
+        ),
+    )
+    .await;
 
-    let reason = candidate.finish_reason.expect("finish reason present");
+    assert_eq!(converted.text(), "done");
     assert_eq!(
-        map_finish_reason(&reason),
-        crate::completion::FinishReason::Other("FINISH_REASON_FUTURE".to_string())
+        converted.finish_reason(),
+        Some(crate::completion::FinishReason::Other(
+            "FINISH_REASON_FUTURE".to_string()
+        ))
     );
 }
 
@@ -698,17 +424,11 @@ fn test_reasoning_signature_is_emitted_in_gemini_part() {
         })),
     ]);
 
-    let converted: Content = to_content(msg).expect("convert message");
-    let first = converted.parts.first().expect("reasoning part");
-    assert_eq!(first.thought, Some(true));
-    assert_eq!(
-        first.thought_signature.as_deref(),
-        Some("cmV1c2Vfc2lnXzQ1Ng==")
-    );
-    assert!(matches!(
-        &first.part,
-        PartKind::Text(text) if text == "structured thought"
-    ));
+    let converted = to_content(msg).expect("convert message");
+    let first = parts(&converted).first().expect("reasoning part");
+    assert_eq!(first["thought"], true);
+    assert_eq!(first["thoughtSignature"], "cmV1c2Vfc2lnXzQ1Ng==");
+    assert_eq!(first["text"], "structured thought");
 }
 
 #[test]
@@ -724,31 +444,19 @@ fn test_message_conversion_tool_call() {
     let msg = message::Message::from(tool_call);
 
     // Gemini 3 takes call ids; Gemini 2.5 is sent none.
-    let content: Content = to_content_for("gemini-3-flash-preview", msg.clone()).unwrap();
-    let Some(Part {
-        part: PartKind::FunctionCall(function_call),
-        ..
-    }) = to_content(msg).unwrap().parts.into_iter().next()
-    else {
-        panic!("Expected function call part");
-    };
-    assert_eq!(function_call.id, None);
-    assert_eq!(content.role, Some(Role::Model));
-    assert_eq!(content.parts.len(), 1);
-    if let Some(Part {
-        part: PartKind::FunctionCall(function_call),
-        ..
-    }) = content.parts.first()
-    {
-        assert_eq!(function_call.name, "test_function");
-        assert_eq!(
-            function_call.args.as_object().unwrap().get("arg1").unwrap(),
-            "value1"
-        );
-        assert_eq!(function_call.id.as_deref(), Some("call-123"));
-    } else {
-        panic!("Expected function call part");
-    }
+    let content = to_content_for("gemini-3-flash-preview", msg.clone()).unwrap();
+    let without = to_content(msg).unwrap();
+    let call = parts(&without)
+        .first()
+        .and_then(|part| part.get("functionCall"))
+        .expect("Expected function call part");
+    assert!(call.get("id").is_none(), "{call}");
+    assert_eq!(content["role"], "model");
+    assert_eq!(parts(&content).len(), 1);
+    let call = &parts(&content)[0]["functionCall"];
+    assert_eq!(call["name"], "test_function");
+    assert_eq!(call["args"]["arg1"], "value1");
+    assert_eq!(call["id"], "call-123");
 }
 
 #[tokio::test]
@@ -796,23 +504,12 @@ fn test_vec_schema_conversion() {
         }
     });
 
-    let result: Result<Schema, _> = schema_with_ref.try_into();
-
-    match result {
-        Ok(schema) => {
-            assert_eq!(schema.r#type, "array");
-
-            if let Some(items) = schema.items {
-                println!("item types: {}", items.r#type);
-
-                assert_ne!(items.r#type, "", "Items type should not be empty string!");
-                assert_eq!(items.r#type, "object", "Items should be object type");
-            } else {
-                panic!("Schema should have items field for array type");
-            }
-        }
-        Err(e) => println!("Schema conversion failed: {e:?}"),
-    }
+    let schema = super::schema(schema_with_ref).expect("the schema converts");
+    assert_eq!(schema["type"], "array");
+    assert_eq!(
+        schema["items"]["type"], "object",
+        "Items should be object type"
+    );
 }
 
 #[test]
@@ -826,9 +523,9 @@ fn test_object_schema() {
         }
     });
 
-    let schema: Schema = simple_schema.try_into().unwrap();
-    assert_eq!(schema.r#type, "object");
-    assert!(schema.properties.is_some());
+    let schema = super::schema(simple_schema).unwrap();
+    assert_eq!(schema["type"], "object");
+    assert!(schema["properties"].is_object());
 }
 
 #[test]
@@ -845,16 +542,12 @@ fn test_array_with_inline_items() {
         }
     });
 
-    let schema: Schema = inline_schema.try_into().unwrap();
-    assert_eq!(schema.r#type, "array");
-
-    if let Some(items) = schema.items {
-        assert_eq!(items.r#type, "object");
-        assert!(items.properties.is_some());
-    } else {
-        panic!("Schema should have items field");
-    }
+    let schema = super::schema(inline_schema).unwrap();
+    assert_eq!(schema["type"], "array");
+    assert_eq!(schema["items"]["type"], "object");
+    assert!(schema["items"]["properties"].is_object());
 }
+
 #[test]
 fn test_flattened_schema() {
     let ref_schema = json!({
@@ -873,16 +566,12 @@ fn test_flattened_schema() {
     });
 
     let flattened = flatten_schema(ref_schema).unwrap();
-    let schema: Schema = flattened.try_into().unwrap();
+    assert!(flattened.get("$defs").is_none(), "{flattened}");
+    let schema = super::schema(flattened).unwrap();
 
-    assert_eq!(schema.r#type, "array");
-
-    if let Some(items) = schema.items {
-        println!("Flattened items type: '{}'", items.r#type);
-
-        assert_eq!(items.r#type, "object");
-        assert!(items.properties.is_some());
-    }
+    assert_eq!(schema["type"], "array");
+    assert_eq!(schema["items"]["type"], "object");
+    assert!(schema["items"]["properties"].is_object());
 }
 
 #[test]
@@ -897,15 +586,13 @@ fn test_array_without_items_gets_default() {
         }
     });
 
-    let schema: Schema = schema_json.try_into().unwrap();
-    let props = schema.properties.unwrap();
-    let service_ids = props.get("service_ids").unwrap();
-    assert_eq!(service_ids.r#type, "array");
-    let items = service_ids
-        .items
-        .as_ref()
-        .expect("array schema missing items should get a default");
-    assert_eq!(items.r#type, "string");
+    let schema = super::schema(schema_json).unwrap();
+    let service_ids = &schema["properties"]["service_ids"];
+    assert_eq!(service_ids["type"], "array");
+    assert_eq!(
+        service_ids["items"]["type"], "string",
+        "array schema missing items should get a default"
+    );
 }
 
 #[test]
@@ -938,11 +625,10 @@ fn test_tool_parameters_to_schema_resolves_defs_ref() {
     let schema = tool_parameters_to_schema(schema_json)
         .expect("schema conversion")
         .expect("schema");
-    let props = schema.properties.expect("properties");
-    let destination = props.get("destination").expect("destination prop");
+    let destination = &schema["properties"]["destination"];
 
-    assert_eq!(destination.r#type, "object");
-    assert_eq!(destination.required, Some(vec!["city".to_string()]));
+    assert_eq!(destination["type"], "object");
+    assert_eq!(destination["required"], json!(["city"]));
 }
 
 #[test]
@@ -957,11 +643,10 @@ fn test_tool_parameters_to_schema_handles_nullable_type_arrays() {
     let schema = tool_parameters_to_schema(schema_json)
         .expect("schema conversion")
         .expect("schema");
-    let props = schema.properties.expect("properties");
-    let nickname = props.get("nickname").expect("nickname prop");
+    let nickname = &schema["properties"]["nickname"];
 
-    assert_eq!(nickname.r#type, "string");
-    assert_eq!(nickname.nullable, Some(true));
+    assert_eq!(nickname["type"], "string");
+    assert_eq!(nickname["nullable"], true);
 }
 
 #[test]
@@ -974,21 +659,14 @@ fn test_txt_document_conversion_to_text_part() {
         Some(DocumentMediaType::TXT),
     );
 
-    let content: Content = to_content(message::Message::User { content: vec![doc] }).unwrap();
+    let content = to_content(message::Message::User { content: vec![doc] }).unwrap();
 
-    if let Part {
-        part: PartKind::Text(text),
-        ..
-    } = &content.parts[0]
-    {
-        assert!(text.contains("Note: test.md"));
-        assert!(text.contains("Hello World!"));
-    } else {
-        panic!(
-            "Expected text part for TXT document, got: {:?}",
-            content.parts[0]
-        );
-    }
+    let part = &parts(&content)[0];
+    let text = part["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("Expected text part for TXT document, got: {part}"));
+    assert!(text.contains("Note: test.md"));
+    assert!(text.contains("Hello World!"));
 }
 
 #[test]
@@ -1016,44 +694,40 @@ fn test_tool_result_with_image_content() {
     };
 
     // Convert to Gemini Content
-    let content: Content =
+    let content =
         to_content_for("gemini-3-flash-preview", msg).expect("Should convert to Gemini Content");
-    assert_eq!(content.role, Some(Role::User));
-    assert_eq!(content.parts.len(), 1);
+    assert_eq!(content["role"], "user");
+    assert_eq!(parts(&content).len(), 1);
 
     // Verify the part is a FunctionResponse with both response and parts
-    if let Some(Part {
-        part: PartKind::FunctionResponse(function_response),
-        ..
-    }) = content.parts.first()
-    {
-        assert_eq!(function_response.name, "test_tool");
-        assert_eq!(function_response.id.as_deref(), Some("call-123"));
+    let function_response = parts(&content)[0]
+        .get("functionResponse")
+        .expect("Expected FunctionResponse part");
+    assert_eq!(function_response["name"], "test_tool");
+    assert_eq!(function_response["id"], "call-123");
 
-        // Check that response JSON is present
-        assert!(function_response.response.is_some());
-        let response = function_response.response.as_ref().unwrap();
-        assert_eq!(
-            response,
-            &json!({
-                "result": r#"{"status": "success"}"#
-            })
-        );
+    // Check that response JSON is present
+    assert_eq!(
+        function_response["response"],
+        json!({
+            "result": r#"{"status": "success"}"#
+        })
+    );
 
-        // Check that parts with image data are present
-        assert!(function_response.parts.is_some());
-        let parts = function_response.parts.as_ref().unwrap();
-        assert_eq!(parts.len(), 1);
+    // Check that parts with image data are present
+    let parts = function_response["parts"]
+        .as_array()
+        .expect("image parts are present");
+    assert_eq!(parts.len(), 1);
 
-        let image_part = &parts[0];
-        assert!(image_part.inline_data.is_some());
-        let inline_data = image_part.inline_data.as_ref().unwrap();
-        assert_eq!(inline_data.mime_type, "image/png");
-        assert!(!inline_data.data.is_empty());
-        assert_eq!(inline_data.display_name, None);
-    } else {
-        panic!("Expected FunctionResponse part");
-    }
+    let inline_data = parts[0].get("inlineData").expect("inline image data");
+    assert_eq!(inline_data["mimeType"], "image/png");
+    assert!(
+        inline_data["data"]
+            .as_str()
+            .is_some_and(|data| !data.is_empty())
+    );
+    assert!(inline_data.get("displayName").is_none());
 }
 
 #[test]
@@ -1073,29 +747,25 @@ fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
         })],
     };
 
-    let content: Content = to_content(message).expect("tool result should convert");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("expected a function response");
-    };
+    let content = to_content(message).expect("tool result should convert");
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .expect("expected a function response");
 
-    assert_eq!(
-        response.response,
-        Some(json!({ "result": "between-images" }))
-    );
+    assert_eq!(response["response"], json!({ "result": "between-images" }));
 
-    let parts = response
-        .parts
-        .as_ref()
+    let parts = response["parts"]
+        .as_array()
         .expect("images should be inline parts");
     assert_eq!(parts.len(), 2);
-    let first = parts[0].inline_data.as_ref().expect("first inline image");
-    assert_eq!(first.mime_type, "image/png");
-    assert_eq!(first.data, "first-image");
-    assert_eq!(first.display_name, None);
-    let second = parts[1].inline_data.as_ref().expect("second inline image");
-    assert_eq!(second.mime_type, "image/jpeg");
-    assert_eq!(second.data, "second-image");
-    assert_eq!(second.display_name, None);
+    let first = parts[0].get("inlineData").expect("first inline image");
+    assert_eq!(first["mimeType"], "image/png");
+    assert_eq!(first["data"], "first-image");
+    assert!(first.get("displayName").is_none());
+    let second = parts[1].get("inlineData").expect("second inline image");
+    assert_eq!(second["mimeType"], "image/jpeg");
+    assert_eq!(second["data"], "second-image");
+    assert!(second.get("displayName").is_none());
 }
 
 #[test]
@@ -1114,23 +784,22 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
         })],
     };
 
-    let content: Content = to_content(message).expect("tool result should convert");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("expected a function response");
-    };
+    let content = to_content(message).expect("tool result should convert");
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .expect("expected a function response");
 
     assert_eq!(
-        response.response,
-        Some(json!({ "result": { "status": "ok" } }))
+        response["response"],
+        json!({ "result": { "status": "ok" } })
     );
-    let parts = response
-        .parts
-        .as_ref()
+    let parts = response["parts"]
+        .as_array()
         .expect("image should be an inline part");
     assert_eq!(parts.len(), 1);
-    let inline_data = parts[0].inline_data.as_ref().expect("inline image data");
-    assert_eq!(inline_data.data, "image-data");
-    assert_eq!(inline_data.display_name, None);
+    let inline_data = parts[0].get("inlineData").expect("inline image data");
+    assert_eq!(inline_data["data"], "image-data");
+    assert!(inline_data.get("displayName").is_none());
 }
 
 /// A function response carries JPEG, PNG and WEBP images only, so the
@@ -1195,29 +864,26 @@ fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
         })],
     };
 
-    let content: Content = to_content(message).expect("tool result should convert");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("expected a function response");
-    };
+    let content = to_content(message).expect("tool result should convert");
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .expect("expected a function response");
 
     assert_eq!(
-        response.response,
-        Some(json!({
+        response["response"],
+        json!({
             "result": {
                 "literal": {
                     "$ref": "tool_result_image_0"
                 }
             }
-        }))
+        })
     );
-    assert_eq!(
-        response.parts.as_ref().and_then(|parts| {
-            parts
-                .first()
-                .and_then(|part| part.inline_data.as_ref())
-                .and_then(|part| part.display_name.as_deref())
-        }),
-        None
+    assert!(
+        response
+            .pointer("/parts/0/inlineData/displayName")
+            .is_none(),
+        "{response}"
     );
 }
 
@@ -1245,12 +911,12 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
                 content: vec![tool_content],
             })],
         };
-        let content: Content = to_content(message).expect("tool result should convert");
+        let content = to_content(message).expect("tool result should convert");
 
-        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-            panic!("expected a function response");
-        };
-        assert_eq!(response.response.as_ref(), Some(&expected));
+        let response = parts(&content)[0]
+            .get("functionResponse")
+            .expect("expected a function response");
+        assert_eq!(response["response"], expected);
     }
 }
 
@@ -1279,11 +945,11 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
             content: vec![ToolResultContent::text("out")],
         })],
     };
-    let content: Content = to_content(message).expect("tool result should convert");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("expected a function response");
-    };
-    assert_eq!(response.id, None);
+    let content = to_content(message).expect("tool result should convert");
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .expect("expected a function response");
+    assert!(response.get("id").is_none(), "{response}");
 }
 
 /// A wire-derived result keeps its provider-issued id on replay to a model
@@ -1299,12 +965,12 @@ fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
             vec![ToolResultContent::text("out")],
         )],
     };
-    let content: Content =
+    let content =
         to_content_for("gemini-3-flash-preview", message).expect("tool result should convert");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("expected a function response");
-    };
-    assert_eq!(response.id.as_deref(), Some("gemini-issued-id"));
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .expect("expected a function response");
+    assert_eq!(response["id"], "gemini-issued-id");
 }
 
 #[test]
@@ -1317,20 +983,13 @@ fn test_markdown_document_conversion_to_text_part() {
         Some(DocumentMediaType::MARKDOWN),
     );
 
-    let content: Content = to_content(message::Message::User { content: vec![doc] }).unwrap();
+    let content = to_content(message::Message::User { content: vec![doc] }).unwrap();
 
-    if let Part {
-        part: PartKind::Text(text),
-        ..
-    } = &content.parts[0]
-    {
-        assert_eq!(text, "# Heading\n\n* List item");
-    } else {
-        panic!(
-            "Expected text part for MARKDOWN document, got: {:?}",
-            content.parts[0]
-        );
-    }
+    let part = &parts(&content)[0];
+    assert_eq!(
+        part["text"], "# Heading\n\n* List item",
+        "Expected text part for MARKDOWN document, got: {part}"
+    );
 }
 
 #[test]
@@ -1346,24 +1005,17 @@ fn test_markdown_url_document_conversion_to_file_data_part() {
         additional_params: None,
     });
 
-    let content: Content = to_content(message::Message::User { content: vec![doc] }).unwrap();
+    let content = to_content(message::Message::User { content: vec![doc] }).unwrap();
 
-    if let Part {
-        part: PartKind::FileData(file_data),
-        ..
-    } = &content.parts[0]
-    {
-        assert_eq!(
-            file_data.file_uri,
-            "https://generativelanguage.googleapis.com/v1beta/files/test-markdown"
-        );
-        assert_eq!(file_data.mime_type.as_deref(), Some("text/markdown"));
-    } else {
-        panic!(
-            "Expected file_data part for URL MARKDOWN document, got: {:?}",
-            content.parts[0]
-        );
-    }
+    let part = &parts(&content)[0];
+    let file_data = part.get("fileData").unwrap_or_else(|| {
+        panic!("Expected file_data part for URL MARKDOWN document, got: {part}")
+    });
+    assert_eq!(
+        file_data["fileUri"],
+        "https://generativelanguage.googleapis.com/v1beta/files/test-markdown"
+    );
+    assert_eq!(file_data["mimeType"], "text/markdown");
 }
 
 #[test]
@@ -1380,21 +1032,17 @@ fn test_user_image_url_renders_as_file_data() {
         native: None,
     });
 
-    let content: Content = to_content(message::Message::User {
+    let content = to_content(message::Message::User {
         content: vec![image],
     })
     .unwrap();
 
-    match &content.parts[0] {
-        Part {
-            part: PartKind::FileData(file_data),
-            ..
-        } => {
-            assert_eq!(file_data.file_uri, "https://example.com/red_square.png");
-            assert_eq!(file_data.mime_type.as_deref(), Some("image/png"));
-        }
-        other => panic!("Expected file_data part for a URL image, got: {other:?}"),
-    }
+    let part = &parts(&content)[0];
+    let file_data = part
+        .get("fileData")
+        .unwrap_or_else(|| panic!("Expected file_data part for a URL image, got: {part}"));
+    assert_eq!(file_data["fileUri"], "https://example.com/red_square.png");
+    assert_eq!(file_data["mimeType"], "image/png");
 }
 
 #[test]
@@ -1425,14 +1073,15 @@ fn a_url_tool_result_image_is_sent_as_file_data() {
         },
     )
     .expect("a URL image encodes");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("a function response: {content:?}");
-    };
-    assert_eq!(response.response, Some(json!({"result": "after-image"})));
-    let parts = response.parts.as_ref().expect("the image is a part");
-    let file = parts[0].file_data.as_ref().expect("the image is file data");
-    assert_eq!(file.file_uri, "https://example.com/image.png");
-    assert_eq!(file.mime_type.as_deref(), Some("image/png"));
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .unwrap_or_else(|| panic!("a function response: {content}"));
+    assert_eq!(response["response"], json!({"result": "after-image"}));
+    let file = response
+        .pointer("/parts/0/fileData")
+        .expect("the image is file data");
+    assert_eq!(file["fileUri"], "https://example.com/image.png");
+    assert_eq!(file["mimeType"], "image/png");
 }
 
 #[test]
@@ -1465,8 +1114,8 @@ fn test_create_request_body_with_documents() {
         Message::user("What are my notes about?"),
     ]);
 
-    let request = create_request_body(completion_request, "gemini-2.5-flash").unwrap();
-    let contents = typed(&request);
+    let body = body_for(completion_request, "gemini-2.5-flash");
+    let contents = body["contents"].as_array().expect("contents");
 
     // Should have 2 contents: 1 for documents, 1 for user message
     assert_eq!(
@@ -1476,36 +1125,23 @@ fn test_create_request_body_with_documents() {
     );
 
     // First content should be documents with role User
-    assert_eq!(contents[0].role, Some(Role::User));
-    assert_eq!(contents[0].parts.len(), 2, "Expected 2 document parts");
+    assert_eq!(contents[0]["role"], "user");
+    assert_eq!(parts(&contents[0]).len(), 2, "Expected 2 document parts");
 
     // Check that documents are text parts
-    for part in &contents[0].parts {
-        if let Part {
-            part: PartKind::Text(text),
-            ..
-        } = part
-        {
-            assert!(
-                text.contains("Note:") && text.contains("Content:"),
-                "Document should contain note metadata"
-            );
-        } else {
-            panic!("Document parts should be text, not {part:?}");
-        }
+    for part in parts(&contents[0]) {
+        let text = part["text"]
+            .as_str()
+            .unwrap_or_else(|| panic!("Document parts should be text, not {part}"));
+        assert!(
+            text.contains("Note:") && text.contains("Content:"),
+            "Document should contain note metadata"
+        );
     }
 
     // Second content should be the user message
-    assert_eq!(contents[1].role, Some(Role::User));
-    if let Part {
-        part: PartKind::Text(text),
-        ..
-    } = &contents[1].parts[0]
-    {
-        assert_eq!(text, "What are my notes about?");
-    } else {
-        panic!("Expected user message to be text");
-    }
+    assert_eq!(contents[1]["role"], "user");
+    assert_eq!(parts(&contents[1])[0]["text"], "What are my notes about?");
 }
 
 #[test]
@@ -1516,22 +1152,13 @@ fn test_create_request_body_without_documents() {
     let completion_request =
         CompletionRequest::new("Hello").preamble("You are a helpful assistant");
 
-    let request = create_request_body(completion_request, "gemini-2.5-flash").unwrap();
-    let contents = typed(&request);
+    let body = body_for(completion_request, "gemini-2.5-flash");
+    let contents = body["contents"].as_array().expect("contents");
 
     // Should have only 1 content (the user message)
     assert_eq!(contents.len(), 1, "Expected only user message");
-    assert_eq!(contents[0].role, Some(Role::User));
-
-    if let Part {
-        part: PartKind::Text(text),
-        ..
-    } = &contents[0].parts[0]
-    {
-        assert_eq!(text, "Hello");
-    } else {
-        panic!("Expected user message to be text");
-    }
+    assert_eq!(contents[0]["role"], "user");
+    assert_eq!(parts(&contents[0])[0]["text"], "Hello");
 }
 
 /// A non-success reply is reported with the provider's own status and body
@@ -1730,10 +1357,7 @@ async fn a_trailing_thought_signature_joins_the_text_it_follows() {
     );
 
     let replayed = to_content(buffered.choice.clone()).expect("the turn replays");
-    assert_eq!(
-        serde_json::to_value(&replayed.parts).unwrap(),
-        json!([signed])
-    );
+    assert_eq!(replayed["parts"], json!([signed]));
 }
 
 /// One part carrying both non-empty text and its `thoughtSignature`, in a
@@ -1840,10 +1464,7 @@ async fn an_inline_data_part_decodes_to_an_image_holding_the_part() {
         Some(&part)
     );
     let replayed = to_content(response.choice.clone()).expect("the turn replays");
-    assert_eq!(
-        serde_json::to_value(&replayed.parts).unwrap(),
-        json!([part])
-    );
+    assert_eq!(replayed["parts"], json!([part]));
 }
 
 /// Consecutive answer parts in one document continue one text block, as a
@@ -1885,7 +1506,7 @@ fn a_text_signature_reaches_no_other_model() {
         ("gemini-2.5-flash", json!({ "text": "the answer" })),
     ] {
         let adapted = crate::completion::adapt(&history, &wire(model));
-        let contents = contents(adapted, model).expect("the history encodes");
+        let contents = contents_for(adapted, model).expect("the history encodes");
         assert_eq!(contents[1]["parts"], json!([part]), "{model}");
     }
 }
@@ -1901,12 +1522,12 @@ fn a_signed_answer_text_round_trips_through_serde() {
     let json = serde_json::to_string(&message).expect("the message serializes");
     let loaded: message::Message = serde_json::from_str(&json).expect("the message loads");
     assert_eq!(loaded, message);
-    let content: Content = to_content(loaded).expect("the turn replays");
-    let [part] = content.parts.as_slice() else {
-        panic!("one answer part: {:?}", content.parts);
+    let content = to_content(loaded).expect("the turn replays");
+    let [part] = parts(&content) else {
+        panic!("one answer part: {content}");
     };
-    assert_eq!(part.thought_signature.as_deref(), Some("c2lnbmVk"));
-    assert_ne!(part.thought, Some(true));
+    assert_eq!(part["thoughtSignature"], "c2lnbmVk");
+    assert_ne!(part.get("thought"), Some(&json!(true)));
 }
 
 /// An empty thought part that carries a signature is kept and replays its
@@ -1919,16 +1540,14 @@ fn an_empty_signed_thought_replays_its_signature() {
         message::AssistantContent::reasoning("").with_native(part.clone()),
     ]);
     let content = to_content(message).expect("the turn replays");
-    assert_eq!(
-        serde_json::to_value(&content.parts).unwrap(),
-        json!([{ "text": "289" }, part])
-    );
+    assert_eq!(content["parts"], json!([{ "text": "289" }, part]));
 }
 
 /// A part rebuilt from canonical fields follows pi's rebuild: text alone, a
 /// thought flag on reasoning, a call id only for a model that takes ids,
-/// and nothing for blank text or redacted reasoning. Gemini 3 also gets
-/// Google's placeholder signature on the call, which it requires.
+/// and nothing for redacted reasoning. Gemini 3 also gets Google's
+/// placeholder signature on the call, which it requires. Blank text is
+/// the adapter's to drop, not the encoder's.
 #[test]
 fn canonical_blocks_rebuild_as_pi_rebuilds_them() {
     let call = message::AssistantContent::tool_call(
@@ -1937,7 +1556,6 @@ fn canonical_blocks_rebuild_as_pi_rebuilds_them() {
         json!({ "q": 1 }),
     );
     let message = message::Message::from(vec![
-        message::AssistantContent::text("  "),
         message::AssistantContent::reasoning("why"),
         message::AssistantContent::Reasoning(message::Reasoning {
             redacted: true,
@@ -1959,7 +1577,7 @@ fn canonical_blocks_rebuild_as_pi_rebuilds_them() {
             }),
         ),
     ] {
-        let contents = contents(vec![message.clone()], model).expect("the turn encodes");
+        let contents = contents_for(vec![message.clone()], model).expect("the turn encodes");
         assert_eq!(
             contents[0]["parts"],
             json!([
@@ -1984,7 +1602,7 @@ fn a_signature_that_is_not_base64_is_left_out() {
         message::AssistantContent::text("b")
             .with_native(json!({ "text": "b", "thoughtSignature": "c2ln" })),
     ]);
-    let contents = contents(vec![message], "gemini-2.5-flash").expect("the turn encodes");
+    let contents = contents_for(vec![message], "gemini-2.5-flash").expect("the turn encodes");
     assert_eq!(
         contents[0]["parts"],
         json!([
@@ -2028,7 +1646,7 @@ fn current_turn_replay_drops_only_finished_signatures() {
         message::AssistantContent::text(text)
             .with_native(json!({ "text": text, "thoughtSignature": "c2ln" }))
     };
-    let mut body = create_request_body(
+    let mut body = body_for(
         CompletionRequest::from(vec![
             message::Message::user("one"),
             message::Message::from(vec![signed("first")]),
@@ -2036,12 +1654,14 @@ fn current_turn_replay_drops_only_finished_signatures() {
             message::Message::from(vec![signed("second")]),
         ]),
         "gemini-2.5-flash",
-    )
-    .expect("the request encodes");
-    drop_finished_signatures(&mut body.contents);
-    assert_eq!(body.contents[1]["parts"], json!([{ "text": "first" }]));
+    );
+    let Some(Value::Array(contents)) = body.get_mut("contents") else {
+        panic!("contents");
+    };
+    drop_finished_signatures(contents);
+    assert_eq!(contents[1]["parts"], json!([{ "text": "first" }]));
     assert_eq!(
-        body.contents[3]["parts"],
+        contents[3]["parts"],
         json!([{ "text": "second", "thoughtSignature": "c2ln" }])
     );
 }
@@ -2049,7 +1669,6 @@ fn current_turn_replay_drops_only_finished_signatures() {
 /// Every part kind of the wire, an invented kind, and invented fields on
 /// known kinds survive decode and same-model replay, whole and streamed.
 #[test]
-#[deny(clippy::wildcard_enum_match_arm)]
 fn every_part_kind_survives_decode_and_replay() {
     use crate::test_utils::history::{assert_every_variant, assert_restated_agrees, decode};
     use crate::wire::WireFrame;
@@ -2068,24 +1687,27 @@ fn every_part_kind_survives_decode_and_replay() {
         json!({ "codeExecutionResult": { "outcome": "OUTCOME_OK", "output": "1" } }),
         json!({ "futureKind": { "x": 1 } }),
     ];
-    let known: Vec<Part> = parts
+    // The data fields of a Gemini `Part`, as the API documents them.
+    const KINDS: [&str; 7] = [
+        "text",
+        "inlineData",
+        "functionCall",
+        "functionResponse",
+        "fileData",
+        "executableCode",
+        "codeExecutionResult",
+    ];
+    let known: Vec<usize> = parts
         .iter()
         .take(8)
-        .map(|part| serde_json::from_value(part.clone()).expect("a known part"))
+        .map(|part| {
+            KINDS
+                .iter()
+                .position(|kind| part.get(*kind).is_some())
+                .expect("a known part")
+        })
         .collect();
-    assert_every_variant(
-        &known,
-        |part| match part.part {
-            PartKind::Text(_) => 0,
-            PartKind::InlineData(_) => 1,
-            PartKind::FunctionCall(_) => 2,
-            PartKind::FunctionResponse(_) => 3,
-            PartKind::FileData(_) => 4,
-            PartKind::ExecutableCode(_) => 5,
-            PartKind::CodeExecutionResult(_) => 6,
-        },
-        7,
-    );
+    assert_every_variant(&known, |kind| *kind, KINDS.len());
 
     let end = json!({ "finishReason": "STOP", "index": 0 });
     let document = |parts: &[serde_json::Value], end: Option<&serde_json::Value>| {
@@ -2110,7 +1732,7 @@ fn every_part_kind_survives_decode_and_replay() {
         let response = decode(&wire, mode, frames).expect("the reply decodes");
         assert_eq!(response.choice.len(), parts.len(), "{mode:?}");
         let history = crate::completion::adapt(&[response.message().expect("a turn")], &wire);
-        let replayed = contents(history, "gemini-3-flash-preview").expect("the turn replays");
+        let replayed = contents_for(history, "gemini-3-flash-preview").expect("the turn replays");
         assert_eq!(replayed[0]["parts"], json!(parts), "{mode:?}");
     }
 }
@@ -2163,7 +1785,7 @@ fn a_rig_issued_call_id_is_spelled_as_a_request_local_alias() {
             call.result(vec![message::ToolResultContent::text("out")]),
         ]),
     ];
-    let contents = contents(history, "gemini-3-flash-preview").expect("the history encodes");
+    let contents = contents_for(history, "gemini-3-flash-preview").expect("the history encodes");
     assert_eq!(
         contents[0]["parts"][0]["functionCall"]["id"],
         json!("tool-0")
@@ -2242,9 +1864,30 @@ async fn every_documented_finish_reason_ends_the_turn_as_documented() {
     for (reason, failed) in [("STOP", false), ("MAX_TOKENS", false)]
         .into_iter()
         .chain(
-            gemini_api_types::FAILURE_FINISHES
-                .iter()
-                .map(|reason| (*reason, true)),
+            [
+                "FINISH_REASON_UNSPECIFIED",
+                "SAFETY",
+                "RECITATION",
+                "LANGUAGE",
+                "OTHER",
+                "BLOCKLIST",
+                "PROHIBITED_CONTENT",
+                "SPII",
+                "MALFORMED_FUNCTION_CALL",
+                "IMAGE_SAFETY",
+                "IMAGE_PROHIBITED_CONTENT",
+                "IMAGE_OTHER",
+                "NO_IMAGE",
+                "IMAGE_RECITATION",
+                "UNEXPECTED_TOOL_CALL",
+                "TOO_MANY_TOOL_CALLS",
+                "MISSING_THOUGHT_SIGNATURE",
+                "MALFORMED_RESPONSE",
+                "ESCALATION",
+                "PUP_LIMITED_DISABLED",
+                "MODEL_ARMOR",
+            ]
+            .map(|reason| (reason, true)),
         )
         .chain([("A_REASON_FROM_TOMORROW", true)])
     {
@@ -2280,20 +1923,20 @@ fn a_failed_tool_result_is_sent_under_error() {
         content: vec![message::UserContent::ToolResult(result.clone())],
     })
     .expect("a failed result encodes");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("a function response: {content:?}");
-    };
-    assert_eq!(response.response, Some(json!({"error": "no such file"})));
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .unwrap_or_else(|| panic!("a function response: {content}"));
+    assert_eq!(response["response"], json!({"error": "no such file"}));
 
     result.is_error = false;
     let content = to_content(message::Message::User {
         content: vec![message::UserContent::ToolResult(result)],
     })
     .expect("a result encodes");
-    let PartKind::FunctionResponse(response) = &content.parts[0].part else {
-        panic!("a function response: {content:?}");
-    };
-    assert_eq!(response.response, Some(json!({"result": "no such file"})));
+    let response = parts(&content)[0]
+        .get("functionResponse")
+        .unwrap_or_else(|| panic!("a function response: {content}"));
+    assert_eq!(response["response"], json!({"result": "no such file"}));
 }
 
 /// A tool-result image as Gemini 2 and Gemini 3 get it: Gemini 3 reads it
@@ -2324,8 +1967,15 @@ fn tool_result_images_reach_gemini_2_in_a_following_user_message() {
             ]))],
         },
     ];
+    // A request that declares no tool gets its history's calls and results
+    // as text, so this one declares the tool it replays.
     let request = |history: Vec<message::Message>| {
-        let mut request = CompletionRequest::new("next");
+        let mut request =
+            CompletionRequest::new("next").tools(vec![crate::completion::ToolDefinition {
+                name: message::ToolName::new("shot").expect("a tool name"),
+                description: "Take a screenshot".to_owned(),
+                parameters: json!({ "type": "object", "properties": {} }),
+            }]);
         request.chat_history = history;
         request
     };
@@ -2390,7 +2040,7 @@ fn function_responses_and_user_text_go_in_separate_contents() {
             json!({}),
         ),
     );
-    let contents = contents(
+    let contents = contents_for(
         vec![message::Message::User {
             content: vec![
                 message::UserContent::ToolResult(

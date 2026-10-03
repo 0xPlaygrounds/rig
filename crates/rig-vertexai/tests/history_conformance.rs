@@ -7,8 +7,9 @@
 use google_cloud_aiplatform_v1::model::GenerateContentResponse;
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
+use rig_core::message::{AssistantContent, AssistantMessage};
 use rig_core::wire::{Mode, Wire};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape};
 use rig_vertexai::completion::GenerateContent;
 use serde_json::{Value, json};
 
@@ -157,6 +158,57 @@ impl HistoryFixture for VertexHistory {
                 vec![frame(document)]
             },
         })
+    }
+
+    /// A part is its own whole reply.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let part = block.native_item()?.clone();
+        let response = rig_core::test_utils::history::decode(
+            &self.wire(MODEL),
+            Mode::Unary,
+            [frame(reply_document(json!([part]), "STOP"))],
+        )
+        .ok()?;
+        response.choice.into_iter().next()
+    }
+
+    /// The one reply lists both calls, in either mode.
+    fn calls_reply(&self, shape: CallShape, _mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+        (shape == CallShape::WholeList).then(|| {
+            vec![frame(reply_document(
+                json!([
+                    { "functionCall": { "name": "weather", "args": { "city": "Paris" }, "id": "a1" } },
+                    { "functionCall": { "name": "weather", "args": { "city": "Rome" }, "id": "b2" } },
+                ]),
+                "STOP",
+            ))]
+        })
+    }
+
+    fn empty_reply(&self, _mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+        Some(vec![frame(reply_document(json!([]), "STOP"))])
+    }
+
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        Some("/candidates/0/finishReason")
+    }
+
+    /// Each provider part as the SDK sends it: its JSON read into the SDK's
+    /// `Part`, which spells enums by number.
+    fn replayed(&self, turn: &AssistantMessage) -> Vec<Value> {
+        let sdk = |item: &Value| {
+            serde_json::from_value::<google_cloud_aiplatform_v1::model::Part>(item.clone())
+                .ok()
+                .and_then(|part| serde_json::to_value(part).ok())
+        };
+        turn.content
+            .iter()
+            .filter_map(|block| match block {
+                AssistantContent::Opaque(opaque) if opaque.replay => sdk(&opaque.item),
+                AssistantContent::Opaque(_) => None,
+                block => block.native_item().and_then(sdk),
+            })
+            .collect()
     }
 }
 

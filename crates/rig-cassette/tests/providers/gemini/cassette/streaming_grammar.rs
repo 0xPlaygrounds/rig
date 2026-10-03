@@ -657,17 +657,23 @@ async fn interactions_requires_action_roundtrip() {
             // The wire status transition under test, read off the reply
             // document `raw` carries verbatim — the interaction resource is
             // the reply, and the fold is the other view of it.
-            let interaction: interactions_api::Interaction =
-                serde_json::from_value(raw.raw.clone()).expect("`raw` is the interaction resource");
-            assert!(
-                matches!(
-                    interaction.status,
-                    Some(interactions_api::InteractionStatus::RequiresAction)
-                ),
+            let interaction = raw
+                .raw
+                .as_object()
+                .expect("`raw` is the interaction resource");
+            assert_eq!(
+                interaction
+                    .get("status")
+                    .and_then(serde_json::Value::as_str),
+                Some("requires_action"),
                 "declared client tool should leave the interaction in requires_action, got {:?}",
-                interaction.status
+                interaction.get("status")
             );
-            let interaction_id = interaction.id.clone();
+            let interaction_id = interaction
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let normalized = raw;

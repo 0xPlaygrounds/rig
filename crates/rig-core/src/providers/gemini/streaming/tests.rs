@@ -1,7 +1,6 @@
 use super::*;
-use crate::providers::gemini::completion::gemini_api_types::{
-    GenerateContentResponse, Part, PartKind, TrafficType,
-};
+use crate::completion::FinishReason;
+use crate::message::AssistantContent;
 use serde_json::json;
 
 /// The request every stream test below sends. The decoder is what they
@@ -33,6 +32,19 @@ fn streamed(
     )
 }
 
+/// `reply`, one whole `generateContent` body, decoded by the REST wire.
+fn decoded(
+    reply: serde_json::Value,
+) -> Result<crate::completion::CompletionResponse, ProviderError> {
+    let wire =
+        crate::providers::gemini::GeminiConfig::new("test-key").completion("gemini-2.5-flash");
+    crate::test_utils::history::decode(
+        &wire,
+        crate::wire::Mode::Unary,
+        [WireFrame::Text(reply.to_string())],
+    )
+}
+
 #[test]
 fn test_deserialize_stream_response_with_single_text_part() {
     let json_data = json!({
@@ -53,27 +65,12 @@ fn test_deserialize_stream_response_with_single_text_part() {
         }
     });
 
-    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
-    assert_eq!(response.candidates.len(), 1);
-    assert!(matches!(
-        response.candidates[0].finish_reason,
-        Some(FinishReason::Stop)
-    ));
-    let content = response.candidates[0]
-        .content
-        .as_ref()
-        .expect("candidate should contain content");
-    assert_eq!(content.parts.len(), 1);
-
-    if let Part {
-        part: PartKind::Text(text),
-        ..
-    } = &content.parts[0]
-    {
-        assert_eq!(text, "Hello, world!");
-    } else {
-        panic!("Expected text part");
-    }
+    let response = decoded(json_data).expect("the reply decodes");
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("Expected one text block: {:?}", response.choice);
+    };
+    assert_eq!(text.text, "Hello, world!");
 }
 
 #[test]
@@ -161,23 +158,29 @@ fn test_deserialize_stream_response_with_usage_only_chunk() {
             "totalTokenCount": 15
         }
     });
+    // A usage-only chunk carries no candidate: it neither opens a block nor
+    // ends the reply, and the finish chunk after it reports its identity.
+    let finish = json!({
+        "candidates": [{ "content": { "parts": [{ "text": "ok" }], "role": "model" }, "finishReason": "STOP" }]
+    });
+    let wire =
+        crate::providers::gemini::GeminiConfig::new("test-key").completion("gemini-2.5-flash");
+    let response = crate::test_utils::history::decode(
+        &wire,
+        crate::wire::Mode::Streaming,
+        [
+            WireFrame::Text(json_data.to_string()),
+            WireFrame::Text(finish.to_string()),
+        ],
+    )
+    .expect("the reply decodes");
 
-    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
-    assert_eq!(response.response_id, "response-123");
-    assert_eq!(
-        response.model_version.as_deref(),
-        Some("gemini-2.0-flash-001")
-    );
-    assert!(response.candidates.is_empty());
-
-    let usage = response
-        .usage_metadata
-        .as_ref()
-        .map(crate::completion::Usage::from)
-        .unwrap();
-    assert_eq!(usage.input_tokens, Some(10));
-    assert_eq!(usage.output_tokens, Some(5));
-    assert_eq!(usage.total_tokens, Some(15));
+    assert_eq!(response.response_id(), Some("response-123"));
+    assert_eq!(response.model(), Some("gemini-2.0-flash-001"));
+    assert_eq!(response.text(), "ok");
+    assert_eq!(response.usage.input_tokens, Some(10));
+    assert_eq!(response.usage.output_tokens, Some(5));
+    assert_eq!(response.usage.total_tokens, Some(15));
 }
 
 #[test]
@@ -202,26 +205,17 @@ fn test_deserialize_stream_response_with_multiple_text_parts() {
         }
     });
 
-    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
-    assert_eq!(response.candidates.len(), 1);
-    let content = response.candidates[0]
-        .content
-        .as_ref()
-        .expect("candidate should contain content");
-    assert_eq!(content.parts.len(), 3);
-
-    // Verify all three text parts are present
-    for (i, expected_text) in ["Hello, ", "world!", " How are you?"].iter().enumerate() {
-        if let Part {
-            part: PartKind::Text(text),
-            ..
-        } = &content.parts[i]
-        {
-            assert_eq!(text, expected_text);
-        } else {
-            panic!("Expected text part at index {i}");
-        }
-    }
+    let response = decoded(json_data).expect("the reply decodes");
+    // Consecutive text parts continue one text block, and its provider item
+    // holds the merged text.
+    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("Expected one text block: {:?}", response.choice);
+    };
+    assert_eq!(text.text, "Hello, world! How are you?");
+    assert_eq!(
+        text.native.as_ref().map(|native| &native.item),
+        Some(&json!({ "text": "Hello, world! How are you?" }))
+    );
 }
 
 #[test]
@@ -257,36 +251,26 @@ fn test_deserialize_stream_response_with_multiple_tool_calls() {
         }
     });
 
-    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
-    let content = response.candidates[0]
-        .content
-        .as_ref()
-        .expect("candidate should contain content");
-    assert_eq!(content.parts.len(), 2);
-
-    // Verify first tool call
-    if let Part {
-        part: PartKind::FunctionCall(call),
-        ..
-    } = &content.parts[0]
-    {
-        assert_eq!(call.name, "get_weather");
-        assert_eq!(call.id.as_deref(), Some("call-weather"));
-    } else {
-        panic!("Expected function call at index 0");
-    }
-
-    // Verify second tool call
-    if let Part {
-        part: PartKind::FunctionCall(call),
-        ..
-    } = &content.parts[1]
-    {
-        assert_eq!(call.name, "get_temperature");
-        assert_eq!(call.id.as_deref(), Some("call-temperature"));
-    } else {
-        panic!("Expected function call at index 1");
-    }
+    let response = decoded(json_data).expect("the reply decodes");
+    let [
+        AssistantContent::ToolCall(weather),
+        AssistantContent::ToolCall(temperature),
+    ] = response.choice.as_slice()
+    else {
+        panic!("Expected two function calls: {:?}", response.choice);
+    };
+    assert_eq!(weather.function.name, "get_weather");
+    assert_eq!(weather.id.wire(), "call-weather");
+    assert_eq!(
+        weather.function.arguments_value(),
+        json!({"city": "San Francisco"})
+    );
+    assert_eq!(temperature.function.name, "get_temperature");
+    assert_eq!(temperature.id.wire(), "call-temperature");
+    assert_eq!(
+        temperature.function.arguments_value(),
+        json!({"location": "New York"})
+    );
 }
 
 #[test]
@@ -325,60 +309,24 @@ fn test_deserialize_stream_response_with_mixed_parts() {
         }
     });
 
-    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
-    let content = response.candidates[0]
-        .content
-        .as_ref()
-        .expect("candidate should contain content");
-    let parts = &content.parts;
-    assert_eq!(parts.len(), 4);
-
-    // Verify reasoning (thought) part
-    if let Part {
-        part: PartKind::Text(text),
-        thought: Some(true),
-        ..
-    } = &parts[0]
-    {
-        assert_eq!(text, "Let me think about this...");
-    } else {
-        panic!("Expected thought part at index 0");
-    }
-
-    // Verify regular text
-    if let Part {
-        part: PartKind::Text(text),
-        thought,
-        ..
-    } = &parts[1]
-    {
-        assert_eq!(text, "Here's my response: ");
-        assert!(thought.is_none() || thought == &Some(false));
-    } else {
-        panic!("Expected text part at index 1");
-    }
-
-    // Verify tool call
-    if let Part {
-        part: PartKind::FunctionCall(call),
-        ..
-    } = &parts[2]
-    {
-        assert_eq!(call.name, "search");
-    } else {
-        panic!("Expected function call at index 2");
-    }
-
-    // Verify final text
-    if let Part {
-        part: PartKind::Text(text),
-        ..
-    } = &parts[3]
-    {
-        assert_eq!(text, "I found the answer!");
-    } else {
-        panic!("Expected text part at index 3");
-    }
+    let response = decoded(json_data).expect("the reply decodes");
+    let [
+        AssistantContent::Reasoning(thought),
+        AssistantContent::Text(text),
+        AssistantContent::ToolCall(call),
+        AssistantContent::Text(last),
+    ] = response.choice.as_slice()
+    else {
+        panic!(
+            "Expected a thought, text, a call and text: {:?}",
+            response.choice
+        );
+    };
+    assert_eq!(thought.text, "Let me think about this...");
+    assert_eq!(text.text, "Here's my response: ");
+    assert_eq!(call.function.name, "search");
+    assert_eq!(last.text, "I found the answer!");
+    assert_eq!(response.usage.reasoning_tokens, Some(15));
 }
 
 #[test]
@@ -399,32 +347,24 @@ fn test_deserialize_stream_response_with_empty_parts() {
         }
     });
 
-    let response: GenerateContentResponse = serde_json::from_value(json_data).unwrap();
-    let content = response.candidates[0]
-        .content
-        .as_ref()
-        .expect("candidate should contain content");
-    assert_eq!(content.parts.len(), 0);
+    // An empty successful reply is a success with no blocks.
+    let response = decoded(json_data).expect("an empty reply decodes");
+    assert!(response.choice.is_empty(), "{:?}", response.choice);
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
 
 #[test]
 fn test_partial_usage_token_calculation() {
-    let usage = UsageMetadata {
-        total_token_count: 92,
-        cached_content_token_count: Some(20),
-        candidates_token_count: Some(30),
-        thoughts_token_count: Some(10),
-        prompt_token_count: 40,
-        prompt_tokens_details: None,
-        cache_tokens_details: None,
-        candidates_tokens_details: None,
-        tool_use_prompt_token_count: Some(12),
-        tool_use_prompt_tokens_details: None,
-        traffic_type: None,
-        ..Default::default()
-    };
+    let usage = json!({
+        "totalTokenCount": 92,
+        "cachedContentTokenCount": 20,
+        "candidatesTokenCount": 30,
+        "thoughtsTokenCount": 10,
+        "promptTokenCount": 40,
+        "toolUsePromptTokenCount": 12,
+    });
 
-    let token_usage = crate::completion::Usage::from(&usage);
+    let token_usage = usage_of(&usage);
     // Input is the prompt plus the hosted-tool prompt, output the candidates
     // plus the thoughts, and the total their sum, as `totalTokenCount` is.
     assert_eq!(token_usage.input_tokens, Some(52));
@@ -437,22 +377,13 @@ fn test_partial_usage_token_calculation() {
 
 #[test]
 fn test_partial_usage_with_missing_counts() {
-    let usage = UsageMetadata {
-        total_token_count: 50,
-        cached_content_token_count: None,
-        candidates_token_count: Some(30),
-        thoughts_token_count: None,
-        prompt_token_count: 20,
-        prompt_tokens_details: None,
-        cache_tokens_details: None,
-        candidates_tokens_details: None,
-        tool_use_prompt_token_count: None,
-        tool_use_prompt_tokens_details: None,
-        traffic_type: None,
-        ..Default::default()
-    };
+    let usage = json!({
+        "totalTokenCount": 50,
+        "candidatesTokenCount": 30,
+        "promptTokenCount": 20,
+    });
 
-    let token_usage = crate::completion::Usage::from(&usage);
+    let token_usage = usage_of(&usage);
     assert_eq!(token_usage.input_tokens, Some(20));
     assert_eq!(token_usage.cached_input_tokens, None);
     assert_eq!(token_usage.output_tokens, Some(30));
@@ -461,83 +392,63 @@ fn test_partial_usage_with_missing_counts() {
 }
 
 #[test]
-fn test_partial_usage_deserializes_without_total_token_count() {
+fn test_partial_usage_reads_without_total_token_count() {
     // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
     // so `totalTokenCount` is absent on short/empty/blocked generations.
-    let usage: UsageMetadata =
-        serde_json::from_str(r#"{"promptTokenCount": 12}"#).expect("should deserialize");
-    assert_eq!(usage.total_token_count, 0);
-    assert_eq!(usage.prompt_token_count, 12);
+    let usage = usage_of(&json!({"promptTokenCount": 12}));
+    assert_eq!(usage.input_tokens, Some(12));
+    assert_eq!(usage.output_tokens, Some(0));
+    assert_eq!(usage.total_tokens, Some(12));
 }
 
 #[test]
 fn test_streaming_completion_response_has_finish_reason_and_model_version() {
-    use super::super::completion::gemini_api_types::FinishReason;
+    let response = decoded(json!({
+        "candidates": [{
+            "content": { "parts": [{ "text": "hi" }], "role": "model" },
+            "finishReason": "STOP"
+        }],
+        "modelVersion": "gemini-2.5-pro-preview-05-06"
+    }))
+    .expect("the reply decodes");
 
-    let response = StreamingCompletionResponse {
-        usage_metadata: UsageMetadata::default(),
-        finish_reason: Some(FinishReason::Stop),
-        finish_message: None,
-        model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
-        response_id: None,
-    };
-
-    assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.model(), Some("gemini-2.5-pro-preview-05-06"));
+    assert_eq!(response.raw["finish_reason"], "STOP");
     assert_eq!(
-        response.model_version.as_deref(),
-        Some("gemini-2.5-pro-preview-05-06")
-    );
-
-    let json = serde_json::to_string(&response).unwrap();
-    let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
-    assert!(matches!(
-        deserialized.finish_reason,
-        Some(FinishReason::Stop)
-    ));
-    assert_eq!(
-        deserialized.model_version.as_deref(),
-        Some("gemini-2.5-pro-preview-05-06")
+        response.raw["model_version"],
+        "gemini-2.5-pro-preview-05-06"
     );
 }
 
 #[test]
 fn test_streaming_completion_response_token_usage() {
-    let response = StreamingCompletionResponse {
-        usage_metadata: UsageMetadata {
-            total_token_count: 150,
-            cached_content_token_count: None,
-            candidates_token_count: Some(75),
-            thoughts_token_count: None,
-            prompt_token_count: 75,
-            prompt_tokens_details: None,
-            cache_tokens_details: None,
-            candidates_tokens_details: None,
-            tool_use_prompt_token_count: None,
-            tool_use_prompt_tokens_details: None,
-            traffic_type: None,
-            ..Default::default()
+    let response = decoded(json!({
+        "candidates": [{
+            "content": { "parts": [{ "text": "hi" }], "role": "model" },
+            "finishReason": "STOP"
+        }],
+        "usageMetadata": {
+            "totalTokenCount": 150,
+            "candidatesTokenCount": 75,
+            "promptTokenCount": 75
         },
-        finish_reason: Some(FinishReason::Stop),
-        finish_message: None,
-        model_version: Some("gemini-2.0-flash-001".to_string()),
-        response_id: None,
-    };
+        "modelVersion": "gemini-2.0-flash-001"
+    }))
+    .expect("the reply decodes");
 
-    let token_usage = crate::completion::Usage::from(&response);
+    let token_usage = response.usage;
     assert_eq!(token_usage.input_tokens, Some(75));
     assert_eq!(token_usage.output_tokens, Some(75));
     assert_eq!(token_usage.reasoning_tokens, None);
     assert_eq!(token_usage.cached_input_tokens, None);
     assert_eq!(token_usage.total_tokens, Some(150));
-    assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
-    assert_eq!(
-        response.model_version.as_deref(),
-        Some("gemini-2.0-flash-001")
-    );
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.model(), Some("gemini-2.0-flash-001"));
 }
 
 #[test]
-fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
+fn test_partial_usage_reads_every_count_and_ignores_the_details() {
     let json_data = serde_json::json!({
         "promptTokenCount": 100,
         "cachedContentTokenCount": 25,
@@ -561,24 +472,7 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
         "trafficType": "PROVISIONED_THROUGHPUT"
     });
 
-    let usage: UsageMetadata = serde_json::from_value(json_data).unwrap();
-    assert_eq!(usage.prompt_token_count, 100);
-    assert_eq!(usage.cached_content_token_count, Some(25));
-    assert_eq!(usage.candidates_token_count, Some(50));
-    assert_eq!(usage.thoughts_token_count, Some(15));
-    assert_eq!(usage.total_token_count, 177);
-    assert!(usage.prompt_tokens_details.is_some());
-    assert_eq!(usage.prompt_tokens_details.as_ref().unwrap().len(), 2);
-    assert!(usage.cache_tokens_details.is_some());
-    assert!(usage.candidates_tokens_details.is_some());
-    assert_eq!(usage.tool_use_prompt_token_count, Some(12));
-    assert!(usage.tool_use_prompt_tokens_details.is_some());
-    assert!(matches!(
-        usage.traffic_type,
-        Some(TrafficType::ProvisionedThroughput)
-    ));
-
-    let token_usage = crate::completion::Usage::from(&usage);
+    let token_usage = usage_of(&json_data);
     // Input is the prompt plus the hosted-tool prompt, output the candidates
     // plus the thoughts, and the total their sum, as `totalTokenCount` is.
     assert_eq!(token_usage.input_tokens, Some(112));
@@ -763,14 +657,13 @@ mod terminal_emission {
         assert!(finished.is_err(), "the corrupt frame ended the reply");
     }
 
-    /// An undelivered reply is rejected however it arrived: without a
-    /// finish reason it is truncated, and with one it is empty unless the
-    /// finish reason cut the turn short (`FinishReason::truncated_output`):
-    /// the cap and the filter hand back the empty choice with their reason
-    /// and the usage the reply carried, while a turn that ran to completion
-    /// (`STOP`) and delivered nothing is a defect.
+    /// An undelivered reply without a finish reason is truncated however it
+    /// arrived. With one, it is an empty turn carrying that reason and the
+    /// usage the reply reported: the cap and the filter cut it short, and a
+    /// turn that ran to completion (`STOP`) and delivered nothing is an
+    /// empty success.
     #[tokio::test]
-    async fn an_undelivered_reply_is_rejected_unless_its_finish_reason_cut_it_short() {
+    async fn an_undelivered_reply_is_truncated_unless_it_names_a_finish_reason() {
         use crate::completion::FinishReason;
         use crate::test_utils::RecordingHttpClient;
 
@@ -799,16 +692,12 @@ mod terminal_emission {
                 r#"{"candidates":[{"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":9}}"#,
             ),
         );
-        let error = completed
+        let response = completed
             .call(super::streaming_request())
             .await
-            .expect_err("a turn that ran to completion and delivered nothing is a defect");
-        assert!(
-            error
-                .to_string()
-                .contains(crate::message::EMPTY_RESPONSE_ERROR),
-            "{error}"
-        );
+            .expect("an empty successful reply is a success");
+        assert!(response.choice.is_empty());
+        assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 
         let silent = crate::driver::Model::new(wire(), RecordingHttpClient::new(SILENT));
         let error = silent
@@ -1089,4 +978,47 @@ fn a_part_cut_off_before_its_end_keeps_no_provider_item() {
     assert_eq!(answer.text, "the answer is");
     assert!(answer.native.is_none(), "{answer:?}");
     assert!(response.stop().is_failure());
+}
+
+/// Round 4 NEW-3: a part that carries only a thought signature, as a
+/// stream's last chunk can, joins the text before it, so the signature
+/// replays to the same model; with no text before it, it replays nothing.
+#[test]
+fn a_signature_only_part_joins_the_text_before_it() {
+    use crate::wire::{Operation, Wire};
+    let wire =
+        crate::providers::gemini::GeminiConfig::new("k").completion("gemini-3-flash-preview");
+    let chunk = |parts: serde_json::Value, finish: Option<&str>| {
+        let mut candidate = json!({"content": {"role": "model", "parts": parts}});
+        if let Some(finish) = finish {
+            candidate["finishReason"] = json!(finish);
+        }
+        WireFrame::Text(json!({"candidates": [candidate], "modelVersion": "m"}).to_string())
+    };
+    let frames = [
+        chunk(json!([{"text": "Answer"}]), None),
+        chunk(json!([{"thoughtSignature": "c2ln"}]), Some("STOP")),
+    ];
+    let response = crate::test_utils::history::decode(&wire, crate::wire::Mode::Streaming, frames)
+        .expect("the reply decodes");
+    assert_eq!(response.choice.len(), 1, "{:?}", response.choice);
+    let history = vec![
+        crate::message::Message::user("q"),
+        response.message().expect("a turn"),
+        crate::message::Message::user("n"),
+    ];
+    let request = crate::operation::Completion::prepare(
+        crate::completion::CompletionRequest::from(history),
+        &wire.describe(),
+    )
+    .expect("the history prepares");
+    let encoded = wire
+        .encode(request, crate::wire::Mode::Unary)
+        .expect("the history encodes");
+    let body = crate::test_utils::json_body(&encoded.request);
+    assert_eq!(
+        body["contents"][1]["parts"],
+        json!([{"text": "Answer", "thoughtSignature": "c2ln"}]),
+        "{body}"
+    );
 }

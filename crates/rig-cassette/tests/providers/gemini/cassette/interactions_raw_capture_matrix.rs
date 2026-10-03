@@ -5,7 +5,7 @@
 //!
 //! Raw capture is always on: the driver puts the provider's reply body,
 //! parsed as JSON, onto [`rig::completion::CompletionResponse::raw`] — here
-//! the API's own [`Interaction`] document, verbatim. There is no opt-in and
+//! the API's own interaction document, verbatim. There is no opt-in and
 //! nothing about it reaches the wire; `raw` is required at construction, so
 //! there is no response without the document that produced it and no way
 //! for capture to be "not requested".
@@ -19,7 +19,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_interaction` | typed access | `Interaction::deserialize(&raw)` reads the document back, and its provider-native fields agree with the normalized response | recorded |
+//! | 1 | `raw_roundtrips_interaction` | document access | `raw` reads back as the interaction document, and its provider-native fields agree with the normalized response | recorded |
 //! | 2 | `raw_exposes_lifecycle_fields` | un-normalized fields | `object` / `status` spelling / `steps` == fixture, absent from the normalized response | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
@@ -38,8 +38,6 @@
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
 use rig::completion::FinishReason;
-use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
-use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -83,7 +81,7 @@ fn assert_recorded_completed_interaction(scenario: &str) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// 1: typed access is recoverable, and tells the same story
+// 1: the document is recoverable, and tells the same story
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -100,29 +98,34 @@ async fn raw_roundtrips_interaction() {
 
             let raw = &response.raw;
 
-            let typed = Interaction::deserialize(raw)
-                .expect("raw must deserialize into the Interactions API's Interaction");
+            let document = raw
+                .as_object()
+                .expect("raw must be the Interactions API's interaction document");
 
             // One decoder folded the normalized response out of these very
             // bytes, so every field it kept must be the one the document
             // carries — `raw` is additive, never a divergent second view.
-            assert_eq!(typed.model.as_deref(), response.model());
-            assert_eq!(Some(typed.id.as_str()), response.response_id());
             assert_eq!(
-                typed
-                    .usage
-                    .as_ref()
-                    .and_then(|usage| usage.total_input_tokens),
+                document.get("model").and_then(Value::as_str),
+                response.model()
+            );
+            assert_eq!(
+                document.get("id").and_then(Value::as_str),
+                response.response_id()
+            );
+            assert_eq!(
+                raw.pointer("/usage/total_input_tokens")
+                    .and_then(Value::as_u64),
                 response.usage.input_tokens
             );
             assert_eq!(
-                typed.usage.as_ref().and_then(|usage| usage.total_tokens),
+                raw.pointer("/usage/total_tokens").and_then(Value::as_u64),
                 response.usage.total_tokens
             );
-            assert!(
-                matches!(typed.status, Some(InteractionStatus::Completed)),
-                "the document keeps the API's own lifecycle spelling, got {:?}",
-                typed.status
+            assert_eq!(
+                document.get("status").and_then(Value::as_str),
+                Some("completed"),
+                "the document keeps the API's own lifecycle spelling"
             );
             assert_eq!(
                 response.finish_reason(),

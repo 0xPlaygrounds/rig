@@ -5,8 +5,8 @@
 //!
 //! Raw capture is always on: the driver puts the provider's reply body,
 //! parsed as JSON, onto [`rig::completion::CompletionResponse::raw`] — here
-//! Gemini's own `generateContent` document, verbatim, which
-//! [`GenerateContentResponse`] reads back. There is no opt-in and nothing
+//! Gemini's own `generateContent` document, verbatim, read back as JSON.
+//! There is no opt-in and nothing
 //! about it reaches the wire; `raw` is required at construction, so there is
 //! no response without the document that produced it and no way for
 //! capture to be "not requested".
@@ -20,7 +20,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_generate_content_response` | typed access | `GenerateContentResponse::deserialize(&raw)` reads the document back, and its provider-native fields agree with the normalized response | recorded |
+//! | 1 | `raw_roundtrips_generate_content_response` | document access | `raw` reads back as the `generateContent` document, and its provider-native fields agree with the normalized response | recorded |
 //! | 2 | `raw_exposes_prompt_tokens_details` | un-normalized field | `usageMetadata.promptTokensDetails` == fixture, absent from the normalized response | recorded |
 //! | 3 | `raw_exposes_forced_function_call` | forced tool call (`ToolChoice::Specific`) | `raw` reads back; `candidates[0].content.parts[].functionCall` and `finishMessage` == fixture; raw `finishReason` spelled `"STOP"` while `finish_reason() == ToolCalls` | recorded |
 //! | 4 | `raw_exposes_structured_output_turn` | structured output (`responseMimeType: application/json` + `responseJsonSchema`) | `raw` reads back; raw `finishReason` spelled `"STOP"` and `usageMetadata.promptTokensDetails` == fixture while the normalized response carries neither | recorded |
@@ -54,11 +54,7 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, FinishReason,
 };
 use rig::message::ToolChoice;
-use rig::providers::gemini::completion::gemini_api_types::{
-    ContentCandidate, GenerateContentResponse, PartKind,
-};
 use rig::tool::Tool;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{recorded_request_generation_configs, with_gemini_cassette};
@@ -198,22 +194,40 @@ fn tool_functions(choice: &[AssistantContent]) -> Vec<(String, Value)> {
 
 /// The visible (non-`thought`) text of a candidate, joined the way the
 /// decoder folds text blocks.
-fn visible_text(candidate: &ContentCandidate) -> String {
-    candidate
-        .content
-        .as_ref()
-        .into_iter()
-        .flat_map(|content| content.parts.iter())
-        .filter(|part| !part.thought.unwrap_or(false))
-        .filter_map(|part| match &part.part {
-            PartKind::Text(text) => Some(text.as_str()),
-            _ => None,
-        })
+fn visible_text(candidate: &Value) -> String {
+    candidate_parts(candidate)
+        .filter(|part| part.get("thought").and_then(Value::as_bool) != Some(true))
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
         .collect()
 }
 
+/// The parts of a candidate's content, in wire order.
+fn candidate_parts(candidate: &Value) -> impl Iterator<Item = &Value> {
+    candidate
+        .pointer("/content/parts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+}
+
+/// The first candidate of a `generateContent` document.
+fn first_candidate(raw: &Value) -> &Value {
+    assert!(
+        raw.is_object(),
+        "raw must be Gemini's generateContent document, got {raw}"
+    );
+    raw.pointer("/candidates/0")
+        .expect("the recorded turn carries a candidate")
+}
+
+/// A `usageMetadata` token count, which Gemini omits when it is zero.
+fn usage_count(raw: &Value, field: &str) -> Option<u64> {
+    raw.get("usageMetadata")
+        .map(|usage| usage.get(field).and_then(Value::as_u64).unwrap_or_default())
+}
+
 // ---------------------------------------------------------------------------
-// 1: typed access is recoverable, and tells the same story
+// 1: the document is recoverable, and tells the same story
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -234,34 +248,32 @@ async fn raw_roundtrips_generate_content_response() {
     let response = observed.take();
     let raw = &response.raw;
 
-    // `raw` is Gemini's reply document as it arrived: its own type reads it
-    // back, so the escape hatch is typed rather than stringly.
-    let typed = GenerateContentResponse::deserialize(raw)
-        .expect("raw must deserialize into Gemini's GenerateContentResponse");
+    // `raw` is Gemini's reply document as it arrived.
+    let candidate = first_candidate(raw);
 
     // One decoder folded the normalized response out of these very bytes, so
     // every field it kept must be the one the document carries — `raw` is
     // additive, never a divergent second view.
-    assert_eq!(typed.model_version.as_deref(), response.model());
-    assert_eq!(Some(typed.response_id.as_str()), response.response_id());
     assert_eq!(
-        typed
-            .usage_metadata
-            .as_ref()
-            .map(|usage| usage.prompt_token_count as u64),
+        raw.get("modelVersion").and_then(Value::as_str),
+        response.model()
+    );
+    assert_eq!(
+        Some(
+            raw.get("responseId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        ),
+        response.response_id()
+    );
+    assert_eq!(
+        usage_count(raw, "promptTokenCount"),
         response.usage.input_tokens
     );
     assert_eq!(
-        typed
-            .usage_metadata
-            .as_ref()
-            .map(|usage| usage.total_token_count as u64),
+        usage_count(raw, "totalTokenCount"),
         response.usage.total_tokens
     );
-    let candidate = typed
-        .candidates
-        .first()
-        .expect("the recorded turn carries a candidate");
     assert_eq!(
         raw.pointer("/candidates/0/finishReason"),
         Some(&Value::String("STOP".to_string())),
@@ -356,32 +368,25 @@ async fn raw_exposes_forced_function_call() {
     let response = observed.take();
     let raw = &response.raw;
 
-    // The typed read-back holds for a functionCall turn too.
-    let typed = GenerateContentResponse::deserialize(raw)
-        .expect("raw must deserialize into Gemini's GenerateContentResponse");
-    let candidate = typed
-        .candidates
-        .first()
-        .expect("the recorded turn carries a candidate");
+    // The read-back holds for a functionCall turn too.
+    let candidate = first_candidate(raw);
     // Gemini `functionCall` parts carry no id, so the decoder mints one: the
     // document's call is compared by what the wire carried (name +
     // arguments), not by the minted id.
-    let wire_calls: Vec<(String, Value)> = candidate
-        .content
-        .as_ref()
-        .into_iter()
-        .flat_map(|content| content.parts.iter())
-        .filter_map(|part| match &part.part {
-            PartKind::FunctionCall(call) => Some((call.name.clone(), call.args.clone())),
-            _ => None,
+    let wire_calls: Vec<(String, Value)> = candidate_parts(candidate)
+        .filter_map(|part| part.get("functionCall"))
+        .map(|call| {
+            let name = call
+                .get("name")
+                .and_then(Value::as_str)
+                .expect("a functionCall part names its function");
+            let args = call.get("args").cloned().unwrap_or(Value::Null);
+            (name.to_owned(), args)
         })
         .collect();
     assert_eq!(wire_calls, tool_functions(&response.choice));
     assert_eq!(
-        typed
-            .usage_metadata
-            .as_ref()
-            .map(|usage| usage.total_token_count as u64),
+        usage_count(raw, "totalTokenCount"),
         response.usage.total_tokens
     );
 
@@ -473,22 +478,14 @@ async fn raw_exposes_structured_output_turn() {
     let response = observed.take();
     let raw = &response.raw;
 
-    let typed = GenerateContentResponse::deserialize(raw)
-        .expect("raw must deserialize into Gemini's GenerateContentResponse");
-    let candidate = typed
-        .candidates
-        .first()
-        .expect("the recorded turn carries a candidate");
+    let candidate = first_candidate(raw);
     assert_eq!(
         visible_text(candidate),
         assistant_text(&response.choice),
         "the schema JSON reaches the caller as the turn's visible text"
     );
     assert_eq!(
-        typed
-            .usage_metadata
-            .as_ref()
-            .map(|usage| usage.total_token_count as u64),
+        usage_count(raw, "totalTokenCount"),
         response.usage.total_tokens
     );
 

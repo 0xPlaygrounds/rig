@@ -46,7 +46,7 @@
 //! | 20 | `blocking_code_execution_on_gemini_3_flash` | blocking | `completion` | second model family |
 //! | 21 | `streaming_code_execution_on_gemini_3_flash` | streaming | `stream` | parity twin of 20 |
 //! | 22 | `blocking_code_execution_replayed_in_chat_history` | blocking | `Agent::chat` | a code-execution turn replayed as history, code parts included |
-//! | 23 | `code_execution_only_turn_is_an_empty_response` | — | unit | see below |
+//! | 23 | `code_execution_only_turn_is_a_turn_of_its_code_parts` | — | unit | see below |
 //! | 24 | `code_execution_parts_are_skipped_in_every_position` | — | unit | see below |
 //! | 25 | `unmodeled_part_kinds_still_fail_loudly` | — | unit | see below |
 //!
@@ -66,11 +66,9 @@
 use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig_test_support::cassette_models::GeminiModels;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -369,8 +367,6 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_raw_completion_keeps_native_code_parts",
         |client| async move {
-            use rig::providers::gemini::completion::gemini_api_types::PartKind;
-
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = CompletionRequest::new(
                 "Use the code execution tool to sum the integers from 1 to 100. \
@@ -385,14 +381,9 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
                 .await
                 .expect("a turn carrying code-execution parts must still convert");
 
-            let document = GenerateContentResponse::deserialize(&response.raw)
-                .expect("raw is Gemini's own generateContent document");
-            let parts = document
-                .candidates
-                .first()
-                .and_then(|candidate| candidate.content.as_ref())
-                .map(|content| content.parts.as_slice())
-                .expect("the recorded candidate carries content");
+            let parts = response.raw["candidates"][0]["content"]["parts"]
+                .as_array()
+                .expect("raw is Gemini's own generateContent document with candidate content");
 
             // `raw` is the supported way to reach what the normalized choice
             // cannot represent: the code and its output are still here,
@@ -400,13 +391,13 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
             assert!(
                 parts
                     .iter()
-                    .any(|part| matches!(part.part, PartKind::ExecutableCode(_))),
+                    .any(|part| part["executableCode"]["code"].is_string()),
                 "`raw` must expose the executableCode part verbatim"
             );
             assert!(
                 parts
                     .iter()
-                    .any(|part| matches!(part.part, PartKind::CodeExecutionResult(_))),
+                    .any(|part| part["codeExecutionResult"]["outcome"].is_string()),
                 "`raw` must expose the codeExecutionResult part verbatim"
             );
 
@@ -957,6 +948,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 mod unit {
     use rig::completion::CompletionResponse;
     use rig::error::ProviderError;
+    use rig::message::AssistantContent;
     use rig::providers::gemini::GeminiConfig;
     use rig::test_utils::RecordingHttpClient;
     use serde_json::{Value, json};
@@ -1009,19 +1001,25 @@ mod unit {
     }
 
     /// Not a recording: Gemini always narrates a code round, so a candidate
-    /// whose only parts are code-execution parts cannot be forced live. The
-    /// contract is that skipping them does not invent content — an otherwise
-    /// empty choice must still be rejected by rig's shared empty-response
-    /// rule, not silently returned as a blank answer.
+    /// whose only parts are code-execution parts cannot be forced live. Such
+    /// a turn is a success, as pi takes an empty reply: emptiness is decided
+    /// once by the fold, never by a decoder. Skipping the code parts invents
+    /// no text: they stay opaque blocks that replay to the same model.
     #[tokio::test]
-    async fn code_execution_only_turn_is_an_empty_response() {
-        let error = completion_of(vec![executable_code_part(), code_result_part()])
+    async fn code_execution_only_turn_is_a_turn_of_its_code_parts() {
+        let response = completion_of(vec![executable_code_part(), code_result_part()])
             .await
-            .expect_err("a turn with no modeled content must not convert to a blank answer");
+            .expect("an executable-code-only reply is a turn");
+        assert!(!response.stop().is_failure(), "{:?}", response.stop());
         assert!(
-            matches!(error, ProviderError::Response(_)),
-            "expected the shared empty-response rejection, got {error:?}"
+            response
+                .choice
+                .iter()
+                .all(|block| matches!(block, AssistantContent::Opaque(opaque) if opaque.replay)),
+            "{:?}",
+            response.choice
         );
+        assert_eq!(response.choice.len(), 2, "{:?}", response.choice);
     }
 
     /// Not a recording: one live turn emits one ordering. Each code part

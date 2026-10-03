@@ -77,25 +77,23 @@ fn pad() -> String {
     crate::cache_conformance::cache_padding(45)
 }
 
-fn probe_tool(name: &str) -> gemini::completion::gemini_api_types::Tool {
-    use gemini::completion::gemini_api_types::{FunctionDeclaration, Tool};
+fn probe_tool(name: &str) -> serde_json::Value {
+    let parameters = gemini::completion::tool_parameters_to_schema(serde_json::json!({
+        "type": "object",
+        "properties": { "topic": { "type": "string" } },
+        "required": ["topic"]
+    }))
+    .expect("probe tool schema should convert")
+    .expect("probe tool schema should not be empty");
 
-    // Built directly rather than deserialized: `Tool` is `Serialize`-only.
-    Tool {
-        function_declarations: vec![FunctionDeclaration {
-            name: name.to_owned(),
-            description: "matrix probe tool".to_owned(),
-            parameters: gemini::completion::gemini_api_types::tool_parameters_to_schema(
-                serde_json::json!({
-                    "type": "object",
-                    "properties": { "topic": { "type": "string" } },
-                    "required": ["topic"]
-                }),
-            )
-            .expect("probe tool schema should convert"),
+    serde_json::json!({
+        "functionDeclarations": [{
+            "name": name,
+            "description": "matrix probe tool",
+            "parameters": parameters,
         }],
-        code_execution: None,
-    }
+        "codeExecution": null,
+    })
 }
 
 /// One cell of the matrix.
@@ -122,11 +120,9 @@ fn build(cell: Cell) -> NewCachedContent {
         request = request.tools(names[..cell.tools].iter().map(|n| probe_tool(n)).collect());
     }
     if cell.tool_config {
-        request = request.tool_config(gemini::completion::gemini_api_types::ToolConfig {
-            function_calling_config: Some(
-                gemini::completion::gemini_api_types::FunctionCallingMode::Auto,
-            ),
-        });
+        request = request.tool_config(serde_json::json!({
+            "functionCallingConfig": { "mode": "AUTO" }
+        }));
     }
     if cell.display_name {
         request = request.display_name("rig-matrix");
@@ -385,7 +381,6 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 #[tokio::test]
 async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
     use rig::agent::AgentBuilder;
-    use rig::providers::gemini::completion::gemini_api_types::{CodeExecution, Tool};
 
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_cached_code_execution",
@@ -395,10 +390,10 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(pad())
-                        .tools(vec![Tool {
-                            function_declarations: Vec::new(),
-                            code_execution: Some(CodeExecution {}),
-                        }])
+                        .tools(vec![serde_json::json!({
+                            "functionDeclarations": [],
+                            "codeExecution": {},
+                        })])
                         .display_name("rig-cached-code-execution")
                         .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
                 )

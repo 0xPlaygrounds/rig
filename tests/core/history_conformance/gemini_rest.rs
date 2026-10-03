@@ -4,12 +4,47 @@
 
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
+use rig_core::message::AssistantContent;
 use rig_core::providers::gemini::GeminiConfig;
 use rig_core::providers::gemini::completion::GenerateContent;
-use rig_core::providers::gemini::completion::gemini_api_types::FAILURE_FINISHES;
 use rig_core::wire::{Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Value, json};
+
+/// Every `finishReason` Gemini and Vertex AI document that ends a turn as a
+/// failure: content filters, recitation, unsupported language, image
+/// failures, tool-protocol failures and the unused zero value.
+pub const FAILURE_FINISHES: &[&str] = &[
+    "FINISH_REASON_UNSPECIFIED",
+    "SAFETY",
+    "RECITATION",
+    "LANGUAGE",
+    "OTHER",
+    "BLOCKLIST",
+    "PROHIBITED_CONTENT",
+    "SPII",
+    "MALFORMED_FUNCTION_CALL",
+    "IMAGE_SAFETY",
+    "IMAGE_PROHIBITED_CONTENT",
+    "IMAGE_OTHER",
+    "NO_IMAGE",
+    "IMAGE_RECITATION",
+    "UNEXPECTED_TOOL_CALL",
+    "TOO_MANY_TOOL_CALLS",
+    "MISSING_THOUGHT_SIGNATURE",
+    "MALFORMED_RESPONSE",
+    "ESCALATION",
+    "PUP_LIMITED_DISABLED",
+    "MODEL_ARMOR",
+];
+
+/// Two calls to `weather`, `a1` and `b2`, as `functionCall` parts.
+pub fn weather_calls() -> [Value; 2] {
+    [
+        json!({ "functionCall": { "name": "weather", "args": { "city": "Paris" }, "id": "a1" } }),
+        json!({ "functionCall": { "name": "weather", "args": { "city": "Rome" }, "id": "b2" } }),
+    ]
+}
 
 pub struct GeminiRestHistory;
 
@@ -172,6 +207,49 @@ impl HistoryFixture for GeminiRestHistory {
             ],
             frames: |document| frames([document]),
         })
+    }
+
+    /// A part is its own whole reply.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let part = block.native_item()?.clone();
+        let wire = self.wire(MODEL);
+        let response = rig_core::test_utils::history::decode(
+            &wire,
+            Mode::Unary,
+            frames([chunk(json!([part]), Some("STOP"))]),
+        )
+        .ok()?;
+        response.choice.into_iter().next()
+    }
+
+    /// Gemini sends whole calls: one reply listing both, or one chunk each.
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<WireFrame>> {
+        let [first, second] = weather_calls();
+        match (shape, mode) {
+            (CallShape::WholeList, _) => {
+                Some(frames([chunk(json!([first, second]), Some("STOP"))]))
+            }
+            (CallShape::Indexless, Mode::Streaming) => Some(frames([
+                chunk(json!([first]), None),
+                chunk(json!([second]), Some("STOP")),
+            ])),
+            _ => None,
+        }
+    }
+
+    fn empty_reply(&self, _mode: Mode) -> Option<Vec<WireFrame>> {
+        Some(frames([chunk(json!([]), Some("STOP"))]))
+    }
+
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        Some("/candidates/0/finishReason")
+    }
+
+    fn error_frame(&self) -> Option<WireFrame> {
+        Some(WireFrame::Text(
+            json!({ "error": { "code": 503, "message": "overloaded", "status": "UNAVAILABLE" } })
+                .to_string(),
+        ))
     }
 }
 

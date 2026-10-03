@@ -162,6 +162,41 @@ pub const ROWS: &[(&str, &str)] = &[
 /// fails when a named test no longer exists.
 pub const TESTS: &[(&str, &str, &str)] = &[
     (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "a_user_video_keeps_its_video_metadata",
+        "#2658, round 4: gemini NEW-1 (gRPC refuses videoMetadata)",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "the_rest_request_transcodes_in_full",
+        "#2658 (gRPC drops the tool choice, generation config and hosted tools)",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "a_signature_only_part_replays_its_signature",
+        "round 4: gemini NEW-3 on gRPC",
+    ),
+    (
+        "crates/rig-core/src/providers/gemini/streaming/tests.rs",
+        "a_signature_only_part_joins_the_text_before_it",
+        "round 4: gemini NEW-3 (a signature-only part never replays)",
+    ),
+    (
+        "crates/rig-core/src/providers/gemini/interactions_api/history_tests.rs",
+        "a_multi_part_result_reaches_gemini_2_as_one_string",
+        "#2143, round 4: gemini NEW-2 (Interactions multi-part result on Gemini 2)",
+    ),
+    (
+        "crates/rig-core/src/providers/gemini/interactions_api/history_tests.rs",
+        "a_stored_continuation_keeps_its_results_without_declared_tools",
+        "round 4 core: tools withdrawn turned a stored interaction's results into text",
+    ),
+    (
+        "crates/rig-core/src/providers/gemini/interactions_api/history_tests.rs",
+        "every_gemini_wire_classifies_a_model_alike",
+        "round 4 architecture: REST and Interactions classify aliases apart",
+    ),
+    (
         "crates/rig-core/src/completion/request/tests.rs",
         "documents_join_the_first_user_message_so_roles_alternate",
         "#1179",

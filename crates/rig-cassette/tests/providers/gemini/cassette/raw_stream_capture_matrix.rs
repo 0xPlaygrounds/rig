@@ -4,9 +4,8 @@
 //! # The feature
 //!
 //! Raw capture is always on: the GenerateContent decoder builds its terminal
-//! record at EOF — Gemini's own
-//! [`StreamingCompletionResponse`], assembled from the stream's last
-//! `finishReason`, usage and metadata — and serializes it onto the terminal
+//! record at EOF — a JSON object assembled from the stream's last
+//! `finishReason`, usage and metadata — and puts it onto the terminal
 //! [`rig::completion::CompletionResponse::raw`]. There is no opt-in and nothing
 //! about it reaches the wire; `raw` is `Value::Null` only on a terminal
 //! constructed without a provider stream behind it, never because capture
@@ -22,9 +21,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `StreamingCompletionResponse::deserialize(&raw)` re-serializes equal and agrees with the normalized terminal | recorded |
+//! | 1 | `raw_roundtrips_streaming_completion_response` | record access | `raw` holds only the terminal record's fields and agrees with the normalized terminal | recorded |
 //! | 2 | `raw_exposes_terminal_only_fields` | un-normalized terminal fields | `finish_reason` spelled `"STOP"`, `usage_metadata.promptTokensDetails` == last frame, absent from the normalized terminal | recorded |
-//! | 3 | `raw_terminal_keeps_stop_on_forced_function_call` | forced tool call (`ToolChoice::Specific`), streamed | terminal `raw` round-trips; raw `finish_reason` spelled `"STOP"` and `finish_message` == wire while the normalized terminal reports `ToolCalls`; the recorded frames carry `functionCall` | recorded |
+//! | 3 | `raw_terminal_keeps_stop_on_forced_function_call` | forced tool call (`ToolChoice::Specific`), streamed | terminal `raw` is the record; raw `finish_reason` spelled `"STOP"` and `finish_message` == wire while the normalized terminal reports `ToolCalls`; the recorded frames carry `functionCall` | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
 //! test is the plain `streamGenerateContent` route.
@@ -44,11 +43,9 @@
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
-use rig::providers::gemini::streaming::StreamingCompletionResponse;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_gemini_cassette;
@@ -194,8 +191,52 @@ fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// 1: typed access is recoverable
+// 1: the terminal record is recoverable
 // ---------------------------------------------------------------------------
+
+/// The fields of the terminal record the decoder builds at EOF.
+const TERMINAL_RECORD_FIELDS: &[&str] = &[
+    "usage_metadata",
+    "finish_reason",
+    "finish_message",
+    "model_version",
+    "response_id",
+];
+
+/// Assert `raw` is the decoder's terminal record: an object holding its
+/// usage and only the record's fields. Return its total token count.
+fn terminal_record_total_tokens(raw: &Value) -> Option<u64> {
+    let record = raw
+        .as_object()
+        .expect("raw must be Gemini's streaming terminal record");
+    for key in record.keys() {
+        assert!(
+            TERMINAL_RECORD_FIELDS.contains(&key.as_str()),
+            "the terminal record carries only its own fields, found `{key}` in {raw}"
+        );
+    }
+    for key in [
+        "finish_message",
+        "model_version",
+        "response_id",
+        "finish_reason",
+    ] {
+        assert!(
+            record.get(key).is_none_or(Value::is_string),
+            "the terminal record's `{key}` is a string: {raw}"
+        );
+    }
+    let usage = record
+        .get("usage_metadata")
+        .and_then(Value::as_object)
+        .expect("the terminal record carries its usage_metadata");
+    Some(
+        usage
+            .get("totalTokenCount")
+            .and_then(Value::as_u64)
+            .unwrap_or_default(),
+    )
+}
 
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
@@ -216,23 +257,19 @@ async fn raw_roundtrips_streaming_completion_response() {
     assert!(!text.is_empty(), "the stream should have carried text");
     let raw = &terminal.raw;
 
-    // `raw` is the terminal record the decoder built, serialized: Gemini's
-    // own terminal type reads it back and re-serializes to the same value.
-    let typed = StreamingCompletionResponse::deserialize(raw)
-        .expect("raw must deserialize into Gemini's streaming terminal type");
-    assert_eq!(
-        serde_json::to_value(&typed).expect("typed raw re-serializes"),
-        *raw,
-        "StreamingCompletionResponse must round-trip through its own Serialize/Deserialize"
-    );
+    // `raw` is the terminal record the decoder built, and nothing else.
+    let total_tokens = terminal_record_total_tokens(raw);
 
-    // And the typed value agrees with the normalized terminal next to it.
-    assert_eq!(typed.model_version.as_deref(), terminal.model());
-    assert_eq!(typed.response_id.as_deref(), terminal.response_id());
+    // And the record agrees with the normalized terminal next to it.
     assert_eq!(
-        Some(typed.usage_metadata.total_token_count as u64),
-        terminal.usage.total_tokens
+        raw.get("model_version").and_then(Value::as_str),
+        terminal.model()
     );
+    assert_eq!(
+        raw.get("response_id").and_then(Value::as_str),
+        terminal.response_id()
+    );
+    assert_eq!(total_tokens, terminal.usage.total_tokens);
 
     let last = last_usage_frame(SCENARIO);
     assert_eq!(
@@ -330,19 +367,13 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     let terminal = &drained.terminal;
     let raw = &terminal.raw;
 
-    // The typed round trip holds for a tool turn's terminal too.
-    let typed = StreamingCompletionResponse::deserialize(raw)
-        .expect("raw must deserialize into Gemini's streaming terminal type");
+    // The record shape holds for a tool turn's terminal too.
+    let total_tokens = terminal_record_total_tokens(raw);
     assert_eq!(
-        serde_json::to_value(&typed).expect("typed raw re-serializes"),
-        *raw,
-        "StreamingCompletionResponse must round-trip a tool turn's terminal"
+        raw.get("response_id").and_then(Value::as_str),
+        terminal.response_id()
     );
-    assert_eq!(typed.response_id.as_deref(), terminal.response_id());
-    assert_eq!(
-        Some(typed.usage_metadata.total_token_count as u64),
-        terminal.usage.total_tokens
-    );
+    assert_eq!(total_tokens, terminal.usage.total_tokens);
 
     // The normalized terminal reports the reconciled ToolCalls …
     assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
@@ -365,7 +396,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
         "raw must carry the terminal frame's promptTokensDetails on the tool turn too"
     );
     // Gemini annotates a call-only STOP with a `finishMessage`; the terminal
-    // type keeps it as `finish_message`, and the normalized terminal has no
+    // record keeps it as `finish_message`, and the normalized terminal has no
     // home for it.
     assert!(
         last.pointer("/candidates/0/finishMessage")

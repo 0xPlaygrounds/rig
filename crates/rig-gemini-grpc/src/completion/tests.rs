@@ -1,6 +1,35 @@
 use super::*;
+use crate::proto;
 use rig_core::Model;
 use rig_core::streaming::CompletionStream;
+
+/// The protobuf request `request` sends to `model`.
+fn create_grpc_request(
+    model: &str,
+    request: CompletionRequest,
+) -> Result<GenerateContentRequest, EncodeError> {
+    GenerateContent::new(model).encode(request, Mode::Unary)
+}
+
+/// The protobuf schema a tool taking `parameters` declares.
+fn tool_parameters_to_proto_schema(
+    parameters: &serde_json::Value,
+) -> Result<Option<proto::Schema>, EncodeError> {
+    let tool = rig_core::completion::ToolDefinition {
+        name: message::ToolName::new("probe").expect("a tool name"),
+        description: "probe".to_owned(),
+        parameters: parameters.clone(),
+    };
+    let request = create_grpc_request(
+        GEMINI_2_5_FLASH,
+        CompletionRequest::new("q").tools(vec![tool]),
+    )?;
+    Ok(request
+        .tools
+        .first()
+        .and_then(|tool| tool.function_declarations.first())
+        .and_then(|declaration| declaration.parameters.clone()))
+}
 
 /// Answers every request with scripted protobuf replies, one per frame.
 #[derive(Clone)]
@@ -711,7 +740,10 @@ impl Transport<GenerateContent> for Recording {
         let reply = GenerateContentResponse {
             candidates: vec![crate::proto::Candidate {
                 content: Some(crate::proto::Content {
-                    parts: vec![text_part("6".to_owned())],
+                    parts: vec![proto::Part {
+                        data: Some(proto::part::Data::Text("6".to_owned())),
+                        ..Default::default()
+                    }],
                     role: "model".to_owned(),
                 }),
                 finish_reason: crate::proto::candidate::FinishReason::Stop as i32,
@@ -807,7 +839,10 @@ fn an_unflattenable_tool_schema_is_a_request_failure() {
     let error = tool_parameters_to_proto_schema(&parameters).expect_err("schema must not convert");
     let error = ProviderError::from(error);
     assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
-    assert_eq!(error.to_string(), "RequestError: $defs must be an object");
+    assert_eq!(
+        error.to_string(),
+        "RequestError: Tool 'probe' could not be converted to a schema: $defs must be an object"
+    );
 }
 
 /// The usage mapping's arithmetic, through the real unary conversion.
@@ -856,5 +891,154 @@ fn usage_counts_thoughts_as_output_and_the_tool_use_prompt_as_input() {
             tool_use_prompt_tokens: Some(75),
             reasoning_tokens: Some(34),
         }
+    );
+}
+
+/// The REST JSON `history` sends to `model` over gRPC, prepared as the
+/// driver prepares it: the protobuf request read back as its REST JSON.
+fn sent(model: &str, history: Vec<message::Message>) -> serde_json::Value {
+    use rig_core::wire::Operation;
+    let wire = GenerateContent::new(model);
+    let request = rig_core::operation::Completion::prepare(
+        CompletionRequest::from(history),
+        &wire.describe(),
+    )
+    .expect("the history prepares");
+    crate::rest::to_rest(
+        &wire
+            .encode(request, Mode::Unary)
+            .expect("the history encodes"),
+    )
+    .expect("the request has REST JSON")
+}
+
+/// #2658, round 4 NEW-1: a user video with Gemini's `videoMetadata` (clip
+/// offsets), which the shared encoder sends, reaches the gRPC request: the
+/// proto declares every part field that encoder emits.
+#[test]
+fn a_user_video_keeps_its_video_metadata() {
+    let video = message::Video {
+        data: message::DocumentSourceKind::Url("https://www.youtube.com/watch?v=abc".to_owned()),
+        media_type: Some(message::VideoMediaType::MP4),
+        additional_params: Some(
+            serde_json::json!({"videoMetadata": {"startOffset": "10s", "endOffset": "20s"}}),
+        ),
+    };
+    let body = sent(
+        "gemini-2.5-flash",
+        vec![message::Message::User {
+            content: vec![
+                message::UserContent::Video(video),
+                message::UserContent::text("summarise this clip"),
+            ],
+        }],
+    );
+    assert_eq!(
+        body["contents"][0]["parts"][0]["videoMetadata"],
+        serde_json::json!({"startOffset": "10s", "endOffset": "20s"}),
+        "{body}"
+    );
+}
+
+/// The shared encoder's whole request transcodes: generation, thinking and
+/// image config, safety settings, hosted tools and the tool choice all reach
+/// the gRPC request rather than being dropped.
+#[test]
+fn the_rest_request_transcodes_in_full() {
+    let mut request = CompletionRequest::new("hi").tools(vec![rig_core::completion::ToolDefinition {
+        name: message::ToolName::new("add").expect("a tool name"),
+        description: "add".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {"x": {"type": "number"}}}),
+    }]);
+    request.tool_choice = Some(message::ToolChoice::Specific {
+        function_names: vec![message::ToolName::new("add").expect("a tool name")],
+    });
+    request.temperature = Some(0.5);
+    request.additional_params = Some(serde_json::json!({
+        "generationConfig": {
+            "topK": 3,
+            "thinkingConfig": {"thinkingLevel": "low", "includeThoughts": true},
+            "imageConfig": {"aspectRatio": "1:1"},
+        },
+        "safetySettings": [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}],
+        "tools": [{"googleSearch": {}}, {"codeExecution": {}}],
+    }));
+    let body = crate::rest::to_rest(
+        &GenerateContent::new("gemini-3-flash-preview")
+            .encode(request, Mode::Unary)
+            .expect("the request transcodes"),
+    )
+    .expect("the request has REST JSON");
+    assert_eq!(body["generationConfig"]["topK"], 3, "{body}");
+    assert_eq!(body["generationConfig"]["temperature"], 0.5, "{body}");
+    assert_eq!(
+        body["generationConfig"]["thinkingConfig"]["thinkingLevel"], "LOW",
+        "{body}"
+    );
+    assert_eq!(
+        body["generationConfig"]["imageConfig"]["aspectRatio"], "1:1",
+        "{body}"
+    );
+    assert_eq!(
+        body["safetySettings"][0]["threshold"], "BLOCK_NONE",
+        "{body}"
+    );
+    assert_eq!(
+        body["toolConfig"]["functionCallingConfig"]["mode"], "ANY",
+        "{body}"
+    );
+    assert_eq!(
+        body["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"],
+        serde_json::json!(["add"]),
+        "{body}"
+    );
+    assert_eq!(
+        body["tools"][1],
+        serde_json::json!({"googleSearch": {}}),
+        "{body}"
+    );
+    assert_eq!(
+        body["tools"][2],
+        serde_json::json!({"codeExecution": {}}),
+        "{body}"
+    );
+}
+
+/// Round 4 NEW-3: a streamed part that carries only a thought signature
+/// joins the text before it, so the signature replays to the same model.
+#[test]
+fn a_signature_only_part_replays_its_signature() {
+    let chunk = |parts: serde_json::Value, finish: Option<&str>| {
+        let mut candidate = serde_json::json!({"content": {"role": "model", "parts": parts}});
+        if let Some(finish) = finish {
+            candidate["finishReason"] = serde_json::json!(finish);
+        }
+        crate::rest::from_rest::<GenerateContentResponse>(
+            serde_json::json!({"candidates": [candidate], "modelVersion": "m"}),
+        )
+        .expect("a reply chunk")
+    };
+    let frames = vec![
+        chunk(serde_json::json!([{"text": "Answer"}]), None),
+        chunk(
+            serde_json::json!([{"thoughtSignature": "c2ln"}]),
+            Some("STOP"),
+        ),
+    ];
+    let response = rig_core::test_utils::history::decode(
+        &GenerateContent::new("gemini-3-flash-preview"),
+        Mode::Streaming,
+        frames,
+    )
+    .expect("the reply decodes");
+    let history = vec![
+        message::Message::user("q"),
+        response.message().expect("a turn"),
+        message::Message::user("n"),
+    ];
+    let body = sent("gemini-3-flash-preview", history);
+    assert_eq!(
+        body["contents"][1]["parts"][0]["thoughtSignature"], "c2ln",
+        "{body}"
     );
 }

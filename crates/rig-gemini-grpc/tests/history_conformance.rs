@@ -7,11 +7,12 @@
 
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
+use rig_core::message::AssistantContent;
 use rig_core::wire::{Mode, Wire};
 use rig_gemini_grpc::completion::GenerateContent;
 use rig_gemini_grpc::proto::{self, GenerateContentResponse};
 use rig_gemini_grpc::rest::{from_rest, to_rest};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape};
 use serde_json::{Value, json};
 
 struct GrpcHistory;
@@ -196,6 +197,40 @@ impl HistoryFixture for GrpcHistory {
                 vec![frame(document)]
             },
         })
+    }
+
+    /// A part is its own whole reply.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let part = block.native_item()?.clone();
+        let response = rig_core::test_utils::history::decode(
+            &self.wire(MODEL),
+            Mode::Unary,
+            [frame(chunk(json!([part]), stop()))],
+        )
+        .ok()?;
+        response.choice.into_iter().next()
+    }
+
+    /// Gemini sends whole calls: one reply listing both, or one chunk each.
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+        let first = json!({ "functionCall": { "name": "weather", "args": { "city": "Paris" }, "id": "a1" } });
+        let second = json!({ "functionCall": { "name": "weather", "args": { "city": "Rome" }, "id": "b2" } });
+        match (shape, mode) {
+            (CallShape::WholeList, _) => Some(vec![frame(chunk(json!([first, second]), stop()))]),
+            (CallShape::Indexless, Mode::Streaming) => Some(vec![
+                frame(chunk(json!([first]), None)),
+                frame(chunk(json!([second]), stop())),
+            ]),
+            _ => None,
+        }
+    }
+
+    fn empty_reply(&self, _mode: Mode) -> Option<Vec<GenerateContentResponse>> {
+        Some(vec![frame(chunk(json!([]), stop()))])
+    }
+
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        Some("/candidates/0/finishReason")
     }
 }
 

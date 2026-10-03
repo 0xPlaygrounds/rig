@@ -4,7 +4,7 @@
 //! what each model accepts.
 
 use super::{Interactions, create_request_body};
-use crate::completion::{CompletionRequest, CompletionResponse, ReplayTarget};
+use crate::completion::{CompletionRequest, CompletionResponse, ReplayTarget, ToolDefinition};
 use crate::message::{
     AssistantContent, CallId, Image, ImageMediaType, Message, StopReason, ToolName, ToolResult,
     ToolResultContent, UserContent,
@@ -44,19 +44,68 @@ fn completed(interaction: Value) -> WireFrame {
     event(json!({"event_type": "interaction.completed", "interaction": interaction}))
 }
 
-/// The steps `history`, then a new user message, encode to for `target`,
-/// adapted at the request boundary as the driver adapts it.
-fn sent(target: &Interactions, history: Vec<Message>) -> Vec<Value> {
-    let mut history = history;
-    history.push(Message::user("next"));
+/// A tool named `name` that takes no arguments.
+fn tool(name: &str) -> ToolDefinition {
+    ToolDefinition {
+        name: ToolName::new(name).expect("a tool name"),
+        description: format!("The {name} tool."),
+        parameters: json!({"type": "object", "properties": {}}),
+    }
+}
+
+/// The tools the calls and results of `history` name, so that the request
+/// boundary sends them as calls and results rather than as text.
+fn tools_of(history: &[Message]) -> Vec<ToolDefinition> {
+    let mut names: Vec<String> = Vec::new();
+    for message in history {
+        let named: Vec<String> = match message {
+            Message::Assistant(turn) => turn
+                .tool_calls()
+                .map(|call| call.function.name.to_string())
+                .collect(),
+            Message::User { content } => content
+                .iter()
+                .filter_map(|part| match part {
+                    UserContent::ToolResult(result) => Some(result.name.to_string()),
+                    _ => None,
+                })
+                .collect(),
+            Message::System { .. } => Vec::new(),
+        };
+        for name in named {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    names.iter().map(|name| tool(name)).collect()
+}
+
+/// The `input` steps `request` encodes to for `target`, adapted at the
+/// request boundary as the driver adapts it.
+fn input_of(target: &Interactions, request: CompletionRequest) -> Vec<Value> {
     let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
-        CompletionRequest::from(history),
+        request,
         &target.describe(),
     )
     .expect("the request is valid");
-    create_request_body(target.model.clone(), request, None)
-        .expect("the request builds")
-        .input
+    match create_request_body(target, request, None).expect("the request builds") {
+        Value::Object(mut body) => match body.shift_remove("input") {
+            Some(Value::Array(steps)) => steps,
+            other => panic!("the body sends its steps as `input`: {other:?}"),
+        },
+        other => panic!("the body is an object: {other}"),
+    }
+}
+
+/// The steps `history`, then a new user message, encode to for `target`,
+/// with the tools its calls and results name declared.
+fn sent(target: &Interactions, history: Vec<Message>) -> Vec<Value> {
+    let mut history = history;
+    history.push(Message::user("next"));
+    let mut request = CompletionRequest::from(history);
+    request.tools = tools_of(&request.chat_history);
+    input_of(target, request)
 }
 
 /// What `response` replays to `target`, between the prompt and the next
@@ -142,7 +191,7 @@ fn every_status_ends_the_turn_as_documented() {
 }
 
 /// A model output holding text, an image and audio is one block per item,
-/// and the same model gets the step back once.
+/// and the same model gets one step per item back, each holding that item.
 #[test]
 fn a_mixed_output_is_one_block_per_item_and_replays_once() {
     let response = whole(vec![mixed_step()], "completed");
@@ -161,7 +210,14 @@ fn a_mixed_output_is_one_block_per_item_and_replays_once() {
     );
     assert_eq!(image.media_type, Some(ImageMediaType::PNG));
     assert!(audio.replay);
-    assert_eq!(replayed_to(&wire(MODEL), &response), [mixed_step()]);
+    assert_eq!(
+        replayed_to(&wire(MODEL), &response),
+        [
+            text_step("Here it is."),
+            json!({"type": "model_output", "content": [image_item()]}),
+            json!({"type": "model_output", "content": [audio_item()]}),
+        ]
+    );
 }
 
 /// Another model gets the text and the image rebuilt, and no audio.
@@ -385,14 +441,15 @@ fn function_results_carry_images_from_gemini_3() {
 }
 
 /// Fields of unexpected types, and types rig does not know, never fail a
-/// reply: a count sent as a string is unknown, an unknown tool or modality
-/// in the echoed request is kept, a hosted step missing its fields is an
-/// opaque step, and a call without a name is dropped.
+/// reply: a count sent as a string of digits is read and one of another
+/// type is unknown, an unknown tool or modality in the echoed request is
+/// kept, a hosted step missing its fields is an opaque step, and a call
+/// without a name is dropped.
 #[test]
 fn unexpected_fields_never_fail_the_reply() {
     let document = json!({
         "id": "int_1", "model": MODEL, "status": "completed",
-        "usage": {"total_input_tokens": "10", "total_output_tokens": 5},
+        "usage": {"total_input_tokens": "10", "total_output_tokens": 5, "total_thought_tokens": [1]},
         "tools": [{"type": "x_rig_tool"}],
         "response_modalities": ["x_rig_modality"],
         "steps": [
@@ -406,8 +463,9 @@ fn unexpected_fields_never_fail_the_reply() {
         (Mode::Streaming, completed(document.clone())),
     ] {
         let response = decode(&wire(MODEL), mode, [frame]).expect("the reply decodes");
-        assert_eq!(response.usage.input_tokens, None);
+        assert_eq!(response.usage.input_tokens, Some(10));
         assert_eq!(response.usage.output_tokens, Some(5));
+        assert_eq!(response.usage.reasoning_tokens, None);
         assert_eq!(response.stop(), StopReason::Stop);
     }
     let response = whole(
@@ -443,19 +501,100 @@ fn results_continuing_a_stored_interaction_are_sent() {
     ] {
         let mut request = CompletionRequest::from(vec![result.clone(), Message::user("next")]);
         request.additional_params = params;
-        let target = wire(MODEL);
-        let prepared = <crate::operation::Completion as crate::wire::Operation>::prepare(
-            request,
-            &target.describe(),
-        )
-        .expect("the request is valid");
-        let steps = create_request_body(target.model.clone(), prepared, None)
-            .expect("the request builds")
-            .input;
+        request.tools = vec![tool("add")];
+        let steps = input_of(&wire(MODEL), request);
         assert_eq!(
             steps.iter().any(|step| step["type"] == "function_result"),
             sent_result,
             "{steps:?}"
         );
     }
+}
+
+/// #2143, round 4 NEW-2: Gemini 2 reads no multimodal function results, so
+/// a result of several text parts (an MCP tool's), or of text and an image
+/// the adapter moves out, reaches it as one string, never as a list of
+/// content blocks the API refuses ("Multimodal function responses are not
+/// supported for this model").
+#[test]
+fn a_multi_part_result_reaches_gemini_2_as_one_string() {
+    let result = |content: Vec<ToolResultContent>| Message::User {
+        content: vec![UserContent::ToolResult(ToolResult {
+            call: CallId::from_wire("c_1"),
+            name: ToolName::new("read").expect("a tool name"),
+            content,
+            is_error: false,
+        })],
+    };
+    let image = ToolResultContent::Image(Image {
+        data: crate::message::DocumentSourceKind::base64("aW1n"),
+        media_type: Some(ImageMediaType::PNG),
+        ..Image::default()
+    });
+    for content in [
+        vec![
+            ToolResultContent::text("line one"),
+            ToolResultContent::text("line two"),
+        ],
+        vec![ToolResultContent::text("line one"), image],
+    ] {
+        let steps = sent(
+            &wire("gemini-2.5-flash"),
+            vec![Message::user("q"), calling("read"), result(content)],
+        );
+        let step = steps
+            .iter()
+            .find(|step| step["type"] == "function_result")
+            .expect("the result is sent");
+        assert!(step["result"].is_string(), "{step}");
+        assert!(
+            step["result"]
+                .as_str()
+                .is_some_and(|text| text.starts_with("line one")),
+            "{step}"
+        );
+    }
+}
+
+/// Every Gemini wire reads a model the same way: an alias that names no
+/// version reads multimodal results on Interactions as on GenerateContent,
+/// and a `models/` prefix does not hide the version.
+#[test]
+fn every_gemini_wire_classifies_a_model_alike() {
+    let rest = crate::providers::gemini::GeminiConfig::new("k").completion(MODEL);
+    for model in [
+        "gemini-flash-latest",
+        "models/gemini-2.5-flash",
+        "gemini-3-flash-preview",
+        "claude-sonnet-4",
+    ] {
+        assert_eq!(wire(model).accepts(model), rest.accepts(model), "{model}");
+    }
+    assert!(
+        !wire("models/gemini-2.5-flash")
+            .accepts("models/gemini-2.5-flash")
+            .tool_result_images
+    );
+}
+
+/// A stored interaction holds the tools its calls named, so results that
+/// continue it go back as function results even when the request declares
+/// no tools of its own, as the recorded `tool_result_roundtrip` sends them.
+#[test]
+fn a_stored_continuation_keeps_its_results_without_declared_tools() {
+    let result = Message::User {
+        content: vec![UserContent::ToolResult(ToolResult {
+            call: CallId::from_wire("c_1"),
+            name: ToolName::new("add").expect("a tool name"),
+            content: vec![ToolResultContent::text("18")],
+            is_error: false,
+        })],
+    };
+    let mut request = CompletionRequest::from(vec![result]);
+    request.additional_params = Some(json!({"previous_interaction_id": "int_0"}));
+    let steps = input_of(&wire(MODEL), request);
+    assert_eq!(
+        steps,
+        [json!({"type": "function_result", "name": "add", "call_id": "c_1", "result": "18"})]
+    );
 }

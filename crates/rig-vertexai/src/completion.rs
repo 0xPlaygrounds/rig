@@ -14,7 +14,6 @@
 //! ```
 
 use super::VertexAi;
-use crate::types::completion_request::VertexCompletionRequest;
 use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD as BASE64, URL_SAFE};
@@ -23,7 +22,7 @@ use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
-use rig_core::providers::gemini::completion::conversation;
+use rig_core::providers::gemini::completion as rest;
 use rig_core::wire::{Descriptor, Mode, Wire};
 
 /// `gemini-1.5-pro`
@@ -71,35 +70,23 @@ impl Wire for GenerateContent {
             .replay(self)
     }
 
-    /// The contents are the shared Gemini encoder's REST JSON, read into
-    /// the SDK's types.
+    /// The REST wire's request, read into the SDK's types: every field the
+    /// shared encoder builds reaches Vertex AI.
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<vertexai::model::GenerateContentRequest, EncodeError> {
-        tracing::debug!(
-            target: "rig_core::vertexai",
-            "Vertex AI completion request: {request:?}"
-        );
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let (_, contents) = conversation(&request, &model)?;
-        let contents = contents
-            .into_iter()
-            .map(|mut content| {
-                standard_signatures(&mut content);
-                serde_json::from_value::<vertexai::model::Content>(content)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let request = VertexCompletionRequest(request);
-        let mut payload = vertexai::model::GenerateContentRequest::new()
-            .set_model(model)
-            .set_contents(contents)
-            .set_tools(request.tools());
-        payload.generation_config = request.generation_config()?;
-        payload.system_instruction = request.system_instruction();
-        payload.tool_config = request.tool_config();
-        Ok(payload)
+        let mut body = rest::request_body(request, self, &model)?;
+        let contents = body
+            .get_mut("contents")
+            .and_then(serde_json::Value::as_array_mut);
+        for content in contents.into_iter().flatten() {
+            standard_signatures(content);
+        }
+        body.insert("model".to_owned(), model.into());
+        Ok(serde_json::from_value(serde_json::Value::Object(body))?)
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -141,13 +128,13 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
 
     /// What the model reads, as on every GenerateContent wire.
     fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
-        rig_core::providers::gemini::completion::accepts(model)
+        rest::accepts(model)
     }
 
     /// The media Vertex AI takes: what the Gemini API takes, and image URLs inside
     /// function responses too.
     fn encodes(&self, _model: &str, media: rig_core::completion::Media<'_>) -> bool {
-        rig_core::providers::gemini::completion::encodes(media, true)
+        rest::encodes(media, true)
     }
 
     fn normalize_tool_call_id(
@@ -156,7 +143,11 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         model: &str,
         _source: Option<&rig_core::message::Origin>,
     ) -> String {
-        rig_core::providers::gemini::completion::normalize_tool_call_id(model, id)
+        rest::normalize_tool_call_id(model, id)
+    }
+
+    fn call_id_slot(&self) -> Option<&'static str> {
+        rest::CALL_ID_SLOT
     }
 }
 

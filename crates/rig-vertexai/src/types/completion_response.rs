@@ -58,6 +58,25 @@ pub(crate) fn rest_chunk(
     {
         spell(json, "finishReason", candidate.finish_reason.name());
         ratings(json, &candidate.safety_ratings);
+        // A part's enums too, so a stored part reads back whatever a store
+        // does to its numbers.
+        let parts = candidate.content.iter().flat_map(|content| &content.parts);
+        let json_parts = json
+            .pointer_mut("/content/parts")
+            .and_then(Value::as_array_mut);
+        for (part, json) in parts.zip(json_parts.into_iter().flatten()) {
+            if let (Some(code), Some(json)) =
+                (part.executable_code(), json.get_mut("executableCode"))
+            {
+                spell(json, "language", code.language.name());
+            }
+            if let (Some(result), Some(json)) = (
+                part.code_execution_result(),
+                json.get_mut("codeExecutionResult"),
+            ) {
+                spell(json, "outcome", result.outcome.name());
+            }
+        }
     }
     if let (Some(feedback), Some(json)) =
         (&response.prompt_feedback, chunk.get_mut("promptFeedback"))
