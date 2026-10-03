@@ -2217,10 +2217,11 @@ fn an_item_never_done_replays_from_its_fields() {
     );
 }
 
-/// A call `output_item.added` announced is delivered with what its
-/// argument deltas carried when no done item arrives.
+/// A call `output_item.added` announced and no done item finished fails
+/// the turn, as pi refuses it: its arguments may be cut off, and without
+/// its item it cannot replay beside the reasoning before it.
 #[test]
-fn a_call_added_but_never_done_is_delivered() {
+fn a_call_added_but_never_done_fails_the_turn() {
     let events = [
         json!({"type": "response.output_item.added", "output_index": 0,
                "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "lookup", "arguments": ""}}),
@@ -2230,14 +2231,26 @@ fn a_call_added_but_never_done_is_delivered() {
         completed_with(4, json!([])),
     ];
     let response = decode(Mode::Streaming, frames(&events));
-    let calls = calls_of(&response);
-    let [call] = calls.as_slice() else {
-        panic!("the call is delivered: {:?}", response.choice);
-    };
-    assert_eq!(call.id.wire(), "call_1");
-    assert_eq!(call.function.arguments_value(), json!({"q": "rig"}));
-    assert!(call.native.is_none(), "it was never stated complete");
+    assert!(
+        response.stop().is_failure(),
+        "the call was never finished: {:?}",
+        response.stop()
+    );
+    let restated = [
+        json!({"type": "response.output_item.added", "output_index": 0,
+               "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "lookup", "arguments": ""}}),
+        completed_with(
+            1,
+            json!([function_call("fc_1", "call_1", r#"{"q":"rig"}"#)]),
+        ),
+    ];
+    let response = decode(Mode::Streaming, frames(&restated));
     assert_eq!(response.stop(), crate::message::StopReason::ToolUse);
+    assert_eq!(
+        natives(&response),
+        [function_call("fc_1", "call_1", r#"{"q":"rig"}"#)],
+        "a call the terminal restates is finished by it"
+    );
 }
 
 /// An item only the terminal response states lands at its output index,
@@ -2318,4 +2331,189 @@ fn reasoning_message_and_call_ids_survive_an_edit_of_each_one() {
             assert_eq!(*items[0], output[0], "reasoning goes as its item");
         }
     }
+}
+
+/// `events` as a gateway that names no `output_index` streams them.
+fn without_indices(mut events: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    for event in &mut events {
+        if let Some(event) = event.as_object_mut() {
+            event.shift_remove("output_index");
+        }
+    }
+    events
+}
+
+/// The ids of the items the next request sends back.
+fn replayed_ids(response: &crate::completion::CompletionResponse) -> Vec<serde_json::Value> {
+    replayed_input(response)
+        .iter()
+        .filter_map(|item| item.get("id").cloned())
+        .collect()
+}
+
+/// A stream that names no output index folds into the turn its whole
+/// reply does, every item in its place.
+#[test]
+fn a_stream_without_output_indices_agrees_with_its_whole_reply() {
+    let replies = [
+        every_kind(),
+        vec![
+            reasoning("rs_1", &["First."]),
+            message("msg_1", "Between."),
+            reasoning("rs_2", &["Second."]),
+            function_call("fc_1", "call_1", r#"{"q":"rig"}"#),
+        ],
+    ];
+    for output in replies {
+        crate::test_utils::history::assert_restated_agrees(
+            &wire(),
+            whole(&output),
+            frames(&without_indices(restated(&output))),
+        );
+    }
+}
+
+/// Reasoning done without its ciphertext (`store: true`) keeps its item
+/// when the next item opens in a stream that names no output index, so the
+/// message after it replays with it.
+#[test]
+fn reasoning_done_without_ciphertext_keeps_its_item_in_a_stream_without_indices() {
+    let mut thought = reasoning("rs_1", &["Plan."]);
+    if let Some(fields) = thought.as_object_mut() {
+        fields.shift_remove("encrypted_content");
+    }
+    let output = [thought.clone(), message("msg_1", "Hello")];
+    let response = decode(Mode::Streaming, frames(&without_indices(restated(&output))));
+    assert_eq!(natives(&response), output);
+    assert_eq!(replayed_ids(&response), [json!("rs_1"), json!("msg_1")]);
+}
+
+/// Text streamed with no index and no item events, then a terminal that
+/// states reasoning before that message: the text is said once, after the
+/// reasoning, and both replay as the provider's items.
+#[test]
+fn a_terminal_only_item_does_not_repeat_text_streamed_without_indices() {
+    let events = [
+        json!({"type": "response.output_text.delta", "delta": "Hel"}),
+        json!({"type": "response.output_text.delta", "delta": "lo"}),
+        completed_with(
+            2,
+            json!([reasoning("rs_1", &["Why."]), message("msg_1", "Hello")]),
+        ),
+    ];
+    let response = decode(Mode::Streaming, frames(&events));
+    assert_eq!(response.text(), "Hello");
+    assert_eq!(
+        natives(&response),
+        [reasoning("rs_1", &["Why."]), message("msg_1", "Hello")]
+    );
+    assert_eq!(replayed_ids(&response), [json!("rs_1"), json!("msg_1")]);
+}
+
+/// The done item is the truth: a block whose deltas differ from its done
+/// item says what the item says, so its text and its native agree.
+#[test]
+fn a_done_item_s_text_replaces_the_text_its_deltas_streamed() {
+    let output = [reasoning("rs_1", &["Plan B."]), message("msg_1", "Hello")];
+    let mut events = restated(&output);
+    for event in &mut events {
+        match event["type"].as_str() {
+            Some("response.output_text.delta") => event["delta"] = json!("Bye"),
+            Some("response.reasoning_summary_text.delta") => event["delta"] = json!("Plan A"),
+            _ => {}
+        }
+    }
+    let response = decode(Mode::Streaming, frames(&events));
+    assert_eq!(response.text(), "Hello");
+    assert_eq!(response.reasoning(), "Plan B.");
+    assert_eq!(natives(&response), output);
+    assert_eq!(
+        response.message(),
+        decode(Mode::Unary, whole(&output)).message()
+    );
+}
+
+/// An item that names no `type` is kept in history and never sent back,
+/// as pi drops it.
+#[test]
+fn an_item_without_a_type_never_replays() {
+    let output = [
+        json!({"id": "x_1", "payload": {"n": 1}}),
+        message("msg_1", "Noted."),
+    ];
+    for response in [
+        decode(Mode::Unary, whole(&output)),
+        decode(Mode::Streaming, frames(&restated(&output))),
+    ] {
+        assert!(
+            matches!(response.choice.first(), Some(AssistantContent::Opaque(opaque)) if !opaque.replay),
+            "{:?}",
+            response.choice
+        );
+        assert_eq!(replayed_ids(&response), [json!("msg_1")]);
+    }
+}
+
+/// `response.incomplete` is an incomplete turn whatever its `status` says:
+/// the output cap is `Length`, any other reason or none fails the turn.
+#[test]
+fn response_incomplete_is_incomplete_whatever_its_status_says() {
+    use crate::message::StopReason;
+    for (status, reason, stop) in [
+        (None, Some("max_output_tokens"), Some(StopReason::Length)),
+        (
+            Some("completed"),
+            Some("max_output_tokens"),
+            Some(StopReason::Length),
+        ),
+        (None, None, None),
+        (Some("completed"), None, None),
+        (None, Some("content_filter"), None),
+    ] {
+        let mut response = sample_response("incomplete");
+        match status {
+            Some(status) => response["status"] = json!(status),
+            None => {
+                if let Some(fields) = response.as_object_mut() {
+                    fields.shift_remove("status");
+                }
+            }
+        }
+        response["incomplete_details"] = json!(reason.map(|reason| json!({"reason": reason})));
+        response["output"] = json!([message("msg_1", "partial")]);
+        let events = [
+            item_done(0, 1, message("msg_1", "partial")),
+            json!({"type": "response.incomplete", "sequence_number": 2, "response": response}),
+        ];
+        let response = decode(Mode::Streaming, frames(&events));
+        match stop {
+            Some(stop) => assert_eq!(response.stop(), stop, "{status:?} {reason:?}"),
+            None => assert!(
+                response.stop().is_failure(),
+                "{status:?} {reason:?}: {:?}",
+                response.stop()
+            ),
+        }
+    }
+}
+
+/// A gateway that names the output index on its item events but not on
+/// its deltas streams each delta into the item it continues.
+#[test]
+fn deltas_without_an_index_continue_the_item_they_name() {
+    let output = [reasoning("rs_1", &["Plan."]), message("msg_1", "Hello")];
+    let mut events = restated(&output);
+    for event in &mut events {
+        if event["type"]
+            .as_str()
+            .is_some_and(|kind| kind.ends_with(".delta"))
+            && let Some(fields) = event.as_object_mut()
+        {
+            fields.shift_remove("output_index");
+        }
+    }
+    let response = decode(Mode::Streaming, frames(&events));
+    assert_eq!(natives(&response), output);
+    assert_eq!(response.text(), "Hello");
+    assert_eq!(response.reasoning(), "Plan.");
 }

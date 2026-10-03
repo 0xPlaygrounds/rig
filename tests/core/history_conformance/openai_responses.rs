@@ -213,6 +213,14 @@ fn streamed(output: &[Value], status: Value) -> Vec<WireFrame> {
         .collect()
 }
 
+/// One frame per event.
+fn events(events: &[Value]) -> Vec<WireFrame> {
+    events
+        .iter()
+        .map(|event| WireFrame::Text(event.to_string()))
+        .collect()
+}
+
 fn reply(output: &[Value], status: Value, mode: Mode) -> Vec<WireFrame> {
     match mode {
         Mode::Unary => whole(output, status),
@@ -297,7 +305,9 @@ where
     }
 
     /// Every status the API documents, every incomplete reason, and a body
-    /// that states no status, which ended as the provider sent it.
+    /// that states no status, which ended as the provider sent it. A
+    /// streamed `response.incomplete` is incomplete whatever its status
+    /// says, and a call announced and never done fails the turn.
     fn finishes(&self) -> Vec<(&'static str, Vec<WireFrame>, Ending)> {
         let text = [message("msg_1", "Done.", json!({}))];
         let calling = [call("fc_1", "call_1", "{}")];
@@ -355,6 +365,31 @@ where
                 Ending::Failure,
             ),
             ("no status", whole(&text, json!({})), Ending::Success),
+            (
+                "streamed incomplete at the output cap, without a status",
+                events(&[
+                    json!({"type": "response.output_item.done", "output_index": 0, "item": text[0]}),
+                    json!({"type": "response.incomplete", "response": response(&text, json!({"incomplete_details": {"reason": "max_output_tokens"}}))}),
+                ]),
+                Ending::Success,
+            ),
+            (
+                "streamed incomplete without a status or a reason",
+                events(&[
+                    json!({"type": "response.output_item.done", "output_index": 0, "item": text[0]}),
+                    json!({"type": "response.incomplete", "response": response(&text, json!({}))}),
+                ]),
+                Ending::Failure,
+            ),
+            (
+                "a call announced and never done",
+                events(&[
+                    json!({"type": "response.output_item.added", "output_index": 0, "item": added(&calling[0])}),
+                    json!({"type": "response.function_call_arguments.delta", "output_index": 0, "delta": "{}"}),
+                    json!({"type": "response.completed", "response": response(&[], completed())}),
+                ]),
+                Ending::Failure,
+            ),
         ]
     }
 
