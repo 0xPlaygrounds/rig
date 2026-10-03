@@ -1147,15 +1147,6 @@ impl crate::completion::ReplayTarget for Chat {
     fn result_parts(&self, _model: &str) -> bool {
         self.tool_result_array_content
     }
-
-    /// A Claude model whose thinking binds to the request's tools and
-    /// system prompt binds it through OpenRouter too, which spells it
-    /// `anthropic/claude-opus-5.5`.
-    fn binds_context(&self, model: &str) -> bool {
-        self.provider.dialect.quirks.rewrite == BodyRewrite::OpenRouter
-            && model.starts_with("anthropic/")
-            && crate::providers::anthropic::completion::binds_context(model)
-    }
 }
 
 /// Whether `model` reads user images from `vendor`, a dialect's name or the

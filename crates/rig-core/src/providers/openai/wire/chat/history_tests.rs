@@ -1172,12 +1172,11 @@ fn reasoning_content_follows_the_model() {
     }
 }
 
-/// A Claude model that binds its thinking to the request's tools binds it
-/// through OpenRouter too: after the tool list changes, its signed
-/// `reasoning_details` are not sent back. A model that binds nothing keeps
-/// them.
+/// OpenRouter takes a Claude turn's signed `reasoning_details` back after
+/// the tool list changes, on every route it serves Claude from, so they
+/// replay verbatim whether or not the model binds its thinking.
 #[test]
-fn openrouter_claude_thinking_binds_to_the_tools() {
+fn openrouter_claude_thinking_replays_whatever_the_tools() {
     let frames = || {
         vec![
             chunk(
@@ -1194,10 +1193,7 @@ fn openrouter_claude_thinking_binds_to_the_tools() {
             WireFrame::Text("[DONE]".to_owned()),
         ]
     };
-    for (model, binds) in [
-        ("anthropic/claude-opus-5.5", true),
-        ("anthropic/claude-haiku-4.5", false),
-    ] {
+    for model in ["anthropic/claude-opus-5.5", "anthropic/claude-haiku-4.5"] {
         let wire = wire(&OPENROUTER, model);
         let response = decode(&wire, Mode::Streaming, frames()).expect("the reply decodes");
         let mut next = CompletionRequest::new("next");
@@ -1215,9 +1211,8 @@ fn openrouter_claude_thinking_binds_to_the_tools() {
                 result("toolu_1", "f"),
             ],
         );
-        assert_eq!(
-            body["messages"][1].get("reasoning_details").is_none(),
-            binds,
+        assert!(
+            body["messages"][1].get("reasoning_details").is_some(),
             "{model}: {body}"
         );
     }
