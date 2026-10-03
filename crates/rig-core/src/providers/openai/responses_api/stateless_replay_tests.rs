@@ -41,7 +41,13 @@ fn replayed(turn: completion::Message) -> Vec<serde_json::Value> {
     let wire = wire();
     let history = vec![completion::Message::user("hi"), turn];
     let request = crate::operation::Completion::prepare(
-        crate::completion::CompletionRequest::from(history),
+        crate::completion::CompletionRequest::from(history).tools(vec![
+            crate::completion::ToolDefinition {
+                name: crate::message::ToolName::new("f").expect("tool name"),
+                description: "A tool".to_owned(),
+                parameters: json!({"type": "object"}),
+            },
+        ]),
         &wire.describe(),
     )
     .expect("the history is valid");

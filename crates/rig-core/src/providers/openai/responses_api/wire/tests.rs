@@ -211,6 +211,16 @@ fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> 
     json_body(&encoded.request)
 }
 
+/// [`encoded_body_of`] for `request` prepared as the driver prepares it.
+fn prepared_body_of(wire: &Responses, request: CompletionRequest) -> serde_json::Value {
+    let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
+        request,
+        &wire.describe(),
+    )
+    .expect("the request prepares");
+    encoded_body_of(wire, request, Mode::Unary)
+}
+
 /// The bare [`prompt`] with a history of its own.
 fn turn(chat_history: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
@@ -410,7 +420,7 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
         .expect("the request encodes");
     assert_eq!(encoded.request.uri(), "https://api.x.ai/v1/responses");
 
-    let body = encoded_body_of(
+    let body = prepared_body_of(
         &wire,
         CompletionRequest {
             documents: vec![crate::completion::Document {
@@ -425,7 +435,6 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
                 Message::user("What is glarb-glarb?"),
             ])
         },
-        Mode::Unary,
     );
 
     assert_eq!(body.get("instructions"), None, "{body}");
@@ -522,7 +531,12 @@ fn the_xai_dialect_replays_its_own_reasoning_item_verbatim() {
         turn(vec![
             Message::user("Use the tool."),
             Message::Assistant(turn_of),
-        ]),
+        ])
+        .tools(vec![crate::completion::ToolDefinition {
+            name: crate::message::ToolName::new("my_tool").expect("tool name"),
+            description: "A tool".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+        }]),
         &xai().describe(),
     )
     .expect("the history is valid");

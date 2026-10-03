@@ -176,6 +176,13 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         false
     }
 
+    /// Whether `request` declares tools the model may call, by itself or
+    /// through tools the wire adds. A request that declares none gets its
+    /// history's calls and results as text.
+    fn declares_tools(&self, request: &crate::completion::CompletionRequest) -> bool {
+        !request.tools.is_empty()
+    }
+
     /// The keys of a provider item that survive an edit of its block: an
     /// encoder rebuilding the edited block keeps them ([`Replay::Identity`]).
     /// By default none do.

@@ -59,7 +59,7 @@ struct ResponsesWebSocketClientEvent {
     #[serde(rename = "type")]
     kind: ResponsesWebSocketClientEventKind,
     #[serde(flatten)]
-    request: crate::providers::openai::responses_api::CompletionRequest,
+    request: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate: Option<bool>,
 }
@@ -521,13 +521,15 @@ impl ResponsesWebSocketSession {
     fn prepare_request(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<crate::providers::openai::responses_api::CompletionRequest, ProviderError> {
+    ) -> Result<Value, ProviderError> {
         let mut request = self.wire.responses_request(completion_request, false)?;
 
         // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
         // are ignored by the provider and only add noise to the payload.
-        request.stream = None;
-        request.additional_parameters.background = None;
+        if let Some(fields) = request.as_object_mut() {
+            fields.shift_remove("stream");
+            fields.shift_remove("background");
+        }
         Ok(request)
     }
 

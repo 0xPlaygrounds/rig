@@ -234,23 +234,5 @@ pub(crate) fn request_has_vision(request: &completion::CompletionRequest) -> boo
     })
 }
 
-/// Copilot's error body, which names the failure under either key.
-#[derive(Debug, Deserialize)]
-pub struct ChatApiErrorResponse {
-    #[serde(default)]
-    pub message: Option<String>,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-impl ChatApiErrorResponse {
-    pub fn error_message(&self) -> &str {
-        self.message
-            .as_deref()
-            .or(self.error.as_deref())
-            .unwrap_or("unknown error")
-    }
-}
-
 #[cfg(test)]
 mod tests;

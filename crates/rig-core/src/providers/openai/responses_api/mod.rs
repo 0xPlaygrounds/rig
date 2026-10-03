@@ -11,18 +11,18 @@
 //! # }
 //! ```
 
+use crate::completion::history::Replay;
 use crate::error::EncodeError;
 use crate::json_utils;
-use crate::json_utils::string_or_vec;
+use crate::json_utils::Lenient;
 use crate::message::{
-    Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType, Text,
+    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, MimeType,
+    ToolResultContent, UserContent,
 };
+use crate::providers::internal::wire_ids::WireIds;
 use crate::{completion, message};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{Map, Value};
-
-use std::convert::Infallible;
-use std::str::FromStr;
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json::{Map, Value, json};
 
 pub mod streaming;
 #[cfg(feature = "websocket")]
@@ -30,216 +30,46 @@ pub mod streaming;
 pub mod websocket;
 pub mod wire;
 
-/// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
-/// Intended to be derived from [`crate::completion::request::CompletionRequest`].
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct CompletionRequest {
-    /// Message inputs
-    pub input: Vec<InputItem>,
-    /// The model name
-    pub model: String,
-    /// Top-level system instructions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub instructions: Option<String>,
-    /// The maximum number of output tokens.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_output_tokens: Option<u64>,
-    /// Toggle to true for streaming responses.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stream: Option<bool>,
-    /// Sampling temperature. Supported values depend on the model.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f64>,
-    /// Whether the LLM should be forced to use a tool before returning a response.
-    /// If none provided, the default option is "auto".
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<ToolChoice>,
-    /// The tools you want to use. This supports both function tools and hosted tools
-    /// such as `web_search`, `file_search`, and `computer_use`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<ResponsesToolDefinition>,
-    /// Additional parameters
-    #[serde(flatten)]
-    pub additional_parameters: AdditionalParameters,
-}
-
-impl CompletionRequest {
-    /// Appends a function or provider-hosted tool to the request.
-    pub fn with_tool(mut self, tool: impl Into<ResponsesToolDefinition>) -> Self {
-        self.tools.push(tool.into());
-        self
-    }
-
-    /// Appends function or provider-hosted tools in iteration order.
-    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
-    where
-        I: IntoIterator<Item = Tool>,
-        Tool: Into<ResponsesToolDefinition>,
-    {
-        self.tools.extend(tools.into_iter().map(Into::into));
-        self
-    }
-}
-
-/// An input item for [`CompletionRequest`]: a system or user message, a
-/// function result, or an item the provider stated, sent back as it is.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum InputItem {
-    /// A system or user message.
-    Message(Message),
-    /// A function call's result.
-    FunctionCallOutput(ToolResult),
-    /// Any other item, in the API's JSON shape: an output item replayed
-    /// verbatim, or one rebuilt from a turn's canonical fields.
-    #[serde(untagged)]
-    Item(Value),
-}
-
-impl InputItem {
-    pub fn system_message(content: impl Into<String>) -> Self {
-        Self::Message(Message::System {
-            content: vec![SystemContent::InputText {
-                text: content.into(),
-            }],
-            name: None,
-        })
-    }
-
-    /// A user-role input item carrying one content part.
-    fn user_content(content: UserContent) -> Self {
-        Self::Message(Message::User {
-            content: vec![content],
-            name: None,
-        })
-    }
-
-    pub(crate) fn system_text(&self) -> Option<String> {
-        match self {
-            Self::Message(Message::System { content, .. }) => Some(
-                content
-                    .iter()
-                    .map(|item| match item {
-                        SystemContent::InputText { text } => text.as_str(),
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
+/// The `input_image` part `image` goes as: a data URL for typed base64
+/// data, its URL, or its file id. `None` for any other source, which
+/// [`wire::Responses`] tells the adapter it does not carry.
+fn image_part(image: &message::Image) -> Option<Value> {
+    let (key, source) = match &image.data {
+        DocumentSourceKind::Base64(data) => (
+            "image_url",
+            format!(
+                "data:{};base64,{data}",
+                image.media_type.as_ref()?.to_mime_type()
             ),
-            _ => None,
-        }
-    }
-
-    /// The call id fields a request spells: a call's and a result's.
-    fn call_ids(&mut self) -> Vec<&mut String> {
-        match self {
-            Self::FunctionCallOutput(result) => vec![&mut result.call_id],
-            Self::Item(Value::Object(item))
-                if item
-                    .get("type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|kind| {
-                        matches!(
-                            kind,
-                            "function_call" | "custom_tool_call" | "custom_tool_call_output"
-                        )
-                    }) =>
-            {
-                match item.get_mut("call_id") {
-                    Some(Value::String(call_id)) => vec![call_id],
-                    _ => Vec::new(),
-                }
-            }
-            Self::Message(_) | Self::Item(_) => Vec::new(),
-        }
-    }
-}
-
-/// A tool result.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-pub struct ToolResult {
-    /// The call ID of a tool (this should be linked to the call ID for a tool call, otherwise an error will be received)
-    call_id: String,
-    /// The result of a tool call.
-    output: ToolResultOutput,
-    /// The status of a tool call (if used in a completion request, this should always be Completed)
-    status: ToolStatus,
-}
-
-/// Responses API function-call output, which accepts either plain text or an
-/// ordered list of rich input blocks.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(untagged)]
-pub enum ToolResultOutput {
-    /// A plain textual function result.
-    Text(String),
-    /// Ordered rich input blocks for a multimodal function result.
-    Content(Vec<ToolResultOutputContent>),
-}
-
-/// Rich content supported by a Responses API function-call output.
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ToolResultOutputContent {
-    /// Textual function-output content.
-    InputText {
-        /// The text presented to the model.
-        text: String,
-    },
-    /// Image function-output content.
-    InputImage {
-        /// A public URL or base64 data URL, mutually exclusive with `file_id`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        image_url: Option<String>,
-        /// An uploaded OpenAI file identifier, mutually exclusive with
-        /// `image_url`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        file_id: Option<String>,
-        /// Provider image-detail preference.
-        #[serde(default)]
-        detail: ImageDetail,
-    },
-}
-
-/// The `image_url` and `file_id` an `input_image` carries `image` as: a
-/// data URL for typed base64 data, its URL, or its file id. `None` for any
-/// other source, which [`wire::Responses`] tells the adapter it does not
-/// carry.
-fn image_input(image: &message::Image) -> Option<(Option<String>, Option<String>)> {
-    match &image.data {
-        DocumentSourceKind::Base64(data) => image.media_type.as_ref().map(|media_type| {
-            let url = format!("data:{};base64,{data}", media_type.to_mime_type());
-            (Some(url), None)
-        }),
-        DocumentSourceKind::Url(url) => Some((Some(url.clone()), None)),
-        DocumentSourceKind::FileId(file_id) => Some((None, Some(file_id.clone()))),
-        _ => None,
-    }
+        ),
+        DocumentSourceKind::Url(url) => ("image_url", url.clone()),
+        DocumentSourceKind::FileId(file_id) => ("file_id", file_id.clone()),
+        _ => return None,
+    };
+    let mut part =
+        json!({"type": "input_image", "detail": image.detail.clone().unwrap_or_default()});
+    part[key] = Value::String(source);
+    Some(part)
 }
 
 /// The content part `document` goes as: an `input_file` for a file id, a
 /// URL or base64 PDF data, and its text for a string. `None` for any other
 /// form; the adapter sends a text document's text instead.
-fn document_input(document: &Document) -> Option<UserContent> {
-    let file = |file_id, file_url, file_data, filename| UserContent::InputFile {
-        file_id,
-        file_url,
-        file_data,
-        filename,
-    };
-    match &document.data {
-        DocumentSourceKind::FileId(file_id) => Some(file(Some(file_id.clone()), None, None, None)),
-        DocumentSourceKind::Url(url) => Some(file(None, Some(url.clone()), None, None)),
+fn document_part(document: &Document) -> Option<Value> {
+    Some(match &document.data {
+        DocumentSourceKind::FileId(file_id) => json!({"type": "input_file", "file_id": file_id}),
+        // `input_file` reads the type of a file it fetches itself.
+        DocumentSourceKind::Url(url) => json!({"type": "input_file", "file_url": url}),
         DocumentSourceKind::Base64(data) if document.media_type == Some(DocumentMediaType::PDF) => {
-            Some(file(
-                None,
-                None,
-                Some(format!("data:application/pdf;base64,{data}")),
-                Some("document.pdf".to_owned()),
-            ))
+            json!({
+                "type": "input_file",
+                "file_data": format!("data:application/pdf;base64,{data}"),
+                "filename": "document.pdf",
+            })
         }
-        DocumentSourceKind::String(text) => Some(UserContent::InputText { text: text.clone() }),
-        _ => None,
-    }
+        DocumentSourceKind::String(text) => json!({"type": "input_text", "text": text}),
+        _ => return None,
+    })
 }
 
 /// The refusal for a part a request was not prepared to carry.
@@ -249,247 +79,388 @@ fn unsendable(part: &str) -> EncodeError {
     ))
 }
 
-fn responses_tool_result_output(
-    content: Vec<message::ToolResultContent>,
-) -> Result<ToolResultOutput, EncodeError> {
-    let mut rich_output = Vec::new();
-
-    for content in content {
-        match content {
-            message::ToolResultContent::Text(Text { text, .. }) => {
-                rich_output.push(ToolResultOutputContent::InputText { text });
+/// A tool result's `output`: one text as a string, anything else as its
+/// ordered parts.
+fn result_output(content: &[ToolResultContent]) -> Result<Value, EncodeError> {
+    let mut parts = content
+        .iter()
+        .map(|part| match part {
+            ToolResultContent::Text(text) => Ok(json!({"type": "input_text", "text": text.text})),
+            ToolResultContent::Json { value } => {
+                Ok(json!({"type": "input_text", "text": value.to_string()}))
             }
-            message::ToolResultContent::Json { value } => {
-                rich_output.push(ToolResultOutputContent::InputText {
-                    text: value.to_string(),
-                });
+            ToolResultContent::Image(image) => {
+                image_part(image).ok_or_else(|| unsendable("tool-result image"))
             }
-            message::ToolResultContent::Image(image) => {
-                let (image_url, file_id) =
-                    image_input(&image).ok_or_else(|| unsendable("tool-result image"))?;
-                rich_output.push(ToolResultOutputContent::InputImage {
-                    image_url,
-                    file_id,
-                    detail: image.detail.unwrap_or_default(),
-                });
-            }
-        }
-    }
-
-    match rich_output.as_slice() {
-        [ToolResultOutputContent::InputText { text }] => Ok(ToolResultOutput::Text(text.clone())),
-
-        _ => Ok(ToolResultOutput::Content(rich_output)),
-    }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(match parts.as_mut_slice() {
+        [part] if part.str("type") == Some("input_text") => part["text"].take(),
+        _ => Value::Array(parts),
+    })
 }
 
-/// The ids of the calls a request sends as `custom_tool_call` items, whose
-/// results go back as `custom_tool_call_output`.
-type CustomCalls = std::collections::HashSet<String>;
+/// The custom tools of a request: a call to one is a `custom_tool_call`,
+/// answered by a `custom_tool_call_output`, as pi decides by name.
+struct Custom {
+    /// The custom tools the request declares.
+    tools: std::collections::HashSet<String>,
+    /// The call ids the request sends as custom calls.
+    calls: std::collections::HashSet<String>,
+}
 
-/// The request message at `position` of the history as input items.
-///
-/// Only a turn the target model produced still holds provider items (the
-/// adapter clears the rest), and it is sent as pi sends it. Reasoning goes
-/// as its item whatever its text, which is display only. A block whose item
-/// is current goes verbatim. An edited text or call is rebuilt from its
-/// canonical fields but keeps its item's `id` (and `phase`), so the
-/// reasoning before it stays paired. A block with no item is rebuilt as pi
-/// rebuilds another model's turn: text as a completed output message under
-/// a synthetic id, a call as a `function_call` with no item id, and
-/// reasoning, which only its item can carry, not at all.
-fn input_items(
-    message: crate::completion::Message,
-    position: usize,
-    custom: &mut CustomCalls,
-) -> Result<Vec<InputItem>, EncodeError> {
-    match message {
-        crate::completion::Message::System { content } => {
-            Ok(vec![InputItem::Message(Message::System {
-                content: vec![content.into()],
-                name: None,
-            })])
-        }
-        crate::completion::Message::User { content } => {
-            let mut parts = Vec::with_capacity(content.len());
-            for content in content {
-                parts.extend(user_input_item(content, custom)?);
-            }
-            Ok(parts)
-        }
-        crate::completion::Message::Assistant(turn) => {
-            let mut items = Vec::new();
-            let mut texts = 0usize;
-            for block in turn.content {
-                if let Some(item) = block.native_item() {
-                    if item.get("type").and_then(Value::as_str) == Some("custom_tool_call")
-                        && let Some(call_id) = item.get("call_id").and_then(Value::as_str)
-                    {
-                        custom.insert(call_id.to_owned());
-                    }
-                    items.push(InputItem::Item(item.clone()));
-                    continue;
-                }
-                match block {
-                    crate::message::AssistantContent::Text(text) => {
-                        // An empty message says nothing.
-                        if text.text.is_empty() {
+/// The input items of `history` for `target`, which addresses `model`. A
+/// turn the target model produced keeps its provider items (the adapter
+/// cleared the rest), sent as pi sends them: a current item verbatim with
+/// its call id spelled, an edited block rebuilt under its item's identity,
+/// and any other block rebuilt as pi rebuilds another model's turn: text as
+/// a completed output message under a synthetic id, and a call with no
+/// item id. Reasoning only its item can carry goes only with its identity.
+fn input(
+    history: &[Message],
+    target: &wire::Responses,
+    model: &str,
+    custom: &mut Custom,
+) -> Result<Vec<Value>, EncodeError> {
+    let ids = WireIds::for_target(history, target, model);
+    let spelled = |call: &message::CallId| {
+        ids.of(call)
+            .map_or_else(|| call.wire().into_owned(), str::to_owned)
+    };
+    let mut items = Vec::new();
+    for (position, message) in history.iter().enumerate() {
+        match message {
+            Message::System { content } => items.push(json!({
+                "type": "message",
+                "role": "system",
+                "content": [{"type": "input_text", "text": content}],
+            })),
+            Message::User { content } => {
+                for part in content {
+                    let part = match part {
+                        // Blank text says nothing, and some backends reject it.
+                        UserContent::Text(text) if text.text.trim().is_empty() => continue,
+                        UserContent::Text(text) => json!({"type": "input_text", "text": text.text}),
+                        // A function output has no error field: a failed
+                        // result says so in its text.
+                        UserContent::ToolResult(result) => {
+                            let call_id = spelled(&result.call);
+                            let output = result_output(&result.content)?;
+                            items.push(
+                                if custom.calls.contains(&call_id)
+                                    || custom.tools.contains(result.name.as_str())
+                                {
+                                    json!({"type": "custom_tool_call_output", "call_id": call_id, "output": output})
+                                } else {
+                                    json!({"type": "function_call_output", "call_id": call_id, "output": output, "status": "completed"})
+                                },
+                            );
                             continue;
                         }
-                        let native = text.native.as_ref().map(|native| &native.item);
-                        let id = match native.and_then(|item| item_id(item, "")) {
-                            Some(id) => id,
-                            None => synthetic_id(position, &mut texts),
-                        };
-                        let phase = native.and_then(|item| item.get("phase")).cloned();
-                        items.push(rebuilt_message(&text.text, id, phase));
-                    }
-                    crate::message::AssistantContent::ToolCall(call) => {
-                        let native = call.native.as_ref().map(|native| &native.item);
-                        let custom_call = native
-                            .and_then(|item| item.get("type"))
-                            .and_then(Value::as_str)
-                            == Some("custom_tool_call");
-                        let call_id = call.id.wire().into_owned();
-                        let mut item = if custom_call {
-                            custom.insert(call_id.clone());
-                            let input = match call.function.arguments.get("input") {
-                                Some(Value::String(input)) => input.clone(),
-                                _ => call.function.arguments_value().to_string(),
-                            };
-                            serde_json::json!({
-                                "type": "custom_tool_call",
-                                "call_id": call_id,
-                                "name": call.function.name.as_str(),
-                                "input": input,
-                            })
-                        } else {
-                            serde_json::json!({
-                                "type": "function_call",
-                                "call_id": call_id,
-                                "name": call.function.name.as_str(),
-                                "arguments": call.function.arguments_value().to_string(),
-                            })
-                        };
-                        let prefix = if custom_call { "ctc_" } else { "fc_" };
-                        if let (Some(id), Some(fields)) = (
-                            native.and_then(|item| item_id(item, prefix)),
-                            item.as_object_mut(),
-                        ) {
-                            fields.insert("id".to_owned(), Value::String(id));
+                        UserContent::Image(image) => {
+                            image_part(image).ok_or_else(|| unsendable("image"))?
                         }
-                        items.push(InputItem::Item(item));
-                    }
-                    // The same model's reasoning goes as its item even when
-                    // its text was edited; without one there is nothing to
-                    // send.
-                    crate::message::AssistantContent::Reasoning(reasoning) => {
-                        if let Some(native) = reasoning.native {
-                            items.push(InputItem::Item(native.item));
+                        UserContent::Document(document) => {
+                            document_part(document).ok_or_else(|| unsendable("document"))?
                         }
-                    }
-                    crate::message::AssistantContent::Opaque(opaque) => {
-                        items.push(InputItem::Item(opaque.item));
-                    }
-                    // Responses takes no image in an assistant turn; the
-                    // adapter downgrades another model's, and this one names
-                    // what was there.
-                    crate::message::AssistantContent::Image(_) => {
-                        items.push(rebuilt_message(
-                            crate::completion::history::ASSISTANT_IMAGE_OMITTED,
-                            synthetic_id(position, &mut texts),
-                            None,
-                        ));
-                    }
+                        UserContent::Audio(_) => return Err(unsendable("audio")),
+                        UserContent::Video(_) => return Err(unsendable("video")),
+                    };
+                    items.push(json!({"type": "message", "role": "user", "content": [part]}));
                 }
             }
-            Ok(items)
-        }
-    }
-}
-
-/// The id of the next rebuilt message of the turn at `position`, as pi
-/// numbers them.
-fn synthetic_id(position: usize, texts: &mut usize) -> String {
-    let id = match *texts {
-        0 => format!("msg_rig_{position}"),
-        n => format!("msg_rig_{position}_{n}"),
-    };
-    *texts += 1;
-    id
-}
-
-/// A completed assistant output message holding `text`.
-fn rebuilt_message(text: &str, id: String, phase: Option<Value>) -> InputItem {
-    let mut item = serde_json::json!({
-        "type": "message",
-        "role": "assistant",
-        "content": [{"type": "output_text", "text": text, "annotations": []}],
-        "status": "completed",
-        "id": id,
-    });
-    if let (Some(phase @ Value::String(_)), Some(fields)) = (phase, item.as_object_mut()) {
-        fields.insert("phase".to_owned(), phase);
-    }
-    InputItem::Item(item)
-}
-
-/// The `id` of a stored item, when it has the `prefix` its replayed type
-/// requires and fits the API's 64 characters.
-fn item_id(item: &Value, prefix: &str) -> Option<String> {
-    item.get("id")
-        .and_then(Value::as_str)
-        .filter(|id| !id.is_empty() && id.starts_with(prefix) && id.len() <= 64)
-        .map(str::to_owned)
-}
-
-/// One user content part as an input item.
-fn user_input_item(
-    content: crate::message::UserContent,
-    custom: &CustomCalls,
-) -> Result<Option<InputItem>, EncodeError> {
-    Ok(Some(match content {
-        // Blank text says nothing, and some backends reject it.
-        crate::message::UserContent::Text(Text { text, .. }) if text.trim().is_empty() => {
-            return Ok(None);
-        }
-        crate::message::UserContent::Text(Text { text, .. }) => {
-            InputItem::user_content(UserContent::InputText { text })
-        }
-        // A function output has no error field: a failed result says so in
-        // its text, and `is_error` is not sent.
-        crate::message::UserContent::ToolResult(tool_result) => {
-            let call_id = tool_result.call.wire().into_owned();
-            let output = responses_tool_result_output(tool_result.content)?;
-            if custom.contains(&call_id) {
-                InputItem::Item(serde_json::json!({
-                    "type": "custom_tool_call_output",
-                    "call_id": call_id,
-                    "output": output,
-                }))
-            } else {
-                InputItem::FunctionCallOutput(ToolResult {
-                    call_id,
-                    output,
-                    status: ToolStatus::Completed,
-                })
+            Message::Assistant(turn) => {
+                let mut texts = 0usize;
+                for block in &turn.content {
+                    let identity = match block.replay(target, &ids) {
+                        Replay::Item(item) => {
+                            if item.str("type") == Some("custom_tool_call")
+                                && let Some(call_id) = item.str("call_id")
+                            {
+                                custom.calls.insert(call_id.to_owned());
+                            }
+                            items.push(item.into_owned());
+                            continue;
+                        }
+                        Replay::Identity(identity) => identity,
+                        Replay::Rebuild => Map::new(),
+                    };
+                    let id = |prefix: &str| {
+                        identity
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .filter(|id| !id.is_empty() && id.starts_with(prefix) && id.len() <= 64)
+                            .map(str::to_owned)
+                    };
+                    let item = match block {
+                        AssistantContent::Text(text) => {
+                            let synthetic = match texts {
+                                0 => format!("msg_rig_{position}"),
+                                n => format!("msg_rig_{position}_{n}"),
+                            };
+                            texts += 1;
+                            let mut item = json!({
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": text.text, "annotations": []}],
+                                "status": "completed",
+                                "id": id("").unwrap_or(synthetic),
+                            });
+                            if let Some(phase) =
+                                identity.get("phase").filter(|phase| phase.is_string())
+                            {
+                                item["phase"] = phase.clone();
+                            }
+                            items.push(item);
+                            continue;
+                        }
+                        AssistantContent::ToolCall(call) => {
+                            let call_id = spelled(&call.id);
+                            let name = call.function.name.as_str();
+                            let kind = identity.get("type").and_then(Value::as_str);
+                            if kind == Some("custom_tool_call")
+                                || (kind.is_none() && custom.tools.contains(name))
+                            {
+                                custom.calls.insert(call_id.clone());
+                                let input = match call.function.arguments.get("input") {
+                                    Some(Value::String(input)) => input.clone(),
+                                    _ => call.function.arguments_value().to_string(),
+                                };
+                                let mut item = json!({"type": "custom_tool_call", "call_id": call_id, "name": name, "input": input});
+                                if let Some(id) = id("ctc_") {
+                                    item["id"] = json!(id);
+                                }
+                                item
+                            } else {
+                                let arguments = call.function.arguments_value().to_string();
+                                let mut item = json!({"type": "function_call", "call_id": call_id, "name": name, "arguments": arguments});
+                                if let Some(id) = id("fc_") {
+                                    item["id"] = json!(id);
+                                }
+                                item
+                            }
+                        }
+                        // An edited reasoning block keeps its item's id and
+                        // ciphertext, so the items after it stay paired.
+                        AssistantContent::Reasoning(reasoning) => {
+                            let Some(rs) = id("") else {
+                                continue;
+                            };
+                            let summary: Vec<Value> = (!reasoning.text.is_empty())
+                                .then(|| json!({"type": "summary_text", "text": reasoning.text}))
+                                .into_iter()
+                                .collect();
+                            let mut item =
+                                json!({"type": "reasoning", "id": rs, "summary": summary});
+                            if let Some(ciphertext) = identity.get("encrypted_content") {
+                                item["encrypted_content"] = ciphertext.clone();
+                            }
+                            item
+                        }
+                        AssistantContent::Opaque(opaque) if opaque.replay => opaque.item.clone(),
+                        AssistantContent::Opaque(_) => continue,
+                        AssistantContent::Image(_) => return Err(unsendable("assistant image")),
+                    };
+                    items.push(item);
+                }
             }
         }
-        // `input_file` reads the type of a file it fetches itself.
-        crate::message::UserContent::Document(document) => InputItem::user_content(
-            document_input(&document).ok_or_else(|| unsendable("document"))?,
-        ),
-        crate::message::UserContent::Image(image) => {
-            let (image_url, file_id) = image_input(&image).ok_or_else(|| unsendable("image"))?;
-            InputItem::user_content(UserContent::InputImage {
-                image_url,
-                file_id,
-                detail: image.detail.unwrap_or_default(),
-            })
+    }
+    Ok(items)
+}
+
+/// The JSON of a tool choice.
+fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
+    Ok(match choice {
+        message::ToolChoice::Auto => json!("auto"),
+        message::ToolChoice::None => json!("none"),
+        message::ToolChoice::Required => json!("required"),
+        message::ToolChoice::Specific { function_names } => match function_names.as_slice() {
+            [] => {
+                return Err(EncodeError::request(
+                    "ToolChoice::Specific requires at least one function name",
+                ));
+            }
+            [name] => json!({"type": "function", "name": name}),
+            names => json!({
+                "type": "allowed_tools",
+                "mode": "required",
+                "tools": names.iter().map(|name| json!({"type": "function", "name": name})).collect::<Vec<_>>(),
+            }),
+        },
+    })
+}
+
+/// Ask for the reasoning ciphertext, without which reasoning replays only
+/// from stored state.
+fn include_ciphertext(body: &mut Value) {
+    const CIPHERTEXT: &str = "reasoning.encrypted_content";
+    if !body["include"].is_array() {
+        body["include"] = json!([]);
+    }
+    if let Some(include) = body["include"].as_array_mut()
+        && !include.iter().any(|item| item == CIPHERTEXT)
+    {
+        include.push(json!(CIPHERTEXT));
+    }
+}
+
+/// The request body `wire` sends for `request`.
+fn body(
+    wire: &wire::Responses,
+    mut request: completion::CompletionRequest,
+    streaming: bool,
+) -> Result<Value, EncodeError> {
+    let model = request.model.take().unwrap_or_else(|| wire.model.clone());
+    let mut params = match request.additional_params.take() {
+        None | Some(Value::Null) => Map::new(),
+        Some(Value::Object(params)) => params,
+        Some(_) => {
+            return Err(EncodeError::request(
+                "Invalid OpenAI Responses additional_params payload: not an object",
+            ));
         }
-        crate::message::UserContent::Audio(_) => return Err(unsendable("audio")),
-        crate::message::UserContent::Video(_) => return Err(unsendable("video")),
-    }))
+    };
+    params.shift_remove("stream");
+    let mut tools: Vec<ResponsesToolDefinition> = request
+        .tools
+        .into_iter()
+        .map(ResponsesToolDefinition::from)
+        .collect();
+    if let Some(extra) = params.shift_remove("tools") {
+        tools.extend(
+            serde_json::from_value::<Vec<ResponsesToolDefinition>>(extra).map_err(|err| {
+                EncodeError::request(format!(
+                    "Invalid OpenAI Responses tools payload in additional_params: {err}"
+                ))
+            })?,
+        );
+    }
+    tools.extend(wire.tools.iter().cloned());
+    if wire.strict_tools {
+        tools = tools
+            .into_iter()
+            .map(ResponsesToolDefinition::with_strict)
+            .collect();
+    }
+    let mut custom = Custom {
+        tools: tools
+            .iter()
+            .filter(|tool| tool.kind == "custom")
+            .map(|tool| tool.name.clone())
+            .collect(),
+        calls: Default::default(),
+    };
+    let mut input = input(&request.chat_history, wire, &model, &mut custom)?;
+
+    let system = |item: &Value| {
+        (item.str("role") == Some("system")).then(|| {
+            item.at("/content/0/text")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        })
+    };
+    let before = input.len();
+    let mut lifted = Vec::new();
+    match wire.system_instructions {
+        // The leading run of system messages, unless it is the whole
+        // request, which then keeps them in `input` so it is not empty.
+        SystemInstructionsPlacement::Instructions => {
+            let leading = input
+                .iter()
+                .take_while(|item| system(item).is_some())
+                .count();
+            if leading < input.len() {
+                lifted.extend(input.drain(..leading).filter_map(|item| system(&item)));
+            }
+        }
+        SystemInstructionsPlacement::AllInstructions => input.retain(|item| match system(item) {
+            Some(text) => {
+                lifted.push(text);
+                false
+            }
+            None => true,
+        }),
+        SystemInstructionsPlacement::InputSystemMessages => {}
+    }
+    if input.is_empty() {
+        return Err(EncodeError::request(if input.len() < before {
+            "OpenAI Responses request input must contain at least one non-system item \
+             (system messages were lifted into the top-level `instructions` field)"
+        } else {
+            "OpenAI Responses request input must contain at least one item"
+        }));
+    }
+    let lifted: Vec<&str> = lifted
+        .iter()
+        .map(|text| text.trim())
+        .filter(|text| !text.is_empty())
+        .collect();
+    let instructions = match (&wire.provider.instructions, lifted.is_empty()) {
+        (Some(gateway), _) => Some(wire::merge_instructions(
+            gateway,
+            Some(&lifted.join("\n\n")),
+        )),
+        (None, false) => Some(lifted.join("\n\n")),
+        (None, true) => None,
+    };
+
+    let mut body = json!({"model": model, "input": input});
+    let fields = [
+        ("instructions", instructions.map(Value::from)),
+        ("max_output_tokens", request.max_tokens.map(Value::from)),
+        ("temperature", request.temperature.map(Value::from)),
+        (
+            "tool_choice",
+            request.tool_choice.map(tool_choice).transpose()?,
+        ),
+        ("tools", (!tools.is_empty()).then(|| json!(tools))),
+        ("stream", streaming.then_some(Value::Bool(true))),
+    ];
+    for (key, value) in fields {
+        if let Some(value) = value {
+            body[key] = value;
+        }
+    }
+    for (key, value) in params {
+        if !value.is_null() && body.get(&key).is_none() {
+            body[key.as_str()] = value;
+        }
+    }
+    if body.get("text").is_none()
+        && let Some(schema) = request.output_schema
+    {
+        let (name, schema) = super::structured_output_schema(schema);
+        body["text"] = json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}});
+    }
+    let codex = wire.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
+    if codex {
+        // The codex gateway takes the turn and the tools; sampling, storage,
+        // metadata and structured output are not its to accept, and
+        // `store: false` is the one value it wants stated.
+        if let Some(fields) = body.as_object_mut() {
+            for key in [
+                "temperature",
+                "max_output_tokens",
+                "background",
+                "metadata",
+                "parallel_tool_calls",
+                "service_tier",
+                "text",
+                "top_p",
+                "user",
+            ] {
+                fields.shift_remove(key);
+            }
+        }
+        body["store"] = json!(false);
+    }
+    // Reasoning replays without stored state only with its ciphertext.
+    if codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)) {
+        include_ciphertext(&mut body);
+    }
+    Ok(body)
 }
 
 /// A function or hosted tool available to a Responses request.
@@ -622,10 +593,6 @@ impl ResponsesToolDefinition {
         self.config.insert(key.into(), value);
         self
     }
-
-    fn normalize(self) -> Self {
-        self.with_strict()
-    }
 }
 
 impl From<completion::ToolDefinition> for ResponsesToolDefinition {
@@ -637,95 +604,6 @@ impl From<completion::ToolDefinition> for ResponsesToolDefinition {
         } = value;
 
         Self::function(name, description, parameters)
-    }
-}
-
-/// Automatic, disabled, required, named-function, or restricted tool selection.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
-pub enum ToolChoice {
-    /// `"auto"`, `"none"`, or `"required"`. Do not use the wrapped enum's
-    /// `Function` variant; use [`ToolChoiceDefinition::Function`] instead.
-    Mode(super::completion::ToolChoice),
-    /// A typed tool-choice object (`function` or `allowed_tools`).
-    Definition(ToolChoiceDefinition),
-}
-
-/// A typed Responses API tool-choice object.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum ToolChoiceDefinition {
-    /// Force the model to call the named function tool.
-    Function {
-        /// Name of the function tool the model must call.
-        name: String,
-    },
-    /// Restrict the model to a subset of the request's tools.
-    AllowedTools {
-        /// Whether the model may still answer without a tool call (`auto`)
-        /// or must call one of the allowed tools (`required`).
-        mode: AllowedToolsMode,
-        /// The tools the model is allowed to call.
-        tools: Vec<AllowedTool>,
-    },
-}
-
-/// Constrains how the model may use the tools listed in
-/// [`ToolChoiceDefinition::AllowedTools`].
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum AllowedToolsMode {
-    /// The model may call one of the allowed tools or answer directly.
-    Auto,
-    /// The model must call one of the allowed tools.
-    Required,
-}
-
-/// One entry of a [`ToolChoiceDefinition::AllowedTools`] tool list.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum AllowedTool {
-    /// A function tool referenced by name.
-    Function {
-        /// Name of the allowed function tool.
-        name: String,
-    },
-}
-
-impl TryFrom<message::ToolChoice> for ToolChoice {
-    type Error = EncodeError;
-
-    fn try_from(value: message::ToolChoice) -> Result<Self, Self::Error> {
-        let choice = match value {
-            message::ToolChoice::Auto => Self::Mode(super::completion::ToolChoice::Auto),
-            message::ToolChoice::None => Self::Mode(super::completion::ToolChoice::None),
-            message::ToolChoice::Required => Self::Mode(super::completion::ToolChoice::Required),
-            message::ToolChoice::Specific { function_names } => {
-                let mut names = function_names.into_iter().map(String::from);
-                let Some(first) = names.next() else {
-                    return Err(EncodeError::request(
-                        "ToolChoice::Specific requires at least one function name",
-                    ));
-                };
-
-                match names.next() {
-                    None => Self::Definition(ToolChoiceDefinition::Function { name: first }),
-                    Some(second) => {
-                        let tools = std::iter::once(first)
-                            .chain(std::iter::once(second))
-                            .chain(names)
-                            .map(|name| AllowedTool::Function { name })
-                            .collect();
-                        Self::Definition(ToolChoiceDefinition::AllowedTools {
-                            mode: AllowedToolsMode::Required,
-                            tools,
-                        })
-                    }
-                }
-            }
-        };
-
-        Ok(choice)
     }
 }
 
@@ -752,179 +630,6 @@ pub enum SystemInstructionsPlacement {
     /// Use this only for OpenAI-compatible providers that do not support top-level
     /// `instructions`.
     InputSystemMessages,
-}
-
-/// Converts a Rig request using the default system-instruction placement.
-impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
-    type Error = EncodeError;
-    fn try_from(
-        (model, request): (String, crate::completion::CompletionRequest),
-    ) -> Result<Self, Self::Error> {
-        Self::try_from(ResponsesRequestParams {
-            model,
-            request,
-            system_instructions_placement: SystemInstructionsPlacement::default(),
-        })
-    }
-}
-
-/// Parameters for converting a [`crate::completion::CompletionRequest`] into a
-/// Responses API [`CompletionRequest`] with a non-default configuration.
-pub struct ResponsesRequestParams {
-    pub model: String,
-    pub request: crate::completion::CompletionRequest,
-    pub system_instructions_placement: SystemInstructionsPlacement,
-}
-
-impl TryFrom<ResponsesRequestParams> for CompletionRequest {
-    type Error = EncodeError;
-
-    fn try_from(params: ResponsesRequestParams) -> Result<Self, Self::Error> {
-        let ResponsesRequestParams {
-            model,
-            request: mut req,
-            system_instructions_placement,
-        } = params;
-        let chat_history = req.chat_history_with_documents();
-        let model = req.model.clone().unwrap_or(model);
-        let mut instruction_parts = Vec::new();
-        let mut custom = CustomCalls::new();
-        let mut position = 0;
-        let mut input = crate::providers::internal::wire_ids::WireIds::convert(
-            chat_history,
-            |message| {
-                position += 1;
-                input_items(message, position - 1, &mut custom)
-            },
-            InputItem::call_ids,
-        )?;
-
-        let mut lift_system_text = |text: String| {
-            let text = text.trim();
-            if !text.is_empty() {
-                instruction_parts.push(text.to_string());
-            }
-        };
-        let items_before_lift = input.len();
-        match system_instructions_placement {
-            SystemInstructionsPlacement::Instructions => {
-                // Lift only the leading run of system items (the preamble and any
-                // system messages that open the conversation) into the top-level
-                // `instructions` field. Mid-conversation system messages keep
-                // their position in `input`, and a request made up solely of
-                // system messages keeps them in `input` so it stays non-empty.
-                let leading_system_texts: Vec<String> =
-                    input.iter().map_while(InputItem::system_text).collect();
-                if leading_system_texts.len() < input.len() {
-                    input.drain(..leading_system_texts.len());
-                    leading_system_texts
-                        .into_iter()
-                        .for_each(&mut lift_system_text);
-                }
-            }
-            SystemInstructionsPlacement::AllInstructions => {
-                // Lift every system item, wherever it appears, for backends
-                // that reject the `system` role in `input` entirely.
-                let mut remaining = Vec::with_capacity(input.len());
-                for item in input {
-                    match item.system_text() {
-                        Some(text) => lift_system_text(text),
-                        None => remaining.push(item),
-                    }
-                }
-                input = remaining;
-            }
-            SystemInstructionsPlacement::InputSystemMessages => {}
-        }
-        let instructions = (!instruction_parts.is_empty()).then(|| instruction_parts.join("\n\n"));
-        let lifted_system_items = input.len() < items_before_lift;
-
-        let input = crate::message::require_non_empty(input, || {
-            EncodeError::request(if lifted_system_items {
-                "OpenAI Responses request input must contain at least one non-system item \
-                 (system messages were lifted into the top-level `instructions` field)"
-            } else {
-                "OpenAI Responses request input must contain at least one item"
-            })
-        })?;
-
-        let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
-        let stream = match &additional_params_payload {
-            Value::Bool(stream) => Some(*stream),
-            Value::Object(map) => map.get("stream").and_then(Value::as_bool),
-            _ => None,
-        };
-
-        let mut additional_tools = Vec::new();
-        if let Some(additional_params_map) = additional_params_payload.as_object_mut() {
-            if let Some(raw_tools) = additional_params_map.shift_remove("tools") {
-                additional_tools = serde_json::from_value::<Vec<ResponsesToolDefinition>>(
-                    raw_tools,
-                )
-                .map_err(|err| {
-                    EncodeError::request(format!(
-                        "Invalid OpenAI Responses tools payload in additional_params: {err}"
-                    ))
-                })?;
-            }
-            additional_params_map.shift_remove("stream");
-        }
-
-        if additional_params_payload.is_boolean() {
-            additional_params_payload = Value::Null;
-        }
-
-        let mut additional_parameters = if additional_params_payload.is_null() {
-            // If there's no additional parameters, initialise an empty object
-            AdditionalParameters::default()
-        } else {
-            serde_json::from_value::<AdditionalParameters>(additional_params_payload).map_err(
-                |err| {
-                    EncodeError::request(format!(
-                        "Invalid OpenAI Responses additional_params payload: {err}"
-                    ))
-                },
-            )?
-        };
-        // Reasoning replays without stored state only with its ciphertext.
-        if additional_parameters.reasoning.is_some() || additional_parameters.store == Some(false) {
-            let include = additional_parameters.include.get_or_insert_with(Vec::new);
-            if !include
-                .iter()
-                .any(|item| matches!(item, Include::ReasoningEncryptedContent))
-            {
-                include.push(Include::ReasoningEncryptedContent);
-            }
-        }
-
-        // Apply output_schema as structured output if not already configured via additional_params
-        if additional_parameters.text.is_none()
-            && let Some(schema) = req.output_schema
-        {
-            let (name, schema_value) = super::structured_output_schema(schema);
-            additional_parameters.text = Some(TextConfig::structured_output(name, schema_value));
-        }
-
-        let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
-        let mut tools: Vec<ResponsesToolDefinition> = req
-            .tools
-            .into_iter()
-            .map(ResponsesToolDefinition::from)
-            .collect();
-        tools.append(&mut additional_tools);
-
-        Ok(Self {
-            input,
-            model,
-            instructions,
-            max_output_tokens: req.max_tokens,
-            stream,
-            tool_choice,
-            tools,
-            temperature: req.temperature,
-            additional_parameters,
-        })
-    }
 }
 
 /// Additional parameters for the completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
@@ -959,7 +664,7 @@ pub struct AdditionalParameters {
     #[serde(
         skip_serializing_if = "Map::is_empty",
         default,
-        deserialize_with = "deserialize_metadata"
+        deserialize_with = "json_utils::null_or_default"
     )]
     pub metadata: serde_json::Map<String, serde_json::Value>,
     /// Whether or not you want tool calls to run in parallel.
@@ -977,18 +682,6 @@ pub struct AdditionalParameters {
     /// Whether or not to store the response for later retrieval by API.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<bool>,
-}
-
-fn deserialize_metadata<'de, D>(
-    deserializer: D,
-) -> Result<serde_json::Map<String, serde_json::Value>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ok(
-        Option::<serde_json::Map<String, serde_json::Value>>::deserialize(deserializer)?
-            .unwrap_or_default(),
-    )
 }
 
 impl AdditionalParameters {
@@ -1013,21 +706,6 @@ pub enum TruncationStrategy {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TextConfig {
     pub format: TextFormat,
-}
-
-impl TextConfig {
-    pub(crate) fn structured_output<S>(name: S, schema: serde_json::Value) -> Self
-    where
-        S: Into<String>,
-    {
-        Self {
-            format: TextFormat::JsonSchema(StructuredOutputsInput {
-                name: name.into(),
-                schema,
-                strict: true,
-            }),
-        }
-    }
 }
 
 /// The text format (contained by [`TextConfig`]).
@@ -1124,7 +802,8 @@ impl Reasoning {
 }
 
 /// The billing service tier that will be used. On auto by default.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OpenAIServiceTier {
     /// Let OpenAI choose the service tier.
     #[default]
@@ -1138,40 +817,8 @@ pub enum OpenAIServiceTier {
     /// Use the standard service tier returned by OpenAI-compatible providers.
     Standard,
     /// Preserve an unknown provider-specific service tier.
+    #[serde(untagged)]
     Other(String),
-}
-
-impl Serialize for OpenAIServiceTier {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(match self {
-            Self::Auto => "auto",
-            Self::Default => "default",
-            Self::Flex => "flex",
-            Self::Priority => "priority",
-            Self::Standard => "standard",
-            Self::Other(value) => value,
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for OpenAIServiceTier {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Ok(match value.as_str() {
-            "auto" => Self::Auto,
-            "default" => Self::Default,
-            "flex" => Self::Flex,
-            "priority" => Self::Priority,
-            "standard" => Self::Standard,
-            _ => Self::Other(value),
-        })
-    }
 }
 
 /// The amount of reasoning effort that will be used by a given model.
@@ -1239,109 +886,8 @@ pub enum Include {
     CodeInterpreterCallOutputs,
 }
 
-/// The status of a given tool.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolStatus {
-    InProgress,
-    Completed,
-    Incomplete,
-    /// A status rig does not model, kept as it came.
-    #[serde(untagged)]
-    Other(String),
-}
-
-/// A system or user message of a Responses request.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "role", rename_all = "lowercase")]
-pub enum Message {
-    #[serde(alias = "developer")]
-    System {
-        #[serde(deserialize_with = "string_or_vec")]
-        content: Vec<SystemContent>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    User {
-        #[serde(deserialize_with = "string_or_vec")]
-        content: Vec<UserContent>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-}
-
-impl Message {
-    pub fn system(content: &str) -> Self {
-        Message::System {
-            content: vec![content.to_owned().into()],
-            name: None,
-        }
-    }
-}
-
-/// System content for the OpenAI Responses API.
-/// Uses `input_text` type to match the Responses API format.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum SystemContent {
-    InputText { text: String },
-}
-
-impl From<String> for SystemContent {
-    fn from(s: String) -> Self {
-        SystemContent::InputText { text: s }
-    }
-}
-
-impl std::str::FromStr for SystemContent {
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(SystemContent::InputText {
-            text: s.to_string(),
-        })
-    }
-}
-
-/// Different types of user content.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum UserContent {
-    InputText {
-        text: String,
-    },
-    InputImage {
-        /// A URL or base64 data URL, mutually exclusive with `file_id`.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        image_url: Option<String>,
-        /// An uploaded file's id, mutually exclusive with `image_url`.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        file_id: Option<String>,
-        #[serde(default)]
-        detail: ImageDetail,
-    },
-    InputFile {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        file_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        file_url: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        file_data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        filename: Option<String>,
-    },
-}
-
-impl FromStr for UserContent {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(UserContent::InputText {
-            text: s.to_string(),
-        })
-    }
-}
-
+#[cfg(test)]
+mod history_tests;
 #[cfg(test)]
 mod stateless_replay_tests;
 #[cfg(test)]

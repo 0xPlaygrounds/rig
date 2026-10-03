@@ -5,11 +5,12 @@
 
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
+use rig_core::message::AssistantContent;
 use rig_core::operation::Completion;
 use rig_core::providers::openai::OpenAIConfig;
 use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::wire::{Encoded, Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape, http_body};
 use serde_json::{Value, json};
 
 /// One Responses wire or dialect: how to build it for a model, and the
@@ -303,7 +304,7 @@ where
     }
 
     /// Every status the API documents, every incomplete reason, and a body
-    /// that states no status, which ended as the provider sent it. A
+    /// that states no status, which ended with a stop, as pi reads it. A
     /// streamed `response.incomplete` is incomplete whatever its status
     /// says, and a call announced and never done fails the turn.
     fn finishes(&self) -> Vec<(&'static str, Vec<WireFrame>, Ending)> {
@@ -391,8 +392,74 @@ where
         ]
     }
 
+    /// The item alone, as the `output` of a whole reply.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let item = block.native_item()?.clone();
+        let response = rig_history_conformance::decode(
+            &self.wire(self.model),
+            &CompletionRequest::new("restate"),
+            Mode::Unary,
+            whole(&[item], completed()),
+        )
+        .ok()?;
+        response.choice.into_iter().next()
+    }
+
+    /// Calls a stream tells apart by item, whatever their output index
+    /// says; a whole reply's are its `output` list.
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<WireFrame>> {
+        let calls = [
+            json!({"type": "function_call", "id": "fc_a1", "call_id": "a1", "name": "weather",
+                   "arguments": r#"{"city":"Paris"}"#, "status": "completed"}),
+            json!({"type": "function_call", "id": "fc_b2", "call_id": "b2", "name": "weather",
+                   "arguments": r#"{"city":"Rome"}"#, "status": "completed"}),
+        ];
+        let index = |at: usize| match shape {
+            CallShape::Indexless => None,
+            CallShape::NullIndex => Some(Value::Null),
+            CallShape::ReusedIndex => Some(json!(0)),
+            CallShape::WholeList => Some(json!(at)),
+        };
+        match (shape, mode) {
+            (CallShape::WholeList, Mode::Unary) => Some(whole(&calls, completed())),
+            (CallShape::WholeList, Mode::Streaming) | (_, Mode::Unary) => None,
+            (_, Mode::Streaming) => {
+                let mut stream = Vec::new();
+                for (at, call) in calls.iter().enumerate() {
+                    for event in [
+                        json!({"type": "response.output_item.added", "item": added(call)}),
+                        json!({"type": "response.function_call_arguments.delta", "item_id": call["id"], "delta": call["arguments"]}),
+                        json!({"type": "response.output_item.done", "item": call}),
+                    ] {
+                        let mut event = event;
+                        if let Some(index) = index(at) {
+                            event["output_index"] = index;
+                        }
+                        stream.push(event);
+                    }
+                }
+                stream.push(json!({"type": "response.completed", "response": response(&calls, completed())}));
+                Some(events(&stream))
+            }
+        }
+    }
+
+    /// A completed response with no output: an empty turn, as pi keeps it.
+    fn empty_reply(&self, mode: Mode) -> Option<Vec<WireFrame>> {
+        Some(reply(&[], completed(), mode))
+    }
+
+    /// The stream's `error` event.
+    fn error_frame(&self) -> Option<WireFrame> {
+        Some(WireFrame::Text(
+            json!({"type": "error", "code": "server_error", "message": "boom"}).to_string(),
+        ))
+    }
+
     /// No field fails a reply: an item without its `type` is opaque, and
-    /// every other field is read only when present.
+    /// every other field is read only when present. A response without a
+    /// `status` ended with a stop, as pi reads it, so the finish has no
+    /// field to ablate.
     fn ablation(&self) -> Option<Ablation<WireFrame>> {
         Some(Ablation {
             document: document(),

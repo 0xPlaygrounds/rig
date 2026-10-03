@@ -1,31 +1,45 @@
 use rig::completion::Message as CompletionMessage;
 use rig::error::ProviderError;
 use rig::message::AssistantContent;
-use rig::providers::openai::responses_api::{
-    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, ResponsesRequestParams,
-};
+use rig::wire::{Mode, Wire};
+use serde_json::Value;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+/// The body the OpenAI Responses wire for `model` sends for `request`.
+fn body_of(
+    model: &str,
+    request: rig::completion::CompletionRequest,
+) -> Result<Value, rig::error::EncodeError> {
+    let wire = rig::providers::openai::responses_api::wire::Responses::new(
+        rig::providers::openai::OpenAIConfig::new("unused"),
+        model,
+    );
+    let encoded = wire.encode(request, Mode::Unary)?;
+    let rig::wire::Body::Bytes(bytes) = encoded.request.body() else {
+        panic!("a Responses body is JSON");
+    };
+    Ok(serde_json::from_slice(bytes)?)
+}
+
 /// `message` as the input items of a request to OpenAI.
-fn input_of(message: CompletionMessage) -> Result<Vec<InputItem>, rig::error::EncodeError> {
-    OpenAIResponsesRequest::try_from(ResponsesRequestParams {
-        model: "gpt-5".to_owned(),
-        request: rig::completion::CompletionRequest::from(vec![message]),
-        system_instructions_placement: Default::default(),
-    })
-    .map(|request| request.input)
+fn input_of(message: CompletionMessage) -> Result<Vec<Value>, rig::error::EncodeError> {
+    let body = body_of(
+        "gpt-5",
+        rig::completion::CompletionRequest::from(vec![message]),
+    )?;
+    Ok(body["input"].as_array().cloned().unwrap_or_default())
 }
 
 #[test]
 fn test_input_item_serialization_avoids_duplicate_role() {
-    let items: Vec<InputItem> =
+    let items =
         input_of(CompletionMessage::user("hello")).expect("user text converts to one input item");
-    let json = serde_json::to_string(&items).expect("serialize InputItem");
+    let json = serde_json::to_string(&items).expect("serialize the input");
     let role_count = json.matches("\"role\"").count();
 
     assert_eq!(
         role_count, 1,
-        "InputItem should serialize a single role field, got {role_count}: {json}"
+        "an input item should serialize a single role field, got {role_count}: {json}"
     );
 }
 
@@ -46,16 +60,11 @@ fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
         record_telemetry_content: false,
     };
 
-    let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), core_request))
-        .expect("convert request");
-    let include = request
-        .additional_parameters
-        .include
-        .expect("include should be auto-populated when reasoning is configured");
-    assert!(
-        include
-            .iter()
-            .any(|item| matches!(item, Include::ReasoningEncryptedContent))
+    let request = body_of("gpt-test", core_request).expect("convert request");
+    assert_eq!(
+        request["include"],
+        serde_json::json!(["reasoning.encrypted_content"]),
+        "include should be auto-populated when reasoning is configured"
     );
 }
 
@@ -152,9 +161,9 @@ fn assistant_tool_call_without_provider_id_serializes_the_minted_call_id() {
         ),
     ]));
 
-    let items: Vec<InputItem> =
+    let items =
         input_of(message).expect("id-less tool call should serialize with the minted call_id");
-    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    let item_json = items[0].clone();
     let call_id = item_json
         .get("call_id")
         .and_then(|value| value.as_str())
@@ -180,9 +189,9 @@ fn user_tool_result_without_provider_id_serializes_the_minted_call_id() {
         "result payload",
     );
 
-    let items: Vec<InputItem> =
+    let items =
         input_of(message).expect("id-less tool result should serialize with the minted call_id");
-    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    let item_json = items[0].clone();
     assert_eq!(
         item_json.get("type").and_then(|value| value.as_str()),
         Some("function_call_output"),
@@ -213,7 +222,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
             output_schema: None,
             record_telemetry_content: false,
         };
-        OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
+        body_of("gpt-test", request)
     }));
 
     let conversion = panic_result.expect("request conversion should not panic");
@@ -244,9 +253,7 @@ fn openai_responses_request_preserves_prompt_cache_parameters() {
         record_telemetry_content: false,
     };
 
-    let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
-        .expect("convert request");
-    let request_json = serde_json::to_value(request).expect("serialize request");
+    let request_json = body_of("gpt-test", request).expect("convert request");
 
     assert_eq!(
         request_json

@@ -7,20 +7,20 @@
 
 use crate::completion::{self, ProviderCapabilities};
 use crate::error::EncodeError;
+use crate::json_utils::Lenient;
 use crate::observe::ObservedError;
 use crate::operation::Completion;
-use crate::providers::openai::wire::{OpenAIConfig, ResponsesContract};
+use crate::providers::openai::wire::OpenAIConfig;
+pub(crate) use crate::providers::openai::wire::ResponsesContract;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Descriptor, Encoded, Framing,
     Mode, ObservationSink, Wire,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
-use super::streaming::ResponsesDecoder;
-use super::{
-    CompletionRequest, Include, ResponsesRequestParams, ResponsesToolDefinition,
-    SystemInstructionsPlacement,
-};
+use super::streaming::{ResponsesDecoder, usage_of};
+use super::{ResponsesToolDefinition, SystemInstructionsPlacement};
 
 /// The Responses wire: `POST /responses`, SSE when streamed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -139,67 +139,19 @@ impl Responses {
         self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
     }
 
-    /// The Responses request this wire sends, before serialization.
+    /// The Responses request body this wire sends.
     pub(crate) fn responses_request(
         &self,
         request: completion::CompletionRequest,
         streaming: bool,
-    ) -> Result<CompletionRequest, EncodeError> {
-        let quirks = &self.provider.dialect.quirks.responses;
-        let mut request = CompletionRequest::try_from(ResponsesRequestParams {
-            model: self.model.clone(),
-            request,
-            system_instructions_placement: self.system_instructions,
-        })?;
-        request.tools.extend(self.tools.clone());
-        if self.strict_tools {
-            request.tools = request
-                .tools
-                .into_iter()
-                .map(ResponsesToolDefinition::normalize)
-                .collect();
-        }
-        if let Some(instructions) = &self.provider.instructions {
-            request.instructions = Some(merge_instructions(
-                instructions,
-                request.instructions.as_deref(),
-            ));
-        }
-        if quirks.contract == ResponsesContract::Codex {
-            // The codex gateway takes the turn and the tools; sampling,
-            // storage, metadata and structured output are not its to accept,
-            // and `store: false` is the one value it wants stated.
-            request.temperature = None;
-            request.max_output_tokens = None;
-            request.additional_parameters.background = None;
-            request.additional_parameters.metadata.clear();
-            request.additional_parameters.parallel_tool_calls = None;
-            request.additional_parameters.service_tier = None;
-            request.additional_parameters.store = Some(false);
-            request.additional_parameters.text = None;
-            request.additional_parameters.top_p = None;
-            request.additional_parameters.user = None;
-            // Reasoning items replay across turns only with their encrypted
-            // payload, and this gateway stores nothing.
-            let include = request
-                .additional_parameters
-                .include
-                .get_or_insert_with(Vec::new);
-            if !include
-                .iter()
-                .any(|item| matches!(item, Include::ReasoningEncryptedContent))
-            {
-                include.push(Include::ReasoningEncryptedContent);
-            }
-        }
-        request.stream = streaming.then_some(true);
-        Ok(request)
+    ) -> Result<Value, EncodeError> {
+        super::body(self, request, streaming)
     }
 }
 
 /// Merge a gateway's own instructions ahead of the caller's preamble,
 /// without repeating them when the preamble already carries them.
-fn merge_instructions(instructions: &str, existing: Option<&str>) -> String {
+pub(crate) fn merge_instructions(instructions: &str, existing: Option<&str>) -> String {
     match existing.map(str::trim).filter(|value| !value.is_empty()) {
         Some(existing) if existing.contains(instructions) => existing.to_owned(),
         Some(existing) => format!("{instructions}\n\n{existing}"),
@@ -251,6 +203,42 @@ impl crate::completion::ReplayTarget for Responses {
         &self.model
     }
 
+    /// The wire's own tools and the `tools` of `additional_params` are
+    /// declared beside the request's.
+    fn declares_tools(&self, request: &completion::CompletionRequest) -> bool {
+        !request.tools.is_empty()
+            || !self.tools.is_empty()
+            || request
+                .additional_params
+                .as_ref()
+                .is_some_and(|params| !params.arr("tools").is_empty())
+    }
+
+    /// A call item names its id in `call_id`.
+    fn call_id_slot(&self) -> Option<&'static str> {
+        Some("/call_id")
+    }
+
+    /// An edited block keeps its item's `id` and `type`, a message its
+    /// `phase`, and reasoning its ciphertext, so the items after it stay
+    /// paired (pi's text signature is `{id, phase}`).
+    fn identity(&self, item: &Value) -> Map<String, Value> {
+        let keys: &[&str] = match item.str("type") {
+            Some("message") => &["type", "id", "phase"],
+            Some("reasoning") => &["type", "id", "encrypted_content"],
+            Some("function_call" | "custom_tool_call") => &["type", "id"],
+            _ => &[],
+        };
+        keys.iter()
+            .filter_map(|key| Some(((*key).to_owned(), item.get(*key)?.clone())))
+            .collect()
+    }
+
+    /// A reasoning item goes only with the item it preceded.
+    fn needs_next(&self, item: &Value) -> bool {
+        item.str("type") == Some("reasoning")
+    }
+
     /// Responses reads images in user input and in function outputs, never
     /// in assistant messages, and only on a model with vision input. Every
     /// documented model calls tools except `o1-mini` and `o1-preview`.
@@ -277,12 +265,12 @@ impl crate::completion::ReplayTarget for Responses {
         match media {
             Media::Image(_, Place::Assistant) | Media::Audio(_) | Media::Video(_) => false,
             Media::Image(image, _) => {
-                super::image_input(image).is_some()
+                super::image_part(image).is_some()
                     && (!matches!(image.data, DocumentSourceKind::FileId(_))
                         || file_ids && quirks.responses.contract != ResponsesContract::Xai)
             }
             Media::Document(document) => {
-                super::document_input(document).is_some()
+                super::document_part(document).is_some()
                     && (file_ids || !matches!(document.data, DocumentSourceKind::FileId(_)))
             }
         }
@@ -345,91 +333,6 @@ fn reads_images(contract: ResponsesContract, model: &str) -> bool {
     !text_only
 }
 
-#[derive(Default, Deserialize)]
-struct TokenDetails {
-    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
-    cached_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
-    cache_write_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
-    reasoning_tokens: Option<u64>,
-}
-
-/// A Responses `usage` object, read leniently: a counter that is absent or
-/// not a count is unreported.
-#[derive(Default, Deserialize)]
-struct Usage {
-    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
-    input_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
-    output_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
-    total_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "lenient_details")]
-    input_tokens_details: Option<TokenDetails>,
-    #[serde(default, deserialize_with = "lenient_details")]
-    output_tokens_details: Option<TokenDetails>,
-}
-
-/// A details object, or none when it is not one.
-fn lenient_details<'de, D>(deserializer: D) -> Result<Option<TokenDetails>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(serde_json::from_value(value).ok())
-}
-
-/// The usage a Responses `usage` value reports; anything but an object
-/// reports none.
-pub(crate) fn usage_of(usage: &serde_json::Value) -> completion::Usage {
-    let usage = Usage::deserialize(usage).unwrap_or_default();
-    let input = usage.input_tokens_details.unwrap_or_default();
-    let output = usage.output_tokens_details.unwrap_or_default();
-    completion::Usage {
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        total_tokens: usage.total_tokens,
-        cached_input_tokens: input.cached_tokens,
-        cache_creation_input_tokens: input.cache_write_tokens,
-        reasoning_tokens: output.reasoning_tokens,
-        ..completion::Usage::default()
-    }
-}
-
-#[derive(Deserialize)]
-struct IncompleteDetails {
-    reason: Option<String>,
-}
-
-/// The response object, whether it arrived nested under a stream event's
-/// `response` or as the unary reply itself. Every field is optional: this is
-/// the observation parse, and a payload that carries none of them projects
-/// nothing rather than failing.
-#[derive(Default, Deserialize)]
-struct ResponseObject {
-    id: Option<String>,
-    model: Option<String>,
-    status: Option<String>,
-    incomplete_details: Option<IncompleteDetails>,
-    usage: Option<serde_json::Value>,
-    error: Option<ObservedError>,
-}
-
-#[derive(Deserialize)]
-struct Payload {
-    #[serde(rename = "type")]
-    kind: Option<String>,
-    response: Option<ResponseObject>,
-    /// The unary reply *is* the response object, so the same fields are
-    /// read at the top level rather than declared a second time.
-    #[serde(flatten)]
-    unwrapped: ResponseObject,
-    // The stream `error` event's own fields.
-    code: Option<serde_json::Value>,
-    message: Option<String>,
-}
-
 /// The facts a Responses payload carries before normalization discards
 /// them: the verdict, the model, the response id, the usage and any error
 /// envelope.
@@ -438,26 +341,36 @@ struct Payload {
 /// object under `response` (`response.created`, `.completed`, `.failed`,
 /// `.incomplete`) or, for `error`, carries the envelope's fields itself.
 pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
-    let Ok(payload) = serde_json::from_slice::<Payload>(payload) else {
+    let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
         return;
     };
-    if payload.kind.as_deref() == Some("error") {
+    let envelope = |error: &Value| ObservedError {
+        code: error.get("code").filter(|code| !code.is_null()).cloned(),
+        kind: error
+            .str("type")
+            .or_else(|| error.str("status"))
+            .map(str::to_owned),
+        message: error.str("message").map(str::to_owned),
+    };
+    if payload.str("type") == Some("error") {
         // The event carries its envelope either nested under `error` or as
         // its own top-level fields; the nested form names the error type.
-        payload
-            .unwrapped
-            .error
-            .unwrap_or(ObservedError {
-                code: payload.code,
+        match payload.get("error").filter(|error| error.is_object()) {
+            Some(error) => envelope(error),
+            None => ObservedError {
                 kind: None,
-                message: payload.message,
-            })
-            .emit(sink);
+                ..envelope(&payload)
+            },
+        }
+        .emit(sink);
         return;
     }
-    let object = payload.response.unwrap_or(payload.unwrapped);
-    if let Some(usage) = object.usage.filter(serde_json::Value::is_object) {
-        let usage = usage_of(&usage);
+    let object = payload
+        .get("response")
+        .filter(|response| response.is_object())
+        .unwrap_or(&payload);
+    if let Some(usage) = object.get("usage").filter(|usage| usage.is_object()) {
+        let usage = usage_of(usage);
         sink.emit(AdapterEvent::Usage {
             usage: AdapterUsage {
                 input_tokens: usage.input_tokens,
@@ -471,22 +384,22 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
     }
     // `status` is the provider's verdict; `in_progress` on a stream's
     // opening event is not one yet, so it is left out of the projection.
-    let finish_reason = object
-        .status
-        .filter(|status| status != "in_progress" && status != "queued");
     let verdict = AdapterVerdict {
-        finish_reason: finish_reason.map(|value| sink.scrub(&value)),
+        finish_reason: object
+            .str("status")
+            .filter(|status| *status != "in_progress" && *status != "queued")
+            .map(|value| sink.scrub(value)),
         block_reason: None,
         detail: object
-            .incomplete_details
-            .and_then(|details| details.reason)
-            .map(|value| sink.scrub(&value)),
-        model: object.model.map(|value| sink.scrub(&value)),
+            .at("/incomplete_details/reason")
+            .and_then(Value::as_str)
+            .map(|value| sink.scrub(value)),
+        model: object.str("model").map(|value| sink.scrub(value)),
     };
-    let response_id = object.id.map(|value| sink.scrub(&value));
+    let response_id = object.str("id").map(|value| sink.scrub(value));
     sink.provider(verdict, response_id);
-    if let Some(error) = object.error {
-        error.emit(sink);
+    if let Some(error) = object.get("error").filter(|error| error.is_object()) {
+        envelope(error).emit(sink);
     }
 }
 

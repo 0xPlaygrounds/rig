@@ -1,4 +1,4 @@
-use super::{ChatApiErrorResponse, CopilotIntent, base_url_from_token, default_headers};
+use super::{CopilotIntent, base_url_from_token, default_headers};
 use crate::providers::openai;
 
 /// Copilot's chat route relays OpenAI's wire, but not every field of it:
@@ -91,22 +91,6 @@ fn deserialize_copilot_response_without_finish_reason() {
     assert_eq!(response.model, "claude-3.5-sonnet");
     assert_eq!(response.choices[0].finish_reason, "");
     assert_eq!(response.choices[0].index, 0);
-}
-
-#[test]
-fn error_response_with_message_field() {
-    let json = r#"{"message": "rate limit exceeded"}"#;
-    let err: ChatApiErrorResponse = serde_json::from_str(json).expect("message-shaped error");
-
-    assert_eq!(err.error_message(), "rate limit exceeded");
-}
-
-#[test]
-fn error_response_with_error_field() {
-    let json = r#"{"error": "model not found"}"#;
-    let err: ChatApiErrorResponse = serde_json::from_str(json).expect("error-shaped error");
-
-    assert_eq!(err.error_message(), "model not found");
 }
 
 /// The envelope declares the conversation intent, and the default is the

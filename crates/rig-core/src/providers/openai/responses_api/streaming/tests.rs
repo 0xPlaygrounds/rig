@@ -1707,6 +1707,27 @@ fn encoded_input(
     request: CompletionRequest,
 ) -> Vec<serde_json::Value> {
     use crate::wire::{Operation, Wire};
+    // The request declares the tools its history calls, so the calls stay
+    // calls.
+    let mut request = request;
+    let calls = request
+        .chat_history
+        .iter()
+        .filter_map(|message| match message {
+            crate::message::Message::Assistant(turn) => Some(turn.tool_calls()),
+            _ => None,
+        });
+    let mut tools: Vec<crate::completion::ToolDefinition> = Vec::new();
+    for call in calls.flatten() {
+        if !tools.iter().any(|tool| tool.name == call.function.name) {
+            tools.push(crate::completion::ToolDefinition {
+                name: call.function.name.clone(),
+                description: "A tool".to_owned(),
+                parameters: json!({"type": "object"}),
+            });
+        }
+    }
+    request.tools.extend(tools);
     let request = Completion::prepare(request, &wire.describe()).expect("the history is valid");
     let encoded = wire
         .encode(request, Mode::Unary)
@@ -2153,7 +2174,7 @@ fn every_documented_status_maps_explicitly() {
             Some(FinishReason::Other("paused".into())),
             true,
         ),
-        (json!({}), None, false),
+        (json!({}), Some(FinishReason::Stop), false),
     ];
     for (status, reason, fails) in cases {
         let mut body = status.clone();
@@ -2253,10 +2274,10 @@ fn a_call_added_but_never_done_fails_the_turn() {
     );
 }
 
-/// An item only the terminal response states lands at its output index,
-/// before the streamed item that follows it.
+/// An item only the terminal response states follows the items the stream
+/// carried, which keep their place.
 #[test]
-fn a_terminal_only_item_lands_at_its_output_index() {
+fn a_terminal_only_item_follows_the_streamed_items() {
     let events = [
         json!({"type": "response.output_text.delta", "output_index": 1, "delta": "Hi"}),
         completed_with(
@@ -2274,17 +2295,17 @@ fn a_terminal_only_item_lands_at_its_output_index() {
             _ => "other",
         })
         .collect();
-    assert_eq!(kinds, ["reasoning", "text"]);
-    let ids: Vec<serde_json::Value> = replayed_input(&response)
-        .iter()
-        .filter_map(|item| item.get("id").cloned())
-        .collect();
-    assert_eq!(ids, [json!("rs_1"), json!("msg_1")]);
+    assert_eq!(kinds, ["text", "reasoning"]);
+    assert_eq!(
+        natives(&response),
+        [message("msg_1", "Hi"), reasoning("rs_1", &["Why."])]
+    );
 }
 
 /// pi's pairing rule: an edit of any one of `rs_1, msg_1, fc_1` keeps every
-/// item id in the next request. Reasoning goes as its item whatever its
-/// text, and an edited text or call is rebuilt under its item's id.
+/// item id in the next request. An edited block is rebuilt under its
+/// item's identity: reasoning keeps its id and ciphertext, text its id and
+/// phase, a call its id.
 #[test]
 fn reasoning_message_and_call_ids_survive_an_edit_of_each_one() {
     let output = [
@@ -2328,7 +2349,11 @@ fn reasoning_message_and_call_ids_survive_an_edit_of_each_one() {
             .collect();
         assert_eq!(items[1]["phase"], "commentary", "edit of block {edited}");
         if edited == 0 {
-            assert_eq!(*items[0], output[0], "reasoning goes as its item");
+            assert_eq!(
+                items[0]["encrypted_content"],
+                output[0]["encrypted_content"]
+            );
+            assert_eq!(items[0]["summary"][0]["text"], "Plan. (edited)");
         }
     }
 }
@@ -2389,8 +2414,8 @@ fn reasoning_done_without_ciphertext_keeps_its_item_in_a_stream_without_indices(
 }
 
 /// Text streamed with no index and no item events, then a terminal that
-/// states reasoning before that message: the text is said once, after the
-/// reasoning, and both replay as the provider's items.
+/// states reasoning before that message: the text is said once, and both
+/// blocks hold the provider's items in the order they arrived.
 #[test]
 fn a_terminal_only_item_does_not_repeat_text_streamed_without_indices() {
     let events = [
@@ -2405,15 +2430,15 @@ fn a_terminal_only_item_does_not_repeat_text_streamed_without_indices() {
     assert_eq!(response.text(), "Hello");
     assert_eq!(
         natives(&response),
-        [reasoning("rs_1", &["Why."]), message("msg_1", "Hello")]
+        [message("msg_1", "Hello"), reasoning("rs_1", &["Why."])]
     );
-    assert_eq!(replayed_ids(&response), [json!("rs_1"), json!("msg_1")]);
 }
 
-/// The done item is the truth: a block whose deltas differ from its done
-/// item says what the item says, so its text and its native agree.
+/// A done item that agrees with what streamed completes it; one that
+/// contradicts it cannot be its native, so the streamed text stands and the
+/// turn replays canonically from that block on.
 #[test]
-fn a_done_item_s_text_replaces_the_text_its_deltas_streamed() {
+fn a_done_item_that_contradicts_its_deltas_is_not_kept() {
     let output = [reasoning("rs_1", &["Plan B."]), message("msg_1", "Hello")];
     let mut events = restated(&output);
     for event in &mut events {
@@ -2424,12 +2449,15 @@ fn a_done_item_s_text_replaces_the_text_its_deltas_streamed() {
         }
     }
     let response = decode(Mode::Streaming, frames(&events));
-    assert_eq!(response.text(), "Hello");
-    assert_eq!(response.reasoning(), "Plan B.");
-    assert_eq!(natives(&response), output);
-    assert_eq!(
-        response.message(),
-        decode(Mode::Unary, whole(&output)).message()
+    assert_eq!(response.text(), "ByeBye");
+    assert_eq!(response.reasoning(), "Plan APlan A");
+    assert!(
+        response
+            .choice
+            .iter()
+            .all(|block| block.native_item().is_none()),
+        "{:?}",
+        response.choice
     );
 }
 

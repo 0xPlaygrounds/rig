@@ -17,7 +17,7 @@
 //! assert_eq!(finish.reason, Some(FinishReason::Stop));
 //! ```
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::ProviderError;
@@ -122,7 +122,7 @@ impl Operation for Completion {
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
             stored: target.continues_stored(&request),
-            tools: !request.tools.is_empty()
+            tools: target.declares_tools(&request)
                 && !matches!(request.tool_choice, Some(crate::message::ToolChoice::None)),
             context: Some(crate::completion::history::context_of(&request)),
         };
@@ -200,6 +200,9 @@ pub struct Turn {
     origin: Origin,
     // The writer.
     open: BTreeMap<usize, Draft>,
+    /// The position of the block each wire index last closed, whose item
+    /// [`Out::edit`] may still amend until the reply ends.
+    ended: HashMap<usize, usize>,
     next_part: u32,
     call_ids: HashSet<CallId>,
     /// Whether the reply's end must name a finish reason: a wire's fold
@@ -367,6 +370,7 @@ impl Turn {
             span: tracing::Span::none(),
             origin,
             open: BTreeMap::new(),
+            ended: HashMap::new(),
             next_part: 0,
             call_ids: HashSet::new(),
             wire: false,
@@ -442,6 +446,7 @@ impl Turn {
     }
 
     fn insert(&mut self, index: usize, body: Body, item: serde_json::Value) {
+        self.ended.remove(&index);
         let part = self.next();
         if let Some(by_index) = &mut self.by_index {
             by_index.insert(part.index(), index);
@@ -554,6 +559,7 @@ impl Turn {
         if self.run == Some(index) {
             self.run = None;
         }
+        self.ended.insert(index, draft.part.index());
         let Draft {
             part,
             started,
@@ -633,6 +639,31 @@ impl Turn {
             );
         }
         emit(items, StreamEvent::End { part, content });
+        Ok(())
+    }
+
+    /// Edit the item of the block the wire index `index` last closed, while
+    /// its end event waits to be taken or once the fold holds it.
+    fn edit_ended(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        edit: impl FnOnce(&mut serde_json::Value),
+    ) -> Result<(), ProviderError> {
+        let position = *self.ended.get(&index).ok_or_else(|| not_open(index))?;
+        let queued = items.iter_mut().find_map(|item| match item {
+            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
+                Some(content)
+            }
+            _ => None,
+        });
+        let content = match queued {
+            Some(content) => Some(content),
+            None => self.choice.get_mut(position).and_then(Option::as_mut),
+        };
+        if let Some(item) = content.and_then(item_of) {
+            edit(item);
+        }
         Ok(())
     }
 
@@ -943,6 +974,18 @@ impl Cut<'_> {
     }
 }
 
+/// The provider item `content` holds, if any.
+fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
+    let native = match content {
+        AssistantContent::Text(text) => text.native.as_mut(),
+        AssistantContent::ToolCall(call) => call.native.as_mut(),
+        AssistantContent::Reasoning(reasoning) => reasoning.native.as_mut(),
+        AssistantContent::Image(image) => image.native.as_mut(),
+        AssistantContent::Opaque(opaque) => return Some(&mut opaque.item),
+    };
+    native.map(|native| &mut native.item)
+}
+
 /// `block` holding `item` as its native, unless there is no item.
 fn with_item(block: AssistantContent, item: serde_json::Value) -> AssistantContent {
     if item.is_null() {
@@ -1082,13 +1125,23 @@ impl<'id> Out<'id, Completion> {
 
     /// Edit the item at `index` in place, for a delta [`Self::merge`] does
     /// not model or the whole item a provider restates when it finishes.
+    /// Until the reply ends, an index whose block already closed edits that
+    /// block's item: the terminal backfill of a field the provider states
+    /// only at its end.
     pub fn edit(
         &mut self,
         index: usize,
         edit: impl FnOnce(&mut serde_json::Value),
     ) -> Result<(), ProviderError> {
-        edit(&mut self.lock().fold.draft(index)?.item);
-        Ok(())
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        match fold.open.get_mut(&index) {
+            Some(draft) => {
+                edit(&mut draft.item);
+                Ok(())
+            }
+            None => fold.edit_ended(items, index, edit),
+        }
     }
 
     /// Close the item at `index` the provider never stated complete: its

@@ -2,7 +2,7 @@
 //! unchanged (rig#2269).
 //!
 //! **Bug.** Things a client that manages its own conversation state could
-//! not do: (a) send a `compaction` item back — `InputItem` rejected the tag;
+//! not do: (a) send a `compaction` item back, which the input side rejected;
 //! (b) re-send an output message's `phase` — `OutputMessage` dropped it, a
 //! streamed turn never stamped it, and a turn with several message items
 //! replayed as one item under one id and one `phase`. OpenAI documents a
@@ -48,7 +48,6 @@ use futures::StreamExt;
 use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::providers::openai::responses_api::InputItem;
 use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::Value;
 
@@ -191,17 +190,6 @@ async fn compaction_item_decodes_on_the_response() {
                 AssistantContent::Opaque(opaque)
                     if opaque.replay && opaque.item == compaction
             )));
-
-            // The same item is accepted on the input side byte-for-byte —
-            // this is what a stateless client sends back.
-            let wire = compaction;
-            let input: InputItem =
-                serde_json::from_value(wire.clone()).expect("the input side accepts the item");
-            assert_eq!(
-                serde_json::to_value(&input).expect("re-serializes"),
-                wire,
-                "the input item must re-emit the compaction item verbatim"
-            );
         },
     )
     .await;

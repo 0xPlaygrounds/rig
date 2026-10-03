@@ -1,10 +1,10 @@
 //! Responses frame classification and event decoding: one block per output
-//! item, at its output index, each holding the item as the provider stated it
-//! complete.
+//! item, in the order the items arrive, each holding the item as the
+//! provider stated it complete.
 //!
-//! Frames are read as JSON and classified by their `type` alone. The decoder
-//! takes only the fields a block or the finish is built from, so a gateway
-//! that omits or retypes any other field never fails a reply.
+//! Frames are read as JSON and classified by their `type` alone, and every
+//! field is read leniently, so a gateway that omits or retypes a field no
+//! block or finish needs never fails a reply.
 //!
 //! ```
 //! use rig_core::providers::openai::responses_api::streaming::ResponsesDecoder;
@@ -14,10 +14,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
-use crate::completion::FinishReason;
+use crate::completion::{FinishReason, Usage};
 use crate::error::ProviderError;
+use crate::json_utils::Lenient;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
@@ -25,34 +26,31 @@ use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
 /// any other type passes through as unknown.
 fn is_known_responses_event_type(kind: &str) -> bool {
-    matches!(
-        kind,
-        "error"
-            | "response.created"
-            | "response.queued"
-            | "response.in_progress"
-            | "response.completed"
-            | "response.failed"
-            | "response.incomplete"
-            | "response.output_item.added"
-            | "response.output_item.done"
-            | "response.content_part.added"
-            | "response.content_part.done"
-            | "response.output_text.delta"
-            | "response.output_text.done"
-            | "response.refusal.delta"
-            | "response.refusal.done"
-            | "response.function_call_arguments.delta"
-            | "response.function_call_arguments.done"
-            | "response.custom_tool_call_input.delta"
-            | "response.custom_tool_call_input.done"
-            | "response.reasoning_summary_part.added"
-            | "response.reasoning_summary_part.done"
-            | "response.reasoning_summary_text.delta"
-            | "response.reasoning_summary_text.done"
-            | "response.reasoning_text.delta"
-            | "response.reasoning_text.done"
-    )
+    kind == "error"
+        || is_lifecycle_event(kind)
+        || matches!(
+            kind.strip_prefix("response."),
+            Some(
+                "output_item.added"
+                    | "output_item.done"
+                    | "content_part.added"
+                    | "content_part.done"
+                    | "output_text.delta"
+                    | "output_text.done"
+                    | "refusal.delta"
+                    | "refusal.done"
+                    | "function_call_arguments.delta"
+                    | "function_call_arguments.done"
+                    | "custom_tool_call_input.delta"
+                    | "custom_tool_call_input.done"
+                    | "reasoning_summary_part.added"
+                    | "reasoning_summary_part.done"
+                    | "reasoning_summary_text.delta"
+                    | "reasoning_summary_text.done"
+                    | "reasoning_text.delta"
+                    | "reasoning_text.done"
+            )
+        )
 }
 
 /// Whether `kind` is a response lifecycle event, which carries the response
@@ -105,7 +103,7 @@ impl<'de> serde::Deserialize<'de> for Tagged {
         D: serde::Deserializer<'de>,
     {
         let value = Value::deserialize(deserializer)?;
-        if value.get("type").is_some_and(Value::is_string) {
+        if value.str("type").is_some() {
             Ok(Self(value))
         } else {
             Err(serde::de::Error::custom("the payload names no `type`"))
@@ -123,87 +121,32 @@ pub fn classify_responses_payload(data: &str) -> WireEvent<ResponsesEvent> {
         data,
         "type",
         |data| {
-            wire::classify_tagged_frame::<Tagged>(data, "type", is_known_responses_event_type)
-                .map(|Tagged(frame)| event_of(frame, data))
+            wire::classify_tagged_frame::<Tagged>(data, "type", is_known_responses_event_type).map(
+                |Tagged(frame)| match frame.str("type") {
+                    Some("error") => ResponsesEvent::Failure(data.to_owned()),
+                    kind => ResponsesEvent::Frame {
+                        kind: kind.unwrap_or_default().to_owned(),
+                        raw: data.to_owned(),
+                        frame,
+                    },
+                },
+            )
         },
         |data| {
-            wire::classify_marker_keyed_frame::<Value>(data, WHOLE_BODY_MARKERS)
-                .map(|body| body_of(body, data))
+            wire::classify_marker_keyed_frame::<Value>(data, WHOLE_BODY_MARKERS).map(|body| {
+                let error = body.get("error").is_some_and(|error| !error.is_null());
+                if error && body.get("output").is_none() && body.get("status").is_none() {
+                    ResponsesEvent::Failure(data.to_owned())
+                } else {
+                    ResponsesEvent::Whole(body)
+                }
+            })
         },
     )
 }
 
-/// A known event: the stream's `error` event is the provider's failure.
-fn event_of(frame: Value, data: &str) -> ResponsesEvent {
-    match string(&frame, "type") {
-        Some("error") => ResponsesEvent::Failure(data.to_owned()),
-        kind => ResponsesEvent::Frame {
-            kind: kind.unwrap_or_default().to_owned(),
-            frame,
-            raw: data.to_owned(),
-        },
-    }
-}
-
-/// A body: the error envelope when it holds an error and no response.
-fn body_of(body: Value, data: &str) -> ResponsesEvent {
-    let error = body.get("error").is_some_and(|error| !error.is_null());
-    if error && body.get("output").is_none() && body.get("status").is_none() {
-        ResponsesEvent::Failure(data.to_owned())
-    } else {
-        ResponsesEvent::Whole(body)
-    }
-}
-
-/// The OpenAI Responses wire's decoder: one state machine for the SSE
-/// stream, the unary body and the websocket session.
-///
-/// Each output item becomes one block at its `output_index`. It opens at
-/// `output_item.added` with no provider item, and `output_item.done` closes
-/// it with the done item as its native: an item the provider never stated
-/// complete replays from its canonical fields. A call opens when it is
-/// announced and its argument deltas accumulate, so a call never done is
-/// still delivered, in a failed turn. A terminal response restates the whole output: the
-/// items no stream event carried are written from it at their index, which
-/// is how a unary body decodes. A gateway that names no output index streams
-/// one item at a time, so each of its items takes the next index, and the
-/// terminal is matched to them in order.
-#[derive(Default)]
-pub struct ResponsesDecoder {
-    /// Whether the reply's blocks were asked to follow output indices.
-    ordered: bool,
-    /// The output indices an item opened or was written at.
-    seen: HashSet<usize>,
-    /// What each open index holds, as the decoder opened it.
-    kinds: HashMap<usize, Kind>,
-    /// The id the item at each index states.
-    ids: HashMap<usize, String>,
-    /// The output indices and item ids whose done item was written.
-    written: HashSet<usize>,
-    written_ids: HashSet<String>,
-    /// The text deltas wrote to each open item.
-    texts: HashMap<usize, Streamed>,
-    /// The input deltas of each open custom tool call.
-    custom_inputs: HashMap<usize, String>,
-    /// Reasoning items done without their ciphertext, by index and id. Azure
-    /// states `encrypted_content` only in the terminal response, so these
-    /// close there.
-    awaiting_ciphertext: Vec<(usize, String)>,
-    /// Whether an item event named no output index, and the index the last
-    /// item event addressed.
-    unindexed: bool,
-    current: Option<usize>,
-    /// Whether a call closed without its done item.
-    unfinished: bool,
-}
-
-/// How far apart the items of a stream that names no output index are
-/// placed, so the terminal can put the items the stream left out between
-/// them.
-const UNINDEXED_STRIDE: usize = 1 << 16;
-
-/// The block an open index holds.
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// What an output item becomes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Kind {
     Message,
     Reasoning,
@@ -212,9 +155,8 @@ enum Kind {
 }
 
 impl Kind {
-    /// The block `item` becomes.
     fn of(item: &Value) -> Self {
-        match kind_of(item) {
+        match item.str("type") {
             Some("message") => Self::Message,
             Some("reasoning") => Self::Reasoning,
             Some("function_call" | "custom_tool_call") => Self::Call,
@@ -223,21 +165,33 @@ impl Kind {
     }
 }
 
-/// What deltas wrote to one item: the field and part that last extended
-/// it, since a new part of reasoning starts a new paragraph and a second
-/// field restating the same reasoning is not appended, and the text so far.
-struct Streamed {
-    field: TextField,
-    part: u64,
-    text: String,
-}
-
 /// The field a text delta arrived in.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum TextField {
+enum Field {
     Message,
     Summary,
     Reasoning,
+}
+
+/// One output item of the reply, as the decoder saw it.
+struct Slot {
+    /// The writer index its block opened at.
+    at: usize,
+    kind: Kind,
+    /// The item id it states.
+    id: Option<String>,
+    open: bool,
+    /// The text its deltas wrote, and the field and part that last
+    /// extended it: a new part of reasoning starts a paragraph, and a second
+    /// field restating the same reasoning is not appended.
+    text: String,
+    field: Option<Field>,
+    part: u64,
+    /// A call's streamed argument text, or a custom call's input.
+    arguments: String,
+    custom: bool,
+    /// Whether the call's id was stated.
+    named: bool,
 }
 
 /// The item types the client executes, which nothing in rig answers: they
@@ -250,84 +204,78 @@ const CLIENT_EXECUTED: &[&str] = &[
     "mcp_approval_request",
 ];
 
-fn kind_of(item: &Value) -> Option<&str> {
-    item.get("type").and_then(Value::as_str)
-}
-
-fn string<'a>(item: &'a Value, key: &str) -> Option<&'a str> {
-    item.get(key).and_then(Value::as_str)
-}
-
 fn item_id(item: &Value) -> Option<&str> {
-    string(item, "id").filter(|id| !id.is_empty())
+    item.str("id").filter(|id| !id.is_empty())
 }
 
-fn has_ciphertext(item: &Value) -> bool {
-    string(item, "encrypted_content").is_some_and(|ciphertext| !ciphertext.is_empty())
-}
-
-/// The part number `key` states, zero when absent.
-fn number(frame: &Value, key: &str) -> u64 {
-    frame.get(key).and_then(Value::as_u64).unwrap_or(0)
-}
-
-/// Whether `item` is a call, and of which form.
-fn is_call(item: &Value) -> bool {
-    matches!(kind_of(item), Some("function_call" | "custom_tool_call"))
-}
-
-/// The argument JSON a call item states: a function call's `arguments`, or
-/// a custom call's free-form `input` as `{"input": ...}`.
-fn arguments_of(item: &Value) -> String {
-    match kind_of(item) {
-        Some("custom_tool_call") => {
-            serde_json::json!({ "input": string(item, "input").unwrap_or_default() }).to_string()
-        }
-        _ => match item.get("arguments") {
-            Some(Value::String(arguments)) => arguments.clone(),
-            Some(Value::Null) | None => String::new(),
-            Some(arguments) => arguments.to_string(),
-        },
+/// The argument JSON a done call states: a function call's `arguments`, a
+/// custom call's `input` as `{"input": ...}`; `None` when it states none.
+fn arguments_of(item: &Value) -> Option<String> {
+    if item.str("type") == Some("custom_tool_call") {
+        return item
+            .str("input")
+            .map(|input| json!({ "input": input }).to_string());
+    }
+    match item.get("arguments")? {
+        Value::String(arguments) if arguments.is_empty() => None,
+        Value::String(arguments) => Some(arguments.clone()),
+        Value::Null => None,
+        arguments => Some(arguments.to_string()),
     }
 }
 
-/// The text a done item states: a message's content parts joined, refusals
+/// The text a done item states: a message's parts joined, refusals
 /// included; reasoning's summary, or its raw content when it has none.
 fn text_of(item: &Value) -> String {
-    let texts = |key: &str| -> Vec<String> {
+    let texts = |key: &str| -> Vec<&str> {
         match item.get(key) {
-            Some(Value::Array(parts)) => parts
+            Some(Value::String(text)) => vec![text.as_str()],
+            _ => item
+                .arr(key)
                 .iter()
-                .filter_map(|part| match part {
-                    Value::String(text) => Some(text.clone()),
-                    part => string(part, "text")
-                        .or_else(|| string(part, "refusal"))
-                        .map(str::to_owned),
+                .filter_map(|part| {
+                    part.as_str()
+                        .or_else(|| part.str("text"))
+                        .or_else(|| part.str("refusal"))
                 })
                 .collect(),
-            Some(Value::String(text)) => vec![text.clone()],
-            _ => Vec::new(),
         }
     };
-    match kind_of(item) {
-        Some("message") => texts("content").concat(),
-        Some("reasoning") => {
+    match Kind::of(item) {
+        Kind::Message => texts("content").concat(),
+        Kind::Reasoning => {
             let summary = texts("summary");
             if summary.is_empty() {
-                texts("content").join("\n\n")
+                texts("content")
             } else {
-                summary.join("\n\n")
+                summary
             }
+            .join("\n\n")
         }
-        _ => String::new(),
+        Kind::Call | Kind::Opaque => String::new(),
     }
+}
+
+/// `item`, a done item that states no text, stating `text`, so the item
+/// replays as the block it is.
+fn stating(mut item: Value, kind: Kind, text: &str) -> Value {
+    let (key, part) = match kind {
+        Kind::Message => (
+            "content",
+            json!({"type": "output_text", "text": text, "annotations": []}),
+        ),
+        _ => ("summary", json!({"type": "summary_text", "text": text})),
+    };
+    if let Some(fields) = item.as_object_mut() {
+        fields.insert(key.to_owned(), json!([part]));
+    }
+    item
 }
 
 /// The provider's own words for a failed or cancelled response.
 fn provider_message(response: &Value, fallback: &str) -> String {
-    let error = response.get("error");
-    let code = error.and_then(|error| string(error, "code"));
-    let message = error.and_then(|error| string(error, "message"));
+    let code = response.at("/error/code").and_then(Value::as_str);
+    let message = response.at("/error/message").and_then(Value::as_str);
     match (code, message) {
         (Some(code), Some(message)) => format!("{code}: {message}"),
         (None, Some(message)) => message.to_owned(),
@@ -337,58 +285,82 @@ fn provider_message(response: &Value, fallback: &str) -> String {
 }
 
 /// How the turn ended, for every status the API documents. A response
-/// without a status ended as the provider sent it. A status that is not a
-/// documented end, including one still `queued` or `in_progress`, is a
-/// failed turn.
-pub(crate) fn finish_reason_of(response: &Value) -> (Option<FinishReason>, Option<String>) {
+/// without a status ended as pi reads it, with a stop. A status that is
+/// not a documented end, including one still `queued` or `in_progress`, is
+/// a failed turn.
+pub(crate) fn finish_reason_of(response: &Value) -> (FinishReason, Option<String>) {
     let reason = response
-        .pointer("/incomplete_details/reason")
+        .at("/incomplete_details/reason")
         .and_then(Value::as_str)
         .filter(|reason| !reason.is_empty());
-    match string(response, "status") {
-        None => (None, None),
-        Some("completed") => (Some(FinishReason::Stop), None),
+    let other = |reason: &str, error: String| (FinishReason::Other(reason.to_owned()), Some(error));
+    match response.str("status") {
+        None | Some("completed") => (FinishReason::Stop, None),
         Some("incomplete") => match reason {
-            Some("max_output_tokens") => (Some(FinishReason::Length), None),
-            Some("content_filter") => (Some(FinishReason::ContentFilter), None),
-            Some(reason) => (
-                Some(FinishReason::Other(format!("incomplete: {reason}"))),
-                Some(format!("Response incomplete: {reason}")),
+            Some("max_output_tokens") => (FinishReason::Length, None),
+            Some("content_filter") => (FinishReason::ContentFilter, None),
+            Some(reason) => other(
+                &format!("incomplete: {reason}"),
+                format!("Response incomplete: {reason}"),
             ),
-            None => (
-                Some(FinishReason::Other("incomplete".to_owned())),
-                Some("Response incomplete without a provider reason".to_owned()),
+            None => other(
+                "incomplete",
+                "Response incomplete without a provider reason".to_owned(),
             ),
         },
-        Some(status @ ("failed" | "cancelled")) => (
-            Some(FinishReason::Other(status.to_owned())),
-            Some(provider_message(response, &format!("Response {status}"))),
+        Some(status @ ("failed" | "cancelled")) => other(
+            status,
+            provider_message(response, &format!("Response {status}")),
         ),
-        Some(status @ ("queued" | "in_progress")) => (
-            Some(FinishReason::Other(status.to_owned())),
-            Some(format!("Response ended while {status}")),
-        ),
-        Some(status) => (
-            Some(FinishReason::Other(status.to_owned())),
-            Some(format!("Response ended with the unknown status `{status}`")),
+        Some(status @ ("queued" | "in_progress")) => {
+            other(status, format!("Response ended while {status}"))
+        }
+        Some(status) => other(
+            status,
+            format!("Response ended with the unknown status `{status}`"),
         ),
     }
 }
 
-fn finish_of(response: &Value) -> Finish {
-    let (reason, error) = finish_reason_of(response);
-    Finish {
-        usage: response
-            .get("usage")
-            .map(super::wire::usage_of)
-            .unwrap_or_default(),
-        reason,
-        response_id: item_id(response).map(str::to_owned),
-        model: string(response, "model")
-            .filter(|model| !model.is_empty())
-            .map(str::to_owned),
-        error,
+/// The usage a Responses `usage` value reports; a counter that is absent or
+/// not a count is unreported.
+pub(crate) fn usage_of(usage: &Value) -> Usage {
+    let count = |pointer: &str| usage.at(pointer).and_then(Lenient::as_u64_lenient);
+    Usage {
+        input_tokens: count("/input_tokens"),
+        output_tokens: count("/output_tokens"),
+        total_tokens: count("/total_tokens"),
+        cached_input_tokens: count("/input_tokens_details/cached_tokens"),
+        cache_creation_input_tokens: count("/input_tokens_details/cache_write_tokens"),
+        reasoning_tokens: count("/output_tokens_details/reasoning_tokens"),
+        ..Usage::default()
     }
+}
+
+/// The OpenAI Responses wire's decoder: one state machine for the SSE
+/// stream, the unary body and the websocket session.
+///
+/// Each output item becomes one block. It opens when it is announced, or at
+/// its first delta, with no provider item, and its done item closes it,
+/// becoming the block's native: an item the provider never stated complete
+/// replays from its canonical fields. A done item merges into what streamed:
+/// a call keeps the id and name it was announced with and the arguments it
+/// streamed when its done item leaves them out, and text the done item
+/// leaves out stays, written into the item. The terminal response is the
+/// whole output: it finishes the items no done event carried, writes the
+/// ones the stream never stated, which is how a unary body decodes, and
+/// backfills the ciphertext of reasoning done without it.
+#[derive(Default)]
+pub struct ResponsesDecoder {
+    /// Every item, in the order it arrived.
+    slots: Vec<Slot>,
+    /// The latest slot at each output index the provider named.
+    indexed: HashMap<usize, usize>,
+    /// The slot the last item event addressed.
+    current: Option<usize>,
+    /// The writer indices of reasoning done and waiting for the item after
+    /// it to complete.
+    held: Vec<usize>,
 }
 
 impl ResponsesDecoder {
@@ -397,293 +369,246 @@ impl ResponsesDecoder {
         Self::default()
     }
 
-    /// A streamed reply's blocks follow output indices, so an item only the
-    /// terminal states lands at its index. A unary body writes its items in
-    /// output order already.
-    fn order(&mut self, out: &mut Out<'_, Completion>) {
-        if !self.ordered {
-            self.ordered = true;
-            out.order_by_index();
+    /// The slot `frame` addresses, an event for an item of `kind`: the one
+    /// at its output index, else the one its item id names, else, for a
+    /// frame that names no index, the open one the stream is on. `None` for
+    /// an item no slot holds yet.
+    fn addressed(&self, frame: &Value, kind: Kind) -> Result<Option<usize>, ProviderError> {
+        let index = output_index(frame)?;
+        if let Some(slot) = index.and_then(|index| self.indexed.get(&index)) {
+            return Ok(Some(*slot));
         }
+        let id = frame
+            .at("/item/id")
+            .and_then(Value::as_str)
+            .or_else(|| frame.str("item_id"));
+        if let Some(slot) = id.filter(|id| !id.is_empty()).and_then(|id| {
+            self.slots
+                .iter()
+                .rposition(|slot| slot.id.as_deref() == Some(id))
+        }) {
+            return Ok(Some(slot));
+        }
+        Ok(self.current.filter(|slot| {
+            index.is_none()
+                && self
+                    .slots
+                    .get(*slot)
+                    .is_some_and(|slot| slot.open && slot.kind == kind)
+        }))
     }
 
-    /// The item at `index` started: it opens with no provider item, since
-    /// only its done item is complete. An opaque item keeps what it states
-    /// so far, which is its only content when it never finishes.
+    /// Open the block of `item` as a new slot at output `index`, closing what
+    /// is still open there.
     fn added(
         &mut self,
-        index: usize,
-        item: Value,
+        index: Option<usize>,
+        item: &Value,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<usize, ProviderError> {
+        if let Some(previous) = index.and_then(|index| self.indexed.get(&index).copied()) {
+            self.vacate(previous, out)?;
+        }
+        let at = match index {
+            Some(index) if !self.slots.iter().any(|slot| slot.at == index) => index,
+            _ => out.fresh_index(),
+        };
+        let kind = Kind::of(item);
+        let custom = item.str("type") == Some("custom_tool_call");
+        match kind {
+            Kind::Message => out.open(at, Block::Text, Value::Null)?,
+            Kind::Reasoning => out.open(at, Block::Reasoning { redacted: false }, Value::Null)?,
+            Kind::Call => out.fragment(
+                Some(at),
+                CallFragment {
+                    id: item.str("call_id"),
+                    name: item.str("name"),
+                    arguments: None,
+                },
+            )?,
+            // An item that names no type is kept and never sent back.
+            Kind::Opaque => {
+                let replay = item
+                    .str("type")
+                    .is_some_and(|kind| !CLIENT_EXECUTED.contains(&kind));
+                out.open(at, Block::Opaque { replay }, item.clone())?;
+            }
+        }
+        let arguments = if custom {
+            item.str("input")
+        } else {
+            item.str("arguments")
+        };
+        self.slots.push(Slot {
+            at,
+            kind,
+            id: item_id(item).map(str::to_owned),
+            open: true,
+            text: String::new(),
+            field: None,
+            part: 0,
+            arguments: arguments.unwrap_or_default().to_owned(),
+            custom,
+            named: item.str("call_id").is_some_and(|id| !id.is_empty()),
+        });
+        let slot = self.slots.len() - 1;
+        if let Some(index) = index {
+            self.indexed.insert(index, slot);
+        }
+        self.current = Some(slot);
+        Ok(slot)
+    }
+
+    /// Close the slot's block before another item takes its place: the
+    /// provider never stated it complete. A call keeps what streamed.
+    fn vacate(&mut self, slot: usize, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        let Some(open) = self.slots.get_mut(slot).filter(|slot| slot.open) else {
+            return Ok(());
+        };
+        open.open = false;
+        let at = open.at;
+        if open.kind == Kind::Call {
+            let arguments = streamed_arguments(open);
+            out.fragment(
+                Some(at),
+                CallFragment {
+                    arguments: Some(&arguments),
+                    ..CallFragment::default()
+                },
+            )?;
+        }
+        out.close(at)?;
+        self.release(false, out)
+    }
+
+    /// End the reasoning held for the item after it: complete when that
+    /// item completed, else as never stated complete.
+    fn release(
+        &mut self,
+        complete: bool,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        self.vacate(index, out)?;
-        self.seen.insert(index);
-        match item_id(&item) {
-            Some(id) => self.ids.insert(index, id.to_owned()),
-            None => self.ids.remove(&index),
-        };
-        self.texts.remove(&index);
-        let kind = match kind_of(&item) {
-            Some("message") => {
-                out.open(index, Block::Text, Value::Null)?;
-                Kind::Message
+        for at in std::mem::take(&mut self.held) {
+            if complete {
+                out.finish(at)?;
+            } else {
+                out.close(at)?;
             }
-            Some("reasoning") => {
-                out.open(index, Block::Reasoning { redacted: false }, Value::Null)?;
-                Kind::Reasoning
-            }
-            Some("function_call" | "custom_tool_call") => {
-                let arguments =
-                    (kind_of(&item) == Some("function_call")).then(|| arguments_of(&item));
-                out.fragment(
-                    Some(index),
-                    CallFragment {
-                        id: string(&item, "call_id"),
-                        name: string(&item, "name"),
-                        arguments: arguments.as_deref(),
-                    },
-                )?;
-                if kind_of(&item) == Some("custom_tool_call") {
-                    let input = string(&item, "input").unwrap_or_default().to_owned();
-                    self.custom_inputs.insert(index, input);
-                }
-                Kind::Call
-            }
-            // An item that names no type is kept and never sent back.
-            other => {
-                let replay = other.is_some_and(|kind| !CLIENT_EXECUTED.contains(&kind));
-                out.open(index, Block::Opaque { replay }, item)?;
-                Kind::Opaque
-            }
-        };
-        self.kinds.insert(index, kind);
+        }
         Ok(())
     }
 
-    /// Close the item still open at `index` before another opens there.
-    /// Reasoning done and waiting for its ciphertext was stated complete;
-    /// any other item was not, so it has no native.
-    fn vacate(&mut self, index: usize, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        if !out.is_open(index) {
-            return Ok(());
-        }
-        self.custom_inputs.remove(&index);
-        let awaited = self.awaiting_ciphertext.len();
-        self.awaiting_ciphertext.retain(|(at, _)| *at != index);
-        if self.awaiting_ciphertext.len() < awaited {
-            return out.finish(index);
-        }
-        self.unfinished |= self.kinds.get(&index) == Some(&Kind::Call);
-        out.close(index)
-    }
-
-    /// The output index `frame`, an event of type `kind`, addresses; `None`
-    /// for an event that only restates what its deltas or done item carry,
-    /// which is not read. A frame
-    /// that names none continues the item the stream is on while it can,
-    /// and otherwise starts the next one, [`UNINDEXED_STRIDE`] after it. In
-    /// such a stream, a frame naming an index no item took also continues
-    /// the current item.
-    fn index(
+    /// Append a text delta of `field` to the item `frame` addresses,
+    /// opening a block for an item the stream never announced.
+    fn text(
         &mut self,
-        kind: &str,
         frame: &Value,
-        out: &Out<'_, Completion>,
-    ) -> Result<Option<usize>, ProviderError> {
-        let item = frame.get("item");
-        let wanted = match kind {
-            "response.output_item.added" => None,
-            "response.output_item.done" => item.map(Kind::of),
-            "response.output_text.delta" | "response.refusal.delta" => Some(Kind::Message),
-            "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
-                Some(Kind::Reasoning)
-            }
-            "response.function_call_arguments.delta" | "response.custom_tool_call_input.delta" => {
-                Some(Kind::Call)
-            }
-            _ => return Ok(None),
-        };
-        let named = frame
-            .get("output_index")
-            .and_then(Value::as_u64)
-            .map(|index| {
-                usize::try_from(index).map_err(|_| {
-                    ProviderError::Response(format!("output_index {index} is out of range"))
-                })
-            })
-            .transpose()?;
-        self.unindexed |= named.is_none();
-        let id = item
-            .and_then(item_id)
-            .or_else(|| string(frame, "item_id").filter(|id| !id.is_empty()));
-        let continues = |at: &usize| {
-            named.is_none_or(|named| self.unindexed && !self.seen.contains(&named))
-                && out.is_open(*at)
-                && wanted.is_some_and(|wanted| self.kinds.get(at) == Some(&wanted))
-                && id
-                    .zip(self.ids.get(at))
-                    .is_none_or(|(id, known)| id == known)
-        };
-        if let Some(at) = self.current.filter(continues) {
-            return Ok(Some(at));
-        }
-        let at = match named {
-            Some(named) => named,
-            None => {
-                let at = self
-                    .current
-                    .map_or(UNINDEXED_STRIDE, |at| at + UNINDEXED_STRIDE);
-                if let Some(id) = id {
-                    self.ids.insert(at, id.to_owned());
-                }
-                at
-            }
-        };
-        self.current = Some(at);
-        Ok(Some(at))
-    }
-
-    /// Append a text delta to the item at `index`.
-    fn extend(
-        &mut self,
-        index: usize,
-        field: TextField,
+        field: Field,
         part: u64,
-        delta: &str,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        let delta = frame.str("delta").unwrap_or_default();
         if delta.is_empty() {
             return Ok(());
         }
-        // Text where reasoning or another item is open, or reasoning where
-        // text is, is a stream without indices moving to its next item.
-        let message = field == TextField::Message;
-        let wanted = if message {
+        let kind = if field == Field::Message {
             Kind::Message
         } else {
             Kind::Reasoning
         };
-        if out.is_open(index) && self.kinds.get(&index).is_some_and(|kind| *kind != wanted) {
-            self.vacate(index, out)?;
-            self.texts.remove(&index);
-            self.seen.remove(&index);
-        }
-        // A gateway that streams an item without announcing it gets one
-        // opened at its first delta; a delta for an item that already
-        // closed is left to the item, which states its text.
-        if !out.is_open(index) {
-            if !self.seen.insert(index) {
-                return Ok(());
-            }
-            let block = if message {
-                Block::Text
-            } else {
-                Block::Reasoning { redacted: false }
-            };
-            out.open(index, block, Value::Null)?;
-            self.kinds.insert(index, wanted);
-        }
-        let streamed = self.texts.entry(index).or_insert(Streamed {
-            field,
-            part,
-            text: String::new(),
-        });
-        if streamed.field != field {
+        let slot = match self.addressed(frame, kind)? {
+            Some(slot) if self.slots[slot].open && self.slots[slot].kind == kind => slot,
+            // A delta for an item that already closed is left to the item,
+            // which states its text.
+            Some(slot) if self.slots[slot].kind == kind => return Ok(()),
+            _ => self.added(output_index(frame)?, &json!({"type": kind_name(kind)}), out)?,
+        };
+        let Some(streamed) = self.slots.get_mut(slot).filter(|slot| slot.open) else {
+            return Ok(());
+        };
+        if streamed.field.is_some_and(|known| known != field) {
             return Ok(());
         }
-        if streamed.part != part && !message && !streamed.text.is_empty() {
+        if streamed.part != part && field != Field::Message && !streamed.text.is_empty() {
             streamed.text.push_str("\n\n");
-            out.push(index, "\n\n")?;
+            out.push(streamed.at, "\n\n")?;
         }
+        streamed.field = Some(field);
         streamed.part = part;
         streamed.text.push_str(delta);
-        out.push(index, delta)
+        out.push(streamed.at, delta)
     }
 
-    /// Append an argument delta to the call announced at `index`.
-    fn arguments(
-        &mut self,
-        index: usize,
-        delta: &str,
-        out: &mut Out<'_, Completion>,
-    ) -> Result<(), ProviderError> {
-        if out.is_open(index) && self.kinds.get(&index) == Some(&Kind::Call) {
-            if let Some(input) = self.custom_inputs.get_mut(&index) {
-                input.push_str(delta);
-                return Ok(());
-            }
-            out.push(index, delta)?;
+    /// Append an argument delta to the call `frame` addresses. A call shows
+    /// nothing until it closes, so its arguments wait for its done item.
+    fn arguments(&mut self, frame: &Value) -> Result<(), ProviderError> {
+        let slot = self.addressed(frame, Kind::Call)?;
+        if let Some(call) = slot
+            .and_then(|slot| self.slots.get_mut(slot))
+            .filter(|slot| slot.open && slot.kind == Kind::Call)
+        {
+            call.arguments
+                .push_str(frame.str("delta").unwrap_or_default());
         }
         Ok(())
     }
 
-    /// The item at `index` is done: `item` is its block's native, and the
-    /// text it states completes the block's. A call is written whole from
-    /// it, replacing what its deltas announced.
+    /// The item at `slot` is done: it merges into what streamed and becomes
+    /// the block's native.
     fn done(
         &mut self,
-        index: usize,
+        slot: usize,
         item: Value,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        self.seen.insert(index);
-        self.written.insert(index);
-        if let Some(id) = item_id(&item) {
-            self.written_ids.insert(id.to_owned());
-            self.ids.insert(index, id.to_owned());
+        let Some(done) = self.slots.get_mut(slot) else {
+            return Ok(());
+        };
+        done.open = false;
+        if done.id.is_none() {
+            done.id = item_id(&item).map(str::to_owned);
         }
-        if is_call(&item) {
-            if out.is_open(index) && self.kinds.get(&index) == Some(&Kind::Call) {
-                // Nothing of an open call is visible yet.
-                out.discard(index);
-                self.custom_inputs.remove(&index);
-            } else {
-                self.vacate(index, out)?;
+        let at = done.at;
+        let mut item = item;
+        match done.kind {
+            Kind::Call => {
+                let arguments = arguments_of(&item).unwrap_or_else(|| streamed_arguments(done));
+                out.fragment(
+                    Some(at),
+                    CallFragment {
+                        id: item.str("call_id").filter(|_| !done.named),
+                        name: item.str("name"),
+                        arguments: Some(&arguments),
+                    },
+                )?;
             }
-            let arguments = arguments_of(&item);
-            out.fragment(
-                Some(index),
-                CallFragment {
-                    id: string(&item, "call_id"),
-                    name: string(&item, "name"),
-                    arguments: Some(&arguments),
-                },
-            )?;
-            self.kinds.insert(index, Kind::Call);
-            return out.finish_with(index, item);
-        }
-        // An item done without being added opens here; so does one at an
-        // index another item holds, or whose previous item still waits for
-        // its ciphertext.
-        let kind = Kind::of(&item);
-        if !out.is_open(index)
-            || self.kinds.get(&index) != Some(&kind)
-            || self.awaiting_ciphertext.iter().any(|(at, _)| *at == index)
-        {
-            self.added(index, item.clone(), out)?;
-        }
-        // The item states the whole text: what the deltas left out of it
-        // is pushed, and text that diverged from it is replaced. An item
-        // that states no text leaves what streamed.
-        let text = text_of(&item);
-        let streamed = self.texts.remove(&index).map(|streamed| streamed.text);
-        match streamed
-            .as_deref()
-            .map_or(Some(text.as_str()), |streamed| text.strip_prefix(streamed))
-        {
-            Some(rest) => out.push(index, rest)?,
-            None if !text.is_empty() => out.restate(index, &text)?,
-            None => {}
-        }
-        let awaits = kind == Kind::Reasoning && !has_ciphertext(&item);
-        match item_id(&item).map(str::to_owned) {
-            Some(id) if awaits => {
-                out.edit(index, |native| *native = item)?;
-                self.awaiting_ciphertext.push((index, id));
-                Ok(())
+            Kind::Message | Kind::Reasoning => {
+                let text = text_of(&item);
+                if text.is_empty() {
+                    if !done.text.is_empty() {
+                        item = stating(item, done.kind, &done.text);
+                    }
+                } else if let Some(rest) = text.strip_prefix(done.text.as_str()) {
+                    out.push(at, rest)?;
+                } else {
+                    // The stream said otherwise: its text stands, and the
+                    // item that disagrees with it is not kept.
+                    out.close(at)?;
+                    return self.release(false, out);
+                }
             }
-            _ => out.finish_with(index, item),
+            Kind::Opaque => {}
         }
+        let reasoning = done.kind == Kind::Reasoning;
+        out.edit(at, |native| *native = item)?;
+        if reasoning {
+            // Reasoning is sent only with the item it precedes, so it is
+            // complete only once that item is.
+            self.held.push(at);
+            return Ok(());
+        }
+        out.finish(at)?;
+        self.release(true, out)
     }
 
     /// Write one output-item event into the reply.
@@ -693,179 +618,196 @@ impl ResponsesDecoder {
         frame: Value,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        self.order(out);
-        let Some(index) = self.index(kind, &frame, out)? else {
-            return Ok(());
-        };
-        let delta = string(&frame, "delta").unwrap_or_default();
+        let number = |key| frame.u64(key).unwrap_or(0);
         match kind {
             "response.output_item.added" | "response.output_item.done" => {
-                let Some(item) = frame.get("item").filter(|item| item.is_object()).cloned() else {
+                let Some(item) = frame.get("item").filter(|item| item.is_object()) else {
                     return Ok(());
                 };
+                let index = output_index(&frame)?;
                 if kind == "response.output_item.added" {
-                    self.added(index, item, out)
-                } else {
-                    self.done(index, item, out)
+                    return self.added(index, item, out).map(|_| ());
                 }
+                let known = self.addressed(&frame, Kind::of(item))?;
+                // At a named output index the item is the one there, as pi
+                // reads it, whatever id it states.
+                let restates = |slot: &Slot| {
+                    slot.kind == Kind::of(item)
+                        && (index.is_some()
+                            || item_id(item)
+                                .zip(slot.id.as_deref())
+                                .is_none_or(|(id, known)| id == known))
+                };
+                let slot = match known {
+                    Some(slot) if self.slots[slot].open && restates(&self.slots[slot]) => slot,
+                    // The item this one restates is already done.
+                    Some(slot)
+                        if item_id(item).is_some()
+                            && self.slots[slot].id.as_deref() == item_id(item) =>
+                    {
+                        return Ok(());
+                    }
+                    _ => self.added(index, item, out)?,
+                };
+                self.done(slot, item.clone(), out)
             }
             // A refusal is the assistant's message for that turn.
-            "response.output_text.delta" | "response.refusal.delta" => self.extend(
-                index,
-                TextField::Message,
-                number(&frame, "content_index"),
-                delta,
-                out,
-            ),
-            "response.reasoning_summary_text.delta" => self.extend(
-                index,
-                TextField::Summary,
-                number(&frame, "summary_index"),
-                delta,
-                out,
-            ),
-            "response.reasoning_text.delta" => self.extend(
-                index,
-                TextField::Reasoning,
-                number(&frame, "content_index"),
-                delta,
-                out,
-            ),
-            _ => self.arguments(index, delta, out),
+            "response.output_text.delta" | "response.refusal.delta" => {
+                self.text(&frame, Field::Message, number("content_index"), out)
+            }
+            "response.reasoning_summary_text.delta" => {
+                self.text(&frame, Field::Summary, number("summary_index"), out)
+            }
+            "response.reasoning_text.delta" => {
+                self.text(&frame, Field::Reasoning, number("content_index"), out)
+            }
+            "response.function_call_arguments.delta" | "response.custom_tool_call_input.delta" => {
+                self.arguments(&frame)
+            }
+            _ => Ok(()),
         }
     }
 
-    /// Whether the item streamed at `at` is `item`: the same kind, and the
-    /// same id when both name one.
-    fn restates(&self, at: usize, item: &Value) -> bool {
-        self.kinds.get(&at) == Some(&Kind::of(item))
-            && item_id(item)
-                .zip(self.ids.get(&at))
-                .is_none_or(|(id, known)| id == known)
+    /// The slot the terminal's item at output `index` restates, among those
+    /// no earlier terminal item took: the one with its id; else the one the
+    /// stream gave that index when it is of the item's kind, as pi reads an
+    /// index whatever id it states; else the first of its kind the stream
+    /// gave no index and no other id.
+    fn restated(&self, index: usize, item: &Value, taken: &HashSet<usize>) -> Option<usize> {
+        let id = item_id(item);
+        let free = |slot: &usize| !taken.contains(slot) && self.slots[*slot].kind == Kind::of(item);
+        id.and_then(|id| {
+            (0..self.slots.len())
+                .find(|slot| free(slot) && self.slots[*slot].id.as_deref() == Some(id))
+        })
+        .or_else(|| self.indexed.get(&index).copied().filter(free))
+        .or_else(|| {
+            (0..self.slots.len()).find(|slot| {
+                free(slot)
+                    && !self.indexed.values().any(|indexed| indexed == slot)
+                    && (id.is_none() || self.slots[*slot].id.is_none())
+            })
+        })
     }
 
-    /// The terminal response: finish the output items no done event
-    /// carried, give reasoning that waited its ciphertext, deliver a custom
-    /// call that was never done, then end with how the turn ended. A turn
-    /// with a call the provider announced and never finished fails, as pi
-    /// refuses it: its arguments may be cut off. A body that reports its
-    /// reasoning as one top-level string and no reasoning item is written
-    /// that reasoning first.
+    /// The terminal response: finish or write each item of its output,
+    /// backfill the ciphertext of reasoning done without it, then end with
+    /// how the turn ended. A body that reports its reasoning as one
+    /// top-level string and no reasoning item is written that reasoning
+    /// first.
     fn finish(
         &mut self,
         response: Value,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
-        let output = response
-            .get("output")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let structured_reasoning = output.iter().any(|item| kind_of(item) == Some("reasoning"));
-        if !structured_reasoning
-            && self.seen.is_empty()
-            && let Some(reasoning) = string(&response, "reasoning").filter(|text| !text.is_empty())
+        let output = response.arr("output");
+        if self.slots.is_empty()
+            && !output.iter().any(|item| Kind::of(item) == Kind::Reasoning)
+            && let Some(reasoning) = response.str("reasoning").filter(|text| !text.is_empty())
         {
-            out.content(crate::message::AssistantContent::Reasoning(
-                crate::message::Reasoning::new(reasoning),
-            ))?;
+            let at = out.fresh_index();
+            out.whole(
+                at,
+                Block::Reasoning { redacted: false },
+                Value::Null,
+                reasoning,
+            )?;
         }
-        // Only the stream's items are matched by id: a provider may give two
-        // items of one reply the same id.
-        let streamed_ids = std::mem::take(&mut self.written_ids);
-        // A stream that names no index meets the terminal in order: each
-        // item is the next streamed item it restates, or, when there is
-        // none, goes right after the last one matched.
-        let mut streamed: Vec<usize> = Vec::new();
-        if self.unindexed {
-            streamed.extend(self.seen.iter().copied());
-            streamed.sort_unstable();
-        }
-        let (mut cursor, mut place) = (0, 0);
-        for (index, item) in output.into_iter().enumerate() {
-            if !item.is_object() {
-                continue;
-            }
-            let id = item_id(&item).map(str::to_owned);
-            if let Some(at) = self
-                .awaiting_ciphertext
-                .iter()
-                .find(|(_, awaiting)| Some(awaiting) == id.as_ref())
-                .map(|(at, _)| *at)
-                && let Some(ciphertext) = item
-                    .get("encrypted_content")
-                    .filter(|_| has_ciphertext(&item))
-            {
-                let ciphertext = ciphertext.clone();
-                out.edit(at, |native| {
-                    if let Some(native) = native.as_object_mut() {
-                        native.insert("encrypted_content".to_owned(), ciphertext);
+        let mut taken = HashSet::new();
+        for (index, item) in output
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| item.is_object())
+        {
+            let slot = match self.restated(index, item, &taken) {
+                Some(slot) if !self.slots[slot].open => {
+                    taken.insert(slot);
+                    let ciphertext = item
+                        .get("encrypted_content")
+                        .filter(|cipher| cipher.as_str().is_some_and(|cipher| !cipher.is_empty()));
+                    if let (Kind::Reasoning, Some(ciphertext)) = (self.slots[slot].kind, ciphertext)
+                    {
+                        out.edit(self.slots[slot].at, |native| {
+                            let stated = native
+                                .str("encrypted_content")
+                                .is_some_and(|cipher| !cipher.is_empty());
+                            if let (false, Some(fields)) = (stated, native.as_object_mut()) {
+                                fields.insert("encrypted_content".to_owned(), ciphertext.clone());
+                            }
+                        })?;
                     }
-                })?;
-            }
-            if self.unindexed {
-                let matched = streamed
-                    .iter()
-                    .enumerate()
-                    .skip(cursor)
-                    .find(|(_, at)| self.restates(**at, &item));
-                let at = match matched {
-                    Some((position, at)) => {
-                        cursor = position + 1;
-                        place = at + 1;
-                        *at
-                    }
-                    None => {
-                        place += 1;
-                        place - 1
-                    }
-                };
-                if matched.is_none() || (out.is_open(at) && !self.written.contains(&at)) {
-                    self.done(at, item, &mut out)?;
+                    continue;
                 }
-                continue;
-            }
-            let written = self.written.contains(&index)
-                || id.as_ref().is_some_and(|id| streamed_ids.contains(id));
-            if written {
-                continue;
-            }
-            // An item the stream opened and never finished is done as the
-            // terminal states it; one the stream never stated is written
-            // from it whole, at its index.
-            let opened = out.is_open(index);
-            if opened
-                && self
-                    .ids
-                    .get(&index)
-                    .is_some_and(|added| Some(added) != id.as_ref())
-            {
-                continue;
-            }
-            self.done(index, item, &mut out)?;
+                Some(slot) => slot,
+                None => self.added(
+                    Some(index).filter(|index| !self.indexed.contains_key(index)),
+                    item,
+                    &mut out,
+                )?,
+            };
+            taken.insert(slot);
+            self.done(slot, item.clone(), &mut out)?;
         }
-        for (index, _) in std::mem::take(&mut self.awaiting_ciphertext) {
-            out.finish(index)?;
-        }
-        for (index, input) in std::mem::take(&mut self.custom_inputs) {
-            if out.is_open(index) {
-                out.push(index, &serde_json::json!({ "input": input }).to_string())?;
-            }
-        }
-        let unfinished = self.unfinished
-            || out
-                .open_items()
-                .iter()
-                .any(|at| self.kinds.get(at) == Some(&Kind::Call));
-        let mut end = finish_of(&response);
-        if unfinished
-            && end.error.is_none()
-            && matches!(end.reason, None | Some(FinishReason::Stop))
+        // Reasoning still waiting is complete when nothing after it is left
+        // open.
+        let open = self.slots.iter().any(|slot| slot.open);
+        self.release(!open, &mut out)?;
+        // A call never done shows what streamed, in a turn that fails.
+        for slot in self
+            .slots
+            .iter()
+            .filter(|slot| slot.open && slot.kind == Kind::Call)
         {
-            end.error = Some("The provider never finished a tool call it announced".to_owned());
+            let arguments = streamed_arguments(slot);
+            out.fragment(
+                Some(slot.at),
+                CallFragment {
+                    arguments: Some(&arguments),
+                    ..CallFragment::default()
+                },
+            )?;
         }
+        let (reason, error) = finish_reason_of(&response);
+        let end = Finish {
+            usage: response.get("usage").map(usage_of).unwrap_or_default(),
+            reason: Some(reason),
+            response_id: item_id(&response).map(str::to_owned),
+            model: response
+                .str("model")
+                .filter(|model| !model.is_empty())
+                .map(str::to_owned),
+            error,
+        };
         out.raw(response);
         Ok(out.end(end))
+    }
+}
+
+/// The argument JSON of what `slot`'s call streamed.
+fn streamed_arguments(slot: &Slot) -> String {
+    if slot.custom {
+        json!({ "input": slot.arguments }).to_string()
+    } else {
+        slot.arguments.clone()
+    }
+}
+
+/// The output index `frame` names.
+fn output_index(frame: &Value) -> Result<Option<usize>, ProviderError> {
+    frame
+        .u64("output_index")
+        .map(|index| {
+            usize::try_from(index).map_err(|_| {
+                ProviderError::Response(format!("output_index {index} is out of range"))
+            })
+        })
+        .transpose()
+}
+
+fn kind_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Message => "message",
+        _ => "reasoning",
     }
 }
 
@@ -891,11 +833,9 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                         .get("response")
                         .filter(|response| response.is_object())
                         .cloned()
-                        .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
-                    if let (true, Some(fields)) =
-                        (kind == "response.incomplete", response.as_object_mut())
-                    {
-                        fields.insert("status".to_owned(), Value::from("incomplete"));
+                        .unwrap_or_else(|| json!({}));
+                    if kind == "response.incomplete" {
+                        response["status"] = json!("incomplete");
                     }
                     self.finish(response, out)
                 }

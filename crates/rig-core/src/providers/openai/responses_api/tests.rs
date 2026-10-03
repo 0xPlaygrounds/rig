@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::message;
 use serde_json::json;
@@ -37,12 +38,35 @@ fn openai_wire(model: &str) -> wire::Responses {
 
 /// The Responses request a wire builds for a Rig request — the one
 /// conversion every caller reaches, whatever opened the socket.
-fn wire_request(
-    wire: &wire::Responses,
-    request: completion::CompletionRequest,
-) -> CompletionRequest {
+fn wire_request(wire: &wire::Responses, request: completion::CompletionRequest) -> Value {
     wire.responses_request(request, false)
         .expect("request should convert")
+}
+
+/// The request the OpenAI wire for `model` builds for `request`.
+fn convert(model: &str, request: completion::CompletionRequest) -> Result<Value, EncodeError> {
+    openai_wire(model).responses_request(request, false)
+}
+
+/// The request the OpenAI wire for `model` sends for `request`, prepared as
+/// the driver prepares it.
+fn prepared(model: &str, request: completion::CompletionRequest) -> Value {
+    use crate::wire::{Operation, Wire};
+    let wire = openai_wire(model);
+    let request = crate::operation::Completion::prepare(request, &wire.describe())
+        .expect("the request prepares");
+    wire.responses_request(request, false)
+        .expect("request should convert")
+}
+
+/// The input items `message` alone becomes.
+fn input_items(message: completion::Message) -> Result<Vec<Value>, EncodeError> {
+    let wire = openai_wire("gpt-5");
+    let mut custom = Custom {
+        tools: Default::default(),
+        calls: Default::default(),
+    };
+    super::input(&[message], &wire, "gpt-5", &mut custom)
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -69,12 +93,16 @@ fn weather_tool_definition() -> completion::ToolDefinition {
 }
 
 fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
+    rig_tool_result_of(vec![content])
+}
+
+fn rig_tool_result_of(content: Vec<message::ToolResultContent>) -> message::Message {
     message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
             is_error: false,
             call: crate::message::CallId::from_wire("call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content: vec![content],
+            content,
         })],
     }
 }
@@ -93,138 +121,74 @@ fn mixed_user_content_preserves_order_around_tool_results() {
         ],
     };
 
-    let items =
-        super::input_items(input, 0, &mut CustomCalls::new()).expect("input item conversion");
+    let items = input_items(input).expect("input item conversion");
 
-    assert!(matches!(
-        items.as_slice(),
+    assert_eq!(
+        items,
         [
-            InputItem::Message(Message::User { content: before, .. }),
-            InputItem::FunctionCallOutput(ToolResult { call_id, .. }),
-            InputItem::Message(Message::User { content: after, .. }),
-        ] if matches!(before.first(), Some(UserContent::InputText { text }) if text == "before")
-            && call_id == "call-id"
-            && matches!(after.first(), Some(UserContent::InputText { text }) if text == "after")
-    ));
+            json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "before"}]}),
+            json!({"type": "function_call_output", "call_id": "call-id", "output": "tool output", "status": "completed"}),
+            json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "after"}]}),
+        ]
+    );
 }
 
 #[test]
 fn tool_result_literal_text_and_structured_json_render_without_reparsing() {
-    let cases = [
-        (
-            message::ToolResultContent::text(r#"{"status":"ok"}"#),
-            r#"{"status":"ok"}"#.to_string(),
-        ),
-        (
-            message::ToolResultContent::json(json!({ "status": "ok" })),
-            r#"{"status":"ok"}"#.to_string(),
-        ),
-    ];
-
-    for (content, expected) in cases {
-        let input = rig_tool_result(content);
-
-        let items =
-            super::input_items(input, 0, &mut CustomCalls::new()).expect("input item conversion");
-        assert!(matches!(
-            items.as_slice(),
-            [InputItem::FunctionCallOutput(ToolResult {
-                output: ToolResultOutput::Text(output),
-                ..
-            })] if output == &expected
-        ));
+    for content in [
+        message::ToolResultContent::text(r#"{"status":"ok"}"#),
+        message::ToolResultContent::json(json!({ "status": "ok" })),
+    ] {
+        let items = input_items(rig_tool_result(content)).expect("input item conversion");
+        assert_eq!(items[0]["output"], json!(r#"{"status":"ok"}"#));
     }
 }
 
 #[test]
 fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
-    let content = vec![
+    let input = rig_tool_result_of(vec![
         message::ToolResultContent::text("first"),
         message::ToolResultContent::text("second"),
-    ];
-
-    let input = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            is_error: false,
-            call: crate::message::CallId::from_wire("call-id"),
-            name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content,
-        })],
-    };
-
-    let expected = ToolResultOutput::Content(vec![
-        ToolResultOutputContent::InputText {
-            text: "first".to_string(),
-        },
-        ToolResultOutputContent::InputText {
-            text: "second".to_string(),
-        },
     ]);
 
-    let items =
-        super::input_items(input, 0, &mut CustomCalls::new()).expect("input item conversion");
-
-    match items.as_slice() {
-        [InputItem::FunctionCallOutput(ToolResult { output, .. })] => {
-            assert_eq!(output, &expected);
-        }
-        other => panic!("expected one function-call output, got {other:?}"),
-    }
-
-    let wire = serde_json::to_value(&items[0]).expect("input item should serialize");
+    let items = input_items(input).expect("input item conversion");
 
     assert_eq!(
-        wire,
-        json!({
+        items,
+        [json!({
             "type": "function_call_output",
             "call_id": "call-id",
             "output": [
-                {
-                    "type": "input_text",
-                    "text": "first"
-                },
-                {
-                    "type": "input_text",
-                    "text": "second"
-                }
+                {"type": "input_text", "text": "first"},
+                {"type": "input_text", "text": "second"}
             ],
             "status": "completed"
-        })
+        })]
     );
 }
 
 #[test]
 fn multiple_text_and_json_tool_result_blocks_preserve_boundaries() {
-    let content = vec![
+    let output = super::result_output(&[
         message::ToolResultContent::text("before"),
-        message::ToolResultContent::json(json!({
-            "status": "ok"
-        })),
+        message::ToolResultContent::json(json!({"status": "ok"})),
         message::ToolResultContent::text("after"),
-    ];
-
-    let output =
-        responses_tool_result_output(content).expect("tool-result conversion should succeed");
+    ])
+    .expect("tool-result conversion should succeed");
 
     assert_eq!(
         output,
-        ToolResultOutput::Content(vec![
-            ToolResultOutputContent::InputText {
-                text: "before".to_string(),
-            },
-            ToolResultOutputContent::InputText {
-                text: r#"{"status":"ok"}"#.to_string(),
-            },
-            ToolResultOutputContent::InputText {
-                text: "after".to_string(),
-            },
+        json!([
+            {"type": "input_text", "text": "before"},
+            {"type": "input_text", "text": r#"{"status":"ok"}"#},
+            {"type": "input_text", "text": "after"},
         ])
     );
 }
 
 #[test]
 fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
-    let content = vec![
+    let input = rig_tool_result_of(vec![
         message::ToolResultContent::text("before"),
         message::ToolResultContent::image_base64(
             "aW1hZ2U=",
@@ -232,36 +196,17 @@ fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
             None,
         ),
         message::ToolResultContent::json(json!({ "after": true })),
-    ];
-    let input = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            is_error: false,
-            call: crate::message::CallId::from_wire("call-id"),
-            name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content,
-        })],
-    };
+    ]);
 
-    let assert_output = |output: &ToolResultOutput| {
-        assert!(matches!(
-            output,
-            ToolResultOutput::Content(content)
-                if matches!(content.as_slice(), [
-                    ToolResultOutputContent::InputText { text: before },
-                    ToolResultOutputContent::InputImage { image_url, .. },
-                    ToolResultOutputContent::InputText { text: after },
-                ] if before == "before"
-                    && image_url.as_deref() == Some("data:image/png;base64,aW1hZ2U=")
-                    && after == r#"{"after":true}"#)
-        ));
-    };
-
-    let items =
-        super::input_items(input, 0, &mut CustomCalls::new()).expect("input item conversion");
-    match items.as_slice() {
-        [InputItem::FunctionCallOutput(ToolResult { output, .. })] => assert_output(output),
-        other => panic!("expected one rich function output, got {other:?}"),
-    }
+    let items = input_items(input).expect("input item conversion");
+    assert_eq!(
+        items[0]["output"],
+        json!([
+            {"type": "input_text", "text": "before"},
+            {"type": "input_image", "image_url": "data:image/png;base64,aW1hZ2U=", "detail": "auto"},
+            {"type": "input_text", "text": r#"{"after":true}"#},
+        ])
+    );
 }
 
 #[test]
@@ -273,11 +218,9 @@ fn tool_result_file_id_image_uses_the_native_wire_field() {
         native: None,
     }));
 
-    let items =
-        super::input_items(input, 0, &mut CustomCalls::new()).expect("input item conversion");
-    let wire = serde_json::to_value(&items[0]).expect("serialize input item");
+    let items = input_items(input).expect("input item conversion");
     assert_eq!(
-        wire,
+        items[0],
         json!({
             "type": "function_call_output",
             "call_id": "call-id",
@@ -302,9 +245,8 @@ fn responses_tool_choice_modes_serialize_as_plain_strings() {
         (message::ToolChoice::None, json!("none")),
         (message::ToolChoice::Required, json!("required")),
     ] {
-        let converted = ToolChoice::try_from(choice).expect("mode should convert");
         assert_eq!(
-            serde_json::to_value(&converted).expect("serialize tool choice"),
+            super::tool_choice(choice).expect("mode should convert"),
             expected
         );
     }
@@ -312,20 +254,20 @@ fn responses_tool_choice_modes_serialize_as_plain_strings() {
 
 #[test]
 fn responses_tool_choice_specific_single_name_serializes_as_named_function() {
-    let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+    let converted = super::tool_choice(message::ToolChoice::Specific {
         function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     })
     .expect("single specific tool should convert");
 
     assert_eq!(
-        serde_json::to_value(&converted).expect("serialize tool choice"),
+        converted,
         json!({"type": "function", "name": "get_weather"})
     );
 }
 
 #[test]
 fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
-    let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+    let converted = super::tool_choice(message::ToolChoice::Specific {
         function_names: vec![
             crate::message::ToolName::new("add").expect("tool name"),
             crate::message::ToolName::new("subtract").expect("tool name"),
@@ -334,7 +276,7 @@ fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
     .expect("multiple specific tools should convert");
 
     assert_eq!(
-        serde_json::to_value(&converted).expect("serialize tool choice"),
+        converted,
         json!({
             "type": "allowed_tools",
             "mode": "required",
@@ -348,7 +290,7 @@ fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
 
 #[test]
 fn responses_tool_choice_specific_empty_names_error() {
-    let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+    let converted = super::tool_choice(message::ToolChoice::Specific {
         function_names: vec![],
     });
 
@@ -366,8 +308,7 @@ fn responses_request_with_specific_tool_choice_serializes_named_function() {
         function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     });
 
-    let request = CompletionRequest::try_from(("gpt-test".to_string(), request)).expect("convert");
-    let request_json = serde_json::to_value(&request).expect("serialize request");
+    let request_json = convert("gpt-test", request).expect("convert");
 
     assert_eq!(
         request_json.get("tool_choice"),
@@ -465,11 +406,8 @@ fn system_only_request(system_text: &str) -> completion::CompletionRequest {
 
 #[test]
 fn responses_request_uses_top_level_instructions_for_preamble_by_default() {
-    let req = CompletionRequest::try_from((
-        "gpt-4o-mini".to_string(),
-        request_with_preamble("You are concise."),
-    ))
-    .expect("request should convert");
+    let req = convert("gpt-4o-mini", request_with_preamble("You are concise."))
+        .expect("request should convert");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -483,8 +421,7 @@ fn responses_request_uses_top_level_instructions_for_preamble_by_default() {
 #[test]
 fn responses_request_drops_whitespace_only_preamble() {
     let req =
-        CompletionRequest::try_from(("gpt-4o-mini".to_string(), request_with_preamble("  \n ")))
-            .expect("request should convert");
+        convert("gpt-4o-mini", request_with_preamble("  \n ")).expect("request should convert");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -504,8 +441,7 @@ fn responses_request_lifts_system_messages_to_top_level_instructions_by_default(
         .preamble("System one")
         .message(completion::Message::system("System two"));
 
-    let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
-        .expect("request should convert");
+    let req = convert("gpt-4o-mini", request).expect("request should convert");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -521,11 +457,8 @@ fn responses_request_lifts_system_messages_to_top_level_instructions_by_default(
 
 #[test]
 fn responses_request_with_only_system_messages_keeps_them_in_input() {
-    let req = CompletionRequest::try_from((
-        "gpt-4o-mini".to_string(),
-        system_only_request("System only"),
-    ))
-    .expect("request conversion should succeed");
+    let req = convert("gpt-4o-mini", system_only_request("System only"))
+        .expect("request conversion should succeed");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -585,12 +518,10 @@ fn responses_wire_can_lift_all_system_messages_via_placement() {
 
 #[test]
 fn all_instructions_system_only_input_reports_non_system_requirement() {
-    let err = CompletionRequest::try_from(ResponsesRequestParams {
-        model: "gpt-4o-mini".to_string(),
-        request: system_only_request("System only"),
-        system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
-    })
-    .expect_err("system-only input should fail once every item is lifted");
+    let err = openai_wire("gpt-4o-mini")
+        .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
+        .responses_request(system_only_request("System only"), false)
+        .expect_err("system-only input should fail once every item is lifted");
 
     assert!(
         err.to_string().contains("non-system item"),
@@ -600,12 +531,10 @@ fn all_instructions_system_only_input_reports_non_system_requirement() {
 
 #[test]
 fn all_instructions_whitespace_only_system_input_reports_non_system_requirement() {
-    let err = CompletionRequest::try_from(ResponsesRequestParams {
-        model: "gpt-4o-mini".to_string(),
-        request: system_only_request("   "),
-        system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
-    })
-    .expect_err("whitespace-only system input should fail once every item is lifted");
+    let err = openai_wire("gpt-4o-mini")
+        .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
+        .responses_request(system_only_request("   "), false)
+        .expect_err("whitespace-only system input should fail once every item is lifted");
 
     assert!(
         err.to_string().contains("non-system item"),
@@ -616,13 +545,12 @@ fn all_instructions_whitespace_only_system_input_reports_non_system_requirement(
 
 #[test]
 fn responses_request_conversion_keeps_tools_non_strict_by_default() {
-    let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), weather_tool_request()))
-        .expect("request should convert");
+    let req = convert("gpt-4o-mini", weather_tool_request()).expect("request should convert");
 
-    let tool = &req.tools[0];
-    assert!(!tool.strict);
-    assert_eq!(tool.parameters["required"], json!(["location"]));
-    assert!(tool.parameters.get("additionalProperties").is_none());
+    let tool = &req["tools"][0];
+    assert_eq!(tool["strict"], json!(false));
+    assert_eq!(tool["parameters"]["required"], json!(["location"]));
+    assert!(tool["parameters"].get("additionalProperties").is_none());
 }
 
 #[test]
@@ -651,10 +579,16 @@ fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
 
     let req = wire_request(&wire, request);
 
-    assert_eq!(req.tools.len(), 3);
-    for tool in &req.tools {
-        assert!(tool.strict, "{} should be strict", tool.name);
-        assert_eq!(tool.parameters["additionalProperties"], json!(false));
+    let tools = req["tools"].as_array().expect("tools");
+    assert_eq!(tools.len(), 3);
+    for tool in tools {
+        assert_eq!(
+            tool["strict"],
+            json!(true),
+            "{} should be strict",
+            tool["name"]
+        );
+        assert_eq!(tool["parameters"]["additionalProperties"], json!(false));
     }
 }
 
@@ -674,10 +608,16 @@ fn responses_wire_default_preserves_all_function_tools_as_constructed() {
 
     let req = wire_request(&wire, request);
 
-    assert_eq!(req.tools.len(), 3);
-    for tool in &req.tools {
-        assert!(!tool.strict, "{} should not be strict", tool.name);
-        assert!(tool.parameters.get("additionalProperties").is_none());
+    let tools = req["tools"].as_array().expect("tools");
+    assert_eq!(tools.len(), 3);
+    for tool in tools {
+        assert_eq!(
+            tool["strict"],
+            json!(false),
+            "{} should not be strict",
+            tool["name"]
+        );
+        assert!(tool["parameters"].get("additionalProperties").is_none());
     }
 }
 
@@ -691,10 +631,10 @@ fn responses_explicit_strict_tool_stays_strict_on_a_default_wire() {
 
     let req = wire_request(&wire, weather_tool_request());
 
-    assert!(!req.tools[0].strict);
-    assert!(req.tools[1].strict);
+    assert_eq!(req["tools"][0]["strict"], json!(false));
+    assert_eq!(req["tools"][1]["strict"], json!(true));
     assert_eq!(
-        req.tools[1].parameters["additionalProperties"],
+        req["tools"][1]["parameters"]["additionalProperties"],
         json!(false)
     );
 }
@@ -707,8 +647,7 @@ fn responses_request_keeps_documents_after_lifted_system_messages() {
         .message(completion::Message::assistant("Earlier assistant turn"))
         .document(test_document("doc1", "Document text."));
 
-    let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
-        .expect("request conversion should succeed");
+    let responses_request = prepared("gpt-4o-mini", request);
 
     let serialized = serde_json::to_value(&responses_request).expect("request should serialize");
     let input = serialized["input"]
@@ -749,8 +688,7 @@ fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
     ])
     .documents(vec![test_document("doc1", "Document text.")]);
 
-    let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
-        .expect("request conversion should succeed");
+    let responses_request = prepared("gpt-4o-mini", request);
 
     let serialized = serde_json::to_value(&responses_request).expect("request should serialize");
     let input = serialized["input"]
@@ -1001,12 +939,11 @@ fn completion_response_preserves_context_without_treating_config_as_text() {
     assert!(matches!(items[0], completion::AssistantContent::Text(_)));
 }
 
-fn request_with_reasoning_params(reasoning: Value) -> CompletionRequest {
+fn request_with_reasoning_params(reasoning: Value) -> Value {
     let mut request = request_with_preamble("You are concise.");
     request.additional_params = Some(json!({ "reasoning": reasoning }));
 
-    CompletionRequest::try_from(("gpt-5.6".to_string(), request))
-        .expect("request with reasoning params should convert")
+    convert("gpt-5.6", request).expect("request with reasoning params should convert")
 }
 
 #[test]
@@ -1123,8 +1060,7 @@ fn file_id_document_serializes_as_input_item_content() {
         })],
     };
 
-    let converted =
-        super::input_items(message, 0, &mut CustomCalls::new()).expect("conversion should succeed");
+    let converted = input_items(message).expect("conversion should succeed");
     let json = serde_json::to_value(&converted[0]).expect("serialize input item");
 
     assert_eq!(json["type"], "message");
@@ -1277,8 +1213,7 @@ fn assert_url_only_input_file(input_file: &serde_json::Value) {
 
 #[test]
 fn url_pdf_via_input_item_path_omits_filename() {
-    let items = super::input_items(url_pdf_message(), 0, &mut CustomCalls::new())
-        .expect("URL PDF should convert to input items");
+    let items = input_items(url_pdf_message()).expect("URL PDF should convert to input items");
     let json = serde_json::to_value(&items).expect("input items should serialize");
     assert_url_only_input_file(&sole_input_file(&json));
 }
@@ -1287,8 +1222,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 fn url_pdf_in_full_completion_request_omits_filename() {
     let core_request = crate::completion::CompletionRequest::new(url_pdf_message());
 
-    let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
-        .expect("request should convert");
+    let request = convert("gpt-4o", core_request).expect("request should convert");
     let json = serde_json::to_value(&request).expect("request should serialize");
     assert_url_only_input_file(&sole_input_file(&json));
 }
@@ -1303,8 +1237,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
         })],
     };
 
-    let items = super::input_items(input, 0, &mut CustomCalls::new())
-        .expect("base64 PDF should convert to input items");
+    let items = input_items(input).expect("base64 PDF should convert to input items");
     let json = serde_json::to_value(&items).expect("input items should serialize");
     let input_file = sole_input_file(&json);
 
@@ -1429,10 +1362,10 @@ fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
         result,
     ];
 
-    let request = CompletionRequest::try_from((
-        "gpt-4o-mini".to_string(),
+    let request = convert(
+        "gpt-4o-mini",
         crate::completion::CompletionRequest::from(history),
-    ))
+    )
     .expect("request conversion should succeed");
     let input = serde_json::to_value(&request).expect("request should serialize")["input"].clone();
 
@@ -1457,7 +1390,7 @@ fn input_of(model: &str, history: Vec<completion::Message>) -> Vec<Value> {
     use crate::wire::{Operation, Wire};
     let wire = openai_wire(model);
     let request = crate::operation::Completion::prepare(
-        crate::completion::CompletionRequest::from(history),
+        crate::completion::CompletionRequest::from(history).tools(vec![lookup_tool()]),
         &wire.describe(),
     )
     .expect("the history is valid");
@@ -1468,6 +1401,15 @@ fn input_of(model: &str, history: Vec<completion::Message>) -> Vec<Value> {
         .as_array()
         .cloned()
         .unwrap_or_default()
+}
+
+/// The `lookup` tool the histories below call.
+fn lookup_tool() -> completion::ToolDefinition {
+    completion::ToolDefinition {
+        name: message::ToolName::new("lookup").expect("tool name"),
+        description: "Look something up".to_owned(),
+        parameters: json!({"type": "object"}),
+    }
 }
 
 /// A turn from `model` on the OpenAI Responses wire.
@@ -1627,9 +1569,9 @@ fn another_models_turn_is_rebuilt_from_its_fields() {
     );
 }
 
-/// A block edited after decoding no longer holds its item: text and calls
-/// are rebuilt from their fields under their item's id, and reasoning,
-/// whose text is display only, still goes as its item (pi's rule).
+/// A block edited after decoding no longer holds its item: each is rebuilt
+/// from its fields under its item's identity, reasoning keeping its id and
+/// ciphertext, so every item stays paired.
 #[test]
 fn an_edited_block_is_rebuilt_under_its_item_id_and_reasoning_still_goes() {
     let mut blocks = decoded_blocks();
@@ -1665,7 +1607,15 @@ fn an_edited_block_is_rebuilt_under_its_item_id_and_reasoning_still_goes() {
             ("function_call_output", None),
         ]
     );
-    assert_eq!(input[1], reasoning_item());
+    assert_eq!(
+        input[1],
+        json!({
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [{"type": "summary_text", "text": "Plan.!"}],
+            "encrypted_content": "cipher",
+        })
+    );
     assert_eq!(input[2]["content"][0]["text"], "Looking.!");
     assert_eq!(input[2]["phase"], "commentary");
     assert_eq!(input[3]["arguments"], "{\"q\":\"edited\"}");
@@ -1798,7 +1748,8 @@ fn a_stored_continuation_keeps_the_results_of_the_stored_calls() {
         message::ToolName::new("lookup").expect("tool name"),
         "sunny",
     );
-    let mut request = crate::completion::CompletionRequest::from(vec![result]);
+    let mut request =
+        crate::completion::CompletionRequest::from(vec![result]).tools(vec![lookup_tool()]);
     request.additional_params = Some(json!({"previous_response_id": "resp_1", "store": true}));
     let prepared = crate::operation::Completion::prepare(request.clone(), &wire.describe())
         .expect("the continuation prepares");

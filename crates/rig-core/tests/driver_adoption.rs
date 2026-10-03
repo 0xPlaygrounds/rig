@@ -1401,7 +1401,6 @@ const PENDING_REPLAY_ADOPTION: &[&str] = &[
     "rig-core/src/providers/gemini/completion.rs",
     "rig-core/src/providers/gemini/interactions_api/mod.rs",
     "rig-core/src/providers/internal/rebuild.rs",
-    "rig-core/src/providers/openai/responses_api/mod.rs",
 ];
 
 /// Encoders read provider items only through `AssistantContent::replay`, so

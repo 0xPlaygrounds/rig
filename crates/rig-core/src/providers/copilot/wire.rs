@@ -13,8 +13,10 @@
 //! ```
 
 use crate::error::ProviderError;
+use crate::json_utils::Lenient;
 use crate::wire::Flow;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
@@ -349,68 +351,35 @@ pub struct Models {
     pub provider: CopilotConfig,
 }
 
-/// Catalogue entry with model identity, vendor, and modality under `capabilities.type`.
-#[derive(Debug, Deserialize)]
-pub struct ModelEntry {
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    vendor: Option<String>,
-    #[serde(default)]
-    capabilities: Option<ModelEntryCapabilities>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelEntryCapabilities {
-    #[serde(default, rename = "type")]
-    kind: Option<String>,
-}
-
-/// The `{ "data": [...] }` envelope.
-#[derive(Debug, Deserialize)]
-pub struct ModelsReply {
-    #[serde(default)]
-    data: Vec<ModelEntry>,
-}
-
-impl ModelsReply {
-    /// The catalogue as normalized models.
-    pub fn into_models(self) -> Vec<ModelInfo> {
-        self.data.into_iter().map(ModelInfo::from).collect()
-    }
-}
-
-impl From<ModelEntry> for ModelInfo {
-    fn from(entry: ModelEntry) -> Self {
-        let mut model = ModelInfo::from_id(entry.id);
-        model.name = entry.name;
-        model.owned_by = entry.vendor;
-        if let Some(capabilities) = entry.capabilities {
-            model.r#type = capabilities.kind;
-        }
-        model
-    }
-}
-
-/// The model-listing decoder.
+/// The model-listing decoder: the catalogue's `data`, each entry naming
+/// its id, its name, its vendor and its modality under `capabilities.type`.
 #[derive(Default)]
 pub struct ModelsDecoder;
 
 impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = ModelsReply;
+    type Event = Value;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
     }
 
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
+    fn decode(&mut self, event: Value, out: Out<'id, ModelListing>) -> Result<Flow, ProviderError> {
+        let text = |entry: &Value, pointer: &str| {
+            entry.at(pointer).and_then(Value::as_str).map(str::to_owned)
+        };
+        let models = event
+            .arr("data")
+            .iter()
+            .filter_map(|entry| {
+                let mut model = ModelInfo::from_id(entry.str("id")?);
+                model.name = text(entry, "/name");
+                model.owned_by = text(entry, "/vendor");
+                model.r#type = text(entry, "/capabilities/type");
+                Some(model)
+            })
+            .collect();
         Ok(out.end(ModelPage {
-            models: ModelList::new(event.into_models()),
+            models: ModelList::new(models),
             next: None,
         }))
     }
