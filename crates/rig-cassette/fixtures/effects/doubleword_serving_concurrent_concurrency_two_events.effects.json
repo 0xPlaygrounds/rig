@@ -190,6 +190,42 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_c70acdb180f94acb8f237050",
+            "name": "lookup_harbor_label",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 1,
+            "id": "call_fcb4280b890b40bfab4f8328",
+            "name": "lookup_orchard_label",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -221,7 +257,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         },
         {
@@ -258,7 +295,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 1
           }
         }
       ]

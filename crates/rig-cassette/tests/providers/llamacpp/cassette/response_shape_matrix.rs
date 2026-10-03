@@ -146,6 +146,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                     Item::Event(StreamEvent::End {
                         part,
                         content: AssistantContent::Reasoning(_),
+                        ..
                     }) => {
                         correlators.insert(part);
                     }

@@ -78,6 +78,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
             }) => run.tool_calls.push(tool_call),
             Item::Event(StreamEvent::Start { .. })
             | Item::Event(StreamEvent::Arguments { .. })
+            | Item::Event(StreamEvent::CallDraft { .. })
             | Item::Event(StreamEvent::End { .. })
             | Item::Unknown(_) => {}
         }

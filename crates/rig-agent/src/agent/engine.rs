@@ -893,7 +893,9 @@ impl TurnSource for StreamingTurnSource {
                             // The call's end is the ingested item; a repaired
                             // call's end carries the repaired name.
                             let end = match item_slot.take() {
-                                Some(Item::Event(StreamEvent::End { part, .. })) => Some(part),
+                                Some(Item::Event(StreamEvent::End { part, draft, .. })) => {
+                                    Some((part, draft))
+                                }
                                 _ => None,
                             };
                             for event in std::mem::take(&mut held) {
@@ -923,11 +925,12 @@ impl TurnSource for StreamingTurnSource {
                                 }
                                 yield Ok(MultiTurnStreamItem::stream_item(Item::Event(event)));
                             }
-                            if let Some(part) = end {
+                            if let Some((part, draft)) = end {
                                 yield Ok(MultiTurnStreamItem::stream_item(Item::Event(
                                     StreamEvent::End {
                                         part,
                                         content: AssistantContent::ToolCall(call),
+                                        draft,
                                     },
                                 )));
                             }

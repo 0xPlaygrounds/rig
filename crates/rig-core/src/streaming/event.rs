@@ -1,25 +1,20 @@
 //! The events of a completion stream. A completion decoder never builds one:
 //! it writes through the reply's part handles
 //! ([`Out`](crate::wire::Out)), and the writer emits each part's start, its
-//! fragments and its end, in that order. A [`Part`] is a part's position in
-//! the response's `choice`; only this crate constructs one, so code outside
-//! the writer cannot build an event out of order. A recorded stream reads
-//! back through [`Transcript::parse`], the one place a sequence is checked.
+//! fragments and its end, in that order. A serialized event deserializes back
+//! to its shape, and [`Transcript::push`] checks each shape against the items
+//! before it. A recorded stream reads back through [`Transcript::parse`].
 //!
 //! ```
-//! use rig_core::streaming::{PartKind, StreamEvent, Transcript};
+//! use rig_core::streaming::{Item, StreamEvent, Transcript};
 //!
-//! let transcript = Transcript::parse(serde_json::json!([
-//!     {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
-//!     {"item": "event", "value": {"event": "text", "part": 0, "text": "Hello"}},
-//!     {"item": "event", "value": {"event": "end", "part": 0,
-//!         "content": {"type": "text", "text": "Hello"}}},
-//! ]))?;
-//! assert!(matches!(
-//!     transcript.events().next(),
-//!     Some(StreamEvent::Start { kind: PartKind::Text, .. })
-//! ));
-//! # Ok::<(), rig_core::streaming::SequenceError>(())
+//! let mut transcript = Transcript::default();
+//! let item: Item<StreamEvent> = serde_json::from_value(serde_json::json!(
+//!     {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}}
+//! ))
+//! .expect("shape");
+//! transcript.push(item).expect("order");
+//! assert_eq!(transcript.len(), 1);
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -28,13 +23,14 @@ use crate::message::AssistantContent;
 
 use super::UnknownPayload;
 
-/// A part's position in the response's `choice`. Only this crate constructs
-/// one:
+/// A part's position in the response's `choice`. Code outside the writer
+/// obtains one by deserializing a recorded event. Direct construction stays
+/// inside this crate:
 ///
 /// ```compile_fail,E0423
 /// let part = rig_core::streaming::Part(0);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Part(u32);
 
@@ -64,8 +60,11 @@ pub enum PartKind {
 }
 
 /// One event of a completion stream: a part starts, grows, or ends with the
-/// content it finalized.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// content it finalized. A call draft previews a tool call while the model
+/// still writes it. Deserialization restores the shape of one recorded event
+/// without checking order. Push the result into a [`Transcript`] to check it
+/// against the items before it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum StreamEvent {
     /// A part opened.
@@ -96,24 +95,48 @@ pub enum StreamEvent {
         /// The raw JSON arguments.
         json: String,
     },
+    /// A tool call being written, before it is a part. `draft` numbers the
+    /// calls of this reply in the order they were first seen. `id` and `name`
+    /// are present on the fragment where the provider sent them. `json` is
+    /// the new argument text, not the accumulated text. Informational only:
+    /// it takes no position and needs no `End`. A draft that is dropped never
+    /// gets a matching `End`.
+    CallDraft {
+        /// The call preview, in first-seen order.
+        draft: u32,
+        /// The provider id this fragment carried.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        /// The tool name this fragment carried.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        /// The new argument text.
+        json: String,
+    },
     /// A part ended with the content it finalized.
     End {
         /// The part.
         part: Part,
         /// The finalized content.
         content: AssistantContent,
+        /// The draft this tool call was previewed as. `None` for parts that
+        /// were never previewed and for calls that arrived whole.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        draft: Option<u32>,
     },
 }
 
 impl StreamEvent {
-    /// The part this event is about.
-    pub const fn part(&self) -> Part {
+    /// The part this event is about. `None` for a call draft, which takes no
+    /// position.
+    pub const fn part(&self) -> Option<Part> {
         match self {
             Self::Start { part, .. }
             | Self::Text { part, .. }
             | Self::Reasoning { part, .. }
             | Self::Arguments { part, .. }
-            | Self::End { part, .. } => *part,
+            | Self::End { part, .. } => Some(*part),
+            Self::CallDraft { .. } => None,
         }
     }
 
@@ -124,6 +147,7 @@ impl StreamEvent {
             Self::Text { .. } => "Text",
             Self::Reasoning { .. } => "Reasoning",
             Self::Arguments { .. } => "Arguments",
+            Self::CallDraft { .. } => "CallDraft",
             Self::End { .. } => "End",
         }
     }
@@ -185,32 +209,6 @@ pub enum SequenceError {
     Unclosed(usize),
 }
 
-/// The serialized form of one event, before its order is checked.
-#[derive(Deserialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
-enum RawEvent {
-    Start {
-        part: u32,
-        kind: PartKind,
-    },
-    Text {
-        part: u32,
-        text: String,
-    },
-    Reasoning {
-        part: u32,
-        text: String,
-    },
-    Arguments {
-        part: u32,
-        json: String,
-    },
-    End {
-        part: u32,
-        content: AssistantContent,
-    },
-}
-
 impl Transcript {
     /// Read a serialized item sequence, refusing one the writer could not
     /// have produced. Every part must have ended.
@@ -223,47 +221,35 @@ impl Transcript {
     /// [`Self::parse`] for a stream that stopped early (an error or a
     /// cancellation): parts may still be open at its end.
     pub fn parse_prefix(value: serde_json::Value) -> Result<Self, SequenceError> {
-        let raw: Vec<Item<RawEvent>> = serde_json::from_value(value)
+        let items: Vec<Item<StreamEvent>> = serde_json::from_value(value)
             .map_err(|error| SequenceError::Shape(error.to_string()))?;
         let mut transcript = Self::default();
-        for item in raw {
-            transcript.push(match item {
-                Item::Unknown(payload) => Item::Unknown(payload),
-                Item::Event(RawEvent::Start { part, kind }) => Item::Event(StreamEvent::Start {
-                    part: Part(part),
-                    kind,
-                }),
-                Item::Event(RawEvent::Text { part, text }) => Item::Event(StreamEvent::Text {
-                    part: Part(part),
-                    text,
-                }),
-                Item::Event(RawEvent::Reasoning { part, text }) => {
-                    Item::Event(StreamEvent::Reasoning {
-                        part: Part(part),
-                        text,
-                    })
-                }
-                Item::Event(RawEvent::Arguments { part, json }) => {
-                    Item::Event(StreamEvent::Arguments {
-                        part: Part(part),
-                        json,
-                    })
-                }
-                Item::Event(RawEvent::End { part, content }) => Item::Event(StreamEvent::End {
-                    part: Part(part),
-                    content,
-                }),
-            })?;
+        for item in items {
+            transcript.push(item)?;
         }
         Ok(transcript)
     }
 
+    /// Append the next serialized item a stream yielded, refusing one the
+    /// writer could not have produced after the items so far. This is the
+    /// incremental form of [`Self::parse_prefix`]: deserialize each item as
+    /// it arrives and push it here to keep the sequence check.
+    pub fn push_value(&mut self, value: serde_json::Value) -> Result<(), SequenceError> {
+        let item: Item<StreamEvent> = serde_json::from_value(value)
+            .map_err(|error| SequenceError::Shape(error.to_string()))?;
+        self.push(item)
+    }
+
     /// Append the next item a stream yielded, refusing one the writer could
-    /// not have produced after the items so far.
+    /// not have produced after the items so far. A call draft takes no
+    /// position and is accepted anywhere.
     pub fn push(&mut self, item: Item<StreamEvent>) -> Result<(), SequenceError> {
         let position = self.items.len();
         if let Item::Event(event) = &item {
-            let index = event.part().index();
+            let Some(index) = event.part().map(|part| part.index()) else {
+                self.items.push(item);
+                return Ok(());
+            };
             let kind = match event {
                 StreamEvent::Start { kind, .. } => {
                     if index != self.parts.len() {
@@ -275,6 +261,7 @@ impl Transcript {
                 StreamEvent::Text { .. } => Some(PartKind::Text),
                 StreamEvent::Reasoning { .. } => Some(PartKind::Reasoning),
                 StreamEvent::Arguments { .. } => Some(PartKind::ToolCall),
+                StreamEvent::CallDraft { .. } => None,
                 StreamEvent::End { content, .. } => Some(match content {
                     AssistantContent::Text(_) => PartKind::Text,
                     AssistantContent::Reasoning(_) => PartKind::Reasoning,

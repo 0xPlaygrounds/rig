@@ -59,7 +59,7 @@ pub fn assert_update_contract(updates: &Updates) -> (CompletionResponse, Vec<Del
     for (index, expected) in done.choice.iter().enumerate() {
         let own: Vec<&StreamEvent> = transcript
             .events()
-            .filter(|event| event.part().index() == index)
+            .filter(|event| event.part().is_some_and(|part| part.index() == index))
             .collect();
         let Some(StreamEvent::Start { kind, .. }) = own.first() else {
             panic!("part {index} starts first: {own:#?}");
@@ -95,10 +95,12 @@ pub fn assert_update_contract(updates: &Updates) -> (CompletionResponse, Vec<Del
         });
     }
     for event in transcript.events() {
-        assert!(
-            event.part().index() < done.choice.len(),
-            "{event:?} names a part of choice"
-        );
+        if let Some(part) = event.part() {
+            assert!(
+                part.index() < done.choice.len(),
+                "{event:?} names a part of choice"
+            );
+        }
     }
     (done.clone(), delivered)
 }

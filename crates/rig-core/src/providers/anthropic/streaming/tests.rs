@@ -662,8 +662,18 @@ fn test_handle_input_json_delta_event() {
         tool_use(0, "tool_123", "lookup"),
         input_json(0, "{\"arg\":\"value"),
     ]);
-    // A call streams nothing until it closes.
-    assert!(decoded.events().is_empty(), "{:?}", decoded.events());
+    // Fragments preview as drafts while the call is still open.
+    assert!(
+        matches!(
+            decoded.events().as_slice(),
+            [
+                StreamEvent::CallDraft { draft: 0, .. },
+                StreamEvent::CallDraft { draft: 0, .. },
+            ]
+        ),
+        "{:?}",
+        decoded.events()
+    );
 }
 
 #[test]

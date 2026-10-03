@@ -3907,6 +3907,7 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
             Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
                 part,
                 content: rig_core::message::AssistantContent::Reasoning(reasoning),
+                ..
             }))) => completed.push((part.index(), reasoning)),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}

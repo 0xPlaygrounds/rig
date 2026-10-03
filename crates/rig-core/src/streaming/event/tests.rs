@@ -69,6 +69,51 @@ fn an_open_part_is_a_prefix_but_not_a_transcript() {
 }
 
 #[test]
+fn a_single_event_round_trips_through_serde() {
+    let transcript = Transcript::parse_prefix(json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 0, "text": "hi"}},
+    ]))
+    .expect("a prefix");
+    for item in transcript.items() {
+        let value = serde_json::to_value(item).expect("serializes");
+        let back: Item<StreamEvent> = serde_json::from_value(value).expect("deserializes");
+        assert_eq!(&back, item);
+    }
+    let event = transcript.events().nth(1).expect("the text").clone();
+    let value = serde_json::to_value(&event).expect("serializes");
+    let back: StreamEvent = serde_json::from_value(value).expect("deserializes");
+    assert_eq!(back, event);
+}
+
+#[test]
+fn serialized_items_replay_incrementally_with_the_same_check() {
+    let value = json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 0, "text": "hi"}},
+        text_end(0, "hi"),
+    ]);
+    let expected = Transcript::parse(value.clone()).expect("a writer sequence");
+    let mut replayed = Transcript::default();
+    let items: Vec<serde_json::Value> = serde_json::from_value(value).expect("items");
+    for item in items {
+        replayed.push_value(item).expect("each item follows the last");
+    }
+    assert_eq!(replayed, expected);
+}
+
+#[test]
+fn a_replayed_item_out_of_order_is_refused() {
+    let mut transcript = Transcript::default();
+    assert_eq!(
+        transcript.push_value(
+            json!({"item": "event", "value": {"event": "text", "part": 0, "text": "hi"}})
+        ),
+        Err(SequenceError::UnknownPart(0))
+    );
+}
+
+#[test]
 fn push_checks_each_item_against_the_items_before_it() {
     let mut transcript = Transcript::parse_prefix(json!([
         {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},

@@ -21,7 +21,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 6
         }
       },
       {
@@ -29,7 +29,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 6
         }
       },
       {
@@ -493,6 +493,34 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_z4oxytXW9HXZjhXRmjulkR31",
+            "name": "lookup_harbor_label",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_z4oxytXW9HXZjhXRmjulkR31",
+            "name": "lookup_harbor_label",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -525,7 +553,36 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 1,
+            "id": "call_qFutXTZDRcgEmu5pSnOWixwD",
+            "name": "lookup_orchard_label",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 1,
+            "id": "call_qFutXTZDRcgEmu5pSnOWixwD",
+            "name": "lookup_orchard_label",
+            "json": ""
           }
         },
         {
@@ -563,7 +620,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 1
           }
         }
       ],

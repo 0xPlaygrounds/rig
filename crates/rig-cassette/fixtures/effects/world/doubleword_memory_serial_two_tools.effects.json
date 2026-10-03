@@ -13,7 +13,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 10
         }
       },
       {
@@ -350,6 +350,42 @@
         {
           "item": "event",
           "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "id": "call_5da55878294a4a1d995b2bbc",
+            "name": "lookup_harbor_label",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 0,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 1,
+            "id": "call_56f6ae1067714e16b7defcfb",
+            "name": "lookup_orchard_label",
+            "json": ""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "call_draft",
+            "draft": 1,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 0,
             "kind": "tool_call"
@@ -381,7 +417,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 0
           }
         },
         {
@@ -418,7 +455,8 @@
               },
               "signature": null,
               "additional_params": null
-            }
+            },
+            "draft": 1
           }
         }
       ],

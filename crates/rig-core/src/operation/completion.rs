@@ -117,6 +117,7 @@ pub struct Turn {
     // The writer.
     drafts: Vec<Draft>,
     next_part: u32,
+    next_draft: u32,
     issuer: Option<Issuer>,
     message_id: Option<String>,
     pending: BTreeMap<usize, Pending>,
@@ -139,6 +140,7 @@ enum Draft {
         text: String,
     },
     Call {
+        draft: Option<u32>,
         id: CallId,
         name: ToolName,
         arguments: Arguments,
@@ -205,6 +207,7 @@ impl Arguments {
 /// name are both known and it opens.
 #[derive(Default)]
 struct Pending {
+    draft: Option<u32>,
     id: Option<String>,
     item_id: Option<String>,
     name: String,
@@ -324,6 +327,7 @@ impl Turn {
             provider: provider.into(),
             drafts: Vec::new(),
             next_part: 0,
+            next_draft: 0,
             issuer: None,
             message_id: None,
             pending: BTreeMap::new(),
@@ -331,6 +335,13 @@ impl Turn {
             choice: Vec::new(),
             open_text: BTreeMap::new(),
         }
+    }
+
+    /// The next call preview number, in first-seen order.
+    fn alloc_draft(&mut self) -> u32 {
+        let draft = self.next_draft;
+        self.next_draft += 1;
+        draft
     }
 
     /// The issuer this reply's reasoning is sealed to.
@@ -412,6 +423,7 @@ impl Turn {
                     text,
                     additional_params: params,
                 }),
+                draft: None,
             },
         );
     }
@@ -492,16 +504,29 @@ impl Turn {
         };
         let part = part.unwrap_or_else(|| self.start(items, PartKind::Reasoning));
         let content = AssistantContent::Reasoning(reasoning.sealed(self.issuer()));
-        emit(items, StreamEvent::End { part, content });
+        emit(
+            items,
+            StreamEvent::End {
+                part,
+                content,
+                draft: None,
+            },
+        );
     }
 
-    fn open_call(&mut self, id: CallId, name: ToolName) -> Result<usize, ProviderError> {
+    fn open_call(
+        &mut self,
+        id: CallId,
+        name: ToolName,
+        draft: Option<u32>,
+    ) -> Result<usize, ProviderError> {
         if let Some(provider) = id.provider()
             && !self.provider_ids.insert(provider.clone())
         {
             return Err(ProviderError::DuplicateCallId(id));
         }
         Ok(self.draft(Draft::Call {
+            draft,
             id,
             name,
             arguments: Arguments::default(),
@@ -510,13 +535,34 @@ impl Turn {
         }))
     }
 
-    fn push_arguments(&mut self, slot: usize, fragment: &str) {
-        if let Some(Draft::Call {
-            name, arguments, ..
-        }) = self.drafts.get_mut(slot)
-        {
-            arguments.push(fragment, name.as_str());
+    fn push_arguments(&mut self, items: &mut Items, slot: usize, fragment: &str) {
+        let draft = match self.drafts.get_mut(slot) {
+            Some(Draft::Call {
+                draft,
+                name,
+                arguments,
+                ..
+            }) => {
+                arguments.push(fragment, name.as_str());
+                *draft
+            }
+            _ => return,
+        };
+        let Some(draft) = draft else {
+            return;
+        };
+        if fragment.is_empty() {
+            return;
         }
+        emit(
+            items,
+            StreamEvent::CallDraft {
+                draft,
+                id: None,
+                name: None,
+                json: fragment.to_owned(),
+            },
+        );
     }
 
     /// Close the call in `slot`: it becomes visible with its arguments, or
@@ -563,6 +609,7 @@ impl Turn {
             }
         };
         let Some(Draft::Call {
+            draft,
             id,
             name,
             arguments,
@@ -595,6 +642,7 @@ impl Turn {
                     signature,
                     additional_params,
                 }),
+                draft,
             },
         );
         Ok(())
@@ -602,7 +650,8 @@ impl Turn {
 
     /// The buffered call at `index`, opened when its id and name are both
     /// known. A wire that sends no id gets one rig issues when the call
-    /// closes (`issue`).
+    /// closes (`issue`). The open call keeps the draft the fragments were
+    /// previewed as, so its `End` links back to them.
     fn open_pending(&mut self, index: usize, issue: bool) -> Result<Option<usize>, ProviderError> {
         let Some(pending) = self.pending.get(&index) else {
             return Ok(None);
@@ -624,7 +673,17 @@ impl Turn {
             (None, _) if issue => CallId::Local(LocalCallId::new()),
             (None, _) => return Ok(None),
         };
-        let slot = self.open_call(id, name)?;
+        let draft = match self.pending.get(&index).and_then(|pending| pending.draft) {
+            Some(draft) => Some(draft),
+            None => {
+                let draft = self.alloc_draft();
+                if let Some(pending) = self.pending.get_mut(&index) {
+                    pending.draft = Some(draft);
+                }
+                Some(draft)
+            }
+        };
+        let slot = self.open_call(id, name, draft)?;
         let Some(pending) = self.pending.get_mut(&index) else {
             return Ok(None);
         };
@@ -777,7 +836,7 @@ impl Fold<Completion> for Turn {
                     self.choice.resize(part.index() + 1, None);
                 }
             }
-            StreamEvent::End { part, content } => {
+            StreamEvent::End { part, content, .. } => {
                 if self.choice.len() <= part.index() {
                     self.choice.resize(part.index() + 1, None);
                 }
@@ -796,7 +855,9 @@ impl Fold<Completion> for Turn {
                     .or_default()
                     .push_str(text);
             }
-            StreamEvent::Reasoning { .. } | StreamEvent::Arguments { .. } => {}
+            StreamEvent::Reasoning { .. }
+            | StreamEvent::Arguments { .. }
+            | StreamEvent::CallDraft { .. } => {}
         }
         Ok(())
     }
@@ -952,7 +1013,19 @@ impl<'id> Out<'id, Completion> {
     /// }
     /// ```
     pub fn call(&mut self, id: CallId, name: ToolName) -> Result<CallPart<'id>, ProviderError> {
-        let slot = self.lock().fold.open_call(id, name)?;
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        let draft = fold.alloc_draft();
+        let slot = fold.open_call(id.clone(), name.clone(), Some(draft))?;
+        emit(
+            items,
+            StreamEvent::CallDraft {
+                draft,
+                id: Some(id.to_string()),
+                name: Some(name.to_string()),
+                json: String::new(),
+            },
+        );
         Ok(CallPart {
             slot,
             brand: PhantomData,
@@ -961,7 +1034,9 @@ impl<'id> Out<'id, Completion> {
 
     /// Append a fragment of an open call's argument JSON.
     pub fn push_arguments(&mut self, part: &CallPart<'id>, json: &str) {
-        self.lock().fold.push_arguments(part.slot, json);
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.push_arguments(items, part.slot, json);
     }
 
     /// Attach a provider signature and metadata to an open call.
@@ -1009,7 +1084,14 @@ impl<'id> Out<'id, Completion> {
             signature,
             additional_params,
         } = call;
-        let part = self.call(id, function.name)?;
+        let mut shared = self.lock();
+        let Shared { fold, .. } = &mut *shared;
+        let slot = fold.open_call(id, function.name, None)?;
+        let part = CallPart {
+            slot,
+            brand: PhantomData,
+        };
+        drop(shared);
         self.decorate_call(&part, signature, additional_params);
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
@@ -1029,6 +1111,7 @@ impl<'id> Out<'id, Completion> {
             StreamEvent::End {
                 part,
                 content: AssistantContent::Image(image),
+                draft: None,
             },
         );
     }
@@ -1074,35 +1157,82 @@ impl<'id> Out<'id, Completion> {
     /// Buffer one fragment of the tool call the provider streams under
     /// `index`. The call opens when its id and name are both known; a
     /// provider id another call already has is
-    /// [`ProviderError::DuplicateCallId`].
+    /// [`ProviderError::DuplicateCallId`]. Each fragment previews as a
+    /// [`StreamEvent::CallDraft`] under the call's draft number, with the id
+    /// and name this fragment carried and its new argument text.
     pub fn call_fragment(
         &mut self,
         index: usize,
         fragment: CallFragment<'_>,
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
-        let turn = &mut shared.fold;
-        let pending = turn.pending.entry(index).or_default();
-        if let Some(id) = fragment.id.filter(|id| !id.is_empty()) {
-            pending.id = Some(id.to_owned());
+        let Shared { fold, items, .. } = &mut *shared;
+        let id = fragment.id.filter(|id| !id.is_empty()).map(str::to_owned);
+        let item_id = fragment
+            .item_id
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned);
+        let name = fragment
+            .name
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned);
+        let json = fragment
+            .arguments
+            .filter(|arguments| !arguments.is_empty())
+            .map(str::to_owned);
+        if id.is_none() && item_id.is_none() && name.is_none() && json.is_none() {
+            return Ok(());
         }
-        if let Some(item_id) = fragment.item_id.filter(|id| !id.is_empty()) {
-            pending.item_id = Some(item_id.to_owned());
-        }
-        if let Some(name) = fragment.name.filter(|name| !name.is_empty()) {
-            name.clone_into(&mut pending.name);
-        }
-        let open = pending.open;
-        if let Some(arguments) = fragment.arguments.filter(|arguments| !arguments.is_empty()) {
-            match open {
-                Some(slot) => turn.push_arguments(slot, arguments),
-                None => {
-                    let name = pending.name.clone();
-                    pending.arguments.push(arguments, &name);
+        let draft = match fold.pending.get(&index).and_then(|pending| pending.draft) {
+            Some(draft) => draft,
+            None => {
+                let draft = fold.alloc_draft();
+                fold.pending.entry(index).or_default().draft = Some(draft);
+                draft
+            }
+        };
+        if let Some(pending) = fold.pending.get_mut(&index) {
+            if pending.draft.is_none() {
+                pending.draft = Some(draft);
+            }
+            if let Some(id) = &id {
+                pending.id = Some(id.clone());
+            }
+            if let Some(item_id) = &item_id {
+                pending.item_id = Some(item_id.clone());
+            }
+            if let Some(name) = &name {
+                name.clone_into(&mut pending.name);
+            }
+            if let Some(json) = &json {
+                match pending.open {
+                    Some(slot) => {
+                        if let Some(Draft::Call {
+                            name: open_name,
+                            arguments: open_arguments,
+                            ..
+                        }) = fold.drafts.get_mut(slot)
+                        {
+                            open_arguments.push(json, open_name.as_str());
+                        }
+                    }
+                    None => {
+                        let name = pending.name.clone();
+                        pending.arguments.push(json, &name);
+                    }
                 }
             }
         }
-        turn.open_pending(index, false)?;
+        emit(
+            items,
+            StreamEvent::CallDraft {
+                draft,
+                id,
+                name,
+                json: json.unwrap_or_default(),
+            },
+        );
+        fold.open_pending(index, false)?;
         Ok(())
     }
 
@@ -1343,7 +1473,7 @@ impl Turn {
             signature,
             additional_params,
         } = call;
-        let slot = self.open_call(id, function.name)?;
+        let slot = self.open_call(id, function.name, None)?;
         if let Some(Draft::Call {
             arguments,
             signature: open_signature,

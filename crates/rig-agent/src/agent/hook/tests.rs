@@ -16,6 +16,7 @@ fn reasoning_part() -> rig_core::streaming::Part {
     .next()
     .expect("its start")
     .part()
+    .expect("a positioned event")
 }
 use crate::tool::{ToolErrorKind, ToolExecutionError};
 
