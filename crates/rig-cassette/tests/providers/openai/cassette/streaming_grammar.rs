@@ -363,7 +363,7 @@ async fn tool_call_then_followup_text_across_turns() {
             let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .additional_params(json!({ "reasoning": { "effort": "low" } }));
+                .additional_params(json!({ "reasoning": { "effort": "low" }, "store": false }));
             let first = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&first, FinishReason::ToolCalls);
@@ -399,7 +399,7 @@ async fn tool_call_then_followup_text_across_turns() {
                 assistant_message,
                 tool_result,
             ])
-            .additional_params(json!({ "reasoning": { "effort": "low" } }));
+            .additional_params(json!({ "reasoning": { "effort": "low" }, "store": false }));
             let second = drain_stream(
                 model
                     .stream(followup_request)

@@ -101,7 +101,6 @@ openai/streaming_grammar/previous_response_id_chain.yaml
 openai/streaming_grammar/reasoning_summary_stream.yaml
 openai/streaming_grammar/reasoning_then_text.yaml
 openai/streaming_grammar/structured_output_stream.yaml
-openai/streaming_grammar/tool_then_followup_text.yaml
 openai/streaming_tools/example_streaming_with_tools.yaml
 openai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml
 openai/streaming_tools/streaming_tools_smoke.yaml
