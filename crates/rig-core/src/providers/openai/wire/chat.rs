@@ -1151,13 +1151,14 @@ impl OpenCall {
 
 /// The chat-completions decoder: one state machine for a whole reply and a
 /// stream of chunks, reading every frame leniently as JSON. A whole reply
-/// is the one chunk carrying its message. As pi's `openai-completions`
-/// decodes a message, all of its reasoning is one block, where the first
-/// of it arrived, open until the message ends. A run of text is a block,
-/// as is a run of Mistral thinking parts, and each tool call, image and
-/// unknown content part is a block of its own; a run closes when another
-/// block starts. An answer's audio transcript is its text when it has no
-/// other, and its first text block holds the audio's id.
+/// is the one chunk carrying its message. All of a message's reasoning is
+/// one block, as pi's `openai-completions` keeps it, open until the message
+/// ends; the turn holds it first however late it arrived, while its events
+/// keep their arrival order. A run of text is a block, as is a run of
+/// Mistral thinking parts, and each tool call, image and unknown content
+/// part is a block of its own; a run closes when another block starts. An
+/// answer's audio transcript is its text when it has no other, and its
+/// first text block holds the audio's id.
 #[derive(Default)]
 pub struct ChatDecoder {
     quirks: Quirks,
@@ -1249,16 +1250,9 @@ impl ChatDecoder {
         Some(choice)
     }
 
-    /// One delta of the assistant message, in the order streams send its
-    /// parts, so a whole message folds as its stream does: reasoning text,
-    /// the content, images and calls. Its `reasoning_details` join the
-    /// reasoning block in their order, which they open where a stream sends
-    /// them: ahead of the answer, unless each signs what came before it,
-    /// then after the call one of them names, or else after the calls (a
-    /// signature with no text, as Gemini through OpenRouter sends after the
-    /// answer). pi reads a delta's content before its reasoning and its
-    /// details after its calls; a stream sends them in deltas of their own,
-    /// so only a whole message differs.
+    /// One delta of the assistant message: its reasoning text and
+    /// `reasoning_details` into the reasoning block, then the content,
+    /// images and calls.
     fn delta(
         &mut self,
         delta: &Map<String, Value>,
@@ -1275,31 +1269,11 @@ impl ChatDecoder {
             self.reason(text, out)?;
             self.reasoning_field.get_or_insert(key);
         }
-        let calls = delta
-            .get("tool_calls")
-            .and_then(Value::as_array)
-            .map_or(&[][..], Vec::as_slice);
-        let mut details = delta
-            .get(REASONING_DETAILS)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        let names = |detail: &Value, call: &Value| {
-            detail
-                .str("id")
-                .is_some_and(|id| call.str("id") == Some(id))
-        };
-        let signs = |detail: &Value| {
-            calls.iter().any(|call| names(detail, call))
-                || (detail.str("type") == Some("reasoning.text")
-                    && detail.str("text").is_none_or(str::is_empty)
-                    && detail.str("signature").is_some())
-        };
-        let signed = calls
-            .iter()
-            .position(|call| details.iter().any(|detail| names(detail, call)));
-        if !details.iter().all(signs) {
-            self.details(std::mem::take(&mut details), out)?;
+        if let Some(Value::Array(details)) = delta.get(REASONING_DETAILS)
+            && !details.is_empty()
+        {
+            self.reason("", out)?;
+            merge_details(&mut self.reasoning_details, details.clone());
         }
         let audio = delta.get("audio");
         if let Some(id) = audio.and_then(|audio| audio.at("/id")) {
@@ -1336,13 +1310,15 @@ impl ChatDecoder {
         {
             self.image(image, out)?;
         }
-        for (at, call) in calls.iter().enumerate() {
+        for call in delta
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
             self.call(call, out)?;
-            if signed == Some(at) {
-                self.details(std::mem::take(&mut details), out)?;
-            }
         }
-        self.details(details, out)
+        Ok(())
     }
 
     /// Append `text` to the message's reasoning block, opening it first.
@@ -1352,26 +1328,13 @@ impl ChatDecoder {
             None => {
                 let at = out.fresh_index();
                 out.open(at, Block::Reasoning { redacted: false }, Value::Null)?;
+                out.lead(at)?;
                 self.reasoning = Some(at);
                 at
             }
         };
         self.reasoning_text.push_str(text);
         out.push(at, text)
-    }
-
-    /// Reasoning `details`, into the message's reasoning block.
-    fn details(
-        &mut self,
-        details: Vec<Value>,
-        out: &mut Out<'_, Completion>,
-    ) -> Result<(), ProviderError> {
-        if details.is_empty() {
-            return Ok(());
-        }
-        self.reason("", out)?;
-        merge_details(&mut self.reasoning_details, details);
-        Ok(())
     }
 
     /// Close the message's reasoning block, holding its item: the field its

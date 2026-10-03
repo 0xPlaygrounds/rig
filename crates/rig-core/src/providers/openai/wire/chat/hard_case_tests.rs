@@ -329,6 +329,45 @@ async fn a_late_signature_joins_the_reasoning_before_the_answer() {
     assert_eq!(sent["reasoning_details"], signed);
 }
 
+/// Reasoning that arrives after the answer is still the turn's first block,
+/// while the events it streams keep their arrival order.
+#[tokio::test]
+async fn late_reasoning_is_stored_first_and_streamed_in_arrival_order() {
+    let (items, response) = stream(
+        &OPENROUTER,
+        &[
+            text("answer"),
+            chunk(json!({"reasoning": "late"}), None),
+            finish("stop"),
+            DONE.to_owned(),
+        ],
+    )
+    .await;
+    let response = response.expect("the reply folds");
+    assert_eq!(
+        response
+            .choice
+            .iter()
+            .map(AssistantContent::canonical)
+            .collect::<Vec<_>>(),
+        [
+            AssistantContent::reasoning("late"),
+            AssistantContent::text("answer")
+        ]
+    );
+    let starts: Vec<&PartKind> = items
+        .iter()
+        .filter_map(|item| match item {
+            Ok(Item::Event(StreamEvent::Start { kind, .. })) => Some(kind),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        matches!(starts.as_slice(), [PartKind::Text, PartKind::Reasoning]),
+        "{starts:?}"
+    );
+}
+
 /// pi's merge: a second signature for the same detail fills nothing, as the
 /// first already signed it.
 #[tokio::test]

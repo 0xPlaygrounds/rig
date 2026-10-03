@@ -912,8 +912,7 @@ fn deepseek_states_its_reasoning_field() {
 
 /// chat NEW-7: late `reasoning_details` (Gemini through OpenRouter) fold to
 /// the same blocks from a whole message as from its stream: a detail that
-/// signs one of the message's calls opens the reasoning block after that
-/// call, as pi reads a delta's details after its calls.
+/// signs one of the message's calls is still the turn's first block.
 #[test]
 fn late_reasoning_details_fold_alike_whole_and_streamed() {
     let openrouter = wire(&OPENROUTER, "google/gemini-3-pro-preview");
@@ -958,9 +957,9 @@ fn late_reasoning_details_fold_alike_whole_and_streamed() {
     assert!(matches!(
         unary.choice.as_slice(),
         [
+            AssistantContent::Reasoning(_),
             AssistantContent::Text(_),
-            AssistantContent::ToolCall(_),
-            AssistantContent::Reasoning(_)
+            AssistantContent::ToolCall(_)
         ]
     ));
 }
@@ -1365,8 +1364,8 @@ fn perplexity_gets_orphans_dropped_blanks_gone_and_turns_apart() {
 }
 
 /// Round 5 generated-history finding 2: `reasoning_details` join the
-/// message's one reasoning block wherever they arrive, so a stream folds to
-/// the turn its whole message folds to. The first shape is the recorded
+/// message's one reasoning block, the turn's first, wherever they arrive,
+/// so a stream folds to the turn its whole message folds to. The first shape is the recorded
 /// Gemini 3 stream through OpenRouter
 /// (`openrouter/upstream_switch_matrix/switch_streamed.yaml`): a signature
 /// alone after the content. The second interleaves reasoning, the answer
@@ -1402,7 +1401,7 @@ fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
                 json!({"role": "assistant", "content": "The code is amber."}),
                 json!({"role": "assistant", "content": "", "reasoning_details": [signature]}),
             ],
-            vec!["text", "reasoning"],
+            vec!["reasoning", "text"],
         ),
         (
             json!({"role": "assistant", "content": "answer", "reasoning": "plan",
@@ -1440,7 +1439,7 @@ fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
                 json!({"tool_calls": [streamed_call], "reasoning_details": [signs_call]}),
                 json!({"tool_calls": [streamed_second]}),
             ],
-            vec!["text", "call", "reasoning", "call"],
+            vec!["reasoning", "text", "call", "call"],
         ),
     ];
     for (message, deltas, kinds) in cases {

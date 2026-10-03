@@ -26718,10 +26718,6 @@
     "mode": "streaming",
     "choice": [
       {
-        "text": "The code for record alpha is amber-5521.",
-        "native": null
-      },
-      {
         "reasoning": {
           "text": "",
           "redacted": false,
@@ -26739,6 +26735,10 @@
             "fingerprint": "82b6ea64ef91009f"
           }
         }
+      },
+      {
+        "text": "The code for record alpha is amber-5521.",
+        "native": null
       }
     ],
     "usage": {

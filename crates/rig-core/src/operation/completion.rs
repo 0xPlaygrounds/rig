@@ -239,6 +239,8 @@ pub struct Turn {
     /// The wire index of each position, for a wire whose choice follows
     /// its indices ([`Out::order_by_index`]).
     by_index: Option<BTreeMap<usize, usize>>,
+    /// The position of the block the choice holds first ([`Out::lead`]).
+    lead: Option<usize>,
     // The fold.
     choice: Vec<Option<AssistantContent>>,
     /// The text the consumer took of text and reasoning parts still open,
@@ -401,6 +403,7 @@ impl Turn {
             run: None,
             next_auto: AUTO_INDEX,
             by_index: None,
+            lead: None,
             choice: Vec::new(),
             open_text: BTreeMap::new(),
         }
@@ -822,8 +825,9 @@ impl Turn {
     }
 
     /// The parts taken so far, in their position (in wire-index order on a
-    /// wire that asked for it); a part that has not ended is not among them,
-    /// and parts from the first incomplete one on keep no provider item.
+    /// wire that asked for it, after the lead block); a part that has not
+    /// ended is not among them, and parts from the first incomplete one on
+    /// keep no provider item.
     pub fn snapshot(&self) -> Vec<AssistantContent> {
         self.ordered(
             self.choice.iter().cloned().enumerate().collect(),
@@ -886,7 +890,8 @@ impl Turn {
     }
 
     /// `parts` by position, in wire-index order on a wire that asked for
-    /// it, each from position `canonical_from` on with no provider item.
+    /// it and after the lead block, each from position `canonical_from` on
+    /// with no provider item.
     fn ordered(
         &self,
         parts: Vec<(usize, Option<AssistantContent>)>,
@@ -909,6 +914,9 @@ impl Turn {
                     *position,
                 )
             });
+        }
+        if let Some(lead) = self.lead {
+            parts.sort_by_key(|(position, _)| *position != lead);
         }
         parts.into_iter().map(|(_, part)| part).collect()
     }
@@ -1184,6 +1192,17 @@ impl<'id> Out<'id, Completion> {
         if shared.fold.by_index.is_none() {
             shared.fold.by_index = Some(BTreeMap::new());
         }
+    }
+
+    /// Hold the open item at `index` first in the response whenever it
+    /// opened, for a wire that states one block of the turn apart from its
+    /// order. Its events keep their arrival order. A turn leads with the
+    /// first item named.
+    pub fn lead(&mut self, index: usize) -> Result<(), ProviderError> {
+        let mut shared = self.lock();
+        let position = shared.fold.draft(index)?.part.index();
+        shared.fold.lead.get_or_insert(position);
+        Ok(())
     }
 
     /// Replace the text or reasoning of the open item at `index` with
