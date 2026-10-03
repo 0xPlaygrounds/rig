@@ -76,6 +76,22 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
         "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
     ),
     (
+        "anthropic/context_binding/changed_tools_with_drop_block.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "openrouter/context_binding/amazon_bedrock.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "openrouter/context_binding/anthropic.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "openrouter/context_binding/google_vertex.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
         "anthropic/long_run_caching/dynamic_tools_30.yaml",
         "the long run's request patch changes the active tools on turns 11 \
          and 21; the changed tool list is the behavior being recorded",

@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==","mimeType":"image/png"}},{"text":"Say ok."}],"role":"user"}],"generationConfig":{"maxOutputTokens":200}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"ok.","thoughtSignature":"Ev4CCvsCAWkUfRMh8EqaWbcQ2WhCSe6cl81KmTpMAzNrMOqkt9SBPtBcNKKUyF0ERPC2pSNQw2A6jDrmUXiJ/4jGlRen3PR71W4fyrFhIrdnWD80J/PUfss8qbNm8jtOqJGVAaGJOcIlgWty1XjzysuzjhEg6wSINfK5jWid6YlR1g2Ei+34xLhg5rKK2ecB9J4rwpJaLfzh2OwH4nCQVTQuafWoAKlI98MN1KcSDz14gYLgZj3G/qpyg6DMcOWs5mhyaaVmWEEINcYRYlPNO88b7d3c7X8eGHLd5ZyMr0qUoj42W+2w/lPQ2V6rpCXiVLsucpbXZ1f/yD+izvIM64CKFg28PkAQD2Do/Bc2adW2fNohlZ1ZCziRMObiv/ACQfnLiKiCVoD8MPOkMQ2KcNdfIbnEC6jOs8rpVqCDeY7XH9DJlNXnWP34dsUbMymCqgIJMh3AW59WEy7fFt+Yvmx25j0v+ySTCUviyDLmJVgPmcSHITM9hqd77qi92POL9A=="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"SyDBao2YCqz7qtsPnZuJiAY","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":1093,"promptTokensDetails":[{"modality":"IMAGE","tokenCount":1089},{"modality":"TEXT","tokenCount":4}],"serviceTier":"standard","thoughtsTokenCount":71,"totalTokenCount":1166}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==","mimeType":"image/png"},"mediaResolution":{"level":"MEDIA_RESOLUTION_LOW"}},{"text":"Say ok."}],"role":"user"}],"generationConfig":{"maxOutputTokens":200}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"ok","thoughtSignature":"EucCCuQCAWkUfRPCzHcbwn4ka3azpYIuYIDS4wfMCSbb3nr0QxdI044knI/4bf4ptdf9hjPVFwsiztK2YB8SrSF2xV/+N+21fPB2YiB+IqcVjJzsgcpWCZ7tDycTlOlKsEwDBZEa3VJxT/f+QKIsdHKvTAI7Z+3u7nZ8qumtFLfgr8+4SiQGAadSvkvxkQoKz9Z1zYFVe0DyI2LKcdOaJmQnI6Yff5MR+YnsBQKPSYpsyUXpFUrqNAe0rywtxQ3wp26a0qRLQ+3Is7QmTy99gcOJs7kDC40xPsM9macwfoUgYY5gVqlMEiRm1v0/J066WafKr7PLWTubUT+A+JaJRd4OPgOvtaAVJ5ZrCsI24KQjlM4cU7zAnBd0PmC8FaeGVm0GPDL4jBcTQu7gitze2FQlDcIKMM7IvrpBr4NQm5uXELH61Vd4Lg9b0/iXs0P1NDcdOmmjidcxMKjbwmbT1kHZ1fDGgqp+9GA="}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"TCDBasHqFpCP6dkPjqS2mQU","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":260,"promptTokensDetails":[{"modality":"TEXT","tokenCount":4},{"modality":"IMAGE","tokenCount":256}],"serviceTier":"standard","thoughtsTokenCount":69,"totalTokenCount":330}}'

@@ -1442,6 +1442,681 @@
       }
     }
   },
+  "context_binding/amazon_bedrock.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "With a head start of 83*41/60 km and closing speed 29 km/h, the time to catch up comes out to exactly 117 minutes. Starting from 3:58pm, adding 117 minutes gives a catch-up time of 5:55pm.\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "With a head start of 83*41/60 km and closing speed 29 km/h, the time to catch up comes out to exactly 117 minutes. Starting from 3:58pm, adding 117 minutes gives a catch-up time of 5:55pm.\n\n",
+              "reasoning_details": [
+                {
+                  "format": "anthropic-claude-v1",
+                  "index": 0,
+                  "signature": "CAQSiAYKEggSEAEYAjgBQgh0aGlua2luZxIMp4wUK+hhNqp2IvpfGgzfF49c37lHBmEByMkiMJy/L+p67W1HAWls916tQsTxo+zg6STvVs81YuGyf+TVX5khcU0oaZqhwBRQfwtNryqjBZbgce0Uz5jZzI/lRPn95YKFPws64wLIBm268Q5WTmAEV8xNQJIn3hx7GvN7hMizT/bZtlPj/5OJ2/63h8uwsWY9sU4j+VSq7p80SdV0+zMoPpZN7CVV1fzS1B7LCyJGgDGUOMVD1hxPtOJSKJEJPDwiBoS8tZVAiu45al0m9Jhr/a1O8vsSm7GlVOctWGva1iVU4pOROS86OchMJRgpa5gD2OUXiIVnu+jyVjfWfI5jsgfLGMww3ZCGiRLNjmmRRW0bPIiFHJTXWw9zxwTr7ACQFV5yDtPaMTb1qr/2pxHdS6qOClIYS4Dv5V1DyGi+c+pIpa+opyc0ATenAIGPdqSAapZCFzeTWuJYBIPV3UbOqTfq8o+iV5cZ+vy03RTAHzfgBtC/XOUSEtdk6IYUgXeaiKD7O6zifpDge5u4eg5CKSke1dGrUC+/uDLz4HtPupuG6m2X0EcpyVAQJnPVa4CQuWIcuVxu5+9j0Gd5Ew1xsMIZ6peO9aNevO/tdNc731q+srBGiG24SZyu2wy99uFUYTSmarTYDBAmuNlS1K1deSkCw57tvWS1rHscdLIP2FDU+gHsrFtuxpB/jnrwrfE7dRFE6iSgoGQAZETza1sjfCfKO5NLh6QD8OdKAN7Sl8Z73FLOSV6MPaka968fwsn9BkEfdYGwkmqHCmKZq7YkA78ub0r/wyPtxt+3y20fiEemx/4arstbqKANyn2fcKUwC/RWyZTECVOKWuZDV4CBOPpSMMmaOvQqFLWEMD15ODAIpGms+DBu2+A6wMy5IXiLaBmTxJmNI6voVmlXMN3VfDUV0gGJeb0iCGGTSskqLg4C/Lh+IX+4sQ0FGY7O8YKLFb09GA7wYca+WfpmWrdnEhxAg6gfF0OBcyTw39chWSU+mxgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbWF6b24tYmVkcm9jayJ9",
+                  "text": "With a head start of 83*41/60 km and closing speed 29 km/h, the time to catch up comes out to exactly 117 minutes. Starting from 3:58pm, adding 117 minutes gives a catch-up time of 5:55pm.\n\n",
+                  "type": "reasoning.text"
+                }
+              ]
+            },
+            "fingerprint": "7aa32d9d3812cc1a"
+          }
+        }
+      },
+      {
+        "text": "Assuming both trains leave from the same station and head the same way:\n\n1. **Head start:** The first train leaves at 3:17pm. The second leaves 41 minutes later, at 3:58pm. By then the first train has gone 83 × (41/60) km.\n2. **Closing speed:** The second train is faster by 112 − 83 = 29 km/h.\n3. **Time to catch up:** (83 × 41/60) ÷ 29 hours. Times 60 to get minutes, which simplifies to (83 × 41) / 29.\n\nChecking that expression:",
+        "native": null
+      },
+      {
+        "tool_call": {
+          "id": "toolu_bdrk_01Hwh6yD77Bn6dT5KwkFwNWM",
+          "name": "calc",
+          "arguments": {
+            "q": "83*41/29"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"q\": \"83*41/29\"}",
+                "name": "calc"
+              },
+              "id": "toolu_bdrk_01Hwh6yD77Bn6dT5KwkFwNWM",
+              "type": "function"
+            },
+            "fingerprint": "ce8f0b0cae44ab67"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 435,
+      "output_tokens": 409,
+      "total_tokens": 844,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 176
+    },
+    "response_id": "gen-1791041663-rRwpCBgjTWmBXWxZNufv",
+    "finish_reason": "tool_calls",
+    "model": "anthropic/claude-opus-5.5",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Assuming both trains leave from the same station and head the same way:\n\n1. **Head start:** The first train leaves at 3:17pm. The second leaves 41 minutes later, at 3:58pm. By then the first train has gone 83 × (41/60) km.\n2. **Closing speed:** The second train is faster by 112 − 83 = 29 km/h.\n3. **Time to catch up:** (83 × 41/60) ÷ 29 hours. Times 60 to get minutes, which simplifies to (83 × 41) / 29.\n\nChecking that expression:",
+            "reasoning": "With a head start of 83*41/60 km and closing speed 29 km/h, the time to catch up comes out to exactly 117 minutes. Starting from 3:58pm, adding 117 minutes gives a catch-up time of 5:55pm.\n\n",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "signature": "CAQSiAYKEggSEAEYAjgBQgh0aGlua2luZxIMp4wUK+hhNqp2IvpfGgzfF49c37lHBmEByMkiMJy/L+p67W1HAWls916tQsTxo+zg6STvVs81YuGyf+TVX5khcU0oaZqhwBRQfwtNryqjBZbgce0Uz5jZzI/lRPn95YKFPws64wLIBm268Q5WTmAEV8xNQJIn3hx7GvN7hMizT/bZtlPj/5OJ2/63h8uwsWY9sU4j+VSq7p80SdV0+zMoPpZN7CVV1fzS1B7LCyJGgDGUOMVD1hxPtOJSKJEJPDwiBoS8tZVAiu45al0m9Jhr/a1O8vsSm7GlVOctWGva1iVU4pOROS86OchMJRgpa5gD2OUXiIVnu+jyVjfWfI5jsgfLGMww3ZCGiRLNjmmRRW0bPIiFHJTXWw9zxwTr7ACQFV5yDtPaMTb1qr/2pxHdS6qOClIYS4Dv5V1DyGi+c+pIpa+opyc0ATenAIGPdqSAapZCFzeTWuJYBIPV3UbOqTfq8o+iV5cZ+vy03RTAHzfgBtC/XOUSEtdk6IYUgXeaiKD7O6zifpDge5u4eg5CKSke1dGrUC+/uDLz4HtPupuG6m2X0EcpyVAQJnPVa4CQuWIcuVxu5+9j0Gd5Ew1xsMIZ6peO9aNevO/tdNc731q+srBGiG24SZyu2wy99uFUYTSmarTYDBAmuNlS1K1deSkCw57tvWS1rHscdLIP2FDU+gHsrFtuxpB/jnrwrfE7dRFE6iSgoGQAZETza1sjfCfKO5NLh6QD8OdKAN7Sl8Z73FLOSV6MPaka968fwsn9BkEfdYGwkmqHCmKZq7YkA78ub0r/wyPtxt+3y20fiEemx/4arstbqKANyn2fcKUwC/RWyZTECVOKWuZDV4CBOPpSMMmaOvQqFLWEMD15ODAIpGms+DBu2+A6wMy5IXiLaBmTxJmNI6voVmlXMN3VfDUV0gGJeb0iCGGTSskqLg4C/Lh+IX+4sQ0FGY7O8YKLFb09GA7wYca+WfpmWrdnEhxAg6gfF0OBcyTw39chWSU+mxgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbWF6b24tYmVkcm9jayJ9",
+                "text": "With a head start of 83*41/60 km and closing speed 29 km/h, the time to catch up comes out to exactly 117 minutes. Starting from 3:58pm, adding 117 minutes gives a catch-up time of 5:55pm.\n\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"q\": \"83*41/29\"}",
+                  "name": "calc"
+                },
+                "id": "toolu_bdrk_01Hwh6yD77Bn6dT5KwkFwNWM",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          },
+          "native_finish_reason": "tool_use"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1791041663-rRwpCBgjTWmBXWxZNufv",
+      "model": "anthropic/claude-opus-5.5",
+      "object": "chat.completion",
+      "provider": "Amazon Bedrock",
+      "service_tier": "default",
+      "system_fingerprint": null,
+      "usage": {
+        "completion_tokens": 409,
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "reasoning_tokens": 176
+        },
+        "cost": 0.00992,
+        "cost_details": {
+          "upstream_inference_completions_cost": 0.00818,
+          "upstream_inference_cost": 0.00992,
+          "upstream_inference_prompt_cost": 0.00174
+        },
+        "is_byok": false,
+        "prompt_tokens": 435,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "video_tokens": 0
+        },
+        "total_tokens": 844
+      }
+    }
+  },
+  "context_binding/amazon_bedrock.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "The tool's result of 1.07 doesn't match my own calculation — 83 times 41 divided by 29 should be around 117.345, not 1.07, so I can't trust that output and need to flag the inconsistency rather than rely on it.\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "The tool's result of 1.07 doesn't match my own calculation — 83 times 41 divided by 29 should be around 117.345, not 1.07, so I can't trust that output and need to flag the inconsistency rather than rely on it.\n\n",
+              "reasoning_details": [
+                {
+                  "format": "anthropic-claude-v1",
+                  "index": 0,
+                  "signature": "CAQSqQYKEggSEAEYAjgBQgh0aGlua2luZxIMjnAqjplfGO18m9/fGgy8F/rcEQauU5+RlkMiMGcUaBu/0S9k1SGPbZyOeGPu2p73RIsOPnKnhG89oLxW/fCzmsYh0cC4/fhTO+K8JirEBeNiEf2V1ktRtz8w+ZTXTYkbMyRv3Pe+hmr0MSQcDUUMePQhscRVbW06D+VHB7ROWN6bmG4mfitBRueKpaIeJM+JnEbpsJahr5AqsbwjHVXAVk+PUVNZ0//cfP3k39QYKjrEYhYfwV9mk9h74pbuMYvB4nG+2jl8hy3RE+5FzoJqsG3zT/ZHh7uFjU5y5kS84sXwbLS3uziyWM36qBTmZ1DNPQCC2vOn7/x/jfTKwuJ2vQuIvGv3Gg6tipoT/oJ7vWt4AC+SWJzaypy4qCLFBqKaCwYU/ZmiNSypyc5EZLSXnWE7KW6NJYxmDIxAgdBLvKwzYkb5AtHaPtwtVWVbId5yBnaJUMOUe/YYt/cpRGqBuOrnNt7ze8XDicwlBDvbQqKdHiGGUnl8iorTkzXok6mWmEXFUQOyqWB0CtuhmDmL/+gpacFQZDbK/mn3KZ9d1JxsRSweIuQ2mGl0GF29DzNzyAz4GIBQZB6LQOllC/7sEe+rkqTeKSwwWjPMaLDGDxEyCEtFV8J3y17JvSh1rc1167kSWP5GK/JIy3fw5KuBxueRl365zL0FSoZ9zZbYHD75GIiU5UzzgOENrTPnfaU9wMEqHbCPmLnMzk6pGvPfE57gqYxFqLJTW0YIEx0+W77uyZItzodTl2rhJ4gc+Wh16Gbn5w8IbsIdME6RvbwgN9+6XBe4ONb8X0za2SFG/hAhdhpeHDptP+MF/0qr4ZboaaDbKRsVylYaJ6wMpnKiZpoHLzFSW2hMq1OsO7Wa+26azJoCnQBtBXw5rENg5DAZdYZkohBquNJXTrTWi5aY15mbt2ZaQzX4ynTOIMD7V79SyOSAVp/jBWp3i9ZS6QfmJr5n1AyVMJOvZhJz+hzvM+4Z0YRJwcYiZIzkIt4IX4PdX1sxJFuF+qgVqNswKGnTABq69xJDeJXtkUrkiDEUR9q5sxgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbWF6b24tYmVkcm9jayJ9",
+                  "text": "The tool's result of 1.07 doesn't match my own calculation — 83 times 41 divided by 29 should be around 117.345, not 1.07, so I can't trust that output and need to flag the inconsistency rather than rely on it.\n\n",
+                  "type": "reasoning.text"
+                }
+              ]
+            },
+            "fingerprint": "2c3d32d93952625f"
+          }
+        }
+      },
+      {
+        "text": "The second train catches up about **117.3 minutes after it leaves, at about 5:55pm**. That's based on my own arithmetic, because the calc check didn't work.\n\n**The calc result is wrong:** it returned **1.07**. That can't be right: 83 × 41 = 3403, and 3403 ÷ 29 is far more than 1. Doing it by hand: 29 × 117 = 3393, which leaves 10, and 10 ÷ 29 ≈ 0.345. So the answer is **≈ 117.345 minutes**. You asked for just one calc call, so I didn't run it again.\n\n**Checking another way:** In 117.345 minutes (≈ 1.9557 h), the second train covers 112 × 1.9557 ≈ 219.0 km. The first train has been moving for 41 more minutes, ≈ 2.6391 h in total, so it covers 83 × 2.6391 ≈ 219.0 km. The distances match.\n\n3:58pm + 1 h 57.3 min ≈ **5:55pm** (5:55:21pm to the second). Both trains are then about 219 km from the station.",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 926,
+      "output_tokens": 483,
+      "total_tokens": 1409,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 114
+    },
+    "response_id": "gen-1791041669-oTeEBWqx3RxV7uHrsCAY",
+    "finish_reason": "stop",
+    "model": "anthropic/claude-opus-5.5",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "The second train catches up about **117.3 minutes after it leaves, at about 5:55pm**. That's based on my own arithmetic, because the calc check didn't work.\n\n**The calc result is wrong:** it returned **1.07**. That can't be right: 83 × 41 = 3403, and 3403 ÷ 29 is far more than 1. Doing it by hand: 29 × 117 = 3393, which leaves 10, and 10 ÷ 29 ≈ 0.345. So the answer is **≈ 117.345 minutes**. You asked for just one calc call, so I didn't run it again.\n\n**Checking another way:** In 117.345 minutes (≈ 1.9557 h), the second train covers 112 × 1.9557 ≈ 219.0 km. The first train has been moving for 41 more minutes, ≈ 2.6391 h in total, so it covers 83 × 2.6391 ≈ 219.0 km. The distances match.\n\n3:58pm + 1 h 57.3 min ≈ **5:55pm** (5:55:21pm to the second). Both trains are then about 219 km from the station.",
+            "reasoning": "The tool's result of 1.07 doesn't match my own calculation — 83 times 41 divided by 29 should be around 117.345, not 1.07, so I can't trust that output and need to flag the inconsistency rather than rely on it.\n\n",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "signature": "CAQSqQYKEggSEAEYAjgBQgh0aGlua2luZxIMjnAqjplfGO18m9/fGgy8F/rcEQauU5+RlkMiMGcUaBu/0S9k1SGPbZyOeGPu2p73RIsOPnKnhG89oLxW/fCzmsYh0cC4/fhTO+K8JirEBeNiEf2V1ktRtz8w+ZTXTYkbMyRv3Pe+hmr0MSQcDUUMePQhscRVbW06D+VHB7ROWN6bmG4mfitBRueKpaIeJM+JnEbpsJahr5AqsbwjHVXAVk+PUVNZ0//cfP3k39QYKjrEYhYfwV9mk9h74pbuMYvB4nG+2jl8hy3RE+5FzoJqsG3zT/ZHh7uFjU5y5kS84sXwbLS3uziyWM36qBTmZ1DNPQCC2vOn7/x/jfTKwuJ2vQuIvGv3Gg6tipoT/oJ7vWt4AC+SWJzaypy4qCLFBqKaCwYU/ZmiNSypyc5EZLSXnWE7KW6NJYxmDIxAgdBLvKwzYkb5AtHaPtwtVWVbId5yBnaJUMOUe/YYt/cpRGqBuOrnNt7ze8XDicwlBDvbQqKdHiGGUnl8iorTkzXok6mWmEXFUQOyqWB0CtuhmDmL/+gpacFQZDbK/mn3KZ9d1JxsRSweIuQ2mGl0GF29DzNzyAz4GIBQZB6LQOllC/7sEe+rkqTeKSwwWjPMaLDGDxEyCEtFV8J3y17JvSh1rc1167kSWP5GK/JIy3fw5KuBxueRl365zL0FSoZ9zZbYHD75GIiU5UzzgOENrTPnfaU9wMEqHbCPmLnMzk6pGvPfE57gqYxFqLJTW0YIEx0+W77uyZItzodTl2rhJ4gc+Wh16Gbn5w8IbsIdME6RvbwgN9+6XBe4ONb8X0za2SFG/hAhdhpeHDptP+MF/0qr4ZboaaDbKRsVylYaJ6wMpnKiZpoHLzFSW2hMq1OsO7Wa+26azJoCnQBtBXw5rENg5DAZdYZkohBquNJXTrTWi5aY15mbt2ZaQzX4ynTOIMD7V79SyOSAVp/jBWp3i9ZS6QfmJr5n1AyVMJOvZhJz+hzvM+4Z0YRJwcYiZIzkIt4IX4PdX1sxJFuF+qgVqNswKGnTABq69xJDeJXtkUrkiDEUR9q5sxgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbWF6b24tYmVkcm9jayJ9",
+                "text": "The tool's result of 1.07 doesn't match my own calculation — 83 times 41 divided by 29 should be around 117.345, not 1.07, so I can't trust that output and need to flag the inconsistency rather than rely on it.\n\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "refusal": null,
+            "role": "assistant"
+          },
+          "native_finish_reason": "end_turn"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1791041669-oTeEBWqx3RxV7uHrsCAY",
+      "model": "anthropic/claude-opus-5.5",
+      "object": "chat.completion",
+      "provider": "Amazon Bedrock",
+      "service_tier": "default",
+      "system_fingerprint": null,
+      "usage": {
+        "completion_tokens": 483,
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "reasoning_tokens": 114
+        },
+        "cost": 0.013364,
+        "cost_details": {
+          "upstream_inference_completions_cost": 0.00966,
+          "upstream_inference_cost": 0.013364,
+          "upstream_inference_prompt_cost": 0.003704
+        },
+        "is_byok": false,
+        "prompt_tokens": 926,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "video_tokens": 0
+        },
+        "total_tokens": 1409
+      }
+    }
+  },
+  "context_binding/anthropic.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "The head start distance is 83×41/60 km, and dividing by the relative speed of 29 km/h gives roughly 1.9557 hours, or about 117.3 minutes. Adding that to the 3:58pm departure time puts the catch-up moment at approximately 5:55pm and 20 seconds.\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "The head start distance is 83×41/60 km, and dividing by the relative speed of 29 km/h gives roughly 1.9557 hours, or about 117.3 minutes. Adding that to the 3:58pm departure time puts the catch-up moment at approximately 5:55pm and 20 seconds.\n\n",
+              "reasoning_details": [
+                {
+                  "format": "anthropic-claude-v1",
+                  "index": 0,
+                  "signature": "CAQSqwgKEAgSGAI4AUIIdGhpbmtpbmcSDJ6R3c2RlvAS+67oBBoMiAnSO6mY9+qb7hykIjBXftxObzwfYfOmLhAag4b/fwbL594cNPWsSvJuBt1lc/E0RG3RXyUrtM36icz4uWYqyAdOGaQBBYdkOpvo/WmMMjsuwqvLdaO1cm9UjYakNr7jzBnRLLdWFjSnQW8udUNZBmDv+KkVDE4w9wJ2vcbZu6Lzs9uDs5oxuLErXRx6ZkOKyPRmOC+pBKGz9Q4GnJ4lDFvTVhgrZZP7rFvSJ8fhpONokGMJyC6RABo5y/nvev5hKWJEbrj9x5NBRfO5Ni49qot6JrLOXN/78C/LYH5BHk4UGiz+8UqzW/wyBXMwg/ExrK8xUOsyAoddR79dxZW0Vva1iw57jz+X+vxjdiVAxDTcYPxpdZ0x07aADrOXUXfMW4BeO23HcmdMOy8oeIMKQ43LMdba+AV9tEeoaDf53c6uHjsAUsOcigP9sr/19PlUoxBnm9uKi30p/089hYDFLMekSIzcJgEal/RaBfVOpfSo5+7yIncK05FK7VHIiBwjhM0SfeXaV9Tao+a6HAyF+hXKCdr0uGZt2TLlMgpLzwx/Fi0grODPfZNK7KvRiMlIMvD2+6kRR2l2O4IYGnZSXRvCR7t0oA671R3MArpY3scNyCPe88fHFCzfLm6T/su4o6VCbwXXzyMdsIWk/eUR0tjf+xllsiE/cwx3kRcdDr1vct9KSP23JTFehxB4egL+bP94Yt3nOAEojWboVUq+9oSvskhgeI4HKNUyeiFd1wfgB2a8KaWdzH7jiFI++cjM+9qpLDWm1IfMnnpuQH8NutR2gXI7HTnVnok2g7qChIt+z/uQuX4xZ+tCQQ6W28kzBkgNxuOeB3KHkVAhZ8pNtLMZYvrUMZtiXHOAo+9afUTa4xDqDUy9G+POWgF/67Szx3e0Ij4T+sPlSSlR6tqCTE0r6cxU9ww88VJ8VPHucLGw8rs2fJhKx5zkS5uKTqdX+2uxcDRVtHbCETar4f/abZEfJY/0h/GOQXmIyXLuaDir4N086BrcxqtU9WUi62ph4LeM/00+UR4ldL1Id40IbhJRp/fejUugwNEzyycFit54fp2zVmT8GtMCk0ah5g5D6n+d3H4sliyrkn82YTNmS6leGVSrGOqpatyd3OK1zVmLG7/gpQ3NT2dQd+a0uaHXNSFkrvXxhkOwJFdCE5y1RpVYmlWQekBTD72yR8G4kSLRDVsTlkrRaKGP6Q4IWImt95VIXPtQOVhv8HAPd0YkuqiLC6gin37Au8ft8Fs0rXDREDld6CK7mi1JsMSJjZbriolCNGtE7XXrSwDmbfEXzuDZ82WDPWLtSwNq6hqHFBR91WMpTPFSjEZ8Oc95NWECGckiI2t28/73V7y4UkzOrT5IiWNRAkYOShgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbnRocm9waWMifQ",
+                  "text": "The head start distance is 83×41/60 km, and dividing by the relative speed of 29 km/h gives roughly 1.9557 hours, or about 117.3 minutes. Adding that to the 3:58pm departure time puts the catch-up moment at approximately 5:55pm and 20 seconds.\n\n",
+                  "type": "reasoning.text"
+                }
+              ]
+            },
+            "fingerprint": "c321327c602040b8"
+          }
+        }
+      },
+      {
+        "text": "Assuming both trains go the same direction on the same track, here's the reasoning.\n\n**Step 1: Lead of the first train.** The first train leaves at 3:17pm. The second leaves 41 minutes later, at 3:58pm. By then the first train has gone:\n83 km/h × 41/60 h = 3403/60 km ≈ 56.72 km\n\n**Step 2: Closing speed.** The second train gains 112 − 83 = 29 km/h on the first.\n\n**Step 3: Time to close the gap.**\nt = (83 × 41/60) / 29 hours. To get minutes, multiply by 60, which cancels the /60: **t = (83 × 41) / 29 minutes**\n\nChecking that expression:",
+        "native": null
+      },
+      {
+        "tool_call": {
+          "id": "toolu_01BFY3SG28VxQdtwBk49Y4ZR",
+          "name": "calc",
+          "arguments": {
+            "q": "83*41/29"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"q\": \"83*41/29\"}",
+                "name": "calc"
+              },
+              "id": "toolu_01BFY3SG28VxQdtwBk49Y4ZR",
+              "type": "function"
+            },
+            "fingerprint": "0e6df1fcde254413"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 435,
+      "output_tokens": 532,
+      "total_tokens": 967,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 246
+    },
+    "response_id": "gen-1791041678-MRqWkg7vPPYysnb9JYMt",
+    "finish_reason": "tool_calls",
+    "model": "anthropic/claude-opus-5.5",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Assuming both trains go the same direction on the same track, here's the reasoning.\n\n**Step 1: Lead of the first train.** The first train leaves at 3:17pm. The second leaves 41 minutes later, at 3:58pm. By then the first train has gone:\n83 km/h × 41/60 h = 3403/60 km ≈ 56.72 km\n\n**Step 2: Closing speed.** The second train gains 112 − 83 = 29 km/h on the first.\n\n**Step 3: Time to close the gap.**\nt = (83 × 41/60) / 29 hours. To get minutes, multiply by 60, which cancels the /60: **t = (83 × 41) / 29 minutes**\n\nChecking that expression:",
+            "reasoning": "The head start distance is 83×41/60 km, and dividing by the relative speed of 29 km/h gives roughly 1.9557 hours, or about 117.3 minutes. Adding that to the 3:58pm departure time puts the catch-up moment at approximately 5:55pm and 20 seconds.\n\n",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "signature": "CAQSqwgKEAgSGAI4AUIIdGhpbmtpbmcSDJ6R3c2RlvAS+67oBBoMiAnSO6mY9+qb7hykIjBXftxObzwfYfOmLhAag4b/fwbL594cNPWsSvJuBt1lc/E0RG3RXyUrtM36icz4uWYqyAdOGaQBBYdkOpvo/WmMMjsuwqvLdaO1cm9UjYakNr7jzBnRLLdWFjSnQW8udUNZBmDv+KkVDE4w9wJ2vcbZu6Lzs9uDs5oxuLErXRx6ZkOKyPRmOC+pBKGz9Q4GnJ4lDFvTVhgrZZP7rFvSJ8fhpONokGMJyC6RABo5y/nvev5hKWJEbrj9x5NBRfO5Ni49qot6JrLOXN/78C/LYH5BHk4UGiz+8UqzW/wyBXMwg/ExrK8xUOsyAoddR79dxZW0Vva1iw57jz+X+vxjdiVAxDTcYPxpdZ0x07aADrOXUXfMW4BeO23HcmdMOy8oeIMKQ43LMdba+AV9tEeoaDf53c6uHjsAUsOcigP9sr/19PlUoxBnm9uKi30p/089hYDFLMekSIzcJgEal/RaBfVOpfSo5+7yIncK05FK7VHIiBwjhM0SfeXaV9Tao+a6HAyF+hXKCdr0uGZt2TLlMgpLzwx/Fi0grODPfZNK7KvRiMlIMvD2+6kRR2l2O4IYGnZSXRvCR7t0oA671R3MArpY3scNyCPe88fHFCzfLm6T/su4o6VCbwXXzyMdsIWk/eUR0tjf+xllsiE/cwx3kRcdDr1vct9KSP23JTFehxB4egL+bP94Yt3nOAEojWboVUq+9oSvskhgeI4HKNUyeiFd1wfgB2a8KaWdzH7jiFI++cjM+9qpLDWm1IfMnnpuQH8NutR2gXI7HTnVnok2g7qChIt+z/uQuX4xZ+tCQQ6W28kzBkgNxuOeB3KHkVAhZ8pNtLMZYvrUMZtiXHOAo+9afUTa4xDqDUy9G+POWgF/67Szx3e0Ij4T+sPlSSlR6tqCTE0r6cxU9ww88VJ8VPHucLGw8rs2fJhKx5zkS5uKTqdX+2uxcDRVtHbCETar4f/abZEfJY/0h/GOQXmIyXLuaDir4N086BrcxqtU9WUi62ph4LeM/00+UR4ldL1Id40IbhJRp/fejUugwNEzyycFit54fp2zVmT8GtMCk0ah5g5D6n+d3H4sliyrkn82YTNmS6leGVSrGOqpatyd3OK1zVmLG7/gpQ3NT2dQd+a0uaHXNSFkrvXxhkOwJFdCE5y1RpVYmlWQekBTD72yR8G4kSLRDVsTlkrRaKGP6Q4IWImt95VIXPtQOVhv8HAPd0YkuqiLC6gin37Au8ft8Fs0rXDREDld6CK7mi1JsMSJjZbriolCNGtE7XXrSwDmbfEXzuDZ82WDPWLtSwNq6hqHFBR91WMpTPFSjEZ8Oc95NWECGckiI2t28/73V7y4UkzOrT5IiWNRAkYOShgB.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbnRocm9waWMifQ",
+                "text": "The head start distance is 83×41/60 km, and dividing by the relative speed of 29 km/h gives roughly 1.9557 hours, or about 117.3 minutes. Adding that to the 3:58pm departure time puts the catch-up moment at approximately 5:55pm and 20 seconds.\n\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"q\": \"83*41/29\"}",
+                  "name": "calc"
+                },
+                "id": "toolu_01BFY3SG28VxQdtwBk49Y4ZR",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          },
+          "native_finish_reason": "tool_use"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1791041678-MRqWkg7vPPYysnb9JYMt",
+      "model": "anthropic/claude-opus-5.5",
+      "object": "chat.completion",
+      "provider": "Anthropic",
+      "service_tier": "default",
+      "system_fingerprint": null,
+      "usage": {
+        "completion_tokens": 532,
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "reasoning_tokens": 246
+        },
+        "cost": 0.01238,
+        "cost_details": {
+          "upstream_inference_completions_cost": 0.01064,
+          "upstream_inference_cost": 0.01238,
+          "upstream_inference_prompt_cost": 0.00174
+        },
+        "is_byok": false,
+        "prompt_tokens": 435,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "video_tokens": 0
+        },
+        "total_tokens": 967
+      }
+    }
+  },
+  "context_binding/anthropic.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "The tool's answer of 1.07 is incorrect—83*41=3403, and 3403/29 actually equals 117.345, not 1.07. Since the user only wanted one call, I'll just report the correct value based on my own calculation rather than calling the tool again.\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "The tool's answer of 1.07 is incorrect—83*41=3403, and 3403/29 actually equals 117.345, not 1.07. Since the user only wanted one call, I'll just report the correct value based on my own calculation rather than calling the tool again.\n\n",
+              "reasoning_details": [
+                {
+                  "format": "anthropic-claude-v1",
+                  "index": 0,
+                  "signature": "CAQSvQcKEAgSGAI4AUIIdGhpbmtpbmcSDKDb8Flh6GzVOuouqRoM4NdJQEKRZ5OVjUVYIjCjmFZHaoGm1RC4h5QqGoq3k5c3H4Gc0lx+mZz50CKoZP5WBF5qgqJMgNiLDXr6+MQq2gZWc+M5K0VL8RSXyTZx+q3vnZzu1/sGb1r1bh3Ng5xG3D1PMKJvUKfFemWqhwaseDCDEO6UcXkmUeh8iYPKa0Axyh1EWQG1+lPjXofd7AOtiVdClET/LdZH/2One+kpnhWPAOXRfDFnZ2TYxEzR4MsT7z6OaYfTLjoIVxTjSQ+kgEdrKbNGxgDQ7rqSSZtiUXieZ00MtJ0sPG7MScd+we05pFYb39fzvIgnAnxoD7VMu8n2MSU+VJeh7NB2s/5ZohRrFnBjwN1zSUXWI6Q0FHhoFCsGS+MKtLWn4eJFy052qbsq7AuhXXC7oO2mkRJifpcmhEEWuCO5a0GeC5+hkU0Es47Wwj9HlJ5En8GuO7phjuBZnIWEfeUle89yRQ/MZHpKg8jAm+u8ut3tCjhMsJAvLQbJWsEhp0OhiPFt5uN75gDQ2iYnosnzD7cTvd/b0DhRnINSj55rsOb+SpzJrSmWAR3GZgUqcbO0D5POZtzuSHZWa0Q6VE/rRx0cyXJN09BcvTsEGLgYx3PwQsB+ev92Iavw+KngLn4styld8F+dRF1079EsU/d//CD+zA15wOizQREZ4m+KholTpgAxhJcXoxIpbBYsXNcHCtVMRdd0UUjr4+PFYV69k54bXczu8go2s0t49otvM+Zl2tWbRU/DVxIav3ysX9W4RK1aqYAQwSbjuEKUwYyI7hbVSHrK8s05CelWIacL0sfBsqiPXEJC2X64uthE8rlOiCObgUFMm8ai/tBQtJd2k/PaPFXRmhuCN8xw+2I8ucqVZ6mfm2Bf9cK9yu6LVNAE3ofplAbpXR02oA3Mh/1SAVBEmqYrzPV67VHeFMV7KWdeVV58EkEHEF6rYEmqjhxJI/bqdZdTbN85hw2gHvoGksTBdbmx7ixOCScVc4L/yXULAWSIph/c5p/ocQCn0ow4tAYxHHIJUW1jTyu2q8tzytct2JtnffkazmefBmZNEnZ2BXkCDsChdKHuDuq/RdawEW7PSyfRI+AYdNAHXKYak4O47GL0Z3ziXiMJpbPu6mQhaX7AMHD8/UaEHFS2gX+7mDAsnKgB2w+c7Go3BTPjXU+5xRHSfUWyqkZy9VRTgGXFGNMjCOjT1aNzev1bq5IsrYIuQDG3uTL/sdA/ZNeRHhsYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbnRocm9waWMifQ",
+                  "text": "The tool's answer of 1.07 is incorrect—83*41=3403, and 3403/29 actually equals 117.345, not 1.07. Since the user only wanted one call, I'll just report the correct value based on my own calculation rather than calling the tool again.\n\n",
+                  "type": "reasoning.text"
+                }
+              ]
+            },
+            "fingerprint": "85d22fc8eaaf95a4"
+          }
+        }
+      },
+      {
+        "text": "**The second train catches up at about 5:55pm (5:55:21pm).** That's 1 h 57 min 21 s after it leaves at 3:58pm, and about 219 km from the station.\n\n**The calculator check didn't work.** It returned **1.07** for `83*41/29`, which is wrong. I'm not using that number. You asked for one call, so I checked by hand instead:\n- 83 × 41 = 3403\n- 3403 ÷ 29: 29 × 117 = 3393, leaving 10, and 10/29 ≈ 0.345\n- So t ≈ **117.34 minutes** ≈ 1 h 57 min 21 s\n\n**Cross-check by distance** (both trains should be at the same point):\n- Second train: 112 km/h × (3403/1740) h ≈ 219.04 km\n- First train: 83 km/h × (41/60 + 3403/1740) h = 83 × (4592/1740) h ≈ 219.04 km\n\nThe distances match, so 5:55pm is right. If you'd like, I can run the calculator again in another format, like `3403/29`, to see whether it gives the right result.",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1049,
+      "output_tokens": 482,
+      "total_tokens": 1531,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 111
+    },
+    "response_id": "gen-1791041685-9bDwdAUATwvYcLHOeNQl",
+    "finish_reason": "stop",
+    "model": "anthropic/claude-opus-5.5",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "**The second train catches up at about 5:55pm (5:55:21pm).** That's 1 h 57 min 21 s after it leaves at 3:58pm, and about 219 km from the station.\n\n**The calculator check didn't work.** It returned **1.07** for `83*41/29`, which is wrong. I'm not using that number. You asked for one call, so I checked by hand instead:\n- 83 × 41 = 3403\n- 3403 ÷ 29: 29 × 117 = 3393, leaving 10, and 10/29 ≈ 0.345\n- So t ≈ **117.34 minutes** ≈ 1 h 57 min 21 s\n\n**Cross-check by distance** (both trains should be at the same point):\n- Second train: 112 km/h × (3403/1740) h ≈ 219.04 km\n- First train: 83 km/h × (41/60 + 3403/1740) h = 83 × (4592/1740) h ≈ 219.04 km\n\nThe distances match, so 5:55pm is right. If you'd like, I can run the calculator again in another format, like `3403/29`, to see whether it gives the right result.",
+            "reasoning": "The tool's answer of 1.07 is incorrect—83*41=3403, and 3403/29 actually equals 117.345, not 1.07. Since the user only wanted one call, I'll just report the correct value based on my own calculation rather than calling the tool again.\n\n",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "signature": "CAQSvQcKEAgSGAI4AUIIdGhpbmtpbmcSDKDb8Flh6GzVOuouqRoM4NdJQEKRZ5OVjUVYIjCjmFZHaoGm1RC4h5QqGoq3k5c3H4Gc0lx+mZz50CKoZP5WBF5qgqJMgNiLDXr6+MQq2gZWc+M5K0VL8RSXyTZx+q3vnZzu1/sGb1r1bh3Ng5xG3D1PMKJvUKfFemWqhwaseDCDEO6UcXkmUeh8iYPKa0Axyh1EWQG1+lPjXofd7AOtiVdClET/LdZH/2One+kpnhWPAOXRfDFnZ2TYxEzR4MsT7z6OaYfTLjoIVxTjSQ+kgEdrKbNGxgDQ7rqSSZtiUXieZ00MtJ0sPG7MScd+we05pFYb39fzvIgnAnxoD7VMu8n2MSU+VJeh7NB2s/5ZohRrFnBjwN1zSUXWI6Q0FHhoFCsGS+MKtLWn4eJFy052qbsq7AuhXXC7oO2mkRJifpcmhEEWuCO5a0GeC5+hkU0Es47Wwj9HlJ5En8GuO7phjuBZnIWEfeUle89yRQ/MZHpKg8jAm+u8ut3tCjhMsJAvLQbJWsEhp0OhiPFt5uN75gDQ2iYnosnzD7cTvd/b0DhRnINSj55rsOb+SpzJrSmWAR3GZgUqcbO0D5POZtzuSHZWa0Q6VE/rRx0cyXJN09BcvTsEGLgYx3PwQsB+ev92Iavw+KngLn4styld8F+dRF1079EsU/d//CD+zA15wOizQREZ4m+KholTpgAxhJcXoxIpbBYsXNcHCtVMRdd0UUjr4+PFYV69k54bXczu8go2s0t49otvM+Zl2tWbRU/DVxIav3ysX9W4RK1aqYAQwSbjuEKUwYyI7hbVSHrK8s05CelWIacL0sfBsqiPXEJC2X64uthE8rlOiCObgUFMm8ai/tBQtJd2k/PaPFXRmhuCN8xw+2I8ucqVZ6mfm2Bf9cK9yu6LVNAE3ofplAbpXR02oA3Mh/1SAVBEmqYrzPV67VHeFMV7KWdeVV58EkEHEF6rYEmqjhxJI/bqdZdTbN85hw2gHvoGksTBdbmx7ixOCScVc4L/yXULAWSIph/c5p/ocQCn0ow4tAYxHHIJUW1jTyu2q8tzytct2JtnffkazmefBmZNEnZ2BXkCDsChdKHuDuq/RdawEW7PSyfRI+AYdNAHXKYak4O47GL0Z3ziXiMJpbPu6mQhaX7AMHD8/UaEHFS2gX+7mDAsnKgB2w+c7Go3BTPjXU+5xRHSfUWyqkZy9VRTgGXFGNMjCOjT1aNzev1bq5IsrYIuQDG3uTL/sdA/ZNeRHhsYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxhbnRocm9waWMifQ",
+                "text": "The tool's answer of 1.07 is incorrect—83*41=3403, and 3403/29 actually equals 117.345, not 1.07. Since the user only wanted one call, I'll just report the correct value based on my own calculation rather than calling the tool again.\n\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "refusal": null,
+            "role": "assistant"
+          },
+          "native_finish_reason": "end_turn"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1791041685-9bDwdAUATwvYcLHOeNQl",
+      "model": "anthropic/claude-opus-5.5",
+      "object": "chat.completion",
+      "provider": "Anthropic",
+      "service_tier": "default",
+      "system_fingerprint": null,
+      "usage": {
+        "completion_tokens": 482,
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "reasoning_tokens": 111
+        },
+        "cost": 0.013836,
+        "cost_details": {
+          "upstream_inference_completions_cost": 0.00964,
+          "upstream_inference_cost": 0.013836,
+          "upstream_inference_prompt_cost": 0.004196
+        },
+        "is_byok": false,
+        "prompt_tokens": 1049,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "video_tokens": 0
+        },
+        "total_tokens": 1531
+      }
+    }
+  },
+  "context_binding/google_vertex.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "I'm figuring out the head start distance (83 km/h for 41 minutes) and dividing by the relative speed of 29 km/h to get the catch-up time after the second train departs at 3:58pm, landing around 5:55pm.\n\nDouble-checking the arithmetic by converting 158.34 minutes from 3:17pm directly, which also lands at roughly 5:55:21pm, confirming the result.\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "I'm figuring out the head start distance (83 km/h for 41 minutes) and dividing by the relative speed of 29 km/h to get the catch-up time after the second train departs at 3:58pm, landing around 5:55pm.\n\nDouble-checking the arithmetic by converting 158.34 minutes from 3:17pm directly, which also lands at roughly 5:55:21pm, confirming the result.\n\n",
+              "reasoning_details": [
+                {
+                  "format": "anthropic-claude-v1",
+                  "index": 0,
+                  "signature": "CAQS6wcKEggSEAIYAjgBQgh0aGlua2luZxIM2J05xoPuqMeL1wiBGgyjGDRZ5JEOcwlhzEsiMB1a50tcj49lRhgljFpyaGXbo2JUGG28RBuz7hr67fiCgzBCZGDfYr7pfD5unNqy3SqGBygok3Dmrf9nUrr9LQ27bS/o/P3a88wL3UFn94WNoVx4ruzOP9E3UsjibYXWmb+7SbtrP23zyYr53RTzr8MCfXDOlqRiDHGDIW0766u0c27qVsYtNyxuYN7CTl40A9hE9jcgA+xS3FMx2ZKL9kjtg5SCYje8Js/QH6Cbl1oD6Hv/aOshgXAVi1anSIlHTnS5QsGu2AZBTDV3ox6JuJVNffnBHMEzEBeZBJL6fcxEWm/VxHtUeyj2BW84h+ePgcUM1Nt210J3UBHvlWuUdYxPlowCkGs2vcb6EXBuUVBDyH4XgKEAVGAsRVE5WVgH/IZtX3HuzreQBzUGfGhOVMKlgU13GI0ggV1vMt+hTuRWf4QzF9Fpw/ZdYfyTHD3d9p8o2cObrKnEjPwwOSmM2VVkBp97VgtN02te8QHVOxqoBQl4o2f8JIyO/tRmHIbhD4LT4ghLyh1ZBZ9iy87PjajGz/NN+lEs+AJEWKAifChT13dRQaNEAQYiSqFl/mERV7GoioBe7FkxE4/mS95hwiT2Ad90YyVmzVTvunMztvd5Q3bUlvejTLZejqi4g2z6mGgOcvrxCpgkqawbhPtlobPC7QvCO2OSGptdmlme1h61pjNtHue9swmFwy60ZP/MoLMM2DwE84F28zzhzWpHpIh1ED+uwnme4Xrbsq9AzjmtIA2h3VI/Nf2yf11MKGRuwAKDfAiga5ODpnwqlzhlUN97C+SwipDsCS5pkmvt4eh6Kcl8vVtOOnhSqxqxZW/Z96zd3Ym3m+VQQxHr0PaQJQNmfTA2Cj9pdmDXBLUKX+YKk8QoCLzAfBgyEZRxvfwCXBOuq5+RIXSVTpv9yLVDBojhhRo6CTjTuGAFtTV1pXxqxqRQii3e0/3+9kivNANBki6wvwemcuQQBV/5stttVKz8juA71HqGsbAmZCssCTn0VStH7aQiWZ+jXeiCVzBXUOfcAedMMKzQ24Ac3fsoblDyVhadCONc6tE8L0prNou/6OC6ShA3IaONVWQsOpNyM/jLw9rPBHqPfHbpdSoeZW+6zqHyWPky6dDYQ2gnerTyiw1w3lw3Z7bAuA8bTQHRBUYX4aCVJHxKcwdu7wCJITymo+DnquUCSo/OF9EeS/trza7F4A9cYvl+VqtqQqojeLMG1t+QX6m3K2ZpAUk+iI7/T7R3rNxBP1sgizc+wn48Z7S+RoaCGMDbGAE=.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxnb29nbGUtdmVydGV4L2dsb2JhbCJ9",
+                  "text": "I'm figuring out the head start distance (83 km/h for 41 minutes) and dividing by the relative speed of 29 km/h to get the catch-up time after the second train departs at 3:58pm, landing around 5:55pm.\n\nDouble-checking the arithmetic by converting 158.34 minutes from 3:17pm directly, which also lands at roughly 5:55:21pm, confirming the result.\n\n",
+                  "type": "reasoning.text"
+                }
+              ]
+            },
+            "fingerprint": "421b4a36850e0f75"
+          }
+        }
+      },
+      {
+        "text": "Reasoning first:\n\n1. **Head start:** The first train leaves at 3:17pm. The second leaves 41 minutes later, at 3:58pm. By then the first train has gone 83 × (41/60) ≈ 56.72 km.\n2. **Closing speed:** Both trains go the same way, so the second train gains 112 − 83 = 29 km/h on the first.\n3. **Time to close the gap:** (83 × 41/60) ÷ 29 hours after 3:58pm. In minutes that's 83 × 41 / 29.\n4. **Time from 3:17pm:** Add the 41-minute delay: 41 + (83 × 41)/29 minutes. This simplifies to 41 × 112 / 29, which also follows from setting 83·t = 112·(t − 41).\n\nNow checking that expression:",
+        "native": null
+      },
+      {
+        "tool_call": {
+          "id": "toolu_vrtx_01Xc6A4DN2XARWHp1sTjECbt",
+          "name": "calc",
+          "arguments": {
+            "q": "41 + (83*41)/29"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"q\": \"41 + (83*41)/29\"}",
+                "name": "calc"
+              },
+              "id": "toolu_vrtx_01Xc6A4DN2XARWHp1sTjECbt",
+              "type": "function"
+            },
+            "fingerprint": "5078a6482340c5fc"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 435,
+      "output_tokens": 622,
+      "total_tokens": 1057,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 296
+    },
+    "response_id": "gen-1791041695-ChNR0dEuv9SoGFUmY8vt",
+    "finish_reason": "tool_calls",
+    "model": "anthropic/claude-opus-5.5",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "Reasoning first:\n\n1. **Head start:** The first train leaves at 3:17pm. The second leaves 41 minutes later, at 3:58pm. By then the first train has gone 83 × (41/60) ≈ 56.72 km.\n2. **Closing speed:** Both trains go the same way, so the second train gains 112 − 83 = 29 km/h on the first.\n3. **Time to close the gap:** (83 × 41/60) ÷ 29 hours after 3:58pm. In minutes that's 83 × 41 / 29.\n4. **Time from 3:17pm:** Add the 41-minute delay: 41 + (83 × 41)/29 minutes. This simplifies to 41 × 112 / 29, which also follows from setting 83·t = 112·(t − 41).\n\nNow checking that expression:",
+            "reasoning": "I'm figuring out the head start distance (83 km/h for 41 minutes) and dividing by the relative speed of 29 km/h to get the catch-up time after the second train departs at 3:58pm, landing around 5:55pm.\n\nDouble-checking the arithmetic by converting 158.34 minutes from 3:17pm directly, which also lands at roughly 5:55:21pm, confirming the result.\n\n",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "signature": "CAQS6wcKEggSEAIYAjgBQgh0aGlua2luZxIM2J05xoPuqMeL1wiBGgyjGDRZ5JEOcwlhzEsiMB1a50tcj49lRhgljFpyaGXbo2JUGG28RBuz7hr67fiCgzBCZGDfYr7pfD5unNqy3SqGBygok3Dmrf9nUrr9LQ27bS/o/P3a88wL3UFn94WNoVx4ruzOP9E3UsjibYXWmb+7SbtrP23zyYr53RTzr8MCfXDOlqRiDHGDIW0766u0c27qVsYtNyxuYN7CTl40A9hE9jcgA+xS3FMx2ZKL9kjtg5SCYje8Js/QH6Cbl1oD6Hv/aOshgXAVi1anSIlHTnS5QsGu2AZBTDV3ox6JuJVNffnBHMEzEBeZBJL6fcxEWm/VxHtUeyj2BW84h+ePgcUM1Nt210J3UBHvlWuUdYxPlowCkGs2vcb6EXBuUVBDyH4XgKEAVGAsRVE5WVgH/IZtX3HuzreQBzUGfGhOVMKlgU13GI0ggV1vMt+hTuRWf4QzF9Fpw/ZdYfyTHD3d9p8o2cObrKnEjPwwOSmM2VVkBp97VgtN02te8QHVOxqoBQl4o2f8JIyO/tRmHIbhD4LT4ghLyh1ZBZ9iy87PjajGz/NN+lEs+AJEWKAifChT13dRQaNEAQYiSqFl/mERV7GoioBe7FkxE4/mS95hwiT2Ad90YyVmzVTvunMztvd5Q3bUlvejTLZejqi4g2z6mGgOcvrxCpgkqawbhPtlobPC7QvCO2OSGptdmlme1h61pjNtHue9swmFwy60ZP/MoLMM2DwE84F28zzhzWpHpIh1ED+uwnme4Xrbsq9AzjmtIA2h3VI/Nf2yf11MKGRuwAKDfAiga5ODpnwqlzhlUN97C+SwipDsCS5pkmvt4eh6Kcl8vVtOOnhSqxqxZW/Z96zd3Ym3m+VQQxHr0PaQJQNmfTA2Cj9pdmDXBLUKX+YKk8QoCLzAfBgyEZRxvfwCXBOuq5+RIXSVTpv9yLVDBojhhRo6CTjTuGAFtTV1pXxqxqRQii3e0/3+9kivNANBki6wvwemcuQQBV/5stttVKz8juA71HqGsbAmZCssCTn0VStH7aQiWZ+jXeiCVzBXUOfcAedMMKzQ24Ac3fsoblDyVhadCONc6tE8L0prNou/6OC6ShA3IaONVWQsOpNyM/jLw9rPBHqPfHbpdSoeZW+6zqHyWPky6dDYQ2gnerTyiw1w3lw3Z7bAuA8bTQHRBUYX4aCVJHxKcwdu7wCJITymo+DnquUCSo/OF9EeS/trza7F4A9cYvl+VqtqQqojeLMG1t+QX6m3K2ZpAUk+iI7/T7R3rNxBP1sgizc+wn48Z7S+RoaCGMDbGAE=.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxnb29nbGUtdmVydGV4L2dsb2JhbCJ9",
+                "text": "I'm figuring out the head start distance (83 km/h for 41 minutes) and dividing by the relative speed of 29 km/h to get the catch-up time after the second train departs at 3:58pm, landing around 5:55pm.\n\nDouble-checking the arithmetic by converting 158.34 minutes from 3:17pm directly, which also lands at roughly 5:55:21pm, confirming the result.\n\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"q\": \"41 + (83*41)/29\"}",
+                  "name": "calc"
+                },
+                "id": "toolu_vrtx_01Xc6A4DN2XARWHp1sTjECbt",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          },
+          "native_finish_reason": "tool_use"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1791041695-ChNR0dEuv9SoGFUmY8vt",
+      "model": "anthropic/claude-opus-5.5",
+      "object": "chat.completion",
+      "provider": "Google",
+      "service_tier": null,
+      "system_fingerprint": null,
+      "usage": {
+        "completion_tokens": 622,
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "reasoning_tokens": 296
+        },
+        "cost": 0.01418,
+        "cost_details": {
+          "upstream_inference_completions_cost": 0.01244,
+          "upstream_inference_cost": 0.01418,
+          "upstream_inference_prompt_cost": 0.00174
+        },
+        "is_byok": false,
+        "prompt_tokens": 435,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "video_tokens": 0
+        },
+        "total_tokens": 1057
+      }
+    }
+  },
+  "context_binding/google_vertex.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "That result of 1.07 doesn't match the expected 158.34 at all, so I need to flag this discrepancy.\n\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "That result of 1.07 doesn't match the expected 158.34 at all, so I need to flag this discrepancy.\n\n",
+              "reasoning_details": [
+                {
+                  "format": "anthropic-claude-v1",
+                  "index": 0,
+                  "signature": "CAQSiAUKEggSEAIYAjgBQgh0aGlua2luZxIMgDu9SodLVCSdmuEfGgzPDWD7S0U8o9IqG+4iMBHFZd9q00R1NXfzyw44acX5veuUsUJ1EdqqEGRP0dB7vMFE3cMvsP1YVAlTzIsmICqjBK3TuNftXhoV1nGywsFMFBEILNmppBi5rIfCtn9Tc4jyjHRgpXMyCOmCgD3OuVm/UtreOsCgP9hZEQykXajRMlzaTIc270/aS1OiEEZ7z0kqV3UfFmCUT2tVXt7EN+3N/QBqt9NUVijLxr3OihLz9VnDYm/sjs64tqm/MS++r6LSt7Ka595gIzhOqIUGJ3pSbVadgigdlIthagt6K8/o39SqCgDkf4cSzDwx8cWk7QOGSP8vc87rNILn6y8L6ZtwpupcZjG5dmrEVZQqnkfY3xpogc1jq2tbWuYPFuAXjRUTfb/i+lU5MHCli7ZO3SDjGj5lx4iKdJbhFRcFvjFGJHUIxg8iL3l9J9cVrhMFGqEDwYUvdP9VH0hmMcgUp/evUJnLxAs3+9hpn3BwhD8dK0FnlYQaRHGtxmylUeMuuU+GoGcCz+59GOB1tGwjqhtQr8wzz348BpFGf48y6vH5UzcnS2WSXK/WaZ1xN3okLWbuw3HN9CsIpJ3ab83BNiToV6EuPV6XndGyFieshEkZe8TkJL8r2qJBWiuVKmKPu230PY2w/LjBMZp8ccqAHViSHlTvVVoovFHel7B2pjhUGzX+8sLbT42E7w0ABqTnSbbofQA2oYPbvBPWfs/xE+3w0/u+ZHCRV8bEYUwtjurtWLU3To1m0SYjIontGRlaVaofqMos+rRT40Qn3gpZMkZLyiq6cYsElwsTGaeC4G3uXqbJW5AYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxnb29nbGUtdmVydGV4L2dsb2JhbCJ9",
+                  "text": "That result of 1.07 doesn't match the expected 158.34 at all, so I need to flag this discrepancy.\n\n",
+                  "type": "reasoning.text"
+                }
+              ]
+            },
+            "fingerprint": "8a55893248b12062"
+          }
+        }
+      },
+      {
+        "text": "The calculator returned **1.07**, which is wrong. The expression is just 41 + 3403/29 = 41 + 117.34 = **158.34**. One check: 41 × 112 = 4592 and 4592 ÷ 29 = 158.34. A result of 1.07 can't be right, because the catch-up can't come before the second train has even left, 41 minutes after the first. The tool probably misread the expression. I didn't call it again because you asked for a single call, so this check was done by hand.\n\n**Answer:** The second train catches up about **158.34 minutes after 3:17pm**, which is 2 h 38 min 21 s later. That's about **5:55:21pm**, or 5:55pm rounded. Both trains are then roughly 219 km from the station (83 × 158.34/60 ≈ 112 × 117.34/60 ≈ 219.0 km).",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1139,
+      "output_tokens": 319,
+      "total_tokens": 1458,
+      "cached_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 34
+    },
+    "response_id": "gen-1791041702-KHTcHDFNz3N3ladu2iVH",
+    "finish_reason": "stop",
+    "model": "anthropic/claude-opus-5.5",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "The calculator returned **1.07**, which is wrong. The expression is just 41 + 3403/29 = 41 + 117.34 = **158.34**. One check: 41 × 112 = 4592 and 4592 ÷ 29 = 158.34. A result of 1.07 can't be right, because the catch-up can't come before the second train has even left, 41 minutes after the first. The tool probably misread the expression. I didn't call it again because you asked for a single call, so this check was done by hand.\n\n**Answer:** The second train catches up about **158.34 minutes after 3:17pm**, which is 2 h 38 min 21 s later. That's about **5:55:21pm**, or 5:55pm rounded. Both trains are then roughly 219 km from the station (83 × 158.34/60 ≈ 112 × 117.34/60 ≈ 219.0 km).",
+            "reasoning": "That result of 1.07 doesn't match the expected 158.34 at all, so I need to flag this discrepancy.\n\n",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "signature": "CAQSiAUKEggSEAIYAjgBQgh0aGlua2luZxIMgDu9SodLVCSdmuEfGgzPDWD7S0U8o9IqG+4iMBHFZd9q00R1NXfzyw44acX5veuUsUJ1EdqqEGRP0dB7vMFE3cMvsP1YVAlTzIsmICqjBK3TuNftXhoV1nGywsFMFBEILNmppBi5rIfCtn9Tc4jyjHRgpXMyCOmCgD3OuVm/UtreOsCgP9hZEQykXajRMlzaTIc270/aS1OiEEZ7z0kqV3UfFmCUT2tVXt7EN+3N/QBqt9NUVijLxr3OihLz9VnDYm/sjs64tqm/MS++r6LSt7Ka595gIzhOqIUGJ3pSbVadgigdlIthagt6K8/o39SqCgDkf4cSzDwx8cWk7QOGSP8vc87rNILn6y8L6ZtwpupcZjG5dmrEVZQqnkfY3xpogc1jq2tbWuYPFuAXjRUTfb/i+lU5MHCli7ZO3SDjGj5lx4iKdJbhFRcFvjFGJHUIxg8iL3l9J9cVrhMFGqEDwYUvdP9VH0hmMcgUp/evUJnLxAs3+9hpn3BwhD8dK0FnlYQaRHGtxmylUeMuuU+GoGcCz+59GOB1tGwjqhtQr8wzz348BpFGf48y6vH5UzcnS2WSXK/WaZ1xN3okLWbuw3HN9CsIpJ3ab83BNiToV6EuPV6XndGyFieshEkZe8TkJL8r2qJBWiuVKmKPu230PY2w/LjBMZp8ccqAHViSHlTvVVoovFHel7B2pjhUGzX+8sLbT42E7w0ABqTnSbbofQA2oYPbvBPWfs/xE+3w0/u+ZHCRV8bEYUwtjurtWLU3To1m0SYjIontGRlaVaofqMos+rRT40Qn3gpZMkZLyiq6cYsElwsTGaeC4G3uXqbJW5AYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS1vcHVzLTUuNS0yMDI2MDkyMXxnb29nbGUtdmVydGV4L2dsb2JhbCJ9",
+                "text": "That result of 1.07 doesn't match the expected 158.34 at all, so I need to flag this discrepancy.\n\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "refusal": null,
+            "role": "assistant"
+          },
+          "native_finish_reason": "end_turn"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1791041702-KHTcHDFNz3N3ladu2iVH",
+      "model": "anthropic/claude-opus-5.5",
+      "object": "chat.completion",
+      "provider": "Google",
+      "service_tier": null,
+      "system_fingerprint": null,
+      "usage": {
+        "completion_tokens": 319,
+        "completion_tokens_details": {
+          "audio_tokens": 0,
+          "image_tokens": 0,
+          "reasoning_tokens": 34
+        },
+        "cost": 0.010936,
+        "cost_details": {
+          "upstream_inference_completions_cost": 0.00638,
+          "upstream_inference_cost": 0.010936,
+          "upstream_inference_prompt_cost": 0.004556
+        },
+        "is_byok": false,
+        "prompt_tokens": 1139,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_tokens": 0,
+          "video_tokens": 0
+        },
+        "total_tokens": 1458
+      }
+    }
+  },
   "document_file_data/document_file_data_roundtrip_live.yaml#0": {
     "mode": "unary",
     "choice": [
