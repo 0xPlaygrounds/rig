@@ -159,7 +159,9 @@ fn test_deserialize_message() {
         }
 
         match iter.next().unwrap() {
-            Content::ToolUse { id, name, input } => {
+            Content::ToolUse {
+                id, name, input, ..
+            } => {
                 assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
                 assert_eq!(name, "get_weather");
                 assert_eq!(input, json!({"location": "San Francisco, CA"}));
@@ -3611,4 +3613,92 @@ fn an_image_by_file_id_is_sent_as_a_file_source() {
     let source = json!({"type": "file", "file_id": "file_image"});
     assert_eq!(value["content"][0]["content"][0]["source"], source);
     assert_eq!(value["content"][1]["source"], source);
+}
+
+/// The request body for `history` on Sonnet 4.6, prepared as a run sends it.
+fn prepared_body(history: Vec<message::Message>) -> serde_json::Value {
+    use crate::wire::{Operation, Wire};
+
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let request = crate::operation::Completion::prepare(
+        completion_request_with_history(history, None),
+        &wire.describe(),
+    )
+    .expect("the request prepares");
+    json_body(
+        &wire
+            .encode(request, crate::wire::Mode::Unary)
+            .expect("the request encodes")
+            .request,
+    )
+}
+
+/// A same-model turn that ran in a container and called a tool from it:
+/// a leading `fallback` marker, which never replays, then the call.
+fn container_turn() -> message::AssistantMessage {
+    let reply = json!({
+        "id": "msg_1", "model": CLAUDE_SONNET_4_6, "role": "assistant",
+        "stop_reason": "tool_use", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "container": {"id": "container_1", "expires_at": "2026-10-03T00:00:00Z"},
+        "content": [
+            {"type": "fallback", "model": CLAUDE_SONNET_4_6},
+            {"type": "tool_use", "id": "toolu_1", "name": "add", "input": {"x": 1},
+                "caller": {"type": "code_execution_20250825", "tool_id": "srvtoolu_1"}}
+        ]
+    });
+    let Some(message::Message::Assistant(turn)) =
+        fold_reply(&reply).expect("the reply folds").message()
+    else {
+        panic!("an assistant turn");
+    };
+    turn
+}
+
+/// The history that answers `turn`'s call.
+fn answered(turn: message::AssistantMessage) -> Vec<message::Message> {
+    vec![
+        message::Message::user("add"),
+        message::Message::Assistant(turn),
+        message::Message::tool_result(
+            message::CallId::from_wire("toolu_1"),
+            message::ToolName::new("add").expect("tool name"),
+            "2",
+        ),
+    ]
+}
+
+/// The container is conversation state: a same-model turn names it after
+/// `adapt` drops its `fallback` block, and after its call is edited.
+#[test]
+fn the_container_survives_a_dropped_block_and_an_edited_call() {
+    let body = prepared_body(answered(container_turn()));
+    assert_eq!(body["container"], json!("container_1"));
+
+    let mut edited = container_turn();
+    for block in &mut edited.content {
+        if let message::AssistantContent::ToolCall(call) = block {
+            call.function.arguments = json!({"x": 5}).as_object().cloned().unwrap_or_default();
+        }
+    }
+    let body = prepared_body(answered(edited));
+    assert_eq!(body["container"], json!("container_1"));
+}
+
+/// A same-model call rebuilt after an edit keeps the `caller` that ties it
+/// to the code execution that made it.
+#[test]
+fn an_edited_call_keeps_its_caller() {
+    let mut turn = container_turn();
+    for block in &mut turn.content {
+        if let message::AssistantContent::ToolCall(call) = block {
+            call.function.arguments = json!({"x": 5}).as_object().cloned().unwrap_or_default();
+        }
+    }
+    let body = prepared_body(answered(turn));
+    assert_eq!(
+        body["messages"][1]["content"][0],
+        json!({"type": "tool_use", "id": "toolu_1", "name": "add", "input": {"x": 5},
+            "caller": {"type": "code_execution_20250825", "tool_id": "srvtoolu_1"}})
+    );
 }

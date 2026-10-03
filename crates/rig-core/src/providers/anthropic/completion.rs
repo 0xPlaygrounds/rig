@@ -236,6 +236,9 @@ pub enum Content {
         id: String,
         name: String,
         input: serde_json::Value,
+        /// What made the call: the model, or code execution in a container.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        caller: Option<serde_json::Value>,
     },
     ToolResult {
         tool_use_id: String,
@@ -676,8 +679,15 @@ fn assistant_content(block: message::AssistantContent, id: Option<&str>) -> Opti
         // item.
         Block::Reasoning(reasoning) => (!reasoning.redacted && !reasoning.text.trim().is_empty())
             .then(|| Content::from(reasoning.text)),
+        // An edited call keeps the `caller` of its item, which `adapt` keeps
+        // only on a turn of the same model.
         Block::ToolCall(call) => Some(Content::ToolUse {
             id: id.map_or_else(|| call.id.wire().into_owned(), str::to_owned),
+            caller: call
+                .native
+                .as_ref()
+                .and_then(|native| native.item.get("caller"))
+                .cloned(),
             name: call.function.name.into(),
             input: serde_json::Value::Object(call.function.arguments),
         }),
@@ -1877,12 +1887,15 @@ fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
 
 /// The id of the container the last turn holding one ran in. Anthropic
 /// requires it on a request that answers a programmatic tool call, and it
-/// keeps a code-execution session's state. After `adapt`, only a turn of
-/// the same model still holds its message item.
+/// keeps a code-execution session's state. It is conversation state, so it
+/// holds however the turn's content changed since; after `adapt`, only a
+/// turn of the same model still holds its message item.
 fn replayed_container(history: &[message::Message]) -> Option<String> {
     history.iter().rev().find_map(|message| match message {
         message::Message::Assistant(turn) => turn
-            .native_item()?
+            .native
+            .as_ref()?
+            .item
             .pointer("/container/id")?
             .as_str()
             .map(str::to_owned),
