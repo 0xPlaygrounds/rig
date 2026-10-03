@@ -92,6 +92,21 @@ fn an_assistant_message_serializes_flat_under_its_role() {
 }
 
 #[test]
+fn a_store_that_writes_whole_numbers_as_integers_keeps_the_item_current() {
+    let block = call(json!({"limit": 20.0, "scale": 0.5}))
+        .with_native(json!({"type": "function_call", "id": "fc_1"}));
+    let stored = serde_json::to_string(&block)
+        .expect("a block serializes")
+        .replace("20.0", "20");
+    let loaded: AssistantContent = serde_json::from_str(&stored).expect("a stored block loads");
+    assert!(loaded.native_item().is_some(), "{stored}");
+    assert_ne!(
+        Fingerprint::of(&json!({"scale": 0.5})),
+        Fingerprint::of(&json!({"scale": 1}))
+    );
+}
+
+#[test]
 fn fingerprint_is_fnv1a_of_the_json_bytes() {
     // FNV-1a of `"a"` (three bytes), pinned so a hashing change is a
     // deliberate break of every stored history.

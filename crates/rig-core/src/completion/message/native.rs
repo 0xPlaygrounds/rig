@@ -120,14 +120,16 @@ impl StopReason {
 }
 
 /// A 64-bit FNV-1a hash of a value's JSON serialization with every object's
-/// keys in sorted order, so a store that reorders keys (Postgres `jsonb`,
-/// sorted-key dumps) never changes it.
+/// keys in sorted order and every whole number written as an integer, so a
+/// store that reorders keys (Postgres `jsonb`, sorted-key dumps) or writes
+/// `20.0` as `20` never changes it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Fingerprint(u64);
 
 impl Fingerprint {
-    /// The fingerprint of `value`'s JSON bytes, keys sorted.
+    /// The fingerprint of `value`'s JSON bytes, keys sorted and whole
+    /// numbers as integers.
     pub fn of(value: &impl Serialize) -> Self {
         fn sorted(value: serde_json::Value) -> serde_json::Value {
             match value {
@@ -144,6 +146,11 @@ impl Fingerprint {
                 serde_json::Value::Array(values) => {
                     serde_json::Value::Array(values.into_iter().map(sorted).collect())
                 }
+                serde_json::Value::Number(number) => number
+                    .as_f64()
+                    .filter(|float| number.is_f64() && float.fract() == 0.0)
+                    .and_then(|float| format!("{float:.0}").parse::<serde_json::Number>().ok())
+                    .map_or(serde_json::Value::Number(number), serde_json::Value::Number),
                 value => value,
             }
         }
