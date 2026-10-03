@@ -2,7 +2,7 @@
 //! Copilot authenticators: on-disk JSON record caching, token expiry checks,
 //! and the device-code prompt fallback.
 
-use super::auth::AuthError;
+use super::AuthError;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::path::Path;

@@ -11,8 +11,6 @@
 //! ```
 
 pub(crate) mod auth;
-#[cfg(not(target_family = "wasm"))]
-pub(crate) mod device_auth;
 pub(crate) mod openai_chat_completions_compatible;
 pub(crate) mod schema;
 /// The debug-mode sequence-law validator the completion fold checks a

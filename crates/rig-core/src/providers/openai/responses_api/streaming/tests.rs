@@ -4,7 +4,7 @@ use crate::driver::{Decoded, feed_frames};
 use crate::error::{ErrorKind, ErrorReport, ProviderError};
 use crate::message::AssistantContent;
 use crate::operation::Completion;
-use crate::providers::internal::openai_chat_completions_compatible::test_support::{
+use crate::providers::internal::openai_chat_completions_compatible::tests::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
 use crate::providers::openai::OpenAIConfig;
@@ -163,7 +163,7 @@ async fn response_failed_chunk_surfaces_provider_error_with_code_prefix() {
 
 #[tokio::test]
 async fn streaming_error_event_preserves_full_payload_in_live_loop() {
-    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::providers::internal::openai_chat_completions_compatible::tests::sse_bytes_from_json_events;
     use crate::test_utils::MockStreamingClient;
 
     let payload = json!({
