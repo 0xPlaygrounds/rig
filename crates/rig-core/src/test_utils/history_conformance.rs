@@ -98,7 +98,7 @@ pub const ROWS: &[(&str, &str)] = &[
     (
         "h05_field_ablation",
         "#2668, #1426, #1176, #1512, #2194, #2591, #1984, #2475, #2509, #2510, gemini NEW \
-         missing args",
+         missing args, review: typed parts fail a whole reply (null and retyped fields)",
     ),
     (
         "h06_malformed_arguments",
@@ -107,13 +107,15 @@ pub const ROWS: &[(&str, &str)] = &[
     (
         "h07_failed_turns",
         "core #1559, anthropic NEW partial turns, gemini NEW non-success finishes, chatB NEW \
-         unknown finish reasons",
+         unknown finish reasons, review: Chat finish `end`, Responses response.incomplete",
     ),
     ("h08_pairing", "#2560, chatA NEW-4, core NEW is_error"),
     (
         "h09_capability_downgrades",
-        "#305, #2143, #2380, chatA NEW-1, NEW-2, NEW-6, chatB NEW placeholder, anthropic NEW \
-         image capability",
+        "#305, #2143, #2380, chatA NEW-1, NEW-2, NEW-6, chatB NEW placeholder (accepts_images \
+         dead, with the Moonshot, Z.AI, MiniMax and MiMo text-only models), anthropic NEW image \
+         capability (Moonshot's Messages wire), review: encoders refuse canonical content on \
+         every wire",
     ),
     ("h10_persistence", "core NEW fingerprint key order"),
     (
@@ -126,7 +128,8 @@ pub const ROWS: &[(&str, &str)] = &[
     ),
     (
         "h13_rollback",
-        "core #1559, core NEW rollback origin, chatB NEW rollback",
+        "core #1559, core NEW rollback origin, chatB NEW rollback, review: a cut Chat, Cohere \
+         or Ollama reply loses its reasoning",
     ),
     (
         "h14_model_identity",
@@ -277,6 +280,26 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "crates/rig-candle/src/protocol/tests.rs",
         "every_renderer_takes_any_media_the_adapter_hands_over",
         "review: Candle refuses media",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
+        "review_text_only_chat_dialect_models_get_placeholders",
+        "chatB NEW accepts_images dead (STILL_POSSIBLE)",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/wire/chat/tests.rs",
+        "the_done_sentinel_without_a_finish_fails",
+        "review: Chat [DONE] without finish_reason is Stop",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
+        "an_answers_audio_transcript_is_text",
+        "review: an OpenAI audio transcript is never text",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
+        "a_mistyped_part_never_fails_a_reply",
+        "review: Chat index null, numeric id, object content",
     ),
 ];
 
