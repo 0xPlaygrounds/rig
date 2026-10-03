@@ -86,7 +86,7 @@ fn deltas_merge_into_the_item_signatures_concatenate_and_unknown_fields_survive(
             json!({"type": "novel_delta", "novel": "x", "list": [1]}),
             json!({"type": "novel_delta", "novel": "y", "list": [2]}),
         ] {
-            out.merge(7, &object(delta))?;
+            out.edit(7, |item| super::merge(item, &object(delta)))?;
         }
         out.push(7, "hm")?;
         out.finish(7)
@@ -134,10 +134,12 @@ fn an_opaque_item_closes_as_its_assembled_item() {
             Block::Opaque { replay: true },
             json!({"type": "compaction", "content": ""}),
         )?;
-        out.merge(
-            0,
-            &object(json!({"type": "compaction_delta", "content": "summary"})),
-        )?;
+        out.edit(0, |item| {
+            super::merge(
+                item,
+                &object(json!({"type": "compaction_delta", "content": "summary"})),
+            )
+        })?;
         out.finish(0)
     });
     assert_eq!(
@@ -274,7 +276,7 @@ fn a_boundaryless_run_continues_while_the_kind_stays_the_same() {
 fn a_restated_response_streams_the_same_blocks() {
     let decoded = write(|out| {
         out.open(0, Block::Text, json!({"type": "text", "text": ""}))?;
-        out.merge(0, &object(json!({"text": "hi"})))?;
+        out.edit(0, |item| super::merge(item, &object(json!({"text": "hi"}))))?;
         out.push(0, "hi")?;
         out.finish(0)?;
         out.open(

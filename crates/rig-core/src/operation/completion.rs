@@ -227,9 +227,6 @@ pub struct Turn {
     /// The index of the block a boundary-less wire is streaming.
     run: Option<usize>,
     next_auto: usize,
-    /// The wire index of each position, for a wire whose choice follows
-    /// its indices ([`Out::order_by_index`]).
-    by_index: Option<BTreeMap<usize, usize>>,
     // The fold.
     choice: Vec<Option<AssistantContent>>,
     /// The text the consumer took of parts still open, by position.
@@ -384,7 +381,6 @@ impl Turn {
             last_call: None,
             run: None,
             next_auto: AUTO_INDEX,
-            by_index: None,
             choice: Vec::new(),
             open_text: BTreeMap::new(),
         }
@@ -452,9 +448,6 @@ impl Turn {
     fn insert(&mut self, index: usize, body: Body, item: serde_json::Value) {
         self.ended.remove(&index);
         let part = self.next();
-        if let Some(by_index) = &mut self.by_index {
-            by_index.insert(part.index(), index);
-        }
         let started = false;
         self.open.insert(
             index,
@@ -671,23 +664,6 @@ impl Turn {
         Ok(())
     }
 
-    /// Close the call at `index` when its arguments are a complete object;
-    /// otherwise leave it open. Whether it closed.
-    fn close_if_complete(
-        &mut self,
-        items: &mut Items,
-        index: usize,
-    ) -> Result<bool, ProviderError> {
-        let complete = match &self.draft(index)?.body {
-            Body::Call { arguments, .. } => arguments.complete(),
-            Body::Text(_) | Body::Image(_) | Body::Reasoning { .. } | Body::Opaque { .. } => true,
-        };
-        if complete {
-            self.close_item(items, index, Closing::Complete)?;
-        }
-        Ok(complete)
-    }
-
     pub(crate) fn run_item(
         &mut self,
         items: &mut Items,
@@ -883,9 +859,8 @@ impl Turn {
     }
 
     /// The ordering state of this turn, which a partial view cuts further.
-    fn clone_cut(&self) -> Cut<'_> {
+    fn clone_cut(&self) -> Cut {
         Cut {
-            by_index: self.by_index.as_ref(),
             first_incomplete: self.first_incomplete,
         }
     }
@@ -941,13 +916,13 @@ pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
     }
 }
 
-/// A turn's ordering and its first incomplete position, for a partial view.
-struct Cut<'a> {
-    by_index: Option<&'a BTreeMap<usize, usize>>,
+/// A turn's first incomplete position, for a partial view that cuts it
+/// further.
+struct Cut {
     first_incomplete: Option<usize>,
 }
 
-impl Cut<'_> {
+impl Cut {
     fn cut_at(&mut self, position: usize) {
         self.first_incomplete = Some(
             self.first_incomplete
@@ -956,25 +931,16 @@ impl Cut<'_> {
     }
 
     fn ordered(&self, parts: Vec<(usize, Option<AssistantContent>)>) -> Vec<AssistantContent> {
-        let mut parts: Vec<(usize, AssistantContent)> = parts
+        parts
             .into_iter()
             .filter_map(|(position, part)| {
                 let part = part?;
                 Some(match self.first_incomplete {
-                    Some(first) if position >= first => (position, canonical(part)),
-                    _ => (position, part),
+                    Some(first) if position >= first => canonical(part),
+                    _ => part,
                 })
             })
-            .collect();
-        if let Some(by_index) = self.by_index {
-            parts.sort_by_key(|(position, _)| {
-                (
-                    by_index.get(position).copied().unwrap_or(usize::MAX),
-                    *position,
-                )
-            });
-        }
-        parts.into_iter().map(|(_, part)| part).collect()
+            .collect()
     }
 }
 
@@ -1019,10 +985,7 @@ fn emit(items: &mut Items, event: StreamEvent) {
 /// item's string of that key, an array extends the item's array, and any
 /// other value replaces the key. A delta kind rig has never seen still
 /// lands in the item.
-pub(crate) fn merge(
-    item: &mut serde_json::Value,
-    delta: &serde_json::Map<String, serde_json::Value>,
-) {
+pub fn merge(item: &mut serde_json::Value, delta: &serde_json::Map<String, serde_json::Value>) {
     use serde_json::Value;
     if !item.is_object() {
         *item = Value::Object(serde_json::Map::new());
@@ -1106,30 +1069,6 @@ impl<'id> Out<'id, Completion> {
         fold.push_item(items, index, fragment)
     }
 
-    /// Merge a provider delta into the item at `index`: its string fields
-    /// append by key (so signature fragments concatenate), arrays extend,
-    /// other values replace. The delta's `type` is not merged.
-    pub fn merge(
-        &mut self,
-        index: usize,
-        delta: &serde_json::Map<String, serde_json::Value>,
-    ) -> Result<(), ProviderError> {
-        merge(&mut self.lock().fold.draft(index)?.item, delta);
-        Ok(())
-    }
-
-    /// Replace the text or reasoning of the open item at `index` with
-    /// `text`, the whole of it as the provider restates it at its end. The
-    /// fragments already streamed stand; the block ends holding `text`.
-    pub fn restate(&mut self, index: usize, text: &str) -> Result<(), ProviderError> {
-        if let Body::Text(body) | Body::Reasoning { text: body, .. } =
-            &mut self.lock().fold.draft(index)?.body
-        {
-            text.clone_into(body);
-        }
-        Ok(())
-    }
-
     /// Edit the item at `index` in place, for a delta [`Self::merge`] does
     /// not model or the whole item a provider restates when it finishes.
     /// Until the reply ends, an index whose block already closed edits that
@@ -1172,26 +1111,21 @@ impl<'id> Out<'id, Completion> {
         fold.close_item(items, index, Closing::Complete)
     }
 
-    /// [`Self::finish`] with `item`, the whole item as the provider states
-    /// it at its end, in place of the one assembled.
-    pub fn finish_with(
-        &mut self,
-        index: usize,
-        item: serde_json::Value,
-    ) -> Result<(), ProviderError> {
+    /// End every item still open as stated complete, for a wire whose end
+    /// of reply is the provider's statement that its items are done.
+    pub fn finish_open(&mut self) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        fold.draft(index)?.item = item;
-        fold.close_item(items, index, Closing::Complete)
-    }
-
-    /// Finish the call at `index` only when its arguments are already a
-    /// complete JSON object, for a wire that may or may not send more
-    /// fragments. Whether it closed.
-    pub fn close_if_complete(&mut self, index: usize) -> Result<bool, ProviderError> {
-        let mut shared = self.lock();
-        let Shared { fold, items, .. } = &mut *shared;
-        fold.close_if_complete(items, index)
+        let mut open: Vec<(Part, usize)> = fold
+            .open
+            .iter()
+            .map(|(index, draft)| (draft.part, *index))
+            .collect();
+        open.sort();
+        for (_, index) in open {
+            fold.close_item(items, index, Closing::Complete)?;
+        }
+        Ok(())
     }
 
     /// Open and finish the item at `index` in one step: a whole block a
@@ -1207,17 +1141,6 @@ impl<'id> Out<'id, Completion> {
         self.open(index, block, item)?;
         self.push(index, text)?;
         self.finish(index)
-    }
-
-    /// Order the response's blocks by wire index rather than by when they
-    /// opened, for a wire whose indices are the provider's item order and
-    /// whose end may state items it never streamed. Call it before the
-    /// first item opens; blocks with no wire index go last.
-    pub fn order_by_index(&mut self) {
-        let mut shared = self.lock();
-        if shared.fold.by_index.is_none() {
-            shared.fold.by_index = Some(BTreeMap::new());
-        }
     }
 
     /// Buffer one fragment of a tool call the provider streams, opening the
@@ -1249,10 +1172,15 @@ impl<'id> Out<'id, Completion> {
                     if let Some(draft) = turn.open.remove(&index) {
                         turn.open.insert(moved, draft);
                     }
-                    turn.close_if_complete(items, moved)?;
-                    if turn.open.contains_key(&moved) {
-                        turn.close_item(items, moved, Closing::Incomplete)?;
-                    }
+                    let complete = turn.open.get(&moved).is_some_and(|draft| {
+                        matches!(&draft.body, Body::Call { arguments, .. } if arguments.complete())
+                    });
+                    let closing = if complete {
+                        Closing::Complete
+                    } else {
+                        Closing::Incomplete
+                    };
+                    turn.close_item(items, moved, closing)?;
                 }
                 index
             }
@@ -1316,15 +1244,6 @@ impl<'id> Out<'id, Completion> {
         Ok(())
     }
 
-    /// Drop the item at `index`: it never becomes visible.
-    pub fn discard(&mut self, index: usize) {
-        let mut shared = self.lock();
-        shared.fold.open.remove(&index);
-        if shared.fold.run == Some(index) {
-            shared.fold.run = None;
-        }
-    }
-
     /// An index no provider item uses, for a wire that indexes nothing.
     pub fn fresh_index(&mut self) -> usize {
         self.lock().fold.fresh_index()
@@ -1348,19 +1267,9 @@ impl<'id> Out<'id, Completion> {
         fold.end_run(items)
     }
 
-    /// Whether the item at `index` is open.
-    pub fn is_open(&self, index: usize) -> bool {
-        self.lock().fold.open.contains_key(&index)
-    }
-
-    /// The wire indices of the open items, in index order.
-    pub fn open_items(&self) -> Vec<usize> {
-        self.lock().fold.open.keys().copied().collect()
-    }
-
     /// A whole block of an already assembled response, at the next
     /// position, its native kept as given.
-    pub fn content(&mut self, content: AssistantContent) -> Result<(), ProviderError> {
+    pub(crate) fn content(&mut self, content: AssistantContent) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
         fold.write_content(items, content)

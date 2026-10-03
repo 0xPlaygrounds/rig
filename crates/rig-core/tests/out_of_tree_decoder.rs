@@ -68,9 +68,7 @@ impl<'id> Decoder<'id, Completion, Frame> for VendorDecoder<'id> {
             )?,
             Frame::Done => {
                 out.end_run()?;
-                for index in out.open_items() {
-                    out.finish(index)?;
-                }
+                out.finish_open()?;
                 return Ok(out.end(Finish {
                     usage: Usage::default(),
                     reason: Some(FinishReason::ToolCalls),

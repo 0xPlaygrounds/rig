@@ -324,7 +324,9 @@ impl MessagesDecoder {
         }
         // Text and signatures concatenate; `compaction_delta` and kinds
         // rig has never seen land in the item too.
-        out.merge(index, &delta)
+        out.edit(index, |item| {
+            crate::operation::completion::merge(item, &delta)
+        })
     }
 
     /// End the block at `index` as stated complete. Its item becomes the
