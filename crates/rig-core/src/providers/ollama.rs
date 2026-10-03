@@ -20,13 +20,17 @@
 //!
 //! `Ollama::from_env` reads `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for
 //! remote or authenticated daemons.
-use crate::model::ModelInfo;
-use serde::{Deserialize, Serialize};
-
+pub mod embedding;
+pub mod model_listing;
 pub mod wire;
 
 pub use crate::client::ollama::Ollama;
-pub use wire::{Embeddings, Models, OllamaConfig};
+pub use embedding::{
+    ALL_MINILM, BGE_M3, EMBEDDINGGEMMA, EmbeddingResponse, Embeddings, MXBAI_EMBED_LARGE,
+    NOMIC_EMBED_TEXT, QWEN3_EMBEDDING,
+};
+pub use model_listing::{ListModelEntry, ListModelsResponse, Models};
+pub use wire::OllamaConfig;
 
 /// The address of a local daemon.
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
@@ -34,42 +38,6 @@ const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
 const PROVIDER_NAME: &str = "ollama";
-
-/// The `all-minilm` embedding model.
-pub const ALL_MINILM: &str = "all-minilm";
-/// The `nomic-embed-text` embedding model.
-pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
-/// The `mxbai-embed-large` embedding model.
-pub const MXBAI_EMBED_LARGE: &str = "mxbai-embed-large";
-/// The `bge-m3` multilingual embedding model.
-pub const BGE_M3: &str = "bge-m3";
-/// The `embeddinggemma` embedding model.
-pub const EMBEDDINGGEMMA: &str = "embeddinggemma";
-/// The `qwen3-embedding` embedding model family; dimensions vary by size, so pass them explicitly.
-pub const QWEN3_EMBEDDING: &str = "qwen3-embedding";
-
-fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
-    match identifier {
-        ALL_MINILM => Some(384),
-        NOMIC_EMBED_TEXT => Some(768),
-        MXBAI_EMBED_LARGE => Some(1024),
-        BGE_M3 => Some(1024),
-        EMBEDDINGGEMMA => Some(768),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddingResponse {
-    pub model: String,
-    pub embeddings: Vec<Vec<f64>>,
-    #[serde(default)]
-    pub total_duration: Option<u64>,
-    #[serde(default)]
-    pub load_duration: Option<u64>,
-    #[serde(default)]
-    pub prompt_eval_count: Option<u64>,
-}
 
 /// The `llama3.2` model.
 pub const LLAMA3_2: &str = "llama3.2";
@@ -107,31 +75,6 @@ pub const DEEPSEEK_V3_1: &str = "deepseek-v3.1";
 pub const GPT_OSS: &str = "gpt-oss";
 /// The `phi4` model.
 pub const PHI4: &str = "phi4";
-
-/// The reply of `GET /api/tags`: every model the daemon has pulled.
-#[derive(Debug, Deserialize)]
-pub struct ListModelsResponse {
-    /// The installed models, in the daemon's own order.
-    pub models: Vec<ListModelEntry>,
-}
-
-/// One installed model.
-#[derive(Debug, Deserialize)]
-pub struct ListModelEntry {
-    /// The tag as the daemon displays it (`qwen3:4b`).
-    pub name: String,
-    /// The identifier a request addresses.
-    pub model: String,
-}
-
-impl From<ListModelEntry> for ModelInfo {
-    fn from(value: ListModelEntry) -> Self {
-        ModelInfo::new(value.model, value.name)
-    }
-}
-
-#[cfg(test)]
-mod tests;
 
 #[cfg(test)]
 mod history_tests;

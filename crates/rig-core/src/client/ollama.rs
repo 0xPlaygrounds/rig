@@ -6,7 +6,7 @@ use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 
-use crate::providers::ollama::wire::{Embeddings, OllamaConfig};
+use crate::providers::ollama::{Embeddings, OllamaConfig};
 use crate::providers::openai::wire::Chat;
 
 http_client!(
