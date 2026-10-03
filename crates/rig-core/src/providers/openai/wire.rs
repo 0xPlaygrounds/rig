@@ -435,6 +435,13 @@ impl Quirks {
     }
 }
 
+impl Default for Quirks {
+    /// [`Quirks::openai`].
+    fn default() -> Self {
+        Self::openai()
+    }
+}
+
 /// Provider identity, endpoint defaults, and shared-wire policies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dialect {

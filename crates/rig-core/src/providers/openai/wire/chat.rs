@@ -288,19 +288,16 @@ impl Chat {
         let mut tool_choice = None;
         if quirks.supports_tools {
             for tool in &request.tools {
-                let mut function = Map::from_iter([
-                    ("name".to_owned(), Value::from(tool.name.as_str())),
-                    (
-                        "description".to_owned(),
-                        Value::from(tool.description.as_str()),
-                    ),
-                    ("parameters".to_owned(), tool.parameters.clone()),
-                ]);
+                let mut parameters = tool.parameters.clone();
+                let mut function = json!({"name": tool.name, "description": tool.description});
                 if self.strict_tools {
-                    if let Some(parameters) = function.get_mut("parameters") {
-                        crate::providers::openai::sanitize_schema(parameters);
+                    crate::providers::openai::sanitize_schema(&mut parameters);
+                }
+                if let Some(function) = function.as_object_mut() {
+                    function.insert("parameters".to_owned(), parameters);
+                    if self.strict_tools {
+                        function.insert("strict".to_owned(), Value::Bool(true));
                     }
-                    function.insert("strict".to_owned(), Value::Bool(true));
                 }
                 tools.push(json!({"type": "function", "function": function}));
             }
@@ -360,22 +357,18 @@ impl Chat {
             );
         }
 
-        let mut body = Map::from_iter([
-            ("model".to_owned(), Value::String(model)),
-            ("messages".to_owned(), Value::Array(messages)),
-        ]);
-        if !tools.is_empty() {
-            body.insert("tools".to_owned(), Value::Array(tools));
-        }
-        if let Some(choice) = tool_choice {
-            body.insert("tool_choice".to_owned(), choice);
-        }
-        if let Some(temperature) = request.temperature {
-            body.insert("temperature".to_owned(), json!(temperature));
-        }
-        if let Some(max_tokens) = request.max_tokens {
-            body.insert("max_tokens".to_owned(), json!(max_tokens));
-        }
+        let fields = [
+            ("model", Some(Value::String(model))),
+            ("messages", Some(Value::Array(messages))),
+            ("tools", (!tools.is_empty()).then_some(Value::Array(tools))),
+            ("tool_choice", tool_choice),
+            ("temperature", request.temperature.map(Value::from)),
+            ("max_tokens", request.max_tokens.map(Value::from)),
+        ];
+        let mut body: Map<String, Value> = fields
+            .into_iter()
+            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+            .collect();
         body.extend(params);
         // The resolved model, not the handle's: a per-request override
         // changes which endpoint answers, so it decides the spelling too.
@@ -620,15 +613,8 @@ impl Chat {
             }
             BodyRewrite::Mira => {
                 // The gateway takes every message's content as one string.
-                for message in map
-                    .get_mut("messages")
-                    .and_then(Value::as_array_mut)
-                    .into_iter()
-                    .flatten()
-                {
-                    if let Some(content) = message.get_mut("content") {
-                        flatten_text_content_parts(content, "\n", false);
-                    }
+                for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
+                    flatten_text_content_parts(content, "\n", false);
                 }
             }
             BodyRewrite::DeepSeek => finalize_deepseek(map),
@@ -714,6 +700,15 @@ fn tool_choice_value(choice: crate::message::ToolChoice) -> Result<Value, Encode
     })
 }
 
+/// The body's messages, each as its object.
+fn messages_mut(map: &mut Map<String, Value>) -> impl Iterator<Item = &mut Map<String, Value>> {
+    let messages = map.get_mut("messages").and_then(Value::as_array_mut);
+    messages
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object_mut)
+}
+
 /// Perplexity accepts only system, user and assistant roles in strict
 /// user/assistant alternation: text-only content-part arrays flatten (arrays
 /// with other parts are left for its sonar models), and adjacent text
@@ -785,13 +780,7 @@ fn fold_groq_native_tools(params: &mut Map<String, Value>, native: Vec<Value>) {
 /// empty `content` on a tool-call-only assistant turn, and rejects forced
 /// tool choices unless thinking is explicitly disabled.
 fn finalize_deepseek(map: &mut Map<String, Value>) {
-    for message in map
-        .get_mut("messages")
-        .and_then(Value::as_array_mut)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_object_mut)
-    {
+    for message in messages_mut(map) {
         let assistant = message.get("role").and_then(Value::as_str) == Some("assistant");
         match message.get_mut("content") {
             // Nontext parts stay, so an unsupported attachment is refused
@@ -847,13 +836,7 @@ fn finalize_mistral(map: &mut Map<String, Value>) {
         );
         map.insert("tool_choice".to_owned(), Value::from("auto"));
     }
-    for message in map
-        .get_mut("messages")
-        .and_then(Value::as_array_mut)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_object_mut)
-    {
+    for message in messages_mut(map) {
         // An assistant message only needs its missing `content` filled in.
         if message.get("role").and_then(Value::as_str) == Some("assistant") {
             message
@@ -865,23 +848,9 @@ fn finalize_mistral(map: &mut Map<String, Value>) {
     }
 }
 
-/// Mistral's text chunk tag.
-const MISTRAL_TEXT: &str = "text";
-/// Mistral's image chunk tag.
-const MISTRAL_IMAGE: &str = "image_url";
-/// Mistral's audio chunk tag.
-const MISTRAL_AUDIO: &str = "input_audio";
-/// Mistral's document chunk tag.
-const MISTRAL_DOCUMENT: &str = "document_url";
-/// Mistral's uploaded-file chunk tag.
-const MISTRAL_FILE: &str = "file";
-/// OpenAI's refusal part: textual, but under a key Mistral's chunk schema
-/// has no field for, so it is re-tagged rather than forwarded.
-const MISTRAL_REFUSAL: &str = "refusal";
-
 /// The text a part carries, under either key the conversion uses.
 fn part_text(part: &Value) -> Option<&str> {
-    part.str(MISTRAL_TEXT).or_else(|| part.str(MISTRAL_REFUSAL))
+    part.str("text").or_else(|| part.str("refusal"))
 }
 
 /// One content part as the Mistral chunk that carries it, by its `type`:
@@ -892,20 +861,20 @@ fn part_text(part: &Value) -> Option<&str> {
 fn mistral_chunk(part: &Value) -> Value {
     let field = |pointer: &str| part.at(pointer).and_then(Value::as_str);
     match part.str("type") {
-        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) | None => {
-            json!({"type": MISTRAL_TEXT, MISTRAL_TEXT: part_text(part).unwrap_or_default()})
+        Some("text" | "refusal") | None => {
+            json!({"type": "text", "text": part_text(part).unwrap_or_default()})
         }
-        Some(MISTRAL_IMAGE) => {
-            json!({"type": MISTRAL_IMAGE, MISTRAL_IMAGE: part.get(MISTRAL_IMAGE)})
+        Some("image_url") => {
+            json!({"type": "image_url", "image_url": part.get("image_url")})
         }
-        Some(MISTRAL_AUDIO) => json!({"type": MISTRAL_AUDIO,
-            MISTRAL_AUDIO: field("/input_audio/data").or(field("/input_audio"))}),
-        Some(MISTRAL_FILE) => match (field("/file/file_data"), field("/file/filename")) {
+        Some("input_audio") => json!({"type": "input_audio",
+            "input_audio": field("/input_audio/data").or(field("/input_audio"))}),
+        Some("file") => match (field("/file/file_data"), field("/file/filename")) {
             (Some(data), Some(name)) => {
-                json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: data, "document_name": name})
+                json!({"type": "document_url", "document_url": data, "document_name": name})
             }
-            (Some(data), None) => json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: data}),
-            (None, _) => json!({"type": MISTRAL_FILE,
+            (Some(data), None) => json!({"type": "document_url", "document_url": data}),
+            (None, _) => json!({"type": "file",
                 "file_id": field("/file/file_id").or(field("/file_id"))}),
         },
         Some(_) => part.clone(),
@@ -919,7 +888,7 @@ fn mistral_content(content: &mut Value) {
         return;
     };
     let textual = |part: &Value| match part.str("type") {
-        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => true,
+        Some("text" | "refusal") => true,
         Some(_) => false,
         None => part_text(part).is_some(),
     };
@@ -1099,16 +1068,11 @@ impl crate::completion::ReplayTarget for Chat {
         if self.provider.dialect.quirks.rewrite == BodyRewrite::Mistral {
             return mistral_call_id(id);
         }
-        let sanitized = |part: &str| -> String {
-            part.chars()
-                .map(|c| {
-                    if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                        c
-                    } else {
-                        '_'
-                    }
-                })
-                .collect()
+        let sanitized = |part: &str| {
+            part.replace(
+                |c: char| !(c.is_ascii_alphanumeric() || "_-".contains(c)),
+                "_",
+            )
         };
         if let Some((call, item)) = id.split_once('|') {
             let call = sanitized(call);
@@ -1356,6 +1320,7 @@ struct OpenCall {
 /// a block closes when the next one starts. An answer's audio transcript
 /// is its text when it has no other, and its first text block holds the
 /// audio's id.
+#[derive(Default)]
 pub struct ChatDecoder {
     quirks: Quirks,
     /// The block being written, and its writer index.
@@ -1387,20 +1352,7 @@ impl ChatDecoder {
     fn new(quirks: Quirks) -> Self {
         Self {
             quirks,
-            writing: None,
-            reasoning_field: None,
-            thinking_part: false,
-            reasoning_text: String::new(),
-            reasoning_details: Map::new(),
-            audio_id: None,
-            calls: Vec::new(),
-            usage: None,
-            finish: None,
-            response_id: None,
-            response_model: None,
-            logprobs: None,
-            fields: Map::new(),
-            ended: false,
+            ..Self::default()
         }
     }
 
@@ -1642,22 +1594,17 @@ impl ChatDecoder {
         let inline = url
             .strip_prefix("data:")
             .and_then(|rest| rest.split_once(";base64,"));
-        let (image, data) = match inline {
-            Some((mime, data)) => (
-                Image {
-                    data: Source::Base64(String::new()),
-                    media_type: ImageMediaType::from_mime_type(mime),
-                    ..Image::default()
-                },
-                data,
-            ),
-            None => (
-                Image {
-                    data: Source::Url(url.to_owned()),
-                    ..Image::default()
-                },
-                "",
-            ),
+        let mut image = Image::default();
+        let data = match inline {
+            Some((mime, data)) => {
+                image.data = Source::Base64(String::new());
+                image.media_type = ImageMediaType::from_mime_type(mime);
+                data
+            }
+            None => {
+                image.data = Source::Url(url.to_owned());
+                ""
+            }
         };
         self.close_writing(out)?;
         let index = out.fresh_index();
