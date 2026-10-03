@@ -72,9 +72,6 @@ impl Chat {
             &request,
             http::Request::post(uri).header("Content-Type", "application/json"),
         );
-        if !quirks.accepts_file_ids {
-            refuse_file_ids(&request)?;
-        }
         let mut typed = unary::CompletionRequest::try_from(unary::OpenAIRequestParams {
             model: self.model.clone(),
             request,
@@ -114,7 +111,7 @@ impl Chat {
             }
             body = crate::json_utils::merge(body, serde_json::json!({"stream": true}));
         }
-        self.finalize(&mut body)?;
+        self.finalize(&mut body);
 
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -210,10 +207,9 @@ impl Chat {
     }
 
     /// Apply dialect body rewrites after merging streaming parameters.
-    /// Return conversion errors for unsupported content.
-    fn finalize(&self, body: &mut serde_json::Value) -> Result<(), EncodeError> {
+    fn finalize(&self, body: &mut serde_json::Value) {
         let Some(map) = body.as_object_mut() else {
-            return Ok(());
+            return;
         };
         match self.provider.dialect.quirks.rewrite {
             BodyRewrite::Perplexity => {
@@ -235,7 +231,7 @@ impl Chat {
                 }
             }
             BodyRewrite::DeepSeek => finalize_deepseek(map),
-            BodyRewrite::Mistral => finalize_mistral(map)?,
+            BodyRewrite::Mistral => finalize_mistral(map),
             BodyRewrite::OpenRouter => {
                 if self.prompt_caching {
                     apply_openrouter_prompt_caching(map);
@@ -247,7 +243,6 @@ impl Chat {
             | BodyRewrite::LlamaCpp
             | BodyRewrite::Moonshot => {}
         }
-        Ok(())
     }
 }
 
@@ -449,9 +444,7 @@ fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
 /// its content chunks, and `content` on every assistant message.
 ///
 /// Its multimodal content mapping is [`mistral_content`].
-fn finalize_mistral(
-    map: &mut serde_json::Map<String, serde_json::Value>,
-) -> Result<(), EncodeError> {
+fn finalize_mistral(map: &mut serde_json::Map<String, serde_json::Value>) {
     // Mistral spells the "must call some tool" mode `any`, not `required`.
     if let Some(tool_choice) = map.get_mut("tool_choice")
         && tool_choice.as_str() == Some("required")
@@ -485,7 +478,7 @@ fn finalize_mistral(
     }
 
     let Some(messages) = map.get_mut("messages").and_then(as_array_mut) else {
-        return Ok(());
+        return;
     };
     for message in messages {
         let Some(message) = message.as_object_mut() else {
@@ -501,13 +494,10 @@ fn finalize_mistral(
         }
         // Mistral takes text-only message `content` as a plain string and
         // carries images, audio and documents as its own chunk array.
-        // Content it has no chunk for fails here rather than reaching the API
-        // with the part removed.
         if let Some(content) = message.get_mut("content") {
-            mistral_content(content)?;
+            mistral_content(content);
         }
     }
-    Ok(())
 }
 
 /// Mistral's text chunk tag.
@@ -544,138 +534,48 @@ fn is_mistral_text_part(part: &serde_json::Value) -> bool {
     }
 }
 
-fn mistral_unsupported(what: &str) -> EncodeError {
-    crate::message::MessageError::ConversionError(format!(
-        "Mistral cannot carry {what}. Mistral messages accept text, `{MISTRAL_IMAGE}`, \
-         `{MISTRAL_AUDIO}`, `{MISTRAL_DOCUMENT}` and `{MISTRAL_FILE}` content; convert the \
-         content to one of those before sending it."
-    ))
-    .into()
-}
-
-/// Convert file data to a document URL or a file reference to a top-level file ID.
-/// Preserve optional filenames for inline documents. Return a conversion error
-/// when neither file data nor a file ID is present.
-fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
-    let file = part.get(MISTRAL_FILE);
-    let field = |name: &str| {
-        file.and_then(|file| file.get(name))
-            .and_then(serde_json::Value::as_str)
-    };
-
-    // Accept already-converted file references to keep finalization idempotent.
-    if let Some(file_id) = part.get("file_id").and_then(serde_json::Value::as_str) {
-        return Ok(serde_json::json!({"type": MISTRAL_FILE, "file_id": file_id}));
-    }
-
-    if let Some(data) = field("file_data") {
-        // `document_name` is left out entirely rather than sent as null when
-        // the part has no filename.
-        Ok(match field("filename") {
-            Some(filename) => serde_json::json!({
-                "type": MISTRAL_DOCUMENT,
-                MISTRAL_DOCUMENT: data,
-                "document_name": filename,
-            }),
-            None => serde_json::json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: data}),
-        })
-    } else if let Some(file_id) = field("file_id") {
-        Ok(serde_json::json!({"type": MISTRAL_FILE, "file_id": file_id}))
-    } else {
-        Err(mistral_unsupported(
-            "a file content part carrying neither `file_data` nor `file_id`",
-        ))
-    }
-}
-
-/// Convert string or object audio payloads to Mistral's base64-string form.
-/// Return a conversion error for missing or nonstring audio data.
-fn mistral_audio_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
-    let payload = part.get(MISTRAL_AUDIO).ok_or_else(|| {
-        mistral_unsupported("an audio content part carrying no `input_audio` payload")
-    })?;
-
-    let data = match payload {
-        serde_json::Value::String(data) => data.as_str(),
-        payload => payload
-            .get("data")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                mistral_unsupported(
-                    "an audio content part whose `input_audio` payload is not base64 data",
-                )
-            })?,
-    };
-
-    Ok(serde_json::json!({"type": MISTRAL_AUDIO, MISTRAL_AUDIO: data}))
-}
-
-/// One content part as the Mistral chunk that carries it.
-///
-/// Dispatched on the `type` tag, which the shared conversion always emits, so
-/// a part naming a chunk kind is converted as that kind regardless of what
-/// other keys it carries.
-fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
-    /// Text and refusal parts are both re-tagged `text`: Mistral's schema has
-    /// no `refusal` field and every chunk forbids unknown keys.
-    fn text_chunk(part: &serde_json::Value) -> Result<serde_json::Value, EncodeError> {
-        let text = mistral_part_text(part)
-            .ok_or_else(|| mistral_unsupported("a text content part carrying no text"))?;
-        Ok(serde_json::json!({"type": MISTRAL_TEXT, MISTRAL_TEXT: text}))
-    }
-
+/// One content part as the Mistral chunk that carries it, by its `type`:
+/// text and refusal parts are `text` chunks, a file's data is a
+/// `document_url` and its id a `file` chunk, audio is its base64 string,
+/// and an image keeps only its `image_url`, for every chunk forbids unknown
+/// keys. A part the shared conversion does not emit stays as it is.
+fn mistral_chunk(part: &serde_json::Value) -> serde_json::Value {
+    use serde_json::json;
+    let field = |pointer: &str| part.pointer(pointer).and_then(serde_json::Value::as_str);
     match part.get("type").and_then(serde_json::Value::as_str) {
-        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => text_chunk(part),
-        // Rebuild the envelope because Mistral rejects unknown sibling fields.
+        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) | None => {
+            json!({"type": MISTRAL_TEXT, MISTRAL_TEXT: mistral_part_text(part).unwrap_or_default()})
+        }
         Some(MISTRAL_IMAGE) => {
-            let image = part.get(MISTRAL_IMAGE).ok_or_else(|| {
-                mistral_unsupported("an image content part carrying no `image_url` payload")
-            })?;
-            Ok(serde_json::json!({"type": MISTRAL_IMAGE, MISTRAL_IMAGE: image}))
+            json!({"type": MISTRAL_IMAGE, MISTRAL_IMAGE: part.get(MISTRAL_IMAGE)})
         }
-        Some(MISTRAL_AUDIO) => mistral_audio_chunk(part),
-        Some(MISTRAL_FILE) => mistral_file_chunk(part),
-        // Accept already-converted document parts to keep finalization idempotent.
-        Some(MISTRAL_DOCUMENT) => {
-            let url = part.get(MISTRAL_DOCUMENT).ok_or_else(|| {
-                mistral_unsupported("a document content part carrying no `document_url`")
-            })?;
-            Ok(match part.get("document_name") {
-                Some(name) => serde_json::json!({
-                    "type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: url, "document_name": name,
-                }),
-                None => serde_json::json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: url}),
-            })
-        }
-        Some(kind) => Err(mistral_unsupported(&format!("`{kind}` message content"))),
-        // Untagged, but textual: the flattening would have taken it, so it
-        // converts rather than failing.
-        None if mistral_part_text(part).is_some() => text_chunk(part),
-        None => Err(mistral_unsupported("untyped message content")),
+        Some(MISTRAL_AUDIO) => json!({"type": MISTRAL_AUDIO,
+            MISTRAL_AUDIO: field("/input_audio/data").or(field("/input_audio"))}),
+        Some(MISTRAL_FILE) => match (field("/file/file_data"), field("/file/filename")) {
+            (Some(data), Some(name)) => {
+                json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: data, "document_name": name})
+            }
+            (Some(data), None) => json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: data}),
+            (None, _) => json!({"type": MISTRAL_FILE,
+                "file_id": field("/file/file_id").or(field("/file_id"))}),
+        },
+        Some(_) => part.clone(),
     }
 }
 
-/// Flatten text-only arrays and convert mixed arrays to Mistral content chunks.
-/// Nonarrays remain unchanged. Unsupported mixed content returns a conversion
-/// error; text-only parts without string payloads are omitted.
-fn mistral_content(content: &mut serde_json::Value) -> Result<(), EncodeError> {
-    let Some(parts) = content.as_array() else {
-        return Ok(());
+/// Flatten a text-only part array to a string, and convert a mixed one to
+/// Mistral content chunks. Anything else stays as it is.
+fn mistral_content(content: &mut serde_json::Value) {
+    let Some(parts) = content.as_array_mut() else {
+        return;
     };
-
     if parts.iter().all(is_mistral_text_part) {
-        // The tag-based guard is authoritative even for text parts missing their payload.
         unary::flatten_text_content_parts(content, "", false);
-        return Ok(());
+        return;
     }
-
-    if let Some(parts) = content.as_array_mut() {
-        for part in parts {
-            *part = mistral_chunk(part)?;
-        }
+    for part in parts {
+        *part = mistral_chunk(part);
     }
-
-    Ok(())
 }
 
 /// OpenRouter's ephemeral `cache_control` on the system prompt.
@@ -718,36 +618,6 @@ fn apply_openrouter_prompt_caching(map: &mut serde_json::Map<String, serde_json:
         }
         _ => {}
     }
-}
-
-/// Return a request error for document or image inputs using provider file IDs.
-fn refuse_file_ids(request: &CompletionRequest) -> Result<(), EncodeError> {
-    use crate::message::{DocumentSourceKind, Message, UserContent};
-
-    let refusal = || {
-        EncodeError::request("Provider file IDs are not supported for OpenRouter document inputs")
-    };
-    for message in &request.chat_history {
-        let Message::User { content, .. } = message else {
-            continue;
-        };
-        for part in content {
-            match part {
-                UserContent::Document(document) => {
-                    if matches!(document.data, DocumentSourceKind::FileId(_)) {
-                        return Err(refusal());
-                    }
-                }
-                UserContent::Image(image) => {
-                    if matches!(image.data, DocumentSourceKind::FileId(_)) {
-                        return Err(refusal());
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    Ok(())
 }
 
 impl Wire for Chat {
@@ -803,6 +673,53 @@ impl crate::completion::ReplayTarget for Chat {
             assistant_images: false,
             tool_result_images: user_images && quirks.supports_image_tool_results,
             tools: quirks.supports_tools,
+        }
+    }
+
+    /// What the Chat encoder carries, by dialect: an image as a URL or
+    /// typed data; audio as data; video as a URL or typed data, except to
+    /// OpenAI, Azure and Mistral; a PDF as data, or as a URL OpenRouter or
+    /// Mistral fetches; a file id where the dialect takes one; and a string
+    /// document as text. DeepSeek and Mira take text only, and Perplexity
+    /// takes no media but images.
+    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+        use crate::completion::Media;
+        use crate::message::{DocumentMediaType, DocumentSourceKind as Source};
+        let dialect = &self.provider.dialect;
+        let rewrite = dialect.quirks.rewrite;
+        let parts = !matches!(rewrite, BodyRewrite::DeepSeek | BodyRewrite::Mira);
+        let files = parts && rewrite != BodyRewrite::Perplexity;
+        let linked = |source: &Source, typed: bool| match source {
+            Source::Url(_) => true,
+            Source::Base64(_) => typed,
+            Source::Raw(_) | Source::FileId(_) | Source::String(_) | Source::Unknown => false,
+        };
+        match media {
+            Media::Image(image, place) => {
+                parts
+                    && place != crate::completion::Place::Assistant
+                    && linked(&image.data, image.media_type.is_some())
+            }
+            Media::Audio(audio) => files && matches!(audio.data, Source::Base64(_)),
+            Media::Video(video) => {
+                files
+                    && rewrite != BodyRewrite::Mistral
+                    && ![super::dialects::OPENAI.name, super::dialects::AZURE.name]
+                        .contains(&dialect.name)
+                    && linked(&video.data, video.media_type.is_some())
+            }
+            Media::Document(document) => {
+                let pdf = document.media_type == Some(DocumentMediaType::PDF);
+                match &document.data {
+                    Source::String(_) => !pdf,
+                    Source::FileId(_) => files && dialect.quirks.accepts_file_ids,
+                    Source::Base64(_) => files && pdf,
+                    Source::Url(_) => {
+                        pdf && matches!(rewrite, BodyRewrite::OpenRouter | BodyRewrite::Mistral)
+                    }
+                    Source::Raw(_) | Source::Unknown => false,
+                }
+            }
         }
     }
 

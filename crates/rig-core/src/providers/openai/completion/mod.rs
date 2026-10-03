@@ -621,51 +621,9 @@ impl TryFrom<message::ToolResult> for Message {
                 message::ToolResultContent::Json { value } => {
                     Ok(ToolResultContent::from(value.to_string()))
                 }
-                // The request builder checks image support using the selected dialect.
-                message::ToolResultContent::Image(message::Image {
-                    data,
-                    media_type,
-                    detail,
-                    ..
-                }) => {
-                    let url = match data {
-                        DocumentSourceKind::Url(url) => url,
-                        DocumentSourceKind::Base64(data) => {
-                            let media_type = media_type.ok_or_else(|| {
-                                message::MessageError::ConversionError(
-                                    "a base64 image in a tool result needs a media type to build \
-                                     its data URI"
-                                        .into(),
-                                )
-                            })?;
-                            format!("data:{};base64,{}", media_type.to_mime_type(), data)
-                        }
-                        // Error messages must not expose raw image bytes.
-                        DocumentSourceKind::Raw(_) => {
-                            return Err(message::MessageError::ConversionError(
-                                "raw image bytes are not supported in a tool result; encode as \
-                                 base64 first"
-                                    .into(),
-                            ));
-                        }
-                        // Source values may contain private caller data.
-                        DocumentSourceKind::FileId(_) => {
-                            return Err(message::MessageError::ConversionError(
-                                "a provider-side file id is not supported in a tool result on \
-                                 this surface; use a URL or base64"
-                                    .into(),
-                            ));
-                        }
-                        DocumentSourceKind::String(_) | DocumentSourceKind::Unknown => {
-                            return Err(message::MessageError::ConversionError(
-                                "this image carries no usable source; use a URL or base64".into(),
-                            ));
-                        }
-                    };
-                    Ok(ToolResultContent::Image {
-                        image_url: ImageUrl { url, detail },
-                    })
-                }
+                message::ToolResultContent::Image(image) => Ok(ToolResultContent::Image {
+                    image_url: image_url(image)?,
+                }),
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -683,171 +641,106 @@ impl TryFrom<message::ToolResult> for Message {
     }
 }
 
+/// The error for media in a form Chat Completions cannot carry, which the
+/// adapter replaces before a request is encoded
+/// ([`ReplayTarget::encodes`](crate::completion::ReplayTarget::encodes)).
+fn unsendable(what: &str) -> message::MessageError {
+    message::MessageError::ConversionError(format!(
+        "Chat Completions cannot carry {what} in this form"
+    ))
+}
+
+/// `data` as a URL a content part names: a URL, or typed base64 data as a
+/// data URI.
+fn media_url(data: DocumentSourceKind, mime: Option<&str>) -> Option<String> {
+    match (data, mime) {
+        (DocumentSourceKind::Url(url), _) => Some(url),
+        (DocumentSourceKind::Base64(data), Some(mime)) => {
+            Some(format!("data:{mime};base64,{data}"))
+        }
+        _ => None,
+    }
+}
+
+/// The `image_url` an image is sent as.
+fn image_url(image: message::Image) -> Result<ImageUrl, message::MessageError> {
+    let mime = image.media_type.as_ref().map(MimeType::to_mime_type);
+    Ok(ImageUrl {
+        url: media_url(image.data, mime).ok_or_else(|| unsendable("an image"))?,
+        detail: image.detail,
+    })
+}
+
 impl TryFrom<message::UserContent> for UserContent {
     type Error = message::MessageError;
 
     fn try_from(value: message::UserContent) -> Result<Self, Self::Error> {
-        match value {
-            message::UserContent::Text(message::Text { text, .. }) => Ok(UserContent::Text { text }),
-            message::UserContent::Image(message::Image {
-                data,
-                detail,
-                media_type,
-                ..
-            }) => match data {
-                DocumentSourceKind::Url(url) => Ok(UserContent::Image {
-                    image_url: ImageUrl {
-                        url,
-                        // OpenAI's wire format always carries a detail level;
-                        // absent rig-level detail maps to the default (auto).
-                        detail: Some(detail.unwrap_or_default()),
-                    },
-                }),
-                DocumentSourceKind::Base64(data) => {
-                    let url = format!(
-                        "data:{};base64,{}",
-                        media_type.map(|i| i.to_mime_type()).ok_or(
-                            message::MessageError::ConversionError(
-                                "OpenAI Image URI must have media type".into()
-                            )
-                        )?,
-                        data
-                    );
-
-                    let detail = Some(detail.unwrap_or_default());
-
-                    Ok(UserContent::Image {
-                        image_url: ImageUrl { url, detail },
-                    })
-                }
-                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
-                    "Raw files not supported, encode as base64 first".into(),
-                )),
-                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
-                    "File IDs are not supported for images".into(),
-                )),
-                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
-                    "Document has no body".into(),
-                )),
-                doc => Err(message::MessageError::ConversionError(format!(
-                    "Unsupported document type: {doc:?}"
-                ))),
-            },
-            message::UserContent::Document(message::Document {
-                data: DocumentSourceKind::FileId(file_id),
-                ..
-            }) => Ok(UserContent::File {
+        let file = |file_data: Option<String>, file_id: Option<String>, filename: Option<&str>| {
+            UserContent::File {
                 file: FileData {
-                    file_data: None,
-                    file_id: Some(file_id),
-                    filename: None,
+                    file_data,
+                    file_id,
+                    filename: filename.map(str::to_owned),
                 },
-            }),
-            message::UserContent::Document(message::Document {
-                data,
-                media_type: Some(message::DocumentMediaType::PDF),
-                ..
-            }) => match data {
-                DocumentSourceKind::Base64(b64) => Ok(UserContent::File {
-                    file: FileData {
-                        file_data: Some(format!("data:application/pdf;base64,{b64}")),
-                        file_id: None,
-                        filename: Some("document.pdf".to_string()),
+            }
+        };
+        match value {
+            message::UserContent::Text(message::Text { text, .. }) => {
+                Ok(UserContent::Text { text })
+            }
+            // A user image always carries a detail level, `auto` by default.
+            message::UserContent::Image(image) => {
+                let url = image_url(image)?;
+                Ok(UserContent::Image {
+                    image_url: ImageUrl {
+                        detail: Some(url.detail.unwrap_or_default()),
+                        ..url
                     },
-                }),
-                DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
-                    "OpenAI chat completions does not accept URL files; use the Responses API or pass base64-encoded bytes".into(),
-                )),
-                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
-                    "Raw files not supported, encode as base64 first".into(),
-                )),
-                DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(
-                    "PDF documents must be base64-encoded, not raw strings".into(),
-                )),
-                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
-                    "File ID documents should be converted without media type constraints".into(),
-                )),
-                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
-                    "Document has no body".into(),
-                )),
-            },
-            message::UserContent::Document(message::Document { data, .. }) => {
-                if let DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text) = data {
-                    Ok(UserContent::Text { text })
-                } else {
-                    Err(message::MessageError::ConversionError(
-                        "Documents must be base64 or a string".into(),
+                })
+            }
+            message::UserContent::Document(message::Document {
+                data, media_type, ..
+            }) => match (data, media_type) {
+                (DocumentSourceKind::FileId(id), _) => Ok(file(None, Some(id), None)),
+                (DocumentSourceKind::Base64(data), Some(message::DocumentMediaType::PDF)) => {
+                    Ok(file(
+                        Some(format!("data:application/pdf;base64,{data}")),
+                        None,
+                        Some("document.pdf"),
                     ))
                 }
-            }
-            message::UserContent::Audio(message::Audio {
-                data, media_type, ..
-            }) => match data {
-                DocumentSourceKind::Base64(data) => Ok(UserContent::Audio {
-                    input_audio: InputAudio {
-                        data,
-                        format: media_type.unwrap_or(AudioMediaType::MP3),
-                    },
-                }),
-                DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(
-                    "URLs are not supported for audio".into(),
-                )),
-                DocumentSourceKind::Raw(_) => Err(message::MessageError::ConversionError(
-                    "Raw files are not supported for audio".into(),
-                )),
-                DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
-                    "File IDs are not supported for audio".into(),
-                )),
-                DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(
-                    "Audio has no body".into(),
-                )),
-                audio => Err(message::MessageError::ConversionError(format!(
-                    "Unsupported audio type: {audio:?}"
-                ))),
+                // OpenRouter and Mistral fetch a PDF a URL names.
+                (DocumentSourceKind::Url(url), Some(message::DocumentMediaType::PDF)) => {
+                    Ok(file(Some(url), None, Some("document.pdf")))
+                }
+                (DocumentSourceKind::String(text), media_type)
+                    if media_type != Some(message::DocumentMediaType::PDF) =>
+                {
+                    Ok(UserContent::Text { text })
+                }
+                _ => Err(unsendable("a document")),
             },
+            message::UserContent::Audio(message::Audio {
+                data: DocumentSourceKind::Base64(data),
+                media_type,
+            }) => Ok(UserContent::Audio {
+                input_audio: InputAudio {
+                    data,
+                    format: media_type.unwrap_or(AudioMediaType::MP3),
+                },
+            }),
+            message::UserContent::Audio(_) => Err(unsendable("audio")),
+            message::UserContent::Video(message::Video {
+                data, media_type, ..
+            }) => Ok(UserContent::Video {
+                video_url: VideoUrl {
+                    url: media_url(data, media_type.as_ref().map(MimeType::to_mime_type))
+                        .ok_or_else(|| unsendable("a video"))?,
+                },
+            }),
             message::UserContent::ToolResult(_) => Err(message::MessageError::ConversionError(
                 "Tool result is in unsupported format".into(),
             )),
-            message::UserContent::Video(message::Video {
-                data, media_type, ..
-            }) => {
-                let url = match data {
-                    DocumentSourceKind::Url(url) => url,
-                    DocumentSourceKind::Base64(data) => {
-                        let mime = media_type
-                            .ok_or_else(|| {
-                                message::MessageError::ConversionError(
-                                    "Video media type required for base64 encoding".into(),
-                                )
-                            })?
-                            .to_mime_type();
-                        format!("data:{mime};base64,{data}")
-                    }
-                    DocumentSourceKind::Raw(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "Raw bytes not supported for video, encode as base64 first".into(),
-                        ));
-                    }
-                    DocumentSourceKind::FileId(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "File IDs are not supported for video".into(),
-                        ));
-                    }
-                    DocumentSourceKind::String(_) => {
-                        return Err(message::MessageError::ConversionError(
-                            "String source not supported for video".into(),
-                        ));
-                    }
-                    DocumentSourceKind::Unknown => {
-                        return Err(message::MessageError::ConversionError(
-                            "Video has no data".into(),
-                        ));
-                    }
-                };
-                Ok(UserContent::Video {
-                    video_url: VideoUrl { url },
-                })
-            }
         }
     }
 }

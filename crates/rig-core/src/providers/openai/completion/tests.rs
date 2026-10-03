@@ -1479,8 +1479,10 @@ fn non_pdf_document_still_serializes_as_text() {
     assert_eq!(json["text"], "# Markdown");
 }
 
+/// A PDF a URL names is a file part with the URL as its data, which
+/// OpenRouter and Mistral fetch.
 #[test]
-fn pdf_url_document_returns_conversion_error() {
+fn pdf_url_document_is_a_file_url() {
     let doc = message::UserContent::Document(message::Document {
         data: DocumentSourceKind::Url("https://example.com/x.pdf".into()),
         media_type: Some(message::DocumentMediaType::PDF),
@@ -1489,7 +1491,8 @@ fn pdf_url_document_returns_conversion_error() {
     let res: Result<UserContent, _> = doc.try_into();
     assert!(matches!(
         res,
-        Err(message::MessageError::ConversionError(_))
+        Ok(UserContent::File { file: FileData { file_data: Some(url), .. } })
+            if url == "https://example.com/x.pdf"
     ));
 }
 

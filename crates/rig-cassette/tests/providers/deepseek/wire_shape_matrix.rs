@@ -15,10 +15,10 @@
 //! expected `text``. All-text arrays still flatten to a plain string, byte for
 //! byte as before — which is why no existing fixture moved.
 //!
-//! DeepSeek's models read no images, so the history adapter now sends an
-//! image as its placeholder text before this rewrite sees it: the image
-//! cells pin that placeholder, and the document, audio and video cells still
-//! pin DeepSeek's own rejection.
+//! DeepSeek answers a document, audio or video part with the same 400, so
+//! its wire states it carries none of them, and the history adapter sends
+//! every non-text part as its placeholder text before this rewrite sees it.
+//! The non-text cells pin that placeholder.
 //!
 //! The fix-relevant live matrix is the complete input partition seen by the
 //! changed `flatten_text_content_parts(..., only_if_all_text)` call:
@@ -34,9 +34,8 @@
 //! because the changed helper has only one decision — every part has text, or
 //! at least one does not — and the five non-text variants above are the full
 //! wire enum, not samples from an open-ended set. Agent calls add no request
-//! mapping branch: both agent surfaces delegate to the same completion model,
-//! and DeepSeek rejects these request bytes before an agent loop can observe a
-//! turn. Recording agent duplicates or all five tags again on streaming would
+//! mapping branch: both agent surfaces delegate to the same completion model.
+//! Recording agent duplicates or all five tags again on streaming would
 //! therefore repeat identical encoded request bodies rather than exercise
 //! another path.
 //!
@@ -50,7 +49,9 @@
 use rig::completion::{Document, Message};
 use rig::message::{DocumentMediaType, DocumentSourceKind, ToolChoice, UserContent};
 use rig::providers::deepseek;
-use rig_core::completion::history::USER_IMAGE_OMITTED;
+use rig_core::completion::history::{
+    AUDIO_UNSENDABLE, DOCUMENT_UNSENDABLE, USER_IMAGE_OMITTED, VIDEO_UNSENDABLE,
+};
 use serde_json::{Value, json};
 
 use super::support::{
@@ -115,16 +116,8 @@ fn recorded_first_user_text(scenario: &str) -> String {
         .to_owned()
 }
 
-fn assert_rejected_by_deepseek(error: &rig::error::ProviderError, context: &str) {
-    let rendered = error.to_string();
-    assert!(
-        rendered.contains("unknown variant") || rendered.contains("expected `text`"),
-        "{context}: expected DeepSeek's own rejection of the non-text part, got {rendered}"
-    );
-}
-
 // ================================================================
-// A. Non-text parts now reach the wire
+// A. Non-text parts reach the wire as placeholders
 // ================================================================
 
 #[tokio::test]
@@ -186,13 +179,13 @@ async fn blocking_image_url_part_becomes_a_placeholder() {
 }
 
 #[tokio::test]
-async fn blocking_pdf_document_part_reaches_the_wire() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire";
+async fn blocking_pdf_document_part_becomes_a_placeholder() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_pdf_document_part_becomes_a_placeholder";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire",
+        "wire_shape_matrix/blocking_pdf_document_part_becomes_a_placeholder",
         |client| async move {
-            let model = client.completion(MODEL);
-            let error = model
+            client
+                .completion(MODEL)
                 .call(
                     CompletionRequest::new(multimodal_prompt(UserContent::Document(
                         rig::message::Document {
@@ -205,28 +198,27 @@ async fn blocking_pdf_document_part_reaches_the_wire() {
                     .max_tokens(16),
                 )
                 .await
-                .expect_err("DeepSeek rejects a file part rather than answering without it");
-            assert_rejected_by_deepseek(&error, "blocking pdf document");
+                .expect("DeepSeek takes text only, so it gets a PDF as text");
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("blocking_pdf_document_part_reaches_the_wire should replay from its cassette");
+    .expect("blocking_pdf_document_part_becomes_a_placeholder should replay from its cassette");
 
     assert_eq!(
-        recorded_first_user_part_types(SCENARIO),
-        Some(vec!["text".to_owned(), "file".to_owned()])
+        recorded_first_user_text(SCENARIO),
+        format!("What colour is the attachment?\n{DOCUMENT_UNSENDABLE}")
     );
 }
 
 #[tokio::test]
-async fn blocking_audio_part_reaches_the_wire() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_audio_part_reaches_the_wire";
+async fn blocking_audio_part_becomes_a_placeholder() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_audio_part_becomes_a_placeholder";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_audio_part_reaches_the_wire",
+        "wire_shape_matrix/blocking_audio_part_becomes_a_placeholder",
         |client| async move {
-            let model = client.completion(MODEL);
-            let error = model
+            client
+                .completion(MODEL)
                 .call(
                     CompletionRequest::new(multimodal_prompt(UserContent::audio_base64(
                         "aGVsbG8=",
@@ -236,28 +228,27 @@ async fn blocking_audio_part_reaches_the_wire() {
                     .max_tokens(16),
                 )
                 .await
-                .expect_err("DeepSeek rejects an audio part rather than answering without it");
-            assert_rejected_by_deepseek(&error, "blocking audio");
+                .expect("DeepSeek takes text only, so it gets audio as text");
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("blocking_audio_part_reaches_the_wire should replay from its cassette");
+    .expect("blocking_audio_part_becomes_a_placeholder should replay from its cassette");
 
     assert_eq!(
-        recorded_first_user_part_types(SCENARIO),
-        Some(vec!["text".to_owned(), "input_audio".to_owned()])
+        recorded_first_user_text(SCENARIO),
+        format!("What colour is the attachment?\n{AUDIO_UNSENDABLE}")
     );
 }
 
 #[tokio::test]
-async fn blocking_video_part_reaches_the_wire() {
-    const SCENARIO: &str = "wire_shape_matrix/blocking_video_part_reaches_the_wire";
+async fn blocking_video_part_becomes_a_placeholder() {
+    const SCENARIO: &str = "wire_shape_matrix/blocking_video_part_becomes_a_placeholder";
     with_deepseek_wire_shape_cassette_result(
-        "wire_shape_matrix/blocking_video_part_reaches_the_wire",
+        "wire_shape_matrix/blocking_video_part_becomes_a_placeholder",
         |client| async move {
-            let model = client.completion(MODEL);
-            let error = model
+            client
+                .completion(MODEL)
                 .call(
                     CompletionRequest::new(multimodal_prompt(UserContent::Video(
                         rig::message::Video {
@@ -272,17 +263,16 @@ async fn blocking_video_part_reaches_the_wire() {
                     .max_tokens(16),
                 )
                 .await
-                .expect_err("DeepSeek rejects a video part rather than answering without it");
-            assert_rejected_by_deepseek(&error, "blocking video");
+                .expect("DeepSeek takes text only, so it gets a video as text");
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("blocking_video_part_reaches_the_wire should replay from its cassette");
+    .expect("blocking_video_part_becomes_a_placeholder should replay from its cassette");
 
     assert_eq!(
-        recorded_first_user_part_types(SCENARIO),
-        Some(vec!["text".to_owned(), "video_url".to_owned()])
+        recorded_first_user_text(SCENARIO),
+        format!("What colour is the attachment?\n{VIDEO_UNSENDABLE}")
     );
 }
 

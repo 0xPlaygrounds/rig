@@ -397,15 +397,14 @@ fn gpt_6_chat_tools_need_effort_none_or_the_responses_wire() {
     );
 }
 
-/// OpenRouter's message conversion refused a document carrying only a
-/// provider file id. A refusal is behaviour: dropping it would turn a legible
-/// local error into an opaque gateway 400.
+/// OpenRouter takes no provider file id, so the adapter leaves a placeholder
+/// for a document carrying only one; every other dialect sends the id.
 #[test]
-fn openrouter_refuses_a_document_that_is_only_a_file_id() {
+fn openrouter_gets_a_placeholder_for_a_file_id_document() {
     use crate::message::{Document, DocumentSourceKind, Message, UserContent};
     use crate::providers::openai::wire::OPENROUTER;
 
-    let with_file_id = || {
+    let body = |chat: Chat| {
         let mut request = prompt("read this");
         request.chat_history = vec![Message::User {
             content: vec![UserContent::Document(Document {
@@ -414,30 +413,25 @@ fn openrouter_refuses_a_document_that_is_only_a_file_id() {
                 additional_params: None,
             })],
         }];
-        request
+        let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
+            request,
+            &chat.describe(),
+        )
+        .expect("the request prepares");
+        json_body(&chat.encode(request, Mode::Unary).expect("encodes").request).to_string()
     };
-
-    let error = OpenAIConfig::new("k")
-        .with_dialect(&OPENROUTER)
-        .chat("openai/gpt-4o")
-        .encode(with_file_id(), Mode::Unary)
-        .expect_err("OpenRouter refuses a bare file id");
-    assert!(
-        error
-            .to_string()
-            .contains("Provider file IDs are not supported for OpenRouter document inputs"),
-        "the message is the one the conversion returned: {error}"
-    );
-
-    // Every other dialect on this wire accepted them, so the refusal is
-    // OpenRouter's and not the wire's.
-    assert!(
+    let openrouter = body(
         OpenAIConfig::new("k")
-            .chat("gpt-4.1-nano")
-            .encode(with_file_id(), Mode::Unary)
-            .is_ok(),
-        "only OpenRouter refuses a file id"
+            .with_dialect(&OPENROUTER)
+            .chat("openai/gpt-4o"),
     );
+    assert!(
+        openrouter.contains(crate::completion::history::DOCUMENT_UNSENDABLE)
+            && !openrouter.contains("file-abc"),
+        "{openrouter}"
+    );
+    let openai = body(wire());
+    assert!(openai.contains("\"file_id\":\"file-abc\""), "{openai}");
 }
 
 /// The terminal record is readable back out of the stream's `raw`, which is
@@ -943,8 +937,8 @@ async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
 }
 
 /// Mistral validates message content as a tagged union of its own chunks, so
-/// an OpenAI content part has to be rebuilt rather than forwarded — and a
-/// part it has no chunk for must fail loudly rather than be dropped.
+/// an OpenAI content part has to be rebuilt rather than forwarded, and a
+/// part it has no chunk for is a placeholder rather than dropped.
 ///
 /// The bug this guards is rig#2290: a text-only flattening kept only parts
 /// with a `text`/`refusal` key, so an attached image, document or audio clip
@@ -988,19 +982,37 @@ fn the_mistral_body_rebuilds_content_as_its_own_chunks() {
     assert_eq!(parts[0]["type"], "text");
     assert_eq!(parts[1]["type"], "image_url");
 
-    // Content Mistral has no chunk for fails here rather than being removed.
-    let refused = encode(vec![
-        UserContent::text("watch"),
-        UserContent::Video(crate::message::Video {
-            data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.mp4".to_owned()),
-            media_type: None,
-            additional_params: None,
-        }),
-    ]);
-    let error = refused.expect_err("Mistral carries no video chunk");
+    // Content Mistral has no chunk for is a placeholder the adapter leaves,
+    // never removed.
+    let mut request = prompt("watch");
+    request.chat_history = vec![Message::User {
+        content: vec![
+            UserContent::text("watch"),
+            UserContent::Video(crate::message::Video {
+                data: crate::message::DocumentSourceKind::Url("https://x.invalid/a.mp4".to_owned()),
+                media_type: None,
+                additional_params: None,
+            }),
+        ],
+    }];
+    let mistral = OpenAIConfig::new("k")
+        .with_dialect(&MISTRAL)
+        .chat("mistral-small-latest");
+    let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
+        request,
+        &mistral.describe(),
+    )
+    .expect("the request prepares");
+    let body = json_body(
+        &mistral
+            .encode(request, Mode::Unary)
+            .expect("encodes")
+            .request,
+    );
     assert!(
-        error.to_string().contains("Mistral cannot carry"),
-        "the error names the constraint: {error}"
+        body.to_string()
+            .contains(crate::completion::history::VIDEO_UNSENDABLE),
+        "the video is a placeholder: {body}"
     );
 
     // A document with inline bytes becomes `document_url`, carrying its name
