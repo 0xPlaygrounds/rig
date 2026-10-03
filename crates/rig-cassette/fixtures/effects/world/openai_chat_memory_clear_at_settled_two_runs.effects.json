@@ -159,15 +159,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "ready",
-                  "refusal": null
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           ],
           "usage": {
@@ -191,7 +183,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 16268972914252074274
+            "fingerprint": 5329546866666182096
           },
           "provider_request_id": "req_6764ffb4a8774849b8283cbed4987a3a",
           "finish_reason": "stop",
@@ -258,15 +250,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "ready",
-                      "refusal": null
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "origin": {
@@ -284,7 +268,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             }
           ]
@@ -376,15 +360,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "again",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "again",
-                  "refusal": null
-                },
-                "fingerprint": 1676338818300893999
-              }
+              "text": "again"
             }
           ],
           "usage": {
@@ -408,7 +384,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 3259939305862458759
+            "fingerprint": 16476637925928325713
           },
           "provider_request_id": "req_e9483f8550f2437abd583803ea4cb5b1",
           "finish_reason": "stop",
@@ -475,15 +451,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "again",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "again",
-                      "refusal": null
-                    },
-                    "fingerprint": 1676338818300893999
-                  }
+                  "text": "again"
                 }
               ],
               "origin": {
@@ -501,7 +469,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 3259939305862458759
+                "fingerprint": 16476637925928325713
               }
             }
           ]

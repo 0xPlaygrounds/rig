@@ -84,7 +84,7 @@
                 "item": {
                   "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
                 },
-                "fingerprint": 10458759381634124062
+                "fingerprint": 5605682256475863184
               }
             }
           ],
@@ -107,7 +107,7 @@
               "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**",
               "role": "assistant"
             },
-            "fingerprint": 5888614307451041814
+            "fingerprint": 9151228525801828208
           },
           "finish_reason": "length",
           "raw": {

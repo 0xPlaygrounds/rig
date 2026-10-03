@@ -111,7 +111,7 @@
                   "thinking": "144",
                   "type": "thinking"
                 },
-                "fingerprint": 17341113157632060793
+                "fingerprint": 17883408413175930617
               }
             },
             {
@@ -122,7 +122,7 @@
                   "text": "144",
                   "type": "text"
                 },
-                "fingerprint": 14351458450206542828
+                "fingerprint": 431554760036180866
               }
             }
           ],
@@ -194,7 +194,7 @@
                   "thinking": "144",
                   "type": "thinking"
                 },
-                "fingerprint": 17341113157632060793
+                "fingerprint": 17883408413175930617
               }
             }
           }
@@ -228,12 +228,17 @@
                   "text": "144",
                   "type": "text"
                 },
-                "fingerprint": 14351458450206542828
+                "fingerprint": 431554760036180866
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     }
   ]

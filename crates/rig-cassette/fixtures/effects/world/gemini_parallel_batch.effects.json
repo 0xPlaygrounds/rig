@@ -170,7 +170,7 @@
                     "name": "checkpoint_batch"
                   }
                 },
-                "fingerprint": 2180359541050242385
+                "fingerprint": 5544431454385547297
               }
             },
             {
@@ -193,7 +193,7 @@
                     "name": "checkpoint_batch"
                   }
                 },
-                "fingerprint": 8058014479380521376
+                "fingerprint": 14963693119764032284
               }
             },
             {
@@ -216,7 +216,7 @@
                     "name": "checkpoint_batch"
                   }
                 },
-                "fingerprint": 4856236667745328051
+                "fingerprint": 15853693935000154355
               }
             }
           ],
@@ -230,7 +230,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash-lite",
             "response_model": "gemini-2.5-flash-lite",
-            "response_id": "jCy_aqzQKausz7IPg6Ht8AI"
+            "response_id": "6Q7AasD8IMf8qtsP6erCkAI"
           },
           "native": {
             "item": {
@@ -238,7 +238,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 1798525904533652630
+            "fingerprint": 2281358783080088706
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -279,7 +279,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "jCy_aqzQKausz7IPg6Ht8AI",
+            "responseId": "6Q7AasD8IMf8qtsP6erCkAI",
             "usageMetadata": {
               "candidatesTokenCount": 45,
               "promptTokenCount": 144,
@@ -425,7 +425,7 @@
                         "name": "checkpoint_batch"
                       }
                     },
-                    "fingerprint": 2180359541050242385
+                    "fingerprint": 5544431454385547297
                   }
                 },
                 {
@@ -448,7 +448,7 @@
                         "name": "checkpoint_batch"
                       }
                     },
-                    "fingerprint": 8058014479380521376
+                    "fingerprint": 14963693119764032284
                   }
                 },
                 {
@@ -471,7 +471,7 @@
                         "name": "checkpoint_batch"
                       }
                     },
-                    "fingerprint": 4856236667745328051
+                    "fingerprint": 15853693935000154355
                   }
                 }
               ],
@@ -480,7 +480,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash-lite",
                 "response_model": "gemini-2.5-flash-lite",
-                "response_id": "jCy_aqzQKausz7IPg6Ht8AI"
+                "response_id": "6Q7AasD8IMf8qtsP6erCkAI"
               },
               "stop": "tool_use",
               "native": {
@@ -489,7 +489,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 1798525904533652630
+                "fingerprint": 2281358783080088706
               }
             },
             {
@@ -519,7 +519,8 @@
                       "type": "text",
                       "text": "the tool failed"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 },
                 {
                   "type": "toolresult",
@@ -580,7 +581,7 @@
                 "item": {
                   "text": "checkpoint-complete"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           ],
@@ -594,14 +595,14 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash-lite",
             "response_model": "gemini-2.5-flash-lite",
-            "response_id": "jSy_aqzVEtCEz7IPiqmZ8Qg"
+            "response_id": "6g7AaoWRAbqzmtkPif6TmAI"
           },
           "native": {
             "item": {
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 6231790669279808033
+            "fingerprint": 8754285088019305819
           },
           "finish_reason": "stop",
           "raw": {
@@ -620,7 +621,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "jSy_aqzVEtCEz7IPiqmZ8Qg",
+            "responseId": "6g7AaoWRAbqzmtkPif6TmAI",
             "usageMetadata": {
               "candidatesTokenCount": 3,
               "promptTokenCount": 240,

@@ -152,7 +152,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 13242271953246025677
+                "fingerprint": 15914946468810527913
               }
             }
           ],
@@ -285,7 +285,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 13242271953246025677
+                    "fingerprint": 15914946468810527913
                   }
                 }
               ],
@@ -361,7 +361,7 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],

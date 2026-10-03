@@ -96,7 +96,7 @@
                 "item": {
                   "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
                 },
-                "fingerprint": 11641959940433259842
+                "fingerprint": 5651216021941564244
               }
             }
           ],
@@ -118,21 +118,22 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 15079928143371213584
+            "fingerprint": 16816276110145197614
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 26,
               "candidatesTokenCount": 47,
-              "totalTokenCount": 102,
-              "thoughtsTokenCount": 29,
+              "promptTokenCount": 26,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 26
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 29,
+              "totalTokenCount": 102
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -177,12 +178,17 @@
                 "item": {
                   "text": "A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking the Sun's light either partially or entirely. This alignment causes the Moon to obscure the Sun from an Earthly perspective."
                 },
-                "fingerprint": 11641959940433259842
+                "fingerprint": 5651216021941564244
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

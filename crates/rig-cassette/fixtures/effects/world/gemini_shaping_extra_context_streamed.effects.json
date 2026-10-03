@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -108,49 +108,50 @@
               "native": {
                 "item": {
                   "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
-                  "thoughtSignature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
+                  "thoughtSignature": "Eo0FCooFAWkUfROvOIO2PSXuIKaNYy54VoBnV5Om9WH4puMhYN/xMTD3je8PK4wAi11xUc+qfgWwp2ZXBI1STIoanSsu4t7xxKXdIrOgDw8JXXrMHsjFKq3WtzAyXwNKOdVylF/vnPzF21hylwTlxqsA7dzz/6O/3NGedIja3zXIJK/dbR+zTBzgfS8F6UiKX8QMYqII5ZWS17O5CfPkpVvXo6e6OekXVrgXAZk6YfbxHy44qNN9O/PbpdBNaSzQE29cCmrkBe20M+0xKpe6N5RWJrs/CdvFgJ4BDLQwgFrP8EY+KsMFJgnzSkN7pqt4dXdzI+PKkVBG9/XMVR6rDcDMaOEHtsMez1ij/AeqY7ZxlZPSJB3gfOGS4SCB6Tx3V/32yB8wZRJb09xcthtmB45xW3e5/tpyv41+E7691zxLKAQDmFoib3G26CnfnAU14RN2WjX7X0z7PqPoVqfbBhVT0TDdbyeYwsd+yAZ1uPwCheqrq00MAtGoOnDz3TqRhBXJPQAvCSrMXc3ybpdp/h18YGPoOxr79f1JZb3gUlZBi06T4SYSN/X/H4+llXiYL7T541o1A7oUSwgx/WxF82a3sn+fktN8v/xRd/Z8B099ZfKRtBFnpnQlxqv91yJn2uug3aATgUp20PqTtxq0ShEHp+0xlgaLEcVTDy+4VnkqCWOHfqxyYIhbbiNfran8d8z7kkzFNFAcUHzDvMEoHX1YryIfw5dpZI2N2e68fNAyWfoPAYhXLJYzAyh12vVdiWIN/rh+dKI3bJU/LiaN7bGQsK+kToY/VPE93l0cOdvsMIw6grDV7Wi3314/iQdl8/R/Nt4Aa0SbAJODQLtw+rFfRBmFV3+Z46hkgvIqboI="
                 },
-                "fingerprint": 9658890132495485441
+                "fingerprint": 14673726990416479137
               }
             }
           ],
           "usage": {
-            "input_tokens": 60,
-            "output_tokens": 107,
-            "total_tokens": 167,
-            "reasoning_tokens": 89
+            "input_tokens": 59,
+            "output_tokens": 154,
+            "total_tokens": 213,
+            "reasoning_tokens": 136
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-3-flash-preview",
             "response_model": "gemini-3-flash-preview",
-            "response_id": "x62yasOCMcPXz7IP6fmsGQ"
+            "response_id": "YQ_AavuxA_WgqtsPiPLz6QQ"
           },
           "native": {
             "item": {
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 8549421029602975643
+            "fingerprint": 5117098154201444803
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 60,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 167,
-              "thoughtsTokenCount": 89,
+              "promptTokenCount": 59,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 60
+                  "tokenCount": 59
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 136,
+              "totalTokenCount": 213
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "x62yasOCMcPXz7IP6fmsGQ"
+            "response_id": "YQ_AavuxA_WgqtsPiPLz6QQ"
           }
         }
       },
@@ -168,7 +169,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "A glarb-glarb"
+            "text": "A glarb-glarb is an ancient farming tool from the planet J"
           }
         },
         {
@@ -176,7 +177,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is an ancient farming tool from the planet Jiro."
+            "text": "iro."
           }
         },
         {
@@ -190,14 +191,19 @@
               "native": {
                 "item": {
                   "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
-                  "thoughtSignature": "EvUDCvIDAWkUfROlgd/mYlfbt+RVTWiG7KCjN71UNayuGVQYQNrsyes7OwZFk4x7Z4Gnu2OA0Kk3D3UBOJFEgaRcNYygssjtsRu0RwbGvoU9KDRZ9SptIP9w2CRFNu9j7VMu+rotzwP3sr00umvvT8XxUjtLLEcaqY9EA1mWCaKFZINRZmHMht/+zV8JYGYeh15DRHZQZion9Zcm9ZB04jBE1QgFT8L8ARhRLZbzk9yywzXCPrOEBqa8g/MU4GNWym17muVK3EgFGS2J3bdWYiWoYGdPLRkTEhIURScpRCDjwMJnvzTmBpE94ynpt6zWKVrEyMPBGAPX29zemDmI5PM6O9Gx2e5rZVh3rDrOX5dwpJy496lvqAeARQL1GS31Xwpoz+bn+QYfJWVFeQCwaqqbtDuMIYqHJYn3Rt1/bnyWRtwMbCVa/H6TJlDU+WxwL6Sm6hOo4VTXfmNkc4mNH/wA3i4mwxkKj73YqVfVbnvuJa1j3UCmtPNM97Cigl/BTT8VLBE1tWTr7DQTcOEkpqKcqgPdw53kMtvm+8vJ/LZL98aST74E1PPVsoCG2ZYLRb1gdUKajTZyAyClxZDUvSWV+/4nn3oxhCemMMJA24IU8QPH03tU3VDNGdSkqXDPyhYqXnIvENnJ1IOp9BCNGDDrfa7MUOfo"
+                  "thoughtSignature": "Eo0FCooFAWkUfROvOIO2PSXuIKaNYy54VoBnV5Om9WH4puMhYN/xMTD3je8PK4wAi11xUc+qfgWwp2ZXBI1STIoanSsu4t7xxKXdIrOgDw8JXXrMHsjFKq3WtzAyXwNKOdVylF/vnPzF21hylwTlxqsA7dzz/6O/3NGedIja3zXIJK/dbR+zTBzgfS8F6UiKX8QMYqII5ZWS17O5CfPkpVvXo6e6OekXVrgXAZk6YfbxHy44qNN9O/PbpdBNaSzQE29cCmrkBe20M+0xKpe6N5RWJrs/CdvFgJ4BDLQwgFrP8EY+KsMFJgnzSkN7pqt4dXdzI+PKkVBG9/XMVR6rDcDMaOEHtsMez1ij/AeqY7ZxlZPSJB3gfOGS4SCB6Tx3V/32yB8wZRJb09xcthtmB45xW3e5/tpyv41+E7691zxLKAQDmFoib3G26CnfnAU14RN2WjX7X0z7PqPoVqfbBhVT0TDdbyeYwsd+yAZ1uPwCheqrq00MAtGoOnDz3TqRhBXJPQAvCSrMXc3ybpdp/h18YGPoOxr79f1JZb3gUlZBi06T4SYSN/X/H4+llXiYL7T541o1A7oUSwgx/WxF82a3sn+fktN8v/xRd/Z8B099ZfKRtBFnpnQlxqv91yJn2uug3aATgUp20PqTtxq0ShEHp+0xlgaLEcVTDy+4VnkqCWOHfqxyYIhbbiNfran8d8z7kkzFNFAcUHzDvMEoHX1YryIfw5dpZI2N2e68fNAyWfoPAYhXLJYzAyh12vVdiWIN/rh+dKI3bJU/LiaN7bGQsK+kToY/VPE93l0cOdvsMIw6grDV7Wi3314/iQdl8/R/Nt4Aa0SbAJODQLtw+rFfRBmFV3+Z46hkgvIqboI="
                 },
-                "fingerprint": 9658890132495485441
+                "fingerprint": 14673726990416479137
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      },
       "scope": "golden/run#0"
     }
   ]

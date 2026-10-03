@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,19 +10,11 @@
         }
       },
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -46,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -54,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -78,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -133,7 +125,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -141,7 +133,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -149,7 +141,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -157,7 +149,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -173,7 +165,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
@@ -181,7 +173,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -213,7 +205,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -221,7 +213,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -229,7 +221,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -245,7 +237,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -253,7 +245,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -261,7 +253,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -277,7 +269,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -301,7 +293,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -309,7 +301,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -317,7 +309,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -325,7 +317,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -349,11 +341,11 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 54,
+        "batch": 71,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -361,95 +353,7 @@
         }
       },
       {
-        "batch": 55,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 58,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 59,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 61,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 62,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 63,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 64,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 69,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 69,
+        "batch": 71,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -524,13 +428,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
-              "native": {
-                "item": {
-                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
-                },
-                "fingerprint": 17075141236395229400
-              }
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
             }
           ],
           "usage": {
@@ -552,28 +450,32 @@
               "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
               "role": "assistant"
             },
-            "fingerprint": 12035101208924912814
+            "fingerprint": 12105676980557704324
           },
           "finish_reason": "length",
           "raw": {
             "usage": {
-              "prompt_tokens": 36,
-              "completion_tokens": 16,
-              "total_tokens": 52,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 16,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 36,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 52
             },
             "finish_reason": "length",
             "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
@@ -730,17 +632,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
-              "native": {
-                "item": {
-                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
-                },
-                "fingerprint": 17075141236395229400
-              }
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-9B"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -784,13 +685,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.",
-              "native": {
-                "item": {
-                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
-                },
-                "fingerprint": 8488619995666964028
-              }
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
             }
           ],
           "usage": {
@@ -812,28 +707,32 @@
               "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.",
               "role": "assistant"
             },
-            "fingerprint": 15558091430531574394
+            "fingerprint": 16752061392204413488
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 36,
-              "completion_tokens": 49,
-              "total_tokens": 85,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 49,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 36,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 85
             },
             "finish_reason": "stop",
             "response_id": "gen-1790146094-uPQSl3RBOFz5mljVmE7t",
@@ -1246,17 +1145,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap.",
-              "native": {
-                "item": {
-                  "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
-                },
-                "fingerprint": 8488619995666964028
-              }
+              "text": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of red, orange, and yellow in the autumn. They are also a primary source of maple syrup, which is produced by tapping the trees and boiling their sap."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-9B"
+      },
       "scope": "parity/run#0"
     }
   ]

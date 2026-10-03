@@ -93,14 +93,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "refusal": null
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           ],
           "usage": {
@@ -123,21 +116,25 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 16268972914252074274
+            "fingerprint": 5329546866666182096
           },
           "provider_request_id": "req_ff26cedd7b184e458ff3cf5ce2750514",
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 27,
               "completion_tokens": 74,
-              "total_tokens": 101,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 64,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 27,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 64
-              }
+              "total_tokens": 101
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-ERDC9PpuO342GiMvs1kk4osDw6Jon",
@@ -176,18 +173,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "refusal": null
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     },
     {
       "tool_output": null,
@@ -213,14 +208,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready",
-                      "refusal": null
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "origin": {
@@ -237,7 +225,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             }
           ]

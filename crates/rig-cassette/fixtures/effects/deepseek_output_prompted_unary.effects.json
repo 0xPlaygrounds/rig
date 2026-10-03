@@ -66,13 +66,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
-                },
-                "fingerprint": 17143301763609373726
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
             }
           ],
           "usage": {
@@ -93,7 +87,7 @@
               "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
               "role": "assistant"
             },
-            "fingerprint": 9989023589069902286
+            "fingerprint": 10451453978944546474
           },
           "finish_reason": "stop",
           "raw": {

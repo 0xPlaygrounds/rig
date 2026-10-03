@@ -153,15 +153,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color is bright red.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null
-                },
-                "fingerprint": 17672256777754227434
-              }
+              "text": "The dominant non-background color is bright red."
             }
           ],
           "usage": {
@@ -176,7 +168,7 @@
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+            "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
           },
           "native": {
             "item": {
@@ -185,9 +177,9 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 11073571618283544370
+            "fingerprint": 14585632120862735230
           },
-          "provider_request_id": "req_74c7a7210b1840a4979f2fec711f1353",
+          "provider_request_id": "req_1a38404650834cf7a3be6c88157f5335",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -203,7 +195,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA",
+            "id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -260,15 +252,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is bright red.",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "The dominant non-background color is bright red.",
-                      "refusal": null
-                    },
-                    "fingerprint": 17672256777754227434
-                  }
+                  "text": "The dominant non-background color is bright red."
                 }
               ],
               "origin": {
@@ -276,7 +260,7 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+                "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
               },
               "stop": "stop",
               "native": {
@@ -286,7 +270,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 11073571618283544370
+                "fingerprint": 14585632120862735230
               }
             }
           ]
@@ -338,15 +322,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is bright red.",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "The dominant non-background color is bright red.",
-                      "refusal": null
-                    },
-                    "fingerprint": 17672256777754227434
-                  }
+                  "text": "The dominant non-background color is bright red."
                 }
               ],
               "origin": {
@@ -354,7 +330,7 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+                "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
               },
               "stop": "stop",
               "native": {
@@ -364,7 +340,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 11073571618283544370
+                "fingerprint": 14585632120862735230
               }
             }
           ]
@@ -407,15 +383,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is bright red.",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "The dominant non-background color is bright red.",
-                      "refusal": null
-                    },
-                    "fingerprint": 17672256777754227434
-                  }
+                  "text": "The dominant non-background color is bright red."
                 }
               ],
               "origin": {
@@ -423,7 +391,7 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+                "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
               },
               "stop": "stop",
               "native": {
@@ -433,7 +401,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 11073571618283544370
+                "fingerprint": 14585632120862735230
               }
             },
             {
@@ -462,41 +430,33 @@
           "choice": [
             {
               "type": "text",
-              "text": "The image contains a red square.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "The image contains a red square.",
-                  "refusal": null
-                },
-                "fingerprint": 5182665158421692555
-              }
+              "text": "The image contained a red square."
             }
           ],
           "usage": {
             "input_tokens": 72,
-            "output_tokens": 80,
-            "total_tokens": 152,
+            "output_tokens": 144,
+            "total_tokens": 216,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 64
+            "reasoning_tokens": 128
           },
           "origin": {
             "api": "openai.chat",
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPacjLSEbhLUW6t01T1qRmhcm0FC"
+            "response_id": "chatcmpl-EUeEoaCMdBbegwwCTsp7hRgIPtBer"
           },
           "native": {
             "item": {
               "annotations": [],
-              "content": "The image contains a red square.",
+              "content": "The image contained a red square.",
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 8624199964163146377
+            "fingerprint": 2844835067829738725
           },
-          "provider_request_id": "req_a02fe8bf04764e7caca67f449088d919",
+          "provider_request_id": "req_7eeaf980a4014145b911f1aa628b011e",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -505,24 +465,24 @@
                 "index": 0,
                 "message": {
                   "annotations": [],
-                  "content": "The image contains a red square.",
+                  "content": "The image contained a red square.",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPacjLSEbhLUW6t01T1qRmhcm0FC",
+            "id": "chatcmpl-EUeEoaCMdBbegwwCTsp7hRgIPtBer",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 80,
+              "completion_tokens": 144,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 64,
+                "reasoning_tokens": 128,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 72,
@@ -530,7 +490,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 152
+              "total_tokens": 216
             }
           }
         }
@@ -561,15 +521,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The image contains a red square.",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "The image contains a red square.",
-                      "refusal": null
-                    },
-                    "fingerprint": 5182665158421692555
-                  }
+                  "text": "The image contained a red square."
                 }
               ],
               "origin": {
@@ -577,17 +529,17 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPacjLSEbhLUW6t01T1qRmhcm0FC"
+                "response_id": "chatcmpl-EUeEoaCMdBbegwwCTsp7hRgIPtBer"
               },
               "stop": "stop",
               "native": {
                 "item": {
                   "annotations": [],
-                  "content": "The image contains a red square.",
+                  "content": "The image contained a red square.",
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 8624199964163146377
+                "fingerprint": 2844835067829738725
               }
             }
           ]

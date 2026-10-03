@@ -66,13 +66,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```",
-              "native": {
-                "item": {
-                  "content": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
-                },
-                "fingerprint": 5746018344957407770
-              }
+              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
             }
           ],
           "usage": {
@@ -93,13 +87,13 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 13074381768343197800
+            "fingerprint": 7398112675668535686
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 1050,
               "completion_tokens": 50,
+              "prompt_tokens": 1050,
               "total_tokens": 1100
             },
             "finish_reason": "stop",
@@ -493,17 +487,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```",
-              "native": {
-                "item": {
-                  "content": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
-                },
-                "fingerprint": 5746018344957407770
-              }
+              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      }
     }
   ]
 }

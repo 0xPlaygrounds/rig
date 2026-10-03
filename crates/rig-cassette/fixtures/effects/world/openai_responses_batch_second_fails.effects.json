@@ -6,19 +6,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 32,
+        "batch": 31,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +18,7 @@
         }
       },
       {
-        "batch": 36,
+        "batch": 35,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,40 +26,32 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 50,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 51,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 56,
+        "batch": 52,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 81,
+        "batch": 78,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 83,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
+          "items": 7
         }
       },
       {
@@ -103,19 +87,11 @@
         }
       },
       {
-        "batch": 88,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 89,
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -139,7 +115,15 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 93,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -147,7 +131,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -187,7 +171,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -195,7 +179,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -207,7 +191,7 @@
         }
       },
       {
-        "batch": 102,
+        "batch": 105,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -215,23 +199,7 @@
         }
       },
       {
-        "batch": 103,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 106,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 121,
+        "batch": 122,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -364,7 +332,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -385,7 +353,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5914607080062584010
+                "fingerprint": 13155490374540464356
               }
             },
             {
@@ -406,7 +374,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1177112236191731249
+                "fingerprint": 2158715663200136089
               }
             }
           ],
@@ -428,26 +396,121 @@
           "provider_request_id": "req_085396c88458429ca95867855e619353",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_033e22108b5dabca016abf498fd4ec87d0bec9a4ad77a708f8",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_033e22108b5dabca016abf498fd4ec87d0bec9a4ad77a708f8",
             "incomplete_details": null,
             "instructions": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0mSg1jTOcXihEPX7BQvJFbP-QS1tzbI_WCKviSSIMABJQyRdNc3XDPa9JAFT0l-6GnjLY0-Hnx1A8zRIhersbSRXAET1rxXqcrEXKeQxm1FzL3cUWsNlqGbTMY5557H6X-CdqdHzRMpLDTepT5Vdz9azTcb_1d--WBbBseE4E-EsmFN-6HII6Q0Alg3cGbsxYjhWFuy89fiLxd8o9ledcNwrHcHX5r4wGA42xWjRBHANk1eUrQDD9N8v8oSFr5L1z0kzVFIbxE0BoeHDqiTsTC5UjkwW7cVu73m9tZKng7e9JMenl_2TL0m4ZkdNXK02yIG2siAPKWUnNxseYITUbWBGjZ9AJckvesx33ww0jRk2zTEVFoRMR1SnMBwtFUJ4WDieGn_MpvuLvZvCB0jr7IZXoWQwAjFWx9sHFfLjYBMaQo7hRomYf-sS7YGSpRubjw-p_lq4QZa1QFFC_Lmy2ySMIwg3yBUyfkaXoS2igEBHvMtT0y8Yh09VlWO42oerXGmTB8DD0PN-_NXaSykO3qFrkRTTT5J8VCQ1pj1ylV-JY1TkXjhmMCXsoGbLQQPTMuSpifTO3WpqfvUyBEz9g5wygVm2EivMTB9q0_KasF4fpQcjZkhoQRYkj1YvfVn_xegnPvjoDI21y23WAqr4bfdXckPfc7YywUuNM7bjTcbsQWC4anInsl1YUHpFyZjr_O5gmDFQgYTq_iPCFI6ydPDtDGe2QWt85o23to8NooHAd3Fq7iAVl6-m-YVI6o8N8xrr4LGSNtMOcZlgIN6KPnlSieyEJXxQ15GwE5cvVWgT_YOpyo9kyP0VuZcLFk8W7dJPM75DhtfalsmlzbXsy6qtHpmT-C-dvPJgY7HtveCSEGaBOpTsycNNBRm7jG8g26DJWM7334j3R3bf1mBZgqZLm_jBVoZrWrvOfCWzVv5NNdalW7-ymypPb3rbubGMFcNF_zAgGYxsNKUSe-AWPLOX4rL3TnaIO9oNMwA2xRU1IjIggDJ4xkG7L8H7d2zGNB9HxYN2VgxvHyraK5kUh-6D7gPo8Xd06ULYc3ZhVYFLmmI6qobTfav9wG92eoC3Rf0DIOXuhvoyXGbhdVERZmbg5IhaO0tYsGaz1-u2Q-3X5C4gv5MfBK-_enCDzGLG5AbVW7ozjwAoIONvac8xGaVgA0DSvilE4AIYqfuxn5sZ3ueiUMVIu6zrJRoq3iJJQxGZstwxk1ltX5_l5_cOK-c_5BhEw4sRgYk5XzqeuuJr4HrL4hCMRS8Nf3egK1QFfwQODvlX1g5Tqy6x0W-Ri2GaD6NCfQFu0lQe_cBXYw9VwCYOYhA7jM9rd5fNyTaRYVdby5DIE-A1tbD5O96WH3CVjNlOFBQCWyxLtMpi7SZ-GMnbhXiXsw6zrVC2_XkhbHTkC0IkjaNBBF7haqJ21EsWA5kYGGZt0vy7ESN7HdY6fW75GrZ2geEr2UqYkQF-MaBWekyfRQQW8_5gDb5qQ0dehpzNSLGYF0m5K_kruddKpbW6XJvPyZ21LfeQjf-SVziowiMi0dJlxYEqieUuC2RWOjIv32fI4KSRklNaVONy2b9kfq1WJDpl-g9NcMtZfdLRh1n0KaopLC6TozSILEwusGgGt6TWSsgtjHCGh9OHIadivr_SS9XVI0B0b4fICmBkybgYkBALVXGfkbp0a5GB20iSBSfRuuf70K-mTAAQslBJ6c0rYJw-tpjRUGxcJ8oMw2k6KCqYxz6IERr_rCmaEeuVuqHv9Ar09r-Adhh1x3oreQxwGpq_6HPP6BoClRk3YaKhYAoPhpN9qkrWcN9-AKmcM2jSRSMPQqeLNEEA526Du_kmKFkqa7Ryn6jKCG2QDN8oFKWx2ELmNWWFmMMcFCneHIDEsBAAParcGSV5-xPon2WkNw0AsbVPMdgteh7hVF8CUqh1N3DIgkNYyiS1F34LsT60yhdXNIRaOzW1yD2Sep38IRkH5ppYclt_UwqF3ZiB1F-QEsib7KIae_hu9eajl9dFhJRMr88gx8pj5hN9XNQEOvoEnlB_AO-rWnGsD6Lh6DkKl8hSiWrVQRESOjlNf-Abkd8flj8f7VxaZTkbPFJ81NLOPQXYHrItKkMVApRdLQU6Ik4-H5ME-T6Z1Td7Y_ORP5-T-25a0v-NNL7ckV84eosvIOYkAduqyboIl_R0B0kaN8OOHNGKSGjYmZF7tCHN9P7McFuCGy9JHAkoHPnpTag6a8teWYLbKO28TewkPMsI7RBJ-LVdcgUJZqkxy9IR4e8vzcyQD7YSCLXPTn2a6_vskrymlYuCeTTD3tmChhUrasF2dV1FX224p_7NxbJvfQFPq_Ky6K6a5L8tLtIfBRFrVqG8oz9MR_K7ucUmh1nl6713wp7THLcRDBrmXEXB1bc9PwluzYIeGxgGDH785E5flQC3gHf4eGJ3uYzkQxdZo1hhql4Q3ZdTV83A6luuyaFOb5cO2r17zTqm_7g9AV5Wvkw1uDCtwGV_dyVhpxVKHCLWgnNQ9kNP7KvIrQtyW9-Gun3xWMSiiOO6hIMAMBVVFS3XWrPFQZ-Kzxh4MBogr0Yw7GmvehaFBzzl9b9XeGckwZcP0OwN1T2icqUdmdz-ec4BvnTeRyHaFmVbD2dknUc_VwMUDeSMlUA-7yWmPRtnj2CMD6shYtKlLNw1KeDDSASYGGSUIP1RY5XiDh48wxUnGejaczYaRRdv8sSC20LK68l4H41TMfx-2vEtMhX-sgP19MxklRS8nESQM_qVj_htXlWpsWZk9gRv3l1gErVBATHCyQCkG-cNUbKYQEn8RWEfnBREwKUW7YJThtiyW2KTpXMhUJmhTslquMCD8DU300pIrgbXsDTV1i64M5bct5KH-lKGyzpiSokIBNFOEkywhG4iCvFtY9OFVXA4TPUHAWnXEc6A-Cmo0AGdXBTeFwYANR72RtXrs1mKIZrwEbxh4GddX5tvQ4kvGfcGGcAzmO_Oxq_91o776ERi5Omz-Gv_PXYu8ihiC4JHV2YzKmKubnv_t5KQrBWyJ1NeE6GOn2mnZ-jhQ1jDNWf31c8FwD2C9kKfhMCiga_CpWj_F75y8O8OlNO4qmtXivdLUWoTIH-6QHZOj2rIUB-6q5h5QXrgJLDT_pptQ7hTadodmtlaU3TiSRaaRthwJnmjWRwpRUdfv1Wv3Z-8bW9dNLiGP4NCZf38cb6YZNhlS7BS0eBwKNosIKCCNzmzJrXiGO33yJLpylWS8XP2cXi6hNMPWct-8iXx5N5KUkqY7dBrJxsUHNSQ7a_bcH0rhBlYFgIUV0xvJb0aHQkD9p7QbVWvKoLkorfocayPH-bQsnVFSjKN0W7CU8YenLWknjHswlYTsdGqTnWju8=",
+                "id": "rs_033e22108b5dabca016abf49902e2887d0b5106a260852f11d",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{}",
+                "call_id": "call_AK6xHOhpnURSBIaBKqIeiO44",
+                "id": "fc_033e22108b5dabca016abf4992bd5887d0bdd77ea8c6833df9",
+                "name": "lookup_harbor_label",
+                "status": "completed",
+                "type": "function_call"
+              },
+              {
+                "arguments": "{}",
+                "call_id": "call_usSk1Aoc67u5jOb9C49V5Ds6",
+                "id": "fc_033e22108b5dabca016abf4992bd6887d08c92d2d586ba4fea",
+                "name": "lookup_orchard_label",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [
+              {
+                "description": "Return the alpha signal marker.",
+                "name": "lookup_harbor_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Return the beta signal marker.",
+                "name": "lookup_orchard_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 174,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 375,
               "output_tokens_details": {
@@ -455,69 +518,7 @@
               },
               "total_tokens": 549
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_033e22108b5dabca016abf49902e2887d0b5106a260852f11d",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0mSg1jTOcXihEPX7BQvJFbP-QS1tzbI_WCKviSSIMABJQyRdNc3XDPa9JAFT0l-6GnjLY0-Hnx1A8zRIhersbSRXAET1rxXqcrEXKeQxm1FzL3cUWsNlqGbTMY5557H6X-CdqdHzRMpLDTepT5Vdz9azTcb_1d--WBbBseE4E-EsmFN-6HII6Q0Alg3cGbsxYjhWFuy89fiLxd8o9ledcNwrHcHX5r4wGA42xWjRBHANk1eUrQDD9N8v8oSFr5L1z0kzVFIbxE0BoeHDqiTsTC5UjkwW7cVu73m9tZKng7e9JMenl_2TL0m4ZkdNXK02yIG2siAPKWUnNxseYITUbWBGjZ9AJckvesx33ww0jRk2zTEVFoRMR1SnMBwtFUJ4WDieGn_MpvuLvZvCB0jr7IZXoWQwAjFWx9sHFfLjYBMaQo7hRomYf-sS7YGSpRubjw-p_lq4QZa1QFFC_Lmy2ySMIwg3yBUyfkaXoS2igEBHvMtT0y8Yh09VlWO42oerXGmTB8DD0PN-_NXaSykO3qFrkRTTT5J8VCQ1pj1ylV-JY1TkXjhmMCXsoGbLQQPTMuSpifTO3WpqfvUyBEz9g5wygVm2EivMTB9q0_KasF4fpQcjZkhoQRYkj1YvfVn_xegnPvjoDI21y23WAqr4bfdXckPfc7YywUuNM7bjTcbsQWC4anInsl1YUHpFyZjr_O5gmDFQgYTq_iPCFI6ydPDtDGe2QWt85o23to8NooHAd3Fq7iAVl6-m-YVI6o8N8xrr4LGSNtMOcZlgIN6KPnlSieyEJXxQ15GwE5cvVWgT_YOpyo9kyP0VuZcLFk8W7dJPM75DhtfalsmlzbXsy6qtHpmT-C-dvPJgY7HtveCSEGaBOpTsycNNBRm7jG8g26DJWM7334j3R3bf1mBZgqZLm_jBVoZrWrvOfCWzVv5NNdalW7-ymypPb3rbubGMFcNF_zAgGYxsNKUSe-AWPLOX4rL3TnaIO9oNMwA2xRU1IjIggDJ4xkG7L8H7d2zGNB9HxYN2VgxvHyraK5kUh-6D7gPo8Xd06ULYc3ZhVYFLmmI6qobTfav9wG92eoC3Rf0DIOXuhvoyXGbhdVERZmbg5IhaO0tYsGaz1-u2Q-3X5C4gv5MfBK-_enCDzGLG5AbVW7ozjwAoIONvac8xGaVgA0DSvilE4AIYqfuxn5sZ3ueiUMVIu6zrJRoq3iJJQxGZstwxk1ltX5_l5_cOK-c_5BhEw4sRgYk5XzqeuuJr4HrL4hCMRS8Nf3egK1QFfwQODvlX1g5Tqy6x0W-Ri2GaD6NCfQFu0lQe_cBXYw9VwCYOYhA7jM9rd5fNyTaRYVdby5DIE-A1tbD5O96WH3CVjNlOFBQCWyxLtMpi7SZ-GMnbhXiXsw6zrVC2_XkhbHTkC0IkjaNBBF7haqJ21EsWA5kYGGZt0vy7ESN7HdY6fW75GrZ2geEr2UqYkQF-MaBWekyfRQQW8_5gDb5qQ0dehpzNSLGYF0m5K_kruddKpbW6XJvPyZ21LfeQjf-SVziowiMi0dJlxYEqieUuC2RWOjIv32fI4KSRklNaVONy2b9kfq1WJDpl-g9NcMtZfdLRh1n0KaopLC6TozSILEwusGgGt6TWSsgtjHCGh9OHIadivr_SS9XVI0B0b4fICmBkybgYkBALVXGfkbp0a5GB20iSBSfRuuf70K-mTAAQslBJ6c0rYJw-tpjRUGxcJ8oMw2k6KCqYxz6IERr_rCmaEeuVuqHv9Ar09r-Adhh1x3oreQxwGpq_6HPP6BoClRk3YaKhYAoPhpN9qkrWcN9-AKmcM2jSRSMPQqeLNEEA526Du_kmKFkqa7Ryn6jKCG2QDN8oFKWx2ELmNWWFmMMcFCneHIDEsBAAParcGSV5-xPon2WkNw0AsbVPMdgteh7hVF8CUqh1N3DIgkNYyiS1F34LsT60yhdXNIRaOzW1yD2Sep38IRkH5ppYclt_UwqF3ZiB1F-QEsib7KIae_hu9eajl9dFhJRMr88gx8pj5hN9XNQEOvoEnlB_AO-rWnGsD6Lh6DkKl8hSiWrVQRESOjlNf-Abkd8flj8f7VxaZTkbPFJ81NLOPQXYHrItKkMVApRdLQU6Ik4-H5ME-T6Z1Td7Y_ORP5-T-25a0v-NNL7ckV84eosvIOYkAduqyboIl_R0B0kaN8OOHNGKSGjYmZF7tCHN9P7McFuCGy9JHAkoHPnpTag6a8teWYLbKO28TewkPMsI7RBJ-LVdcgUJZqkxy9IR4e8vzcyQD7YSCLXPTn2a6_vskrymlYuCeTTD3tmChhUrasF2dV1FX224p_7NxbJvfQFPq_Ky6K6a5L8tLtIfBRFrVqG8oz9MR_K7ucUmh1nl6713wp7THLcRDBrmXEXB1bc9PwluzYIeGxgGDH785E5flQC3gHf4eGJ3uYzkQxdZo1hhql4Q3ZdTV83A6luuyaFOb5cO2r17zTqm_7g9AV5Wvkw1uDCtwGV_dyVhpxVKHCLWgnNQ9kNP7KvIrQtyW9-Gun3xWMSiiOO6hIMAMBVVFS3XWrPFQZ-Kzxh4MBogr0Yw7GmvehaFBzzl9b9XeGckwZcP0OwN1T2icqUdmdz-ec4BvnTeRyHaFmVbD2dknUc_VwMUDeSMlUA-7yWmPRtnj2CMD6shYtKlLNw1KeDDSASYGGSUIP1RY5XiDh48wxUnGejaczYaRRdv8sSC20LK68l4H41TMfx-2vEtMhX-sgP19MxklRS8nESQM_qVj_htXlWpsWZk9gRv3l1gErVBATHCyQCkG-cNUbKYQEn8RWEfnBREwKUW7YJThtiyW2KTpXMhUJmhTslquMCD8DU300pIrgbXsDTV1i64M5bct5KH-lKGyzpiSokIBNFOEkywhG4iCvFtY9OFVXA4TPUHAWnXEc6A-Cmo0AGdXBTeFwYANR72RtXrs1mKIZrwEbxh4GddX5tvQ4kvGfcGGcAzmO_Oxq_91o776ERi5Omz-Gv_PXYu8ihiC4JHV2YzKmKubnv_t5KQrBWyJ1NeE6GOn2mnZ-jhQ1jDNWf31c8FwD2C9kKfhMCiga_CpWj_F75y8O8OlNO4qmtXivdLUWoTIH-6QHZOj2rIUB-6q5h5QXrgJLDT_pptQ7hTadodmtlaU3TiSRaaRthwJnmjWRwpRUdfv1Wv3Z-8bW9dNLiGP4NCZf38cb6YZNhlS7BS0eBwKNosIKCCNzmzJrXiGO33yJLpylWS8XP2cXi6hNMPWct-8iXx5N5KUkqY7dBrJxsUHNSQ7a_bcH0rhBlYFgIUV0xvJb0aHQkD9p7QbVWvKoLkorfocayPH-bQsnVFSjKN0W7CU8YenLWknjHswlYTsdGqTnWju8=",
-                "status": null
-              },
-              {
-                "id": "fc_033e22108b5dabca016abf4992bd5887d0bdd77ea8c6833df9",
-                "arguments": "{}",
-                "call_id": "call_AK6xHOhpnURSBIaBKqIeiO44",
-                "name": "lookup_harbor_label",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "id": "fc_033e22108b5dabca016abf4992bd6887d08c92d2d586ba4fea",
-                "arguments": "{}",
-                "call_id": "call_usSk1Aoc67u5jOb9C49V5Ds6",
-                "name": "lookup_orchard_label",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "tools": [
-              {
-                "type": "function",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the alpha signal marker.",
-                "output_schema": null
-              },
-              {
-                "type": "function",
-                "name": "lookup_orchard_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the beta signal marker.",
-                "output_schema": null
-              }
-            ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -546,7 +547,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -555,7 +556,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -563,7 +564,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{}"
           }
         },
@@ -571,7 +572,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -590,7 +591,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5914607080062584010
+                "fingerprint": 13155490374540464356
               }
             }
           }
@@ -599,7 +600,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 2,
+            "part": 4,
             "kind": "tool_call"
           }
         },
@@ -607,7 +608,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 2,
+            "part": 4,
             "json": "{}"
           }
         },
@@ -615,7 +616,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 2,
+            "part": 4,
             "content": {
               "type": "toolcall",
               "id": {
@@ -634,12 +635,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1177112236191731249
+                "fingerprint": 2158715663200136089
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -736,7 +742,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -757,7 +763,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5914607080062584010
+                    "fingerprint": 13155490374540464356
                   }
                 },
                 {
@@ -778,7 +784,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1177112236191731249
+                    "fingerprint": 2158715663200136089
                   }
                 }
               ],
@@ -818,7 +824,8 @@
                       "type": "text",
                       "text": "the orchard lookup is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -869,7 +876,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -890,7 +897,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 16105533079828407686
+                "fingerprint": 8289867237009878442
               }
             }
           ],
@@ -912,26 +919,119 @@
           "provider_request_id": "req_98382afbf3704a7794d037a784467631",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_033e22108b5dabca016abf499305cc87d08fc99b187515eb60",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_033e22108b5dabca016abf499305cc87d08fc99b187515eb60",
             "incomplete_details": null,
             "instructions": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0mVrkRFeF1FwXwmwAxCgnlWCbZdjim3rxRHZjfLU4zNWyYio8c6-t0SS6ftwD0WSUzCjTdH7NsA7gDYcQ3c8of3aaVlP1vUO_j10XxQOG6am9SK_7X6AaN0qShjyyjkK7KhXMRTKYfNBM3LkiIedF7m6Pcfv0JJtiUDd3XKL4DryllnGjHk1TZebTNCSuwG26RFb2tnn4rLKJqg_28VQZOscDYiSPr6ZIEEQJdxXt8jjK-5svVbUcllwi4885M8DiyBulIl1I5w5eG8v3KqA-u2nlYOfgwrunH4YvB855N1T_jzvVGl-w0syHrXazs7ch-haivHiMWBl0JaTDKKqP-p_QfPJPrSFi7SlIm3eIOibVoRlUOhPLRQdgVvDG3Szm9B1XH5lrXjPJQ5gU6nQdrltg2tI5H-n8X4evXsc8770BfLcUrGg-KK_CNZa_EiIUsiHmb6iR2avBWHekBXHDv_W977lQFdtf5Nr7kJIJMvmo3GGc-1kmrD6tmhAInur-wFKeYSj3r0VIR2c-0YRVZkDsU3Cgyt-8xz0sEvhcLgSfS9YbFv6ZR6ze8Uj9kKh534MEOfcgU96UAEUzdk8Mqz5SDY8V1cZilsS7c9uzzZn81UZmJQ3waOrXc5qpnqVPuwQDousco0MdUA9GJRAf3G9vSZZOMeiYrwGTPEnocsCK--M5XwrC3PpOLXdLHhUUWRmwXmdyN5XQ1HMl3KUiP2apGvkfZmBQnxErOf0hfIT4mzkysGEprfNbxPK_d_1hup4kAYOC0ECBlsI5b4GTWp8QCe4Npz4-Otj7V_pmwOKZSS4qaNmluodYzVqGIwkpLIzDLeNU_p3xbCBZwAm1BGAEMTouZuIOSe2HwtqWkxQHxoas7WUaM1RzaCo4a9-KiEeOga5Xo7nwg8L-zgxSSodgcjnflCjEctYEUbHnJYvywUPC8RnBRsszgX46RXHxjeoIIZBMMcOb7z26ndXIb2Pd01U40-DEDm3AOLT_dpMvOrixiknnsLJFBjhg-CzAdnpRqM9ZBczJAg71rcW911HpcfTAeuMXdmITQgJ4je-BaU-Q53x6t3UAW2rzlRrMKGbV0pzzVGE-koi2mzrRLJRsx3tD4VAK8V5bVBSIiFR-2fRN-Bj6VS2TZAtDb7cBEz5pXQPmqhVYDvFvRJV_JJQImG5MsORaXFg4i2MH_DrUzpyKthWp68xDN9hclotxQlv6KUzYwDBT9cMEAF9kDpBpwGEeadvFQtOwjQw-yNVBUhPUe51Ze-0dHKMqfolYgj2f4iHB2zcLqD-5tu41l_KNp-jJs0TrUe7sQJgKwuBNWYxUqpmhOSv8jTYnCX-XzjOsrIuoHTzutlErK5gwcfyz7YxcKZQaCSqMeyUVjDzOiOWR3j4lm-CfBHywX1exXhr8GY4zvOwSviJHQbANcgi2c7XAq6f532jcMq5pTCvki2TWMd1oMOxizXHvg-8vh8Ovg8FI5jUN4etl3K6oRhOT-ZThyVLUxx76YEL2k3udM5n1Ha0FEfjjpn0QFf4-4ochMKs2-S398moU1MBYvmlw2Fw8FpGQRhZrC3EqmK_7xqjOvkxjuJbimIG6wYtYxOSiekQoTsRLnkTkW7OU1LaQZAuNB3hN4LbohwWV0Zb4lHVEVJ1V6EtsW3pVhNL2dzIypnMkY840TABDaHoPKu_ts64NhuZQf-31pL4t8KsnE_QuOS_exwQnAIjugxokCGIo3tBe0i-_icCXt5mibBVhuqEzO0EGVEGthApOjX1XiYpntvkozOiF5wSpJFqvpPYhdcWVIeSmdi47gZMdYRFDTwkN5sRFqPur1fD7Jd6HZoKX8L_odmF2Efmyms5vNKaJvVXgjLicvXNT7mC5zumaAUEvqbt9S4SrE7kE1vvprEV4Y5FqDzDJ3vopx1DHfTBoZSoO66oJBzY9_YsPl8joQIRX3fGqzVvvqrxZACIeRBME9jEeWdGvWvc73ha3nygeMszNaPZr9Z7OvOOsd6-AEJel7zRorwJejY3gjOieWJA4q5i-XOdcsG0qjMhrAocvrOW1phpDBrtOwZVcFckGXncFZYmuhTHaIncGla-BlP5VbrFurLVlSwowS4vOpWA-M-cv5j-n2whvoMzIJIz76JZWNKVIXdJz6My_QIz3xri1kcd2ysL83ygg3ocvwO-wVZ0NkzXWmYe_pzDSgXWsVJaVHaHoWQC1XNev551PtoG_O3Kx43xoLC1OQBEoetcn-r1JH-T37MBqhOpr2GpLXjcFarA7W90JTguDVmynMQh-Q1nl7Ov9UfRHY3J2AGYx_NBdNP86YaC-OKMC_sRfHHtxXvSFn19dEUvKX7REkAJYEubpq_6jyrUGu7rMeWfY32eoUsnVPrAhoHsjjeU9GA02kzfLuQdDPaJArQJE68Atm3BV8r3HTdc8Zg3rIymyUiy2T8E7_zWLgjgFPzcjN6S0c27kmltEOgO1byLsqf7ZAJXc3BYrSkJwF7-LtVLhkYS3zLYJIfHWMmMDhpqg==",
+                "id": "rs_033e22108b5dabca016abf4993a00087d0bc4856408e71a92a",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The harbor label is \"crimson-harbor\" and the orchard tool error is \"the orchard lookup is broken.\"",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_033e22108b5dabca016abf4994dac887d081f1f31210abc42c",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [
+              {
+                "description": "Return the alpha signal marker.",
+                "name": "lookup_harbor_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Return the beta signal marker.",
+                "name": "lookup_orchard_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 566,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 237,
               "output_tokens_details": {
@@ -939,67 +1039,7 @@
               },
               "total_tokens": 803
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_033e22108b5dabca016abf4993a00087d0bc4856408e71a92a",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0mVrkRFeF1FwXwmwAxCgnlWCbZdjim3rxRHZjfLU4zNWyYio8c6-t0SS6ftwD0WSUzCjTdH7NsA7gDYcQ3c8of3aaVlP1vUO_j10XxQOG6am9SK_7X6AaN0qShjyyjkK7KhXMRTKYfNBM3LkiIedF7m6Pcfv0JJtiUDd3XKL4DryllnGjHk1TZebTNCSuwG26RFb2tnn4rLKJqg_28VQZOscDYiSPr6ZIEEQJdxXt8jjK-5svVbUcllwi4885M8DiyBulIl1I5w5eG8v3KqA-u2nlYOfgwrunH4YvB855N1T_jzvVGl-w0syHrXazs7ch-haivHiMWBl0JaTDKKqP-p_QfPJPrSFi7SlIm3eIOibVoRlUOhPLRQdgVvDG3Szm9B1XH5lrXjPJQ5gU6nQdrltg2tI5H-n8X4evXsc8770BfLcUrGg-KK_CNZa_EiIUsiHmb6iR2avBWHekBXHDv_W977lQFdtf5Nr7kJIJMvmo3GGc-1kmrD6tmhAInur-wFKeYSj3r0VIR2c-0YRVZkDsU3Cgyt-8xz0sEvhcLgSfS9YbFv6ZR6ze8Uj9kKh534MEOfcgU96UAEUzdk8Mqz5SDY8V1cZilsS7c9uzzZn81UZmJQ3waOrXc5qpnqVPuwQDousco0MdUA9GJRAf3G9vSZZOMeiYrwGTPEnocsCK--M5XwrC3PpOLXdLHhUUWRmwXmdyN5XQ1HMl3KUiP2apGvkfZmBQnxErOf0hfIT4mzkysGEprfNbxPK_d_1hup4kAYOC0ECBlsI5b4GTWp8QCe4Npz4-Otj7V_pmwOKZSS4qaNmluodYzVqGIwkpLIzDLeNU_p3xbCBZwAm1BGAEMTouZuIOSe2HwtqWkxQHxoas7WUaM1RzaCo4a9-KiEeOga5Xo7nwg8L-zgxSSodgcjnflCjEctYEUbHnJYvywUPC8RnBRsszgX46RXHxjeoIIZBMMcOb7z26ndXIb2Pd01U40-DEDm3AOLT_dpMvOrixiknnsLJFBjhg-CzAdnpRqM9ZBczJAg71rcW911HpcfTAeuMXdmITQgJ4je-BaU-Q53x6t3UAW2rzlRrMKGbV0pzzVGE-koi2mzrRLJRsx3tD4VAK8V5bVBSIiFR-2fRN-Bj6VS2TZAtDb7cBEz5pXQPmqhVYDvFvRJV_JJQImG5MsORaXFg4i2MH_DrUzpyKthWp68xDN9hclotxQlv6KUzYwDBT9cMEAF9kDpBpwGEeadvFQtOwjQw-yNVBUhPUe51Ze-0dHKMqfolYgj2f4iHB2zcLqD-5tu41l_KNp-jJs0TrUe7sQJgKwuBNWYxUqpmhOSv8jTYnCX-XzjOsrIuoHTzutlErK5gwcfyz7YxcKZQaCSqMeyUVjDzOiOWR3j4lm-CfBHywX1exXhr8GY4zvOwSviJHQbANcgi2c7XAq6f532jcMq5pTCvki2TWMd1oMOxizXHvg-8vh8Ovg8FI5jUN4etl3K6oRhOT-ZThyVLUxx76YEL2k3udM5n1Ha0FEfjjpn0QFf4-4ochMKs2-S398moU1MBYvmlw2Fw8FpGQRhZrC3EqmK_7xqjOvkxjuJbimIG6wYtYxOSiekQoTsRLnkTkW7OU1LaQZAuNB3hN4LbohwWV0Zb4lHVEVJ1V6EtsW3pVhNL2dzIypnMkY840TABDaHoPKu_ts64NhuZQf-31pL4t8KsnE_QuOS_exwQnAIjugxokCGIo3tBe0i-_icCXt5mibBVhuqEzO0EGVEGthApOjX1XiYpntvkozOiF5wSpJFqvpPYhdcWVIeSmdi47gZMdYRFDTwkN5sRFqPur1fD7Jd6HZoKX8L_odmF2Efmyms5vNKaJvVXgjLicvXNT7mC5zumaAUEvqbt9S4SrE7kE1vvprEV4Y5FqDzDJ3vopx1DHfTBoZSoO66oJBzY9_YsPl8joQIRX3fGqzVvvqrxZACIeRBME9jEeWdGvWvc73ha3nygeMszNaPZr9Z7OvOOsd6-AEJel7zRorwJejY3gjOieWJA4q5i-XOdcsG0qjMhrAocvrOW1phpDBrtOwZVcFckGXncFZYmuhTHaIncGla-BlP5VbrFurLVlSwowS4vOpWA-M-cv5j-n2whvoMzIJIz76JZWNKVIXdJz6My_QIz3xri1kcd2ysL83ygg3ocvwO-wVZ0NkzXWmYe_pzDSgXWsVJaVHaHoWQC1XNev551PtoG_O3Kx43xoLC1OQBEoetcn-r1JH-T37MBqhOpr2GpLXjcFarA7W90JTguDVmynMQh-Q1nl7Ov9UfRHY3J2AGYx_NBdNP86YaC-OKMC_sRfHHtxXvSFn19dEUvKX7REkAJYEubpq_6jyrUGu7rMeWfY32eoUsnVPrAhoHsjjeU9GA02kzfLuQdDPaJArQJE68Atm3BV8r3HTdc8Zg3rIymyUiy2T8E7_zWLgjgFPzcjN6S0c27kmltEOgO1byLsqf7ZAJXc3BYrSkJwF7-LtVLhkYS3zLYJIfHWMmMDhpqg==",
-                "status": null
-              },
-              {
-                "id": "msg_033e22108b5dabca016abf4994dac887d081f1f31210abc42c",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The harbor label is \"crimson-harbor\" and the orchard tool error is \"the orchard lookup is broken.\"",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [
-              {
-                "type": "function",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the alpha signal marker.",
-                "output_schema": null
-              },
-              {
-                "type": "function",
-                "name": "lookup_orchard_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the beta signal marker.",
-                "output_schema": null
-              }
-            ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -1028,7 +1068,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -1256,12 +1296,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 16105533079828407686
+                "fingerprint": 8289867237009878442
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

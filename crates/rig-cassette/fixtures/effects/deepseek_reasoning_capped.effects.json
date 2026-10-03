@@ -77,7 +77,7 @@
                 "item": {
                   "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters"
                 },
-                "fingerprint": 10347013845584705859
+                "fingerprint": 3040200027050051951
               }
             }
           ],
@@ -101,7 +101,7 @@
               "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters",
               "role": "assistant"
             },
-            "fingerprint": 11257013725503657455
+            "fingerprint": 6541369306192880791
           },
           "finish_reason": "length",
           "raw": {

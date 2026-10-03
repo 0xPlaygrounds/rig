@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 23,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 29,
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 30,
+        "batch": 22,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 52,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 57,
+        "batch": 45,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 59,
+        "batch": 46,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 79,
+        "batch": 63,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 86,
+        "batch": 70,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 88,
+        "batch": 72,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 110,
+        "batch": 89,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,53 +76,29 @@
         }
       },
       {
-        "batch": 116,
+        "batch": 94,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 117,
+        "batch": 95,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 133,
+        "batch": 127,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
-        "batch": 134,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 135,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 138,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 144,
+        "batch": 128,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -252,7 +228,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 14742513700545693124
+                "fingerprint": 10440494074159329882
               }
             }
           ],
@@ -274,46 +250,76 @@
           "provider_request_id": "req_eac76f56d19246e29152a5e0eafda451",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_066f7395b9262418006ab39668cd8487d0b162595b2ed07873",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_066f7395b9262418006ab39668cd8487d0b162595b2ed07873",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 136,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 16,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 152
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
                 "arguments": "{\"token\":\"start\"}",
                 "call_id": "call_gC9wujVciPMSjRRPuT0p2Mx0",
+                "id": "fc_066f7395b9262418006ab396693e9487d0a78a9b73de3a339e",
                 "name": "checkpoint_step",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
                 "name": "checkpoint_step",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -327,22 +333,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 136,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 16,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 152
+            },
+            "user": null
           }
         }
       },
@@ -351,7 +360,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -359,7 +368,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"token\":\"start\"}"
           }
         },
@@ -367,7 +376,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -388,12 +397,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 14742513700545693124
+                "fingerprint": 10440494074159329882
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -470,7 +484,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 14742513700545693124
+                    "fingerprint": 10440494074159329882
                   }
                 }
               ],
@@ -557,7 +571,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5104236027463515681
+                "fingerprint": 10393305010034030699
               }
             }
           ],
@@ -579,46 +593,76 @@
           "provider_request_id": "req_cab5e7022af7462297a6219d6ec45556",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_066f7395b9262418006ab39669d1dc87d096e910b1ac702f47",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_066f7395b9262418006ab39669d1dc87d096e910b1ac702f47",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 178,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 19,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 197
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
                 "arguments": "{\"token\":\"cobalt-17\"}",
                 "call_id": "call_nRlY1ZjXyu6glRaMmogw0OG1",
+                "id": "fc_066f7395b9262418006ab3966a509c87d0aabda0366b52d80b",
                 "name": "checkpoint_step",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
                 "name": "checkpoint_step",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -632,22 +676,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 178,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 19,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 197
+            },
+            "user": null
           }
         }
       },
@@ -656,7 +703,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -664,7 +711,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"token\":\"cobalt-17\"}"
           }
         },
@@ -672,7 +719,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -693,12 +740,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5104236027463515681
+                "fingerprint": 10393305010034030699
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -775,7 +827,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 14742513700545693124
+                    "fingerprint": 10440494074159329882
                   }
                 }
               ],
@@ -833,7 +885,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5104236027463515681
+                    "fingerprint": 10393305010034030699
                   }
                 }
               ],
@@ -920,7 +972,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 217736716759722964
+                "fingerprint": 10026167670979257474
               }
             }
           ],
@@ -942,46 +994,76 @@
           "provider_request_id": "req_0ff721b6f05b471cbf153359d6cbf90b",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_066f7395b9262418006ab3966add3887d0be32fcedb76bb7a6",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_066f7395b9262418006ab3966add3887d0be32fcedb76bb7a6",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 223,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 19,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 242
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
                 "arguments": "{\"token\":\"orchard-29\"}",
                 "call_id": "call_iNpuUWwtvpj0tFmBYJer2wcr",
+                "id": "fc_066f7395b9262418006ab3966b475087d0a362da0fa76393e1",
                 "name": "checkpoint_step",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
                 "name": "checkpoint_step",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -995,22 +1077,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 223,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 19,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 242
+            },
+            "user": null
           }
         }
       },
@@ -1019,7 +1104,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -1027,7 +1112,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"token\":\"orchard-29\"}"
           }
         },
@@ -1035,7 +1120,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1056,12 +1141,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 217736716759722964
+                "fingerprint": 10026167670979257474
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1138,7 +1228,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 14742513700545693124
+                    "fingerprint": 10440494074159329882
                   }
                 }
               ],
@@ -1196,7 +1286,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5104236027463515681
+                    "fingerprint": 10393305010034030699
                   }
                 }
               ],
@@ -1254,7 +1344,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 217736716759722964
+                    "fingerprint": 10026167670979257474
                   }
                 }
               ],
@@ -1341,7 +1431,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9968446417341198210
+                "fingerprint": 17097497234990018036
               }
             }
           ],
@@ -1363,46 +1453,76 @@
           "provider_request_id": "req_f517397f9bb24f41a554d0f2d2fe3181",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_066f7395b9262418006ab3966bb7b087d08155123805b71a49",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_066f7395b9262418006ab3966bb7b087d08155123805b71a49",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 268,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 19,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 287
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
                 "arguments": "{\"token\":\"harbor-43\"}",
                 "call_id": "call_u3Y3pTAHwR0gEd3GKaGd6NYy",
+                "id": "fc_066f7395b9262418006ab3966c164087d0a6f187f0eec9cffb",
                 "name": "checkpoint_step",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
                 "name": "checkpoint_step",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -1416,22 +1536,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 268,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 19,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 287
+            },
+            "user": null
           }
         }
       },
@@ -1440,7 +1563,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -1448,7 +1571,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"token\":\"harbor-43\"}"
           }
         },
@@ -1456,7 +1579,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1477,12 +1600,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9968446417341198210
+                "fingerprint": 17097497234990018036
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1559,7 +1687,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 14742513700545693124
+                    "fingerprint": 10440494074159329882
                   }
                 }
               ],
@@ -1617,7 +1745,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5104236027463515681
+                    "fingerprint": 10393305010034030699
                   }
                 }
               ],
@@ -1675,7 +1803,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 217736716759722964
+                    "fingerprint": 10026167670979257474
                   }
                 }
               ],
@@ -1733,7 +1861,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9968446417341198210
+                    "fingerprint": 17097497234990018036
                   }
                 }
               ],
@@ -1818,7 +1946,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           ],
@@ -1840,52 +1968,82 @@
           "provider_request_id": "req_4dc39a797fcd4aa984fa8f6a37d893fe",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_066f7395b9262418006ab3966c85ac87d0bd80b96ab26fbaec",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_066f7395b9262418006ab3966c85ac87d0bd80b96ab26fbaec",
             "incomplete_details": null,
             "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "checkpoint-complete",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
-            "usage": {
-              "input_tokens": 310,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 5,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 315
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "id": "msg_066f7395b9262418006ab3966cd39c87d088093f58676f61d6",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "checkpoint-complete",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
                 "name": "checkpoint_step",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -1899,22 +2057,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 310,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 5,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 315
+            },
+            "user": null
           }
         }
       },
@@ -1974,12 +2135,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

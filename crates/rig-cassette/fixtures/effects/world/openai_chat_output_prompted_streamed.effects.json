@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -38,14 +46,6 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
@@ -62,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -174,7 +174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -182,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -190,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -198,7 +198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -206,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -246,15 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -266,55 +258,7 @@
         }
       },
       {
-        "batch": 39,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 41,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 42,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
+        "batch": 38,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -387,14 +331,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
-                  "refusal": null
-                },
-                "fingerprint": 4385500906060177369
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}"
             }
           ],
           "usage": {
@@ -417,21 +354,25 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 1167055657805479433
+            "fingerprint": 12379016451673468715
           },
           "provider_request_id": "req_d62f1d01fdb94d24a49437584dd99817",
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 96,
               "completion_tokens": 305,
-              "total_tokens": 401,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 256,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 96,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 256
-              }
+              "total_tokens": 401
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-ERDCFI4kbTzszstLAXyykOMQ7u8Rx",
@@ -782,18 +723,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}",
-                  "refusal": null
-                },
-                "fingerprint": 4385500906060177369
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly gathering for Rust developers in Seattle featuring talks, lightning demos, hands-on coding sessions, and networking; all levels welcome.\"}"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

@@ -112,6 +112,11 @@
         }
       },
       "events": [],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     }
   ]

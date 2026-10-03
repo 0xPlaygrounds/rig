@@ -113,13 +113,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready"
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           ],
           "usage": {
@@ -140,7 +134,7 @@
               "content": "ready",
               "role": "assistant"
             },
-            "fingerprint": 16268972914252074274
+            "fingerprint": 5329546866666182096
           },
           "finish_reason": "stop",
           "raw": {
@@ -198,13 +192,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready"
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "origin": {
@@ -220,7 +208,7 @@
                   "content": "ready",
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             }
           ]
@@ -263,13 +251,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready"
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "origin": {
@@ -285,7 +267,7 @@
                   "content": "ready",
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             }
           ]
@@ -337,13 +319,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready"
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "origin": {
@@ -359,7 +335,7 @@
                   "content": "ready",
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             },
             {
@@ -388,13 +364,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "again",
-              "native": {
-                "item": {
-                  "content": "again"
-                },
-                "fingerprint": 1676338818300893999
-              }
+              "text": "again"
             }
           ],
           "usage": {
@@ -415,7 +385,7 @@
               "content": "again",
               "role": "assistant"
             },
-            "fingerprint": 3259939305862458759
+            "fingerprint": 16476637925928325713
           },
           "finish_reason": "stop",
           "raw": {
@@ -473,13 +443,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "again",
-                  "native": {
-                    "item": {
-                      "content": "again"
-                    },
-                    "fingerprint": 1676338818300893999
-                  }
+                  "text": "again"
                 }
               ],
               "origin": {
@@ -495,7 +459,7 @@
                   "content": "again",
                   "role": "assistant"
                 },
-                "fingerprint": 3259939305862458759
+                "fingerprint": 16476637925928325713
               }
             }
           ]

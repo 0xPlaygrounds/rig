@@ -75,15 +75,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
-                  "refusal": null
-                },
-                "fingerprint": 16171626019599134392
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red"
             }
           ],
           "usage": {
@@ -107,7 +99,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 9902477179914569264
+            "fingerprint": 6577276633744109340
           },
           "provider_request_id": "req_bdc32dce42a04d2e9f69f8c6512f6048",
           "finish_reason": "length",

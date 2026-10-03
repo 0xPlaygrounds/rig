@@ -134,7 +134,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -158,7 +158,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13163135453966944407
+                "fingerprint": 15886812940358808527
               }
             }
           ],
@@ -180,54 +180,84 @@
           "provider_request_id": "req_181102432c02474b886b8408bce1a363",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_01f08e87ec168fd5016abf49b6f30087d0bda45b86e624958c",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_01f08e87ec168fd5016abf49b6f30087d0bda45b86e624958c",
             "incomplete_details": null,
             "instructions": "You are a concise assistant with an add tool. Use the tool when asked, then answer directly.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0m4EHoGj0j2rjaRpiGoST4oUvFkFVTlNugtD7tFs_jZ7liiooze1wOgW5i3Gub1dn28kLB7DS9UueHhInFwmiiYFvMGUoMWrVhQuZPjMe1OeEdsqosJaEn8rsUq4h8rIffV_yfn_Wuss9GukBUftu1bPRVUOZf_DwB_pWi_p8-10X8O6AlMxc1prTZTRVGWDK0FmmieK202gD7T296HZokVD_zuTPoor2wQhTC-GY-QANczk6eVjp0a5SzQfV2W5ZlMkEuFJV-DGLFd9TmmdRRPDFF8wvZJjiKQ1cAIITSbJHLGftYzM_KZdTYBV8qnxz05_Rjc4FYTEynVZI4rt0QfpbetmPNtCqqeg25r_u7Zvf1kQCCtug5KUvHJynkuEPN3h0bL9KmxPscluL3y20u1U4WWAk7FIMuvPlop7u-l1jq6kKCQT2wlrLZwO7rt6LM5PzJ8GNpia8Xaoc6vWMWJl-UHPuVxOliEdAlw_PCmtCW8SZW0KopoD9qxvRbLH_5L4Re5SwPyg2TV6_RxTeHn7sRB8e6TpdPtdX1GaxfrYHWOu6QRVDN67SIdYHK34e5Isa_0otzev0d1cQJ7xobPk1VSFPb6eFYFe5fNmnHGEXd9HH39Ijd5yOXeQmer2Ozk1EgxLGxTkV37UrBKEYNWRZEACBoJcVIguUHfD4HKQ3GMnMFq9-K5pF5k2QWJzCcHAsFGlgtjrsXBiODzmGsh-10hj53YxT-b3t5a-2l4eDMmBJucPj0UxfSqIjgvNBCmpHdW6-6E_p29gqFBBhAakt5GkphpBoZaLL78JF4INpKBE3Punqu_cmg6xnE_6uOt3OBvEuG0TeIGFhmrbJsaSa-RZ5sYyDo1w_bbQqAt2n_YO3D5aUSQ70b0KmyHEuWspx0afddPjbH35asfFJodq_PGLSiG-fBfQCJZExA179wq7eU7owCzyv8QVFSzSSMVtpfKtYRx7SFgIwTYpi0ZzNeAKOQfNn-93Rbn-4ISuhdE372SZjiU9nz9xAy6yE3thrhbsVFizGYHcKNuc27yJ0NYCJfoZ0Y4ot5IaRJ3L_p_qc3gjC7zLcuIm3DXzqlbl7N_umFG1Bykdbhpyu0uKaKaI95BxZLiaYBrej-hAQmMOkJ3V0Y0ckfa0TgJNqoGF7lTVIscgK-Q2MdY7dvdyLqZkpXdOVTVSh04rlHvh11wEUl9c_aosEcwg2TtZfBnmpCan_1nksHUTWxR7HhhEg_3s9zq8qK0fAVwLD9KxFaKhMMLhjGlYmg1k2qR6ognp8jIB30di43LcalRlSbvvubMV15i7QPUphHOMy41QeAZmTtUX1jmGdT6Ynd3qELj6tgAJi_Qievte2obnfYwMNXvP00T6xSPf6Xuc0yojQ_c7H_kCckDjYReQIKOGAOwyhor4vD6uDDw4RAo25fPZ0RQyehPMmjkIDFPa9-HhUHJ0kTVKzTA1Ugj_wwmU1gkijeltwz9qcADKbnabEsq_tKGsSNz2x-RuLcjzXuD48Zq9WJ_eNKf7lHfcgyksdq7YJVxaVY7pe9Nls5MX5VnDfQ6uvFfExuxo8Tx2Xgtf-Ngo7fHCH1k92FCs_p9CzHEOiS3k5iMz58kAx10Pa2G_imM-cXybYwuWfO2GOcD3scfGb1U85QiLi-9Mv6_7vjzBMxyKfmIz2kDt4Kqf_Jhwf6rMTu0ARtnM0_NoTahC3Rahvn-IIWJmGb_ZPg5rncGdcqAmgiguyNepGll4iyJN0GO7Idvptb-oGQhGHKDrHJxpNfeQy176GULrdBh10Q2B95qPgjBcthNjaCyRNmKWQ==",
+                "id": "rs_01f08e87ec168fd5016abf49b75f8487d0968a3e272cb9e835",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"x\":17,\"y\":25}",
+                "call_id": "call_uk5D1PLWKrH9hm5x2WkUFOeo",
+                "id": "fc_01f08e87ec168fd5016abf49b8665887d0bdb2afef571e41fd",
+                "name": "add",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
-            "usage": {
-              "input_tokens": 130,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 126,
-              "output_tokens_details": {
-                "reasoning_tokens": 64
-              },
-              "total_tokens": 256
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_01f08e87ec168fd5016abf49b75f8487d0968a3e272cb9e835",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0m4EHoGj0j2rjaRpiGoST4oUvFkFVTlNugtD7tFs_jZ7liiooze1wOgW5i3Gub1dn28kLB7DS9UueHhInFwmiiYFvMGUoMWrVhQuZPjMe1OeEdsqosJaEn8rsUq4h8rIffV_yfn_Wuss9GukBUftu1bPRVUOZf_DwB_pWi_p8-10X8O6AlMxc1prTZTRVGWDK0FmmieK202gD7T296HZokVD_zuTPoor2wQhTC-GY-QANczk6eVjp0a5SzQfV2W5ZlMkEuFJV-DGLFd9TmmdRRPDFF8wvZJjiKQ1cAIITSbJHLGftYzM_KZdTYBV8qnxz05_Rjc4FYTEynVZI4rt0QfpbetmPNtCqqeg25r_u7Zvf1kQCCtug5KUvHJynkuEPN3h0bL9KmxPscluL3y20u1U4WWAk7FIMuvPlop7u-l1jq6kKCQT2wlrLZwO7rt6LM5PzJ8GNpia8Xaoc6vWMWJl-UHPuVxOliEdAlw_PCmtCW8SZW0KopoD9qxvRbLH_5L4Re5SwPyg2TV6_RxTeHn7sRB8e6TpdPtdX1GaxfrYHWOu6QRVDN67SIdYHK34e5Isa_0otzev0d1cQJ7xobPk1VSFPb6eFYFe5fNmnHGEXd9HH39Ijd5yOXeQmer2Ozk1EgxLGxTkV37UrBKEYNWRZEACBoJcVIguUHfD4HKQ3GMnMFq9-K5pF5k2QWJzCcHAsFGlgtjrsXBiODzmGsh-10hj53YxT-b3t5a-2l4eDMmBJucPj0UxfSqIjgvNBCmpHdW6-6E_p29gqFBBhAakt5GkphpBoZaLL78JF4INpKBE3Punqu_cmg6xnE_6uOt3OBvEuG0TeIGFhmrbJsaSa-RZ5sYyDo1w_bbQqAt2n_YO3D5aUSQ70b0KmyHEuWspx0afddPjbH35asfFJodq_PGLSiG-fBfQCJZExA179wq7eU7owCzyv8QVFSzSSMVtpfKtYRx7SFgIwTYpi0ZzNeAKOQfNn-93Rbn-4ISuhdE372SZjiU9nz9xAy6yE3thrhbsVFizGYHcKNuc27yJ0NYCJfoZ0Y4ot5IaRJ3L_p_qc3gjC7zLcuIm3DXzqlbl7N_umFG1Bykdbhpyu0uKaKaI95BxZLiaYBrej-hAQmMOkJ3V0Y0ckfa0TgJNqoGF7lTVIscgK-Q2MdY7dvdyLqZkpXdOVTVSh04rlHvh11wEUl9c_aosEcwg2TtZfBnmpCan_1nksHUTWxR7HhhEg_3s9zq8qK0fAVwLD9KxFaKhMMLhjGlYmg1k2qR6ognp8jIB30di43LcalRlSbvvubMV15i7QPUphHOMy41QeAZmTtUX1jmGdT6Ynd3qELj6tgAJi_Qievte2obnfYwMNXvP00T6xSPf6Xuc0yojQ_c7H_kCckDjYReQIKOGAOwyhor4vD6uDDw4RAo25fPZ0RQyehPMmjkIDFPa9-HhUHJ0kTVKzTA1Ugj_wwmU1gkijeltwz9qcADKbnabEsq_tKGsSNz2x-RuLcjzXuD48Zq9WJ_eNKf7lHfcgyksdq7YJVxaVY7pe9Nls5MX5VnDfQ6uvFfExuxo8Tx2Xgtf-Ngo7fHCH1k92FCs_p9CzHEOiS3k5iMz58kAx10Pa2G_imM-cXybYwuWfO2GOcD3scfGb1U85QiLi-9Mv6_7vjzBMxyKfmIz2kDt4Kqf_Jhwf6rMTu0ARtnM0_NoTahC3Rahvn-IIWJmGb_ZPg5rncGdcqAmgiguyNepGll4iyJN0GO7Idvptb-oGQhGHKDrHJxpNfeQy176GULrdBh10Q2B95qPgjBcthNjaCyRNmKWQ==",
-                "status": null
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
               },
-              {
-                "id": "fc_01f08e87ec168fd5016abf49b8665887d0bdb2afef571e41fd",
-                "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_uk5D1PLWKrH9hm5x2WkUFOeo",
-                "name": "add",
-                "status": "completed",
-                "type": "function_call"
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -246,22 +276,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "usage": {
+              "input_tokens": 130,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 126,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 256
+            },
+            "user": null
           }
         }
       },
@@ -290,7 +323,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -299,7 +332,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -307,7 +340,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"x\":17,\"y\":25}"
           }
         },
@@ -315,7 +348,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -337,12 +370,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13163135453966944407
+                "fingerprint": 15886812940358808527
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     },
     {
       "tool_output": {},
@@ -412,7 +450,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -436,7 +474,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13163135453966944407
+                    "fingerprint": 15886812940358808527
                   }
                 }
               ],
@@ -524,7 +562,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 18251932281788324083
+                "fingerprint": 13001380943447269637
               }
             }
           ],
@@ -546,53 +584,83 @@
           "provider_request_id": "req_a5c2dffdacb04c64ac98b2baaf46002d",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_01f08e87ec168fd5016abf49b8b02087d0815389efb1280587",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_01f08e87ec168fd5016abf49b8b02087d0815389efb1280587",
             "incomplete_details": null,
             "instructions": "You are a concise assistant with an add tool. Use the tool when asked, then answer directly.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The dominant non-background color is red and the sum is 42.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_01f08e87ec168fd5016abf49b9119087d087ce8f621d11acf6",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
-            "usage": {
-              "input_tokens": 264,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 282
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "id": "msg_01f08e87ec168fd5016abf49b9119087d087ce8f621d11acf6",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The dominant non-background color is red and the sum is 42.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -611,22 +679,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "usage": {
+              "input_tokens": 264,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 18,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 282
+            },
+            "user": null
           }
         }
       },
@@ -774,12 +845,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 18251932281788324083
+                "fingerprint": 13001380943447269637
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     }
   ]
 }

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -32,6 +32,14 @@
         }
       },
       {
+        "batch": 16,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 17,
         "id": 2,
         "kind": {
@@ -40,15 +48,7 @@
         }
       },
       {
-        "batch": 18,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -191,7 +191,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                 },
-                "fingerprint": 12427117401689880914
+                "fingerprint": 10339985542681816012
               }
             }
           ],
@@ -214,21 +214,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 11607256545427736854
+            "fingerprint": 11273866563690217392
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 91,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 158,
-              "thoughtsTokenCount": 49,
+              "promptTokenCount": 91,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 91
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 49,
+              "totalTokenCount": 158
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -282,12 +283,17 @@
                   },
                   "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                 },
-                "fingerprint": 12427117401689880914
+                "fingerprint": 10339985542681816012
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "stress-agent/run#0"
     },
     {
@@ -363,7 +369,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9EwCU7jZWa9qd8ZBckLmfmYy1FrHTbbDJZXf+lztisQ8KUQFpFH0T2huxhkLvm+IYR3A4j9L2zsLGk7y/x/pWJ0+I6WXS3r535i+ag4WMpNK4vSbl+wRlMIsttHVcd5fur43dcRo2VglF0Q7jKOvj5me76gqKAQFpFH0TWYf74ffWDQrLsnYmygMmbw4jv2rM8mfK67YzrinfAEnt6dAsSq+70e7Jkv5h3w88zQbFLQ9CY+tZ3jIX9CPa4mi2LLFZgzk4Snmml7QdNKq+OcbOw7JnpiCBNAoPhHP33dg2BLyPfh94L0EZV0rQeLIGXFP1Edk0/8KSmb3eMY7h0nlYKg=="
                     },
-                    "fingerprint": 12427117401689880914
+                    "fingerprint": 10339985542681816012
                   }
                 }
               ],
@@ -381,7 +387,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 11607256545427736854
+                "fingerprint": 11273866563690217392
               }
             },
             {
@@ -446,7 +452,7 @@
                 "item": {
                   "text": "The exact tool result is: {\"add_response\": {\"result\": \"STREAM-REDACTED-Q3\"}}"
                 },
-                "fingerprint": 7485798147415825498
+                "fingerprint": 11196836222248188278
               }
             }
           ],
@@ -467,20 +473,21 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 16301920641715547978
+            "fingerprint": 1333800475890142158
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 178,
               "candidatesTokenCount": 24,
-              "totalTokenCount": 202,
+              "promptTokenCount": 178,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 178
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 202
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -533,12 +540,17 @@
                 "item": {
                   "text": "The exact tool result is: {\"add_response\": {\"result\": \"STREAM-REDACTED-Q3\"}}"
                 },
-                "fingerprint": 7485798147415825498
+                "fingerprint": 11196836222248188278
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "stress-agent/run#0"
     }
   ]

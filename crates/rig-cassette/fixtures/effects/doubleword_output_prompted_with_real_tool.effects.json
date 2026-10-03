@@ -118,7 +118,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_1126d671408b421498a59996"
+                "provider": "call_5604c9df092e46e7b632cbfb"
               },
               "function": {
                 "name": "add",
@@ -133,10 +133,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_1126d671408b421498a59996",
+                  "id": "call_5604c9df092e46e7b632cbfb",
                   "type": "function"
                 },
-                "fingerprint": 9266439560076815541
+                "fingerprint": 7574678875619858023
               }
             }
           ],
@@ -152,7 +152,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_f4ed9cac-8905-43b4-825d-9b60a713da78"
+            "response_id": "resp_e82b3ff2-b258-4ac8-9249-8c8a43612dd0"
           },
           "native": {
             "item": {
@@ -164,12 +164,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_1126d671408b421498a59996",
+                  "id": "call_5604c9df092e46e7b632cbfb",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 3766601509506755079
+            "fingerprint": 1877472550211453829
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -186,7 +186,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_1126d671408b421498a59996",
+                      "id": "call_5604c9df092e46e7b632cbfb",
                       "type": "function"
                     }
                   ]
@@ -194,7 +194,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_f4ed9cac-8905-43b4-825d-9b60a713da78",
+            "id": "resp_e82b3ff2-b258-4ac8-9249-8c8a43612dd0",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "service_tier": "default",
@@ -277,7 +277,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_1126d671408b421498a59996"
+                    "provider": "call_5604c9df092e46e7b632cbfb"
                   },
                   "function": {
                     "name": "add",
@@ -292,10 +292,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_1126d671408b421498a59996",
+                      "id": "call_5604c9df092e46e7b632cbfb",
                       "type": "function"
                     },
-                    "fingerprint": 9266439560076815541
+                    "fingerprint": 7574678875619858023
                   }
                 }
               ],
@@ -304,7 +304,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_f4ed9cac-8905-43b4-825d-9b60a713da78"
+                "response_id": "resp_e82b3ff2-b258-4ac8-9249-8c8a43612dd0"
               },
               "stop": "tool_use",
               "native": {
@@ -317,12 +317,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_1126d671408b421498a59996",
+                      "id": "call_5604c9df092e46e7b632cbfb",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 3766601509506755079
+                "fingerprint": 1877472550211453829
               }
             },
             {
@@ -331,7 +331,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_1126d671408b421498a59996"
+                    "provider": "call_5604c9df092e46e7b632cbfb"
                   },
                   "name": "add",
                   "content": [
@@ -384,20 +384,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
-                  "refusal": null
-                },
-                "fingerprint": 12421374732015082825
-              }
+              "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the significance of the number 42.\"}"
             }
           ],
           "usage": {
             "input_tokens": 476,
-            "output_tokens": 45,
-            "total_tokens": 521,
+            "output_tokens": 38,
+            "total_tokens": 514,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -406,15 +399,15 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_96aced42-b5bb-4304-8453-41bd18ecabd6"
+            "response_id": "resp_fb983609-0837-4fc7-aae3-e418f3693b42"
           },
           "native": {
             "item": {
-              "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
+              "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the significance of the number 42.\"}",
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 18015850689627422913
+            "fingerprint": 5470297181527638344
           },
           "finish_reason": "stop",
           "raw": {
@@ -423,14 +416,14 @@
                 "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the sum of 17 and 25, which is 42.\"}",
+                  "content": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust meetup in Seattle where we will discuss the significance of the number 42.\"}",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "resp_96aced42-b5bb-4304-8453-41bd18ecabd6",
+            "id": "resp_fb983609-0837-4fc7-aae3-e418f3693b42",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -441,7 +434,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 45,
+              "completion_tokens": 38,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -454,7 +447,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 521
+              "total_tokens": 514
             }
           }
         }

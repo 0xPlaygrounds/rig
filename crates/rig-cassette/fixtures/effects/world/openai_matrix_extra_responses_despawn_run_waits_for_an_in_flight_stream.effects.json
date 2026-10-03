@@ -62,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -70,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -78,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -118,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -126,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -134,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -150,46 +150,6 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
@@ -199,14 +159,6 @@
         "kind": {
           "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 31,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -230,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -243,14 +195,6 @@
       },
       {
         "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -274,22 +218,6 @@
         }
       },
       {
-        "batch": 40,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 41,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 42,
         "id": 0,
         "kind": {
@@ -298,23 +226,7 @@
         }
       },
       {
-        "batch": 43,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 44,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 45,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -342,7 +254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 11
         }
       },
       {
@@ -350,23 +262,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 50,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
@@ -406,7 +302,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -430,23 +326,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
-        }
-      },
-      {
-        "batch": 61,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -478,7 +358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -510,7 +390,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 19
         }
       },
       {
@@ -518,7 +398,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 8
         }
       },
       {
@@ -526,187 +406,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 72,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 73,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 74,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 75,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 76,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 77,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 78,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 79,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 80,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 81,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 6
         }
       },
       {
         "batch": 82,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 83,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 84,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 85,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 86,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 87,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 88,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 89,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 91,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 92,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 93,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 94,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -722,31 +426,7 @@
         }
       },
       {
-        "batch": 96,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 97,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 98,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 99,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -758,15 +438,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 101,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -814,7 +486,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -854,7 +526,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -867,22 +539,6 @@
       },
       {
         "batch": 114,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 115,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 116,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -906,47 +562,7 @@
         }
       },
       {
-        "batch": 119,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 120,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 121,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 122,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 123,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 124,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -958,14 +574,6 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 126,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
@@ -974,7 +582,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 33
         }
       },
       {
@@ -982,7 +590,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 7
         }
       },
       {
@@ -990,7 +598,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -998,7 +606,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1006,31 +614,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 132,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 133,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 134,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -1042,31 +626,7 @@
         }
       },
       {
-        "batch": 136,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 137,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 138,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 139,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1102,14 +662,6 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 144,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
@@ -1138,27 +690,11 @@
         }
       },
       {
-        "batch": 148,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 149,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 150,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1182,7 +718,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1254,7 +790,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1314,23 +850,7 @@
         }
       },
       {
-        "batch": 170,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 171,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 172,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1346,63 +866,7 @@
         }
       },
       {
-        "batch": 174,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 175,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 176,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 177,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 178,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 179,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 180,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 181,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1418,55 +882,7 @@
         }
       },
       {
-        "batch": 183,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 184,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 185,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 186,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 187,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 188,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 189,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1478,7 +894,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1486,7 +902,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 21
         }
       },
       {
@@ -1494,7 +910,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 9
         }
       },
       {
@@ -1502,7 +918,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -1510,7 +926,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1518,7 +934,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -1526,7 +942,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -1534,7 +950,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 9
         }
       },
       {
@@ -1542,43 +958,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 199,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 200,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 201,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 202,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 203,
+        "batch": 201,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1599,14 +983,6 @@
         "kind": {
           "delivery": "stream",
           "items": 1
-        }
-      },
-      {
-        "batch": 206,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -1634,31 +1010,15 @@
         }
       },
       {
-        "batch": 210,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 211,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 212,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 213,
+        "batch": 212,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1682,31 +1042,15 @@
         }
       },
       {
-        "batch": 216,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 217,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 218,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 219,
+        "batch": 218,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1730,23 +1074,7 @@
         }
       },
       {
-        "batch": 222,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 223,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 224,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1762,87 +1090,7 @@
         }
       },
       {
-        "batch": 226,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 227,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 228,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 229,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 230,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 231,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 232,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 233,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 234,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 235,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 236,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1855,14 +1103,6 @@
         "kind": {
           "delivery": "stream",
           "items": 1
-        }
-      },
-      {
-        "batch": 238,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -1894,7 +1134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1918,7 +1158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -1930,23 +1170,7 @@
         }
       },
       {
-        "batch": 247,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 248,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 249,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -1971,14 +1195,6 @@
       },
       {
         "batch": 252,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 253,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2010,14 +1226,6 @@
         }
       },
       {
-        "batch": 257,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 258,
         "id": 0,
         "kind": {
@@ -2034,14 +1242,6 @@
         }
       },
       {
-        "batch": 260,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 261,
         "id": 0,
         "kind": {
@@ -2051,14 +1251,6 @@
       },
       {
         "batch": 262,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 263,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2102,19 +1294,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 269,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
           "items": 1
         }
       },
       {
-        "batch": 270,
+        "batch": 269,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2134,7 +1318,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 11
         }
       },
       {
@@ -2142,7 +1326,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -2150,7 +1334,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2158,7 +1342,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -2166,7 +1350,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2174,7 +1358,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2190,7 +1374,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2206,7 +1390,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -2214,7 +1398,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2222,7 +1406,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 6
         }
       },
       {
@@ -2234,67 +1418,11 @@
         }
       },
       {
-        "batch": 285,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 286,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 287,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 288,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 289,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 290,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 291,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 292,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2323,14 +1451,6 @@
       },
       {
         "batch": 296,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 297,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2366,7 +1486,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2406,7 +1526,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -2434,7 +1554,7 @@
         }
       },
       {
-        "batch": 329,
+        "batch": 310,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -2442,7 +1562,31 @@
         }
       },
       {
-        "batch": 340,
+        "batch": 311,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 312,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 363,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 366,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -2531,7 +1675,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 8714090070451989369
+                "fingerprint": 9352039311468292447
               }
             }
           ],
@@ -2553,25 +1697,86 @@
           "provider_request_id": "req_e6d807d301384958abbb64c43868f444",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_07a8c3da1c500a56006ab395f29db887d0ba3a0a628fc5a9dd",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 32,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 364,
               "output_tokens_details": {
@@ -2579,35 +1784,7 @@
               },
               "total_tokens": 396
             },
-            "output": [
-              {
-                "id": "msg_07a8c3da1c500a56006ab395f3221c87d0aea2ac87f7b88fa3",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "Rust is a systems programming language that emerged from a project initiated by Mozilla employee Graydon Hoare in 2006. Initially a personal project, Rust aimed to create a language that offered both performance and safety, addressing common issues like memory errors and concurrency problems prevalent in languages like C and C++. Mozilla saw the potential in Rust and began sponsoring its development in 2009, providing resources and support to refine the language.\n\nThe first major milestone for Rust was the release of version 0.1 in 2010, which showcased its core principles: memory safety without a garbage collector, concurrency, and zero-cost abstractions. Rust's unique ownership model, which enforces strict rules on how memory is accessed and managed, was a groundbreaking feature that set it apart from other languages. This model prevents data races and ensures memory safety at compile time, eliminating a significant class of bugs.\n\nIn 2015, Rust reached a significant milestone with the release of version 1.0. This release marked Rust as stable and production-ready, leading to increased adoption in various industries. The language's emphasis on safety and performance made it particularly appealing for developing web browsers, operating systems, and other performance-critical applications. Mozilla's own browser engine, Servo, was one of the first major projects to leverage Rust, demonstrating its capabilities in real-world applications.\n\nSince then, Rust has continued to grow in popularity, driven by a strong community and active development. The language has been consistently praised for its excellent documentation, tooling, and community support. It has been adopted by major companies like Microsoft, Amazon, and Dropbox for various projects, further cementing its reputation as a reliable and efficient language for systems programming. Rust's ongoing evolution and its focus on safety and concurrency continue to attract developers looking for a modern alternative to traditional systems programming languages.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "user": null
           }
         }
       },
@@ -5547,12 +4724,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 8714090070451989369
+                "fingerprint": 9352039311468292447
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "golden/run#0"
     }
   ]

@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -48,7 +48,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 18,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -217,7 +217,7 @@
                   },
                   "thoughtSignature": "CnABaRR9E4t1Vs88M4t2gdShe2B4qqir+dnv6UPfQkAm0qrWfesOF6MZ4SWGXMkJ0dfpgYhOibfN6EjNxzjm6x0/xY+P6OJw586W+J1pp3v9zrKiooWHhUF6b8w4C8JlBXIAr/r350gv2UEIEb4/UYAECtIBAWkUfRNJAzRFRJWGCOA4ecvdkGlRDULpQRDHwxkXK2LumDOeNAleEEoVZfp3R6+gmD/E5VQ7w402H8I7KbKEPvKFq/Viw+hcGnplhH/Sq01LvJWoOZGA0z72mnV3ew97rhI6tyOEWouSOQz6IWbmMp77LkTqXxf1+4UZmfxihZpixf/qaH2urZAzbYtDDWQ8/iJf2hLADw9V1V+N5ghXzUTdoJcDqI2XfPTWY9kymZ75aVxjPLJHiHQCwg/IPLPyGNjw5FmDKeCEdbx6vFr8xaLnCjQBaRR9E7PAt+fawMUd65lpfE/8017N3rnLT7vGqT6b17zxB16qX/PHMiaeFXikZ6y9K9ik"
                 },
-                "fingerprint": 7336478770864751515
+                "fingerprint": 8902351908525368867
               }
             }
           ],
@@ -240,21 +240,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 11646805174123845539
+            "fingerprint": 690116288094262387
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 101,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 191,
-              "thoughtsTokenCount": 71,
+              "promptTokenCount": 101,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 101
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 71,
+              "totalTokenCount": 191
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -308,12 +309,17 @@
                   },
                   "thoughtSignature": "CnABaRR9E4t1Vs88M4t2gdShe2B4qqir+dnv6UPfQkAm0qrWfesOF6MZ4SWGXMkJ0dfpgYhOibfN6EjNxzjm6x0/xY+P6OJw586W+J1pp3v9zrKiooWHhUF6b8w4C8JlBXIAr/r350gv2UEIEb4/UYAECtIBAWkUfRNJAzRFRJWGCOA4ecvdkGlRDULpQRDHwxkXK2LumDOeNAleEEoVZfp3R6+gmD/E5VQ7w402H8I7KbKEPvKFq/Viw+hcGnplhH/Sq01LvJWoOZGA0z72mnV3ew97rhI6tyOEWouSOQz6IWbmMp77LkTqXxf1+4UZmfxihZpixf/qaH2urZAzbYtDDWQ8/iJf2hLADw9V1V+N5ghXzUTdoJcDqI2XfPTWY9kymZ75aVxjPLJHiHQCwg/IPLPyGNjw5FmDKeCEdbx6vFr8xaLnCjQBaRR9E7PAt+fawMUd65lpfE/8017N3rnLT7vGqT6b17zxB16qX/PHMiaeFXikZ6y9K9ik"
                 },
-                "fingerprint": 7336478770864751515
+                "fingerprint": 8902351908525368867
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "stress-agent/run#0"
     },
     {
@@ -389,7 +395,7 @@
                       },
                       "thoughtSignature": "CnABaRR9E4t1Vs88M4t2gdShe2B4qqir+dnv6UPfQkAm0qrWfesOF6MZ4SWGXMkJ0dfpgYhOibfN6EjNxzjm6x0/xY+P6OJw586W+J1pp3v9zrKiooWHhUF6b8w4C8JlBXIAr/r350gv2UEIEb4/UYAECtIBAWkUfRNJAzRFRJWGCOA4ecvdkGlRDULpQRDHwxkXK2LumDOeNAleEEoVZfp3R6+gmD/E5VQ7w402H8I7KbKEPvKFq/Viw+hcGnplhH/Sq01LvJWoOZGA0z72mnV3ew97rhI6tyOEWouSOQz6IWbmMp77LkTqXxf1+4UZmfxihZpixf/qaH2urZAzbYtDDWQ8/iJf2hLADw9V1V+N5ghXzUTdoJcDqI2XfPTWY9kymZ75aVxjPLJHiHQCwg/IPLPyGNjw5FmDKeCEdbx6vFr8xaLnCjQBaRR9E7PAt+fawMUd65lpfE/8017N3rnLT7vGqT6b17zxB16qX/PHMiaeFXikZ6y9K9ik"
                     },
-                    "fingerprint": 7336478770864751515
+                    "fingerprint": 8902351908525368867
                   }
                 }
               ],
@@ -407,7 +413,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 11646805174123845539
+                "fingerprint": 690116288094262387
               }
             },
             {
@@ -472,7 +478,7 @@
                 "item": {
                   "text": "I can compute 12 + 8 = 20. I cannot compute 30 - 7, as I do not have a subtraction tool."
                 },
-                "fingerprint": 8608367070934332914
+                "fingerprint": 8588574325162030938
               }
             }
           ],
@@ -493,20 +499,21 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 1378610784311383758
+            "fingerprint": 15381778090683030566
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 205,
               "candidatesTokenCount": 32,
-              "totalTokenCount": 237,
+              "promptTokenCount": 205,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 205
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 237
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -559,12 +566,17 @@
                 "item": {
                   "text": "I can compute 12 + 8 = 20. I cannot compute 30 - 7, as I do not have a subtraction tool."
                 },
-                "fingerprint": 8608367070934332914
+                "fingerprint": 8588574325162030938
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "stress-agent/run#0"
     }
   ]

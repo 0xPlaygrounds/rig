@@ -158,7 +158,7 @@
                   "id": "VHGTYUUqS",
                   "type": "function"
                 },
-                "fingerprint": 6649448593099317733
+                "fingerprint": 15536449218640941437
               }
             }
           ],
@@ -190,13 +190,13 @@
                 }
               ]
             },
-            "fingerprint": 18127471247870896639
+            "fingerprint": 17799251003892606199
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 1093,
               "completion_tokens": 18,
+              "prompt_tokens": 1093,
               "total_tokens": 1111
             },
             "finish_reason": "tool_calls",
@@ -257,12 +257,17 @@
                   "id": "VHGTYUUqS",
                   "type": "function"
                 },
-                "fingerprint": 6649448593099317733
+                "fingerprint": 15536449218640941437
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     },
     {

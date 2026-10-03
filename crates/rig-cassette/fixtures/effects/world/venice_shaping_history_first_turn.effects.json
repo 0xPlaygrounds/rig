@@ -93,14 +93,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada",
-              "native": {
-                "item": {
-                  "content": "Ada",
-                  "name": null
-                },
-                "fingerprint": 11689945161834907103
-              }
+              "text": "Ada"
             }
           ],
           "usage": {
@@ -122,7 +115,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 8448737388283586131
+            "fingerprint": 4857962483737284025
           },
           "finish_reason": "stop",
           "raw": {

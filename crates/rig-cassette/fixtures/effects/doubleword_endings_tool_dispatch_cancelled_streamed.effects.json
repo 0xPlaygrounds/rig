@@ -138,7 +138,7 @@
                   "id": "call_8b45c08cb7574e83b34bc9e4",
                   "type": "function"
                 },
-                "fingerprint": 13396397801893835350
+                "fingerprint": 4286473137888763158
               }
             }
           ],
@@ -171,28 +171,32 @@
                 }
               ]
             },
-            "fingerprint": 9310874831339351958
+            "fingerprint": 13245740702325651550
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 346,
-              "completion_tokens": 37,
-              "total_tokens": 383,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 37,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 346,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 383
             },
             "finish_reason": "tool_calls",
             "response_id": "gen-1790146002-NLy77cx3bMxRkyWf2ZxJ",
@@ -247,12 +251,17 @@
                   "id": "call_8b45c08cb7574e83b34bc9e4",
                   "type": "function"
                 },
-                "fingerprint": 13396397801893835350
+                "fingerprint": 4286473137888763158
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     }
   ]
 }

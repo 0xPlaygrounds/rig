@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 64,
+        "batch": 77,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 491,
+        "batch": 618,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -160,7 +160,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -169,7 +169,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -177,11 +177,16 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"title\":\"Rust\",\"body\":\"Rust is a systems programming language that emerged from Mozilla Research in 2010, designed to provide performance comparable to C and C++ while ensuring memory safety without a garbage collector. Its origins trace to an individual project by Graydon Hoare, who began experimenting with language design in 2006. Mozilla started sponsoring Hoare’s efforts in 2009, recognizing the potential for a safe, concurrent language suitable for building a modern browser engine and other performance-critical software.\\n\\nThe early development focused on combining expressive syntax with rigorous compile-time checks. Rust introduced ownership, borrowing, and lifetimes as core concepts to prevent data races and eliminate many classes of memory bugs. These features enforced strict rules that the compiler could verify, shifting error detection from runtime to compile time. This approach posed a steep learning curve but promised significant reliability improvements for systems programmers.\\n\\nRust reached its first stable milestone with the release of version 1.0 in May 2015. This marked a commitment to long-term stability of the language’s core features and a maturation of its tooling, including the package manager and build tool, Cargo. The community rapidly expanded after 1.0, driven by enthusiasm for Rust’s safety guarantees and modern developer experience. Open source contributors, corporate adopters, and academic researchers began to adopt Rust for various domains, such as network services, embedded systems, and command line tools.\\n\\nOver the following years, Rust’s ecosystem grew through concerted community governance. The Rust Foundation was formed in 2021 as a neutral organization to steward the language’s development, bringing together corporate sponsors and community members. Notable industry adopters include Amazon Web Services, Microsoft, Google, and Cloudflare, which integrated Rust into performance-critical projects and infrastructure.\\n\\nRust’s influence extended beyond its own community. Ideas like ownership and borrow checking sparked conversations in language design and influenced safer APIs in other languages. The language continued to evolve with editions that introduced incremental changes while maintaining stability guarantees.\\n\\nToday Rust is praised for balancing low-level control with high-level ergonomics, and for fostering a collaborative culture around correctness and performance. Its history reflects a sustained effort to rethink systems programming safety, blending academic concepts with practical tooling and community governance. As Rust continues to mature, it aims to broaden its ecosystem and lower barriers to adoption without compromising the principles that defined its origin. Developers continue contributing libraries, learning resources, and tools, ensuring Rust’s momentum and relevance in future software engineering challenges. worldwide collaboration.\"}"
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

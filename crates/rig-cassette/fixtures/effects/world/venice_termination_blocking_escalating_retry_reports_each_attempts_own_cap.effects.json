@@ -82,14 +82,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which can range from",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, which can range from",
-                  "name": null
-                },
-                "fingerprint": 17119883496830794675
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from"
             }
           ],
           "usage": {
@@ -111,7 +104,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 6995628577242199561
+            "fingerprint": 7995512571635322581
           },
           "finish_reason": "length",
           "raw": {
@@ -200,14 +193,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap.",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap.",
-                  "name": null
-                },
-                "fingerprint": 12554885890915882161
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from bright yellow to deep red. They are also the source of maple syrup, a popular sweetener made from the tree's sap."
             }
           ],
           "usage": {
@@ -229,7 +215,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 14657935593934698995
+            "fingerprint": 2579409823816478923
           },
           "finish_reason": "stop",
           "raw": {

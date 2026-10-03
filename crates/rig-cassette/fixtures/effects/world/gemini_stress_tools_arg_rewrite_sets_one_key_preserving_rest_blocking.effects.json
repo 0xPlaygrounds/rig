@@ -159,7 +159,7 @@
                   },
                   "thoughtSignature": "CqEBAWkUfRN7PUDTb0RDNJXNkm2UAn6KsMEIamf/HzwV/nAQ4mT+iLVvW8Ii6b9U9AYRa3VXMLtHm1plhYvvDSCBzSud3Qn/l3qAf/EIgMbjLicq/VQ5GZlEjTRqYkgvMsHVnf5MyCohM3NPS+rSM8P59BShdVIlDBy2bzzwu9Rm4+kZU1iUPFWeqpA4BN1kUvOGlyEx+HVpf4wIRn+wtR4crEA="
                 },
-                "fingerprint": 5478563870962233673
+                "fingerprint": 8224270912407369721
               }
             }
           ],
@@ -182,7 +182,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 12631682853037376563
+            "fingerprint": 17167446897035012831
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -301,7 +301,7 @@
                       },
                       "thoughtSignature": "CqEBAWkUfRN7PUDTb0RDNJXNkm2UAn6KsMEIamf/HzwV/nAQ4mT+iLVvW8Ii6b9U9AYRa3VXMLtHm1plhYvvDSCBzSud3Qn/l3qAf/EIgMbjLicq/VQ5GZlEjTRqYkgvMsHVnf5MyCohM3NPS+rSM8P59BShdVIlDBy2bzzwu9Rm4+kZU1iUPFWeqpA4BN1kUvOGlyEx+HVpf4wIRn+wtR4crEA="
                     },
-                    "fingerprint": 5478563870962233673
+                    "fingerprint": 8224270912407369721
                   }
                 }
               ],
@@ -319,7 +319,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 12631682853037376563
+                "fingerprint": 17167446897035012831
               }
             },
             {
@@ -384,7 +384,7 @@
                 "item": {
                   "text": "The result of adding 3 and 4 is 104."
                 },
-                "fingerprint": 7266524959253323102
+                "fingerprint": 14875794922008773538
               }
             }
           ],
@@ -405,7 +405,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 4092310827528053910
+            "fingerprint": 10337265284837410018
           },
           "finish_reason": "stop",
           "raw": {

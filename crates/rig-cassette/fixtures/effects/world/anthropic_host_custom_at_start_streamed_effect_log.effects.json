@@ -13,15 +13,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 10,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
@@ -134,7 +126,7 @@
                   "text": "ready.",
                   "type": "text"
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           ],
@@ -209,12 +201,17 @@
                   "text": "ready.",
                   "type": "text"
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     }
   ]

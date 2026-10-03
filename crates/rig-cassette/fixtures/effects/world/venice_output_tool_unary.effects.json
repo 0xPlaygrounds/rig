@@ -99,14 +99,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle.",
-              "native": {
-                "item": {
-                  "content": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle.",
-                  "name": null
-                },
-                "fingerprint": 1531547703409747209
-              }
+              "text": "I'm sorry, but I don't have the capability to provide real-time event information or create event objects. However, I can suggest that you check local event platforms or community websites for the latest information on Rust meetups in Seattle."
             }
           ],
           "usage": {
@@ -128,7 +121,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 18075204039979235117
+            "fingerprint": 10320100887674378555
           },
           "finish_reason": "stop",
           "raw": {

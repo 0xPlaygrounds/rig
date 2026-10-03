@@ -852,6 +852,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "parity/run#0"
     }
   ]

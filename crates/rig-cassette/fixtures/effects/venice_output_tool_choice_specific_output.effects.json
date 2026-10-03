@@ -96,14 +96,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, but I don't have real-time access to the internet or specific tools to provide you with the latest information on local Rust meetups in Seattle. However, I can suggest that you check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information. These platforms often list upcoming events and meetups in your area. If you have any other questions or need further assistance, feel free to ask!",
-              "native": {
-                "item": {
-                  "content": "I'm sorry, but I don't have real-time access to the internet or specific tools to provide you with the latest information on local Rust meetups in Seattle. However, I can suggest that you check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information. These platforms often list upcoming events and meetups in your area. If you have any other questions or need further assistance, feel free to ask!",
-                  "name": null
-                },
-                "fingerprint": 5398520409805041493
-              }
+              "text": "I'm sorry, but I don't have real-time access to the internet or specific tools to provide you with the latest information on local Rust meetups in Seattle. However, I can suggest that you check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information. These platforms often list upcoming events and meetups in your area. If you have any other questions or need further assistance, feel free to ask!"
             },
             {
               "type": "toolcall",
@@ -127,7 +120,7 @@
                   "id": "Wc5Fg1cIM",
                   "type": "function"
                 },
-                "fingerprint": 1409709018715307416
+                "fingerprint": 11608430197774533804
               }
             }
           ],
@@ -160,7 +153,7 @@
                 }
               ]
             },
-            "fingerprint": 5381173905752280210
+            "fingerprint": 17253823846985574572
           },
           "finish_reason": "tool_calls",
           "raw": {

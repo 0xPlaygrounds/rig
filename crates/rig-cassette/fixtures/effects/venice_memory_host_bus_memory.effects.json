@@ -88,14 +88,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "name": null
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           ],
           "usage": {
@@ -117,7 +110,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 16268972914252074274
+            "fingerprint": 5329546866666182096
           },
           "finish_reason": "stop",
           "raw": {
@@ -190,14 +183,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready",
-                      "name": null
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "origin": {
@@ -215,7 +201,7 @@
                   "reasoning_content": null,
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             }
           ]

@@ -141,7 +141,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "e2UHv2IZr"
+                "provider": "IR0vtfqE3"
               },
               "function": {
                 "name": "add",
@@ -156,10 +156,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "e2UHv2IZr",
+                  "id": "IR0vtfqE3",
                   "type": "function"
                 },
-                "fingerprint": 10568455601932114472
+                "fingerprint": 9957120967915810213
               }
             }
           ],
@@ -173,7 +173,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv"
+            "response_id": "chatcmpl-Rd5aG6RLIfsT0swfbShdMQhq"
           },
           "native": {
             "item": {
@@ -187,12 +187,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "e2UHv2IZr",
+                  "id": "IR0vtfqE3",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 12529516508524479100
+            "fingerprint": 4997094471266965623
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -212,7 +212,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "e2UHv2IZr",
+                      "id": "IR0vtfqE3",
                       "type": "function"
                     }
                   ]
@@ -224,7 +224,7 @@
               "usd": 0.000121875
             },
             "created": 0,
-            "id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv",
+            "id": "chatcmpl-Rd5aG6RLIfsT0swfbShdMQhq",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -302,7 +302,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "e2UHv2IZr"
+                    "provider": "IR0vtfqE3"
                   },
                   "function": {
                     "name": "add",
@@ -317,10 +317,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "e2UHv2IZr",
+                      "id": "IR0vtfqE3",
                       "type": "function"
                     },
-                    "fingerprint": 10568455601932114472
+                    "fingerprint": 9957120967915810213
                   }
                 }
               ],
@@ -329,7 +329,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv"
+                "response_id": "chatcmpl-Rd5aG6RLIfsT0swfbShdMQhq"
               },
               "stop": "tool_use",
               "native": {
@@ -344,12 +344,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "e2UHv2IZr",
+                      "id": "IR0vtfqE3",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12529516508524479100
+                "fingerprint": 4997094471266965623
               }
             },
             {
@@ -358,7 +358,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "e2UHv2IZr"
+                    "provider": "IR0vtfqE3"
                   },
                   "name": "add",
                   "content": [
@@ -432,36 +432,29 @@
           "choice": [
             {
               "type": "text",
-              "text": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
-              "native": {
-                "item": {
-                  "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
-                  "name": null
-                },
-                "fingerprint": 16034187707634980584
-              }
+              "text": "{\"type\": \"event\", \"summary\": \"Rust meetup in Seattle\", \"start\": {\"dateTime\": \"2026-10-02T19:00:00-07:00\"}, \"end\": {\"dateTime\": \"2026-10-02T21:00:00-07:00\"}, \"location\": \"Seattle, WA\", \"description\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}"
             }
           ],
           "usage": {
-            "input_tokens": 1101,
-            "output_tokens": 132,
-            "total_tokens": 1233
+            "input_tokens": 1099,
+            "output_tokens": 125,
+            "total_tokens": 1224
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RIgOORutazOb9PN1KHtBynlc"
+            "response_id": "chatcmpl-RMwT1i0zwYrBPRHTgpUipFmt"
           },
           "native": {
             "item": {
-              "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+              "content": "{\"type\": \"event\", \"summary\": \"Rust meetup in Seattle\", \"start\": {\"dateTime\": \"2026-10-02T19:00:00-07:00\"}, \"end\": {\"dateTime\": \"2026-10-02T21:00:00-07:00\"}, \"location\": \"Seattle, WA\", \"description\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}",
               "name": null,
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 3400508699239068722
+            "fingerprint": 17963688725079308853
           },
           "finish_reason": "stop",
           "raw": {
@@ -471,7 +464,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+                  "content": "{\"type\": \"event\", \"summary\": \"Rust meetup in Seattle\", \"start\": {\"dateTime\": \"2026-10-02T19:00:00-07:00\"}, \"end\": {\"dateTime\": \"2026-10-02T21:00:00-07:00\"}, \"location\": \"Seattle, WA\", \"description\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
@@ -481,17 +474,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00013621875
+              "usd": 0.00013428125000000001
             },
             "created": 0,
-            "id": "chatcmpl-RIgOORutazOb9PN1KHtBynlc",
+            "id": "chatcmpl-RMwT1i0zwYrBPRHTgpUipFmt",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 132,
-              "prompt_tokens": 1101,
-              "total_tokens": 1233
+              "completion_tokens": 125,
+              "prompt_tokens": 1099,
+              "total_tokens": 1224
             },
             "venice_parameters": {
               "disable_thinking": false,
@@ -538,7 +531,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "e2UHv2IZr"
+                    "provider": "IR0vtfqE3"
                   },
                   "function": {
                     "name": "add",
@@ -553,10 +546,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "e2UHv2IZr",
+                      "id": "IR0vtfqE3",
                       "type": "function"
                     },
-                    "fingerprint": 10568455601932114472
+                    "fingerprint": 9957120967915810213
                   }
                 }
               ],
@@ -565,7 +558,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RDcczyT0G05SJ9PlEdSSUYbv"
+                "response_id": "chatcmpl-Rd5aG6RLIfsT0swfbShdMQhq"
               },
               "stop": "tool_use",
               "native": {
@@ -580,12 +573,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "e2UHv2IZr",
+                      "id": "IR0vtfqE3",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12529516508524479100
+                "fingerprint": 4997094471266965623
               }
             },
             {
@@ -594,7 +587,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "e2UHv2IZr"
+                    "provider": "IR0vtfqE3"
                   },
                   "name": "add",
                   "content": [
@@ -611,14 +604,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
-                  "native": {
-                    "item": {
-                      "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
-                      "name": null
-                    },
-                    "fingerprint": 16034187707634980584
-                  }
+                  "text": "{\"type\": \"event\", \"summary\": \"Rust meetup in Seattle\", \"start\": {\"dateTime\": \"2026-10-02T19:00:00-07:00\"}, \"end\": {\"dateTime\": \"2026-10-02T21:00:00-07:00\"}, \"location\": \"Seattle, WA\", \"description\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}"
                 }
               ],
               "origin": {
@@ -626,17 +612,17 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RIgOORutazOb9PN1KHtBynlc"
+                "response_id": "chatcmpl-RMwT1i0zwYrBPRHTgpUipFmt"
               },
               "stop": "stop",
               "native": {
                 "item": {
-                  "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"start\": {\n      \"dateTime\": \"2026-10-02T19:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-02T21:00:00-07:00\"\n    },\n    \"location\": \"Seattle, WA\"\n  }\n}",
+                  "content": "{\"type\": \"event\", \"summary\": \"Rust meetup in Seattle\", \"start\": {\"dateTime\": \"2026-10-02T19:00:00-07:00\"}, \"end\": {\"dateTime\": \"2026-10-02T21:00:00-07:00\"}, \"location\": \"Seattle, WA\", \"description\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant"
                 },
-                "fingerprint": 3400508699239068722
+                "fingerprint": 17963688725079308853
               }
             },
             {
@@ -711,32 +697,32 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "lbtcQCjE3"
+                "provider": "FJmYvu2hD"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Rust Meetup in Seattle",
-                  "category": "Technology",
-                  "summary": "The sum of 17 and 25 is 42."
+                  "category": "Event",
+                  "summary": "Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42."
                 }
               },
               "native": {
                 "item": {
                   "function": {
-                    "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Technology\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
+                    "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Event\", \"summary\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}",
                     "name": "final_result"
                   },
-                  "id": "lbtcQCjE3",
+                  "id": "FJmYvu2hD",
                   "type": "function"
                 },
-                "fingerprint": 9191796348622289903
+                "fingerprint": 9412318530704799084
               }
             }
           ],
           "usage": {
-            "input_tokens": 1452,
-            "output_tokens": 43,
+            "input_tokens": 1443,
+            "output_tokens": 52,
             "total_tokens": 1495
           },
           "origin": {
@@ -744,7 +730,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RksnZ5tuCXfNTGytmDqSBcWl"
+            "response_id": "chatcmpl-R59i57PVhqhu1zAiYW8UnPMQ"
           },
           "native": {
             "item": {
@@ -755,15 +741,15 @@
               "tool_calls": [
                 {
                   "function": {
-                    "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Technology\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
+                    "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Event\", \"summary\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}",
                     "name": "final_result"
                   },
-                  "id": "lbtcQCjE3",
+                  "id": "FJmYvu2hD",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 17600636568525577529
+            "fingerprint": 3233867174570547230
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -780,10 +766,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Technology\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
+                        "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Event\", \"summary\": \"Join us for a Rust meetup in Seattle. The sum of 17 and 25 is 42.\"}",
                         "name": "final_result"
                       },
-                      "id": "lbtcQCjE3",
+                      "id": "FJmYvu2hD",
                       "type": "function"
                     }
                   ]
@@ -792,16 +778,16 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00014687499999999998
+              "usd": 0.00014828125
             },
             "created": 0,
-            "id": "chatcmpl-RksnZ5tuCXfNTGytmDqSBcWl",
+            "id": "chatcmpl-R59i57PVhqhu1zAiYW8UnPMQ",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 43,
-              "prompt_tokens": 1452,
+              "completion_tokens": 52,
+              "prompt_tokens": 1443,
               "total_tokens": 1495
             },
             "venice_parameters": {

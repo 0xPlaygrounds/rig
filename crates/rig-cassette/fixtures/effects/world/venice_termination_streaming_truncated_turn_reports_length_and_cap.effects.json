@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +34,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,7 +42,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -66,7 +66,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,7 +74,7 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -90,7 +90,7 @@
         }
       },
       {
-        "batch": 23,
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -98,7 +98,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -114,7 +114,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -130,7 +130,7 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -138,7 +138,7 @@
         }
       },
       {
-        "batch": 30,
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -211,13 +211,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which can range from",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, which can range from"
-                },
-                "fingerprint": 17119883496830794675
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from"
             }
           ],
           "usage": {
@@ -238,13 +232,13 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 6995628577242199561
+            "fingerprint": 7995512571635322581
           },
           "finish_reason": "length",
           "raw": {
             "usage": {
-              "prompt_tokens": 978,
               "completion_tokens": 16,
+              "prompt_tokens": 978,
               "total_tokens": 994
             },
             "finish_reason": "length",
@@ -406,17 +400,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, which can range from",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, which can range from"
-                },
-                "fingerprint": 17119883496830794675
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, which can range from"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "parity/run#0"
     }
   ]

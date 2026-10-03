@@ -93,7 +93,7 @@
                 "item": {
                   "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. He found a"
                 },
-                "fingerprint": 15363482476555024248
+                "fingerprint": 13790674082092144146
               }
             }
           ],
@@ -114,7 +114,7 @@
               "finishReason": "MAX_TOKENS",
               "index": 0
             },
-            "fingerprint": 533732010614973478
+            "fingerprint": 10059733656189903332
           },
           "finish_reason": "length",
           "raw": {
@@ -201,7 +201,7 @@
                 "item": {
                   "text": "The lighthouse keeper lived a solitary life, tending the lamp and ensuring its light pierced through the darkest storms. His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea."
                 },
-                "fingerprint": 10138438554250293143
+                "fingerprint": 16343423285875149723
               }
             }
           ],
@@ -222,7 +222,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 8232764620358424157
+            "fingerprint": 17631171569396485033
           },
           "finish_reason": "stop",
           "raw": {

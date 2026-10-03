@@ -111,6 +111,11 @@
         }
       },
       "events": [],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "venice-nonexistent-rig-test"
+      },
       "scope": "parity/run#0"
     }
   ]

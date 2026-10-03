@@ -139,7 +139,7 @@
                   },
                   "thoughtSignature": "EtICCs8CAWkUfROK1saJBN6Y3nMq+lHmMK24dVSDDbnn5EzYEVHF+iGuP0qX7B6gCZLh35yQ9tzLpmJYFXBiL9ceueV15JdCcPB5wHNnYebxDvFh1SXE60aEseHF1WEKuBnjvPJGLRHV4jfvE0mxNzPHymm3F5EWwlhhGfuZXURDzvUfhmDIAzL07SzMhz5WJcPrIvJ1GD1o93Xn87AQxWVykOAj2MHs9aWGN0WrCBPuyVoZZR2g5Lr61R3U1ftpH8/oP1vmcRoRyoEG6dCn0yTy1fzJhOwxmAgUO1l8vIf+30uMwo3JUbBSCfw9TsvMsi+CBAN+YMooN0Pji5dAIVNJqHxl+JBxgdyNyYEh5UkTZry/OLZvUFX//55d/LZjSXzBH1m2o4D8neu2iwflJ3ss8Fnupxovp++l6ZYapfgFxjR+aSb58B2BUTf0AheviK9Pv0A="
                 },
-                "fingerprint": 4732763397107607799
+                "fingerprint": 5285324109240535699
               }
             }
           ],
@@ -161,21 +161,22 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 12744342253615979941
+            "fingerprint": 4725649094030078665
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 120,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 198,
-              "thoughtsTokenCount": 60,
+              "promptTokenCount": 120,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 120
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 60,
+              "totalTokenCount": 198
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
@@ -229,12 +230,17 @@
                   },
                   "thoughtSignature": "EtICCs8CAWkUfROK1saJBN6Y3nMq+lHmMK24dVSDDbnn5EzYEVHF+iGuP0qX7B6gCZLh35yQ9tzLpmJYFXBiL9ceueV15JdCcPB5wHNnYebxDvFh1SXE60aEseHF1WEKuBnjvPJGLRHV4jfvE0mxNzPHymm3F5EWwlhhGfuZXURDzvUfhmDIAzL07SzMhz5WJcPrIvJ1GD1o93Xn87AQxWVykOAj2MHs9aWGN0WrCBPuyVoZZR2g5Lr61R3U1ftpH8/oP1vmcRoRyoEG6dCn0yTy1fzJhOwxmAgUO1l8vIf+30uMwo3JUbBSCfw9TsvMsi+CBAN+YMooN0Pji5dAIVNJqHxl+JBxgdyNyYEh5UkTZry/OLZvUFX//55d/LZjSXzBH1m2o4D8neu2iwflJ3ss8Fnupxovp++l6ZYapfgFxjR+aSb58B2BUTf0AheviK9Pv0A="
                 },
-                "fingerprint": 4732763397107607799
+                "fingerprint": 5285324109240535699
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      }
     }
   ]
 }

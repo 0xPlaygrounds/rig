@@ -185,7 +185,7 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": 11416640520355684433
+                "fingerprint": 17560259853881716993
               }
             }
           ],
@@ -269,12 +269,17 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": 11416640520355684433
+                "fingerprint": 17560259853881716993
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     },
     {
       "tool_output": {},
@@ -350,7 +355,7 @@
                       "name": "subtract",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11416640520355684433
+                    "fingerprint": 17560259853881716993
                   }
                 }
               ],
@@ -447,7 +452,7 @@
                   "text": "The result of 2 - 5 is **-3**.",
                   "type": "text"
                 },
-                "fingerprint": 5037454956457325956
+                "fingerprint": 6013490760940471252
               }
             }
           ],
@@ -530,12 +535,17 @@
                   "text": "The result of 2 - 5 is **-3**.",
                   "type": "text"
                 },
-                "fingerprint": 5037454956457325956
+                "fingerprint": 6013490760940471252
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     }
   ]
 }

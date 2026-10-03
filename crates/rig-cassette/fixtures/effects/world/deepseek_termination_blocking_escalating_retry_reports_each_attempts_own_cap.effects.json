@@ -82,13 +82,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
-                },
-                "fingerprint": 17082460993108746870
-              }
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors."
             }
           ],
           "usage": {
@@ -109,7 +103,7 @@
               "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors.",
               "role": "assistant"
             },
-            "fingerprint": 4919459816657788076
+            "fingerprint": 5690862242114292130
           },
           "finish_reason": "length",
           "raw": {
@@ -183,13 +177,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup.",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup."
-                },
-                "fingerprint": 10254871152948873255
-              }
+              "text": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup."
             }
           ],
           "usage": {
@@ -210,7 +198,7 @@
               "content": "Maple trees are known for their distinctive lobed leaves and vibrant autumn colors. Their sap is often harvested to produce maple syrup.",
               "role": "assistant"
             },
-            "fingerprint": 14638622891340536721
+            "fingerprint": 618153783423138705
           },
           "finish_reason": "stop",
           "raw": {

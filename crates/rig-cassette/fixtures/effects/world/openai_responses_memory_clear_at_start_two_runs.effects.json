@@ -189,7 +189,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -210,7 +210,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 815434921069355996
+                "fingerprint": 12598636203455125710
               }
             }
           ],
@@ -369,7 +369,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -390,7 +390,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 815434921069355996
+                    "fingerprint": 12598636203455125710
                   }
                 }
               ],
@@ -453,7 +453,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -474,7 +474,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 815434921069355996
+                    "fingerprint": 12598636203455125710
                   }
                 }
               ],
@@ -547,7 +547,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -568,7 +568,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 815434921069355996
+                    "fingerprint": 12598636203455125710
                   }
                 }
               ],
@@ -618,7 +618,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -639,7 +639,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 1676338818300893999
+                "fingerprint": 11300568899181580109
               }
             }
           ],
@@ -798,7 +798,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -819,7 +819,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 1676338818300893999
+                    "fingerprint": 11300568899181580109
                   }
                 }
               ],

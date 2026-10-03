@@ -42,6 +42,14 @@
         }
       },
       {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 13,
         "id": 0,
         "kind": {
@@ -70,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,27 +102,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 20,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 21,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -122,21 +114,21 @@
         }
       },
       {
-        "batch": 26,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 24,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 142,
+        "batch": 82,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -144,21 +136,21 @@
         }
       },
       {
-        "batch": 142,
+        "batch": 82,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 144,
+        "batch": 84,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 198,
+        "batch": 148,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -166,21 +158,21 @@
         }
       },
       {
-        "batch": 198,
+        "batch": 148,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 199,
+        "batch": 150,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 241,
+        "batch": 183,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -188,21 +180,21 @@
         }
       },
       {
-        "batch": 241,
+        "batch": 183,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 242,
+        "batch": 184,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 247,
+        "batch": 189,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -210,7 +202,7 @@
         }
       },
       {
-        "batch": 248,
+        "batch": 191,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -218,7 +210,7 @@
         }
       },
       {
-        "batch": 249,
+        "batch": 192,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -226,7 +218,7 @@
         }
       },
       {
-        "batch": 250,
+        "batch": 193,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -234,7 +226,7 @@
         }
       },
       {
-        "batch": 251,
+        "batch": 194,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -242,7 +234,7 @@
         }
       },
       {
-        "batch": 252,
+        "batch": 195,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -250,7 +242,7 @@
         }
       },
       {
-        "batch": 253,
+        "batch": 196,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -258,7 +250,7 @@
         }
       },
       {
-        "batch": 254,
+        "batch": 197,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -266,7 +258,7 @@
         }
       },
       {
-        "batch": 255,
+        "batch": 199,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -274,7 +266,7 @@
         }
       },
       {
-        "batch": 256,
+        "batch": 200,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -282,7 +274,7 @@
         }
       },
       {
-        "batch": 257,
+        "batch": 201,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -290,7 +282,7 @@
         }
       },
       {
-        "batch": 258,
+        "batch": 202,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -298,7 +290,7 @@
         }
       },
       {
-        "batch": 260,
+        "batch": 203,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -306,7 +298,7 @@
         }
       },
       {
-        "batch": 261,
+        "batch": 204,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -314,7 +306,7 @@
         }
       },
       {
-        "batch": 262,
+        "batch": 205,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -322,7 +314,7 @@
         }
       },
       {
-        "batch": 263,
+        "batch": 206,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -330,7 +322,7 @@
         }
       },
       {
-        "batch": 264,
+        "batch": 207,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -338,7 +330,7 @@
         }
       },
       {
-        "batch": 266,
+        "batch": 208,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -346,7 +338,7 @@
         }
       },
       {
-        "batch": 267,
+        "batch": 209,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -354,7 +346,7 @@
         }
       },
       {
-        "batch": 268,
+        "batch": 210,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -362,7 +354,7 @@
         }
       },
       {
-        "batch": 269,
+        "batch": 211,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -370,7 +362,7 @@
         }
       },
       {
-        "batch": 270,
+        "batch": 212,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -378,7 +370,7 @@
         }
       },
       {
-        "batch": 271,
+        "batch": 213,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -386,7 +378,7 @@
         }
       },
       {
-        "batch": 272,
+        "batch": 214,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -394,7 +386,7 @@
         }
       },
       {
-        "batch": 273,
+        "batch": 215,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -402,7 +394,7 @@
         }
       },
       {
-        "batch": 274,
+        "batch": 216,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -410,7 +402,7 @@
         }
       },
       {
-        "batch": 275,
+        "batch": 217,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -418,7 +410,7 @@
         }
       },
       {
-        "batch": 276,
+        "batch": 218,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -426,7 +418,7 @@
         }
       },
       {
-        "batch": 277,
+        "batch": 220,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -434,7 +426,7 @@
         }
       },
       {
-        "batch": 278,
+        "batch": 222,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -442,111 +434,7 @@
         }
       },
       {
-        "batch": 280,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 281,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 282,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 283,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 284,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 285,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 287,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 288,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 289,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 290,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 291,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 292,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 294,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 294,
+        "batch": 222,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -849,18 +737,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll run the tools one at a time in the specified order.",
-              "native": {
-                "item": {
-                  "content": "I'll run the tools one at a time in the specified order."
-                },
-                "fingerprint": 16713115790841258621
-              }
+              "text": "I'll run the tools in the specified order, one at a time."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
               },
               "function": {
                 "name": "ping_empty",
@@ -872,17 +754,17 @@
                     "arguments": "{}",
                     "name": "ping_empty"
                   },
-                  "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                  "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                   "type": "function"
                 },
-                "fingerprint": 3688607425725986728
+                "fingerprint": 5946998173222652938
               }
             }
           ],
           "usage": {
             "input_tokens": 762,
-            "output_tokens": 34,
-            "total_tokens": 796,
+            "output_tokens": 35,
+            "total_tokens": 797,
             "cached_input_tokens": 512
           },
           "origin": {
@@ -890,11 +772,11 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "4920abf4-a605-4e1a-b9d4-f7eff202fb92"
+            "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
           },
           "native": {
             "item": {
-              "content": "I'll run the tools one at a time in the specified order.",
+              "content": "I'll run the tools in the specified order, one at a time.",
               "role": "assistant",
               "tool_calls": [
                 {
@@ -902,27 +784,27 @@
                     "arguments": "{}",
                     "name": "ping_empty"
                   },
-                  "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                  "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 4298130789196367796
+            "fingerprint": 4494048398533376774
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
+              "completion_tokens": 35,
+              "prompt_cache_hit_tokens": 512,
+              "prompt_cache_miss_tokens": 250,
               "prompt_tokens": 762,
-              "completion_tokens": 34,
-              "total_tokens": 796,
               "prompt_tokens_details": {
                 "cached_tokens": 512
               },
-              "prompt_cache_hit_tokens": 512,
-              "prompt_cache_miss_tokens": 250
+              "total_tokens": 797
             },
             "finish_reason": "tool_calls",
-            "response_id": "4920abf4-a605-4e1a-b9d4-f7eff202fb92",
+            "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -986,38 +868,6 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " one"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " at"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " a"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " time"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
             "text": " in"
           }
         },
@@ -1043,6 +893,46 @@
             "event": "text",
             "part": 0,
             "text": " order"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " one"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " at"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " a"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " time"
           }
         },
         {
@@ -1077,7 +967,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
               },
               "function": {
                 "name": "ping_empty",
@@ -1089,10 +979,10 @@
                     "arguments": "{}",
                     "name": "ping_empty"
                   },
-                  "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                  "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                   "type": "function"
                 },
-                "fingerprint": 3688607425725986728
+                "fingerprint": 5946998173222652938
               }
             }
           }
@@ -1104,17 +994,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'll run the tools one at a time in the specified order.",
-              "native": {
-                "item": {
-                  "content": "I'll run the tools one at a time in the specified order."
-                },
-                "fingerprint": 16713115790841258621
-              }
+              "text": "I'll run the tools in the specified order, one at a time."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -1169,18 +1058,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the tools one at a time in the specified order.",
-                  "native": {
-                    "item": {
-                      "content": "I'll run the tools one at a time in the specified order."
-                    },
-                    "fingerprint": 16713115790841258621
-                  }
+                  "text": "I'll run the tools in the specified order, one at a time."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1192,10 +1075,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 3688607425725986728
+                    "fingerprint": 5946998173222652938
                   }
                 }
               ],
@@ -1204,12 +1087,12 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4920abf4-a605-4e1a-b9d4-f7eff202fb92"
+                "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
               "stop": "tool_use",
               "native": {
                 "item": {
-                  "content": "I'll run the tools one at a time in the specified order.",
+                  "content": "I'll run the tools in the specified order, one at a time.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -1217,12 +1100,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4298130789196367796
+                "fingerprint": 4494048398533376774
               }
             },
             {
@@ -1231,7 +1114,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1367,7 +1250,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -1396,17 +1279,17 @@
                     "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                     "name": "inspect_manifest"
                   },
-                  "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                  "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                   "type": "function"
                 },
-                "fingerprint": 3609089693804740126
+                "fingerprint": 153311108019625719
               }
             }
           ],
           "usage": {
-            "input_tokens": 813,
+            "input_tokens": 814,
             "output_tokens": 140,
-            "total_tokens": 953,
+            "total_tokens": 954,
             "cached_input_tokens": 640
           },
           "origin": {
@@ -1414,7 +1297,7 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "62792b4c-c8fb-4c78-bd4f-68f8f9c4a6c1"
+            "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
           },
           "native": {
             "item": {
@@ -1426,27 +1309,27 @@
                     "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                     "name": "inspect_manifest"
                   },
-                  "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                  "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 9338842592119279856
+            "fingerprint": 8193432206182970675
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 813,
               "completion_tokens": 140,
-              "total_tokens": 953,
+              "prompt_cache_hit_tokens": 640,
+              "prompt_cache_miss_tokens": 174,
+              "prompt_tokens": 814,
               "prompt_tokens_details": {
                 "cached_tokens": 640
               },
-              "prompt_cache_hit_tokens": 640,
-              "prompt_cache_miss_tokens": 173
+              "total_tokens": 954
             },
             "finish_reason": "tool_calls",
-            "response_id": "62792b4c-c8fb-4c78-bd4f-68f8f9c4a6c1",
+            "response_id": "bd76973f-af8e-4256-b059-a28129e94158",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -1481,7 +1364,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -1510,15 +1393,20 @@
                     "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                     "name": "inspect_manifest"
                   },
-                  "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                  "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                   "type": "function"
                 },
-                "fingerprint": 3609089693804740126
+                "fingerprint": 153311108019625719
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -1573,18 +1461,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the tools one at a time in the specified order.",
-                  "native": {
-                    "item": {
-                      "content": "I'll run the tools one at a time in the specified order."
-                    },
-                    "fingerprint": 16713115790841258621
-                  }
+                  "text": "I'll run the tools in the specified order, one at a time."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1596,10 +1478,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 3688607425725986728
+                    "fingerprint": 5946998173222652938
                   }
                 }
               ],
@@ -1608,12 +1490,12 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4920abf4-a605-4e1a-b9d4-f7eff202fb92"
+                "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
               "stop": "tool_use",
               "native": {
                 "item": {
-                  "content": "I'll run the tools one at a time in the specified order.",
+                  "content": "I'll run the tools in the specified order, one at a time.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -1621,12 +1503,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4298130789196367796
+                "fingerprint": 4494048398533376774
               }
             },
             {
@@ -1635,7 +1517,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1653,7 +1535,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                    "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1682,10 +1564,10 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     },
-                    "fingerprint": 3609089693804740126
+                    "fingerprint": 153311108019625719
                   }
                 }
               ],
@@ -1694,7 +1576,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "62792b4c-c8fb-4c78-bd4f-68f8f9c4a6c1"
+                "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
               },
               "stop": "tool_use",
               "native": {
@@ -1707,12 +1589,12 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9338842592119279856
+                "fingerprint": 8193432206182970675
               }
             },
             {
@@ -1721,7 +1603,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                    "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1857,7 +1739,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_LAE7KgRLwtLK23ZfEIgR2004"
+                "provider": "call_00_4MJuk9h0jDY4tO37J9Xl6314"
               },
               "function": {
                 "name": "join_labels",
@@ -1877,17 +1759,17 @@
                     "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                     "name": "join_labels"
                   },
-                  "id": "call_00_LAE7KgRLwtLK23ZfEIgR2004",
+                  "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                   "type": "function"
                 },
-                "fingerprint": 1944926044089661417
+                "fingerprint": 8787863703086106165
               }
             }
           ],
           "usage": {
-            "input_tokens": 983,
+            "input_tokens": 984,
             "output_tokens": 73,
-            "total_tokens": 1056,
+            "total_tokens": 1057,
             "cached_input_tokens": 768
           },
           "origin": {
@@ -1895,7 +1777,7 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "19bb9f90-e778-40bd-84e9-5ff3dffdef45"
+            "response_id": "9df45c98-f093-4e9a-8cc6-43d2c07ea826"
           },
           "native": {
             "item": {
@@ -1907,27 +1789,27 @@
                     "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                     "name": "join_labels"
                   },
-                  "id": "call_00_LAE7KgRLwtLK23ZfEIgR2004",
+                  "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 3988062564354024889
+            "fingerprint": 12558146949133273117
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 983,
               "completion_tokens": 73,
-              "total_tokens": 1056,
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 216,
+              "prompt_tokens": 984,
               "prompt_tokens_details": {
                 "cached_tokens": 768
               },
-              "prompt_cache_hit_tokens": 768,
-              "prompt_cache_miss_tokens": 215
+              "total_tokens": 1057
             },
             "finish_reason": "tool_calls",
-            "response_id": "19bb9f90-e778-40bd-84e9-5ff3dffdef45",
+            "response_id": "9df45c98-f093-4e9a-8cc6-43d2c07ea826",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -1962,7 +1844,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_LAE7KgRLwtLK23ZfEIgR2004"
+                "provider": "call_00_4MJuk9h0jDY4tO37J9Xl6314"
               },
               "function": {
                 "name": "join_labels",
@@ -1982,15 +1864,20 @@
                     "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                     "name": "join_labels"
                   },
-                  "id": "call_00_LAE7KgRLwtLK23ZfEIgR2004",
+                  "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                   "type": "function"
                 },
-                "fingerprint": 1944926044089661417
+                "fingerprint": 8787863703086106165
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -2045,18 +1932,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the tools one at a time in the specified order.",
-                  "native": {
-                    "item": {
-                      "content": "I'll run the tools one at a time in the specified order."
-                    },
-                    "fingerprint": 16713115790841258621
-                  }
+                  "text": "I'll run the tools in the specified order, one at a time."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2068,10 +1949,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 3688607425725986728
+                    "fingerprint": 5946998173222652938
                   }
                 }
               ],
@@ -2080,12 +1961,12 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4920abf4-a605-4e1a-b9d4-f7eff202fb92"
+                "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
               "stop": "tool_use",
               "native": {
                 "item": {
-                  "content": "I'll run the tools one at a time in the specified order.",
+                  "content": "I'll run the tools in the specified order, one at a time.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -2093,12 +1974,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4298130789196367796
+                "fingerprint": 4494048398533376774
               }
             },
             {
@@ -2107,7 +1988,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2125,7 +2006,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                    "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2154,10 +2035,10 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     },
-                    "fingerprint": 3609089693804740126
+                    "fingerprint": 153311108019625719
                   }
                 }
               ],
@@ -2166,7 +2047,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "62792b4c-c8fb-4c78-bd4f-68f8f9c4a6c1"
+                "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
               },
               "stop": "tool_use",
               "native": {
@@ -2179,12 +2060,12 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9338842592119279856
+                "fingerprint": 8193432206182970675
               }
             },
             {
@@ -2193,7 +2074,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                    "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2211,7 +2092,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_LAE7KgRLwtLK23ZfEIgR2004"
+                    "provider": "call_00_4MJuk9h0jDY4tO37J9Xl6314"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2231,10 +2112,10 @@
                         "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_00_LAE7KgRLwtLK23ZfEIgR2004",
+                      "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                       "type": "function"
                     },
-                    "fingerprint": 1944926044089661417
+                    "fingerprint": 8787863703086106165
                   }
                 }
               ],
@@ -2243,7 +2124,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "19bb9f90-e778-40bd-84e9-5ff3dffdef45"
+                "response_id": "9df45c98-f093-4e9a-8cc6-43d2c07ea826"
               },
               "stop": "tool_use",
               "native": {
@@ -2256,12 +2137,12 @@
                         "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_00_LAE7KgRLwtLK23ZfEIgR2004",
+                      "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 3988062564354024889
+                "fingerprint": 12558146949133273117
               }
             },
             {
@@ -2270,7 +2151,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_LAE7KgRLwtLK23ZfEIgR2004"
+                    "provider": "call_00_4MJuk9h0jDY4tO37J9Xl6314"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2406,7 +2287,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_HydCAI4hrMejkWqqR4WX1507"
+                "provider": "call_00_bxfVL2NZH4F9uaz9B0Hh6252"
               },
               "function": {
                 "name": "escape_echo",
@@ -2420,17 +2301,17 @@
                     "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                     "name": "escape_echo"
                   },
-                  "id": "call_00_HydCAI4hrMejkWqqR4WX1507",
+                  "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                   "type": "function"
                 },
-                "fingerprint": 11667438261202119199
+                "fingerprint": 8145992053334528830
               }
             }
           ],
           "usage": {
-            "input_tokens": 1085,
+            "input_tokens": 1086,
             "output_tokens": 56,
-            "total_tokens": 1141,
+            "total_tokens": 1142,
             "cached_input_tokens": 896
           },
           "origin": {
@@ -2438,7 +2319,7 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "7d5061d1-554e-4807-bedd-0a2f4c0aa196"
+            "response_id": "cd7d09de-660d-44fd-aba9-074955968d31"
           },
           "native": {
             "item": {
@@ -2450,27 +2331,27 @@
                     "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                     "name": "escape_echo"
                   },
-                  "id": "call_00_HydCAI4hrMejkWqqR4WX1507",
+                  "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 7340260233917118507
+            "fingerprint": 11133009865895960996
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 1085,
               "completion_tokens": 56,
-              "total_tokens": 1141,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 190,
+              "prompt_tokens": 1086,
               "prompt_tokens_details": {
                 "cached_tokens": 896
               },
-              "prompt_cache_hit_tokens": 896,
-              "prompt_cache_miss_tokens": 189
+              "total_tokens": 1142
             },
             "finish_reason": "tool_calls",
-            "response_id": "7d5061d1-554e-4807-bedd-0a2f4c0aa196",
+            "response_id": "cd7d09de-660d-44fd-aba9-074955968d31",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -2505,7 +2386,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_HydCAI4hrMejkWqqR4WX1507"
+                "provider": "call_00_bxfVL2NZH4F9uaz9B0Hh6252"
               },
               "function": {
                 "name": "escape_echo",
@@ -2519,15 +2400,20 @@
                     "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                     "name": "escape_echo"
                   },
-                  "id": "call_00_HydCAI4hrMejkWqqR4WX1507",
+                  "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                   "type": "function"
                 },
-                "fingerprint": 11667438261202119199
+                "fingerprint": 8145992053334528830
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -2582,18 +2468,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll run the tools one at a time in the specified order.",
-                  "native": {
-                    "item": {
-                      "content": "I'll run the tools one at a time in the specified order."
-                    },
-                    "fingerprint": 16713115790841258621
-                  }
+                  "text": "I'll run the tools in the specified order, one at a time."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2605,10 +2485,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     },
-                    "fingerprint": 3688607425725986728
+                    "fingerprint": 5946998173222652938
                   }
                 }
               ],
@@ -2617,12 +2497,12 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4920abf4-a605-4e1a-b9d4-f7eff202fb92"
+                "response_id": "b1c5f170-c305-4d1e-a7ca-38b2e9abf815"
               },
               "stop": "tool_use",
               "native": {
                 "item": {
-                  "content": "I'll run the tools one at a time in the specified order.",
+                  "content": "I'll run the tools in the specified order, one at a time.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -2630,12 +2510,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_00_YW7JgvZbL6MWDKuwlufo9055",
+                      "id": "call_00_R6CJAK6dyT8BaAM2I7Vx7590",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4298130789196367796
+                "fingerprint": 4494048398533376774
               }
             },
             {
@@ -2644,7 +2524,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_YW7JgvZbL6MWDKuwlufo9055"
+                    "provider": "call_00_R6CJAK6dyT8BaAM2I7Vx7590"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2662,7 +2542,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                    "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2691,10 +2571,10 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     },
-                    "fingerprint": 3609089693804740126
+                    "fingerprint": 153311108019625719
                   }
                 }
               ],
@@ -2703,7 +2583,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "62792b4c-c8fb-4c78-bd4f-68f8f9c4a6c1"
+                "response_id": "bd76973f-af8e-4256-b059-a28129e94158"
               },
               "stop": "tool_use",
               "native": {
@@ -2716,12 +2596,12 @@
                         "arguments": "{\"project\": \"rig-deepseek\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\deepseek\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_00_b4j1idxW3vGoIRiYWJrq9927",
+                      "id": "call_00_cfwwX3hUHXH6HUApcVwp5951",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9338842592119279856
+                "fingerprint": 8193432206182970675
               }
             },
             {
@@ -2730,7 +2610,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_b4j1idxW3vGoIRiYWJrq9927"
+                    "provider": "call_00_cfwwX3hUHXH6HUApcVwp5951"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2748,7 +2628,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_LAE7KgRLwtLK23ZfEIgR2004"
+                    "provider": "call_00_4MJuk9h0jDY4tO37J9Xl6314"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2768,10 +2648,10 @@
                         "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_00_LAE7KgRLwtLK23ZfEIgR2004",
+                      "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                       "type": "function"
                     },
-                    "fingerprint": 1944926044089661417
+                    "fingerprint": 8787863703086106165
                   }
                 }
               ],
@@ -2780,7 +2660,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "19bb9f90-e778-40bd-84e9-5ff3dffdef45"
+                "response_id": "9df45c98-f093-4e9a-8cc6-43d2c07ea826"
               },
               "stop": "tool_use",
               "native": {
@@ -2793,12 +2673,12 @@
                         "arguments": "{\"labels\": [\"north\", \"beta gamma\", \"quote:\\\"delta\\\"\", \"slash\\\\path\"], \"separator\": \"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_00_LAE7KgRLwtLK23ZfEIgR2004",
+                      "id": "call_00_4MJuk9h0jDY4tO37J9Xl6314",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 3988062564354024889
+                "fingerprint": 12558146949133273117
               }
             },
             {
@@ -2807,7 +2687,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_LAE7KgRLwtLK23ZfEIgR2004"
+                    "provider": "call_00_4MJuk9h0jDY4tO37J9Xl6314"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2825,7 +2705,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_HydCAI4hrMejkWqqR4WX1507"
+                    "provider": "call_00_bxfVL2NZH4F9uaz9B0Hh6252"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -2839,10 +2719,10 @@
                         "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_00_HydCAI4hrMejkWqqR4WX1507",
+                      "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                       "type": "function"
                     },
-                    "fingerprint": 11667438261202119199
+                    "fingerprint": 8145992053334528830
                   }
                 }
               ],
@@ -2851,7 +2731,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "7d5061d1-554e-4807-bedd-0a2f4c0aa196"
+                "response_id": "cd7d09de-660d-44fd-aba9-074955968d31"
               },
               "stop": "tool_use",
               "native": {
@@ -2864,12 +2744,12 @@
                         "arguments": "{\"text\": \"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_00_HydCAI4hrMejkWqqR4WX1507",
+                      "id": "call_00_bxfVL2NZH4F9uaz9B0Hh6252",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7340260233917118507
+                "fingerprint": 11133009865895960996
               }
             },
             {
@@ -2878,7 +2758,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_HydCAI4hrMejkWqqR4WX1507"
+                    "provider": "call_00_bxfVL2NZH4F9uaz9B0Hh6252"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -3013,19 +2893,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Production-readiness scenario passed: EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK, and ESCAPE-OK.",
-              "native": {
-                "item": {
-                  "content": "Production-readiness scenario passed: EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK, and ESCAPE-OK."
-                },
-                "fingerprint": 17849636793895165373
-              }
+              "text": "All four checks passed in order: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           ],
           "usage": {
-            "input_tokens": 1177,
-            "output_tokens": 42,
-            "total_tokens": 1219,
+            "input_tokens": 1178,
+            "output_tokens": 29,
+            "total_tokens": 1207,
             "cached_input_tokens": 1024
           },
           "origin": {
@@ -3033,29 +2907,29 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "0609b9b9-dc7f-4358-8280-79fb407f16b5"
+            "response_id": "eeb5f758-9c67-4c2f-b34c-9c510d9cf544"
           },
           "native": {
             "item": {
-              "content": "Production-readiness scenario passed: EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK, and ESCAPE-OK.",
+              "content": "All four checks passed in order: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
               "role": "assistant"
             },
-            "fingerprint": 15930703553339877565
+            "fingerprint": 17782398507626914763
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 1177,
-              "completion_tokens": 42,
-              "total_tokens": 1219,
+              "completion_tokens": 29,
+              "prompt_cache_hit_tokens": 1024,
+              "prompt_cache_miss_tokens": 154,
+              "prompt_tokens": 1178,
               "prompt_tokens_details": {
                 "cached_tokens": 1024
               },
-              "prompt_cache_hit_tokens": 1024,
-              "prompt_cache_miss_tokens": 153
+              "total_tokens": 1207
             },
             "finish_reason": "stop",
-            "response_id": "0609b9b9-dc7f-4358-8280-79fb407f16b5",
+            "response_id": "eeb5f758-9c67-4c2f-b34c-9c510d9cf544",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -3079,7 +2953,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "Production"
+            "text": "All"
           }
         },
         {
@@ -3087,7 +2961,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "-read"
+            "text": " four"
           }
         },
         {
@@ -3095,15 +2969,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "iness"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " scenario"
+            "text": " checks"
           }
         },
         {
@@ -3112,6 +2978,22 @@
             "event": "text",
             "part": 0,
             "text": " passed"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " in"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " order"
           }
         },
         {
@@ -3207,119 +3089,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " ("
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "rig"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "-de"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ep"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "seek"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
             "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " steps"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " ret"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ries"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "),"
           }
         },
         {
@@ -3417,17 +3187,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Production-readiness scenario passed: EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK, and ESCAPE-OK.",
-              "native": {
-                "item": {
-                  "content": "Production-readiness scenario passed: EMPTY-OK, MANIFEST-OK (rig-deepseek, 2 steps, 2 retries), LABELS-OK, and ESCAPE-OK."
-                },
-                "fingerprint": 17849636793895165373
-              }
+              "text": "All four checks passed in order: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

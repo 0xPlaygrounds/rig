@@ -149,19 +149,9 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "I'll call both tools now.",
-              "native": {
-                "item": {
-                  "content": "I'll call both tools now."
-                },
-                "fingerprint": 11349844003468952749
-              }
-            },
-            {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_gWYAgaBLmsZkspcRNLGu2947"
+                "provider": "call_00_R9M83nH4kbvqOKGGFrmI4601"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -173,16 +163,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_00_gWYAgaBLmsZkspcRNLGu2947",
+                  "id": "call_00_R9M83nH4kbvqOKGGFrmI4601",
                   "type": "function"
                 },
-                "fingerprint": 8033947156457892739
+                "fingerprint": 8215182013646969028
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_01_zzvXMI8evn96ttwDV1ZA1990"
+                "provider": "call_01_RKdJEiiCWDTDkhFc9nBu0115"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -194,17 +184,17 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_01_zzvXMI8evn96ttwDV1ZA1990",
+                  "id": "call_01_RKdJEiiCWDTDkhFc9nBu0115",
                   "type": "function"
                 },
-                "fingerprint": 10229947481989595094
+                "fingerprint": 18315310352240324491
               }
             }
           ],
           "usage": {
             "input_tokens": 395,
-            "output_tokens": 46,
-            "total_tokens": 441,
+            "output_tokens": 40,
+            "total_tokens": 435,
             "cached_input_tokens": 256
           },
           "origin": {
@@ -212,11 +202,11 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "93a3ed85-e0d1-4d12-81ba-4440584e4200"
+            "response_id": "d07e3409-9062-4337-8b6b-a23c13bc055e"
           },
           "native": {
             "item": {
-              "content": "I'll call both tools now.",
+              "content": "",
               "role": "assistant",
               "tool_calls": [
                 {
@@ -224,7 +214,7 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_00_gWYAgaBLmsZkspcRNLGu2947",
+                  "id": "call_00_R9M83nH4kbvqOKGGFrmI4601",
                   "type": "function"
                 },
                 {
@@ -232,12 +222,12 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_01_zzvXMI8evn96ttwDV1ZA1990",
+                  "id": "call_01_RKdJEiiCWDTDkhFc9nBu0115",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 11327427500154373424
+            "fingerprint": 12559912752771330488
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -247,7 +237,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "I'll call both tools now.",
+                  "content": "",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -255,7 +245,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_00_gWYAgaBLmsZkspcRNLGu2947",
+                      "id": "call_00_R9M83nH4kbvqOKGGFrmI4601",
                       "index": 0,
                       "type": "function"
                     },
@@ -264,7 +254,7 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_01_zzvXMI8evn96ttwDV1ZA1990",
+                      "id": "call_01_RKdJEiiCWDTDkhFc9nBu0115",
                       "index": 1,
                       "type": "function"
                     }
@@ -273,19 +263,19 @@
               }
             ],
             "created": 0,
-            "id": "93a3ed85-e0d1-4d12-81ba-4440584e4200",
+            "id": "d07e3409-9062-4337-8b6b-a23c13bc055e",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 46,
+              "completion_tokens": 40,
               "prompt_cache_hit_tokens": 256,
               "prompt_cache_miss_tokens": 139,
               "prompt_tokens": 395,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 441
+              "total_tokens": 435
             }
           }
         }
@@ -368,19 +358,9 @@
               "role": "assistant",
               "content": [
                 {
-                  "type": "text",
-                  "text": "I'll call both tools now.",
-                  "native": {
-                    "item": {
-                      "content": "I'll call both tools now."
-                    },
-                    "fingerprint": 11349844003468952749
-                  }
-                },
-                {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_gWYAgaBLmsZkspcRNLGu2947"
+                    "provider": "call_00_R9M83nH4kbvqOKGGFrmI4601"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -392,16 +372,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_00_gWYAgaBLmsZkspcRNLGu2947",
+                      "id": "call_00_R9M83nH4kbvqOKGGFrmI4601",
                       "type": "function"
                     },
-                    "fingerprint": 8033947156457892739
+                    "fingerprint": 8215182013646969028
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_01_zzvXMI8evn96ttwDV1ZA1990"
+                    "provider": "call_01_RKdJEiiCWDTDkhFc9nBu0115"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -413,10 +393,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_01_zzvXMI8evn96ttwDV1ZA1990",
+                      "id": "call_01_RKdJEiiCWDTDkhFc9nBu0115",
                       "type": "function"
                     },
-                    "fingerprint": 10229947481989595094
+                    "fingerprint": 18315310352240324491
                   }
                 }
               ],
@@ -425,12 +405,12 @@
                 "provider": "deepseek",
                 "model": "deepseek-v4-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "93a3ed85-e0d1-4d12-81ba-4440584e4200"
+                "response_id": "d07e3409-9062-4337-8b6b-a23c13bc055e"
               },
               "stop": "tool_use",
               "native": {
                 "item": {
-                  "content": "I'll call both tools now.",
+                  "content": "",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -438,7 +418,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_00_gWYAgaBLmsZkspcRNLGu2947",
+                      "id": "call_00_R9M83nH4kbvqOKGGFrmI4601",
                       "type": "function"
                     },
                     {
@@ -446,12 +426,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_01_zzvXMI8evn96ttwDV1ZA1990",
+                      "id": "call_01_RKdJEiiCWDTDkhFc9nBu0115",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 11327427500154373424
+                "fingerprint": 12559912752771330488
               }
             },
             {
@@ -460,7 +440,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_gWYAgaBLmsZkspcRNLGu2947"
+                    "provider": "call_00_R9M83nH4kbvqOKGGFrmI4601"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -473,7 +453,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_01_zzvXMI8evn96ttwDV1ZA1990"
+                    "provider": "call_01_RKdJEiiCWDTDkhFc9nBu0115"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -526,19 +506,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard.\"",
-              "native": {
-                "item": {
-                  "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard.\""
-                },
-                "fingerprint": 7055255623667369312
-              }
+              "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\"."
             }
           ],
           "usage": {
-            "input_tokens": 471,
+            "input_tokens": 465,
             "output_tokens": 23,
-            "total_tokens": 494,
+            "total_tokens": 488,
             "cached_input_tokens": 256
           },
           "origin": {
@@ -546,14 +520,14 @@
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "9ce022a7-4ddb-42b5-ad52-9afeef28dacd"
+            "response_id": "1c7f9f71-e393-4842-992f-a9192d2c2d59"
           },
           "native": {
             "item": {
-              "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard.\"",
+              "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\".",
               "role": "assistant"
             },
-            "fingerprint": 14969949229228566470
+            "fingerprint": 10510909259236832316
           },
           "finish_reason": "stop",
           "raw": {
@@ -563,25 +537,25 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard.\"",
+                  "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\".",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "9ce022a7-4ddb-42b5-ad52-9afeef28dacd",
+            "id": "1c7f9f71-e393-4842-992f-a9192d2c2d59",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 23,
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 215,
-              "prompt_tokens": 471,
+              "prompt_cache_miss_tokens": 209,
+              "prompt_tokens": 465,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 494
+              "total_tokens": 488
             }
           }
         }

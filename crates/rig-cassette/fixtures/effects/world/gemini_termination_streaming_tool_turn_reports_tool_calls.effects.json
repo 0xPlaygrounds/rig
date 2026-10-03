@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -188,7 +188,7 @@
                     "name": "add"
                   }
                 },
-                "fingerprint": 7888621069192584831
+                "fingerprint": 8975351853811734159
               }
             }
           ],
@@ -210,20 +210,21 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 12543701785984805829
+            "fingerprint": 14133290258368346733
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 72,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 90,
+              "promptTokenCount": 72,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 72
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 90
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -276,12 +277,17 @@
                     "name": "add"
                   }
                 },
-                "fingerprint": 7888621069192584831
+                "fingerprint": 8975351853811734159
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -356,7 +362,7 @@
                         "name": "add"
                       }
                     },
-                    "fingerprint": 7888621069192584831
+                    "fingerprint": 8975351853811734159
                   }
                 }
               ],
@@ -374,7 +380,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 12543701785984805829
+                "fingerprint": 14133290258368346733
               }
             },
             {
@@ -445,7 +451,7 @@
                 "item": {
                   "text": "The sum of 2 and 3 is 5."
                 },
-                "fingerprint": 13681953634836108699
+                "fingerprint": 4656840733352130147
               }
             }
           ],
@@ -466,20 +472,21 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 11460517687772110533
+            "fingerprint": 4369851839156171253
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 103,
               "candidatesTokenCount": 11,
-              "totalTokenCount": 114,
+              "promptTokenCount": 103,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 103
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 114
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -524,12 +531,17 @@
                 "item": {
                   "text": "The sum of 2 and 3 is 5."
                 },
-                "fingerprint": 13681953634836108699
+                "fingerprint": 4656840733352130147
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -186,6 +194,14 @@
         }
       },
       {
+        "batch": 30,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 31,
         "id": 0,
         "kind": {
@@ -346,14 +362,6 @@
         }
       },
       {
-        "batch": 51,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 52,
         "id": 0,
         "kind": {
@@ -362,15 +370,7 @@
         }
       },
       {
-        "batch": 54,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
+        "batch": 52,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -443,13 +443,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```",
-              "native": {
-                "item": {
-                  "content": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
-                },
-                "fingerprint": 5746018344957407770
-              }
+              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
             }
           ],
           "usage": {
@@ -470,13 +464,13 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 13074381768343197800
+            "fingerprint": 7398112675668535686
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 1050,
               "completion_tokens": 50,
+              "prompt_tokens": 1050,
               "total_tokens": 1100
             },
             "finish_reason": "stop",
@@ -870,17 +864,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```",
-              "native": {
-                "item": {
-                  "content": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
-                },
-                "fingerprint": 5746018344957407770
-              }
+              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     }
   ]

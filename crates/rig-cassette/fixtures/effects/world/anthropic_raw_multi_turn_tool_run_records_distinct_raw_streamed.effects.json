@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 11,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,29 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 11,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 19,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,23 +40,7 @@
         }
       },
       {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 23,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 24,
+        "batch": 19,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -193,7 +185,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 4437887030443219852
+                "fingerprint": 2542342842316147728
               }
             }
           ],
@@ -277,12 +269,17 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 4437887030443219852
+                "fingerprint": 2542342842316147728
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -360,7 +357,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4437887030443219852
+                    "fingerprint": 2542342842316147728
                   }
                 }
               ],
@@ -436,7 +433,7 @@
                   "text": "The result of 2 + 3 is **5**.",
                   "type": "text"
                 },
-                "fingerprint": 15533301940519827455
+                "fingerprint": 509825265736640893
               }
             }
           ],
@@ -519,12 +516,17 @@
                   "text": "The result of 2 + 3 is **5**.",
                   "type": "text"
                 },
-                "fingerprint": 15533301940519827455
+                "fingerprint": 509825265736640893
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     }
   ]

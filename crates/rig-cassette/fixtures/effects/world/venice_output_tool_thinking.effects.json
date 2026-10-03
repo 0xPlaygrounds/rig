@@ -108,7 +108,7 @@
                 "item": {
                   "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. This is a creative/fictional request to create a structured event object. I'll create a realistic Rust meetup event object for Seattle.\n"
                 },
-                "fingerprint": 3948372781916780777
+                "fingerprint": 11219843917725721201
               }
             },
             {
@@ -133,7 +133,7 @@
                   "id": "chatcmpl-tool-b8b90b15c78651d7",
                   "type": "function"
                 },
-                "fingerprint": 2133600608931081710
+                "fingerprint": 12360622172752450984
               }
             }
           ],
@@ -166,7 +166,7 @@
                 }
               ]
             },
-            "fingerprint": 1150828340630796134
+            "fingerprint": 2860430118259345836
           },
           "finish_reason": "tool_calls",
           "raw": {

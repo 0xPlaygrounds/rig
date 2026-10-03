@@ -161,12 +161,17 @@
                   "id": "N2xPMZSYl",
                   "type": "function"
                 },
-                "fingerprint": 5841875250095745962
+                "fingerprint": 15454698049946506898
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      }
     }
   ]
 }

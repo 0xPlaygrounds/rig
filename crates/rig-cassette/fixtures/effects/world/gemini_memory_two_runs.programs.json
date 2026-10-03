@@ -224,7 +224,7 @@
                     "text": "ready.",
                     "thoughtSignature": "EoACCv0BAWkUfRO83IQgzGdcoaesFr6AfnhHeuBWcyC8/mzzU9ZvannXbvOa5VnwhkLsnNLMdjZ+JFHj3sK6PR7/OSGEYQFqKNbr9B7Ycn9R+wkm0dZebcjc7gfe0R5blybd/Dn6i9r9IfUByZonXbl4AAitXhkUBuqbZINKad7QF0f9HYxOx2rY/7WNpf6SG1O+iYR3MvckIFBt98MFLwiT6q70jkl79iDIgmLqZqhlcNAxK7q8IXNYa8qyf/55X5fzoGFTSxxlTr/UkM2PP9VR9SVGZiyP7Bjw89JkzhNnZJf6oBPTTa1AE+i6JGOI0YJDeOveCnmcpG0V410E7ZjgmA=="
                   },
-                  "fingerprint": 7790244451924217344
+                  "fingerprint": 7622115463999594536
                 }
               }
             ],
@@ -242,7 +242,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 546811913261009092
+                "fingerprint": 3928977403987171332
               }
             },
             "done": true,
@@ -271,7 +271,7 @@
                       "text": "ready.",
                       "thoughtSignature": "EoACCv0BAWkUfRO83IQgzGdcoaesFr6AfnhHeuBWcyC8/mzzU9ZvannXbvOa5VnwhkLsnNLMdjZ+JFHj3sK6PR7/OSGEYQFqKNbr9B7Ycn9R+wkm0dZebcjc7gfe0R5blybd/Dn6i9r9IfUByZonXbl4AAitXhkUBuqbZINKad7QF0f9HYxOx2rY/7WNpf6SG1O+iYR3MvckIFBt98MFLwiT6q70jkl79iDIgmLqZqhlcNAxK7q8IXNYa8qyf/55X5fzoGFTSxxlTr/UkM2PP9VR9SVGZiyP7Bjw89JkzhNnZJf6oBPTTa1AE+i6JGOI0YJDeOveCnmcpG0V410E7ZjgmA=="
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -293,7 +293,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 546811913261009092
+                "fingerprint": 3928977403987171332
               },
               "finish_reason": "stop",
               "raw": {
@@ -352,7 +352,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 546811913261009092
+              "fingerprint": 3928977403987171332
             }
           }
         },
@@ -366,7 +366,7 @@
                   "text": "ready.",
                   "thoughtSignature": "EoACCv0BAWkUfRO83IQgzGdcoaesFr6AfnhHeuBWcyC8/mzzU9ZvannXbvOa5VnwhkLsnNLMdjZ+JFHj3sK6PR7/OSGEYQFqKNbr9B7Ycn9R+wkm0dZebcjc7gfe0R5blybd/Dn6i9r9IfUByZonXbl4AAitXhkUBuqbZINKad7QF0f9HYxOx2rY/7WNpf6SG1O+iYR3MvckIFBt98MFLwiT6q70jkl79iDIgmLqZqhlcNAxK7q8IXNYa8qyf/55X5fzoGFTSxxlTr/UkM2PP9VR9SVGZiyP7Bjw89JkzhNnZJf6oBPTTa1AE+i6JGOI0YJDeOveCnmcpG0V410E7ZjgmA=="
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           }

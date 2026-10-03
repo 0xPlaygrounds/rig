@@ -118,7 +118,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_22e59e94cf174bbc9a1304e6"
+                "provider": "call_42fd25955cd54f47a09edcf2"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -130,16 +130,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_22e59e94cf174bbc9a1304e6",
+                  "id": "call_42fd25955cd54f47a09edcf2",
                   "type": "function"
                 },
-                "fingerprint": 13901860040328554731
+                "fingerprint": 6060929542683413336
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_253091f231ce48e7b412eae2"
+                "provider": "call_43b015ebe88245d4b44722a4"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -151,17 +151,17 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_253091f231ce48e7b412eae2",
+                  "id": "call_43b015ebe88245d4b44722a4",
                   "type": "function"
                 },
-                "fingerprint": 1809871277207374802
+                "fingerprint": 4670655415695043230
               }
             }
           ],
           "usage": {
             "input_tokens": 410,
-            "output_tokens": 35,
-            "total_tokens": 445,
+            "output_tokens": 36,
+            "total_tokens": 446,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -170,7 +170,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "gen-1790914832-KF5mp1RQBUgLWoOxNU7p"
+            "response_id": "gen-1790976483-1424NVVWtG9qAGgAHeR0"
           },
           "native": {
             "item": {
@@ -182,7 +182,7 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_22e59e94cf174bbc9a1304e6",
+                  "id": "call_42fd25955cd54f47a09edcf2",
                   "type": "function"
                 },
                 {
@@ -190,40 +190,45 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_253091f231ce48e7b412eae2",
+                  "id": "call_43b015ebe88245d4b44722a4",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 1808953759935634676
+            "fingerprint": 9870073707302087681
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 410,
-              "completion_tokens": 35,
-              "total_tokens": 445,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 36,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 410,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 446
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790914832-KF5mp1RQBUgLWoOxNU7p",
+            "response_id": "gen-1790976483-1424NVVWtG9qAGgAHeR0",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "service_tier": "default"
             }
           }
         }
@@ -253,7 +258,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_22e59e94cf174bbc9a1304e6"
+                "provider": "call_42fd25955cd54f47a09edcf2"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -265,10 +270,10 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_22e59e94cf174bbc9a1304e6",
+                  "id": "call_42fd25955cd54f47a09edcf2",
                   "type": "function"
                 },
-                "fingerprint": 13901860040328554731
+                "fingerprint": 6060929542683413336
               }
             }
           }
@@ -297,7 +302,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_253091f231ce48e7b412eae2"
+                "provider": "call_43b015ebe88245d4b44722a4"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -309,15 +314,20 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_253091f231ce48e7b412eae2",
+                  "id": "call_43b015ebe88245d4b44722a4",
                   "type": "function"
                 },
-                "fingerprint": 1809871277207374802
+                "fingerprint": 4670655415695043230
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     },
     {
       "tool_output": {},
@@ -395,7 +405,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_22e59e94cf174bbc9a1304e6"
+                    "provider": "call_42fd25955cd54f47a09edcf2"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -407,16 +417,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_22e59e94cf174bbc9a1304e6",
+                      "id": "call_42fd25955cd54f47a09edcf2",
                       "type": "function"
                     },
-                    "fingerprint": 13901860040328554731
+                    "fingerprint": 6060929542683413336
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_253091f231ce48e7b412eae2"
+                    "provider": "call_43b015ebe88245d4b44722a4"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -428,10 +438,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_253091f231ce48e7b412eae2",
+                      "id": "call_43b015ebe88245d4b44722a4",
                       "type": "function"
                     },
-                    "fingerprint": 1809871277207374802
+                    "fingerprint": 4670655415695043230
                   }
                 }
               ],
@@ -440,7 +450,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "gen-1790914832-KF5mp1RQBUgLWoOxNU7p"
+                "response_id": "gen-1790976483-1424NVVWtG9qAGgAHeR0"
               },
               "stop": "tool_use",
               "native": {
@@ -453,7 +463,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_22e59e94cf174bbc9a1304e6",
+                      "id": "call_42fd25955cd54f47a09edcf2",
                       "type": "function"
                     },
                     {
@@ -461,12 +471,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_253091f231ce48e7b412eae2",
+                      "id": "call_43b015ebe88245d4b44722a4",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 1808953759935634676
+                "fingerprint": 9870073707302087681
               }
             },
             {
@@ -475,7 +485,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_22e59e94cf174bbc9a1304e6"
+                    "provider": "call_42fd25955cd54f47a09edcf2"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -488,7 +498,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_253091f231ce48e7b412eae2"
+                    "provider": "call_43b015ebe88245d4b44722a4"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -538,19 +548,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The labels are crimson-harbor and silver-orchard.",
-              "native": {
-                "item": {
-                  "content": "The labels are crimson-harbor and silver-orchard."
-                },
-                "fingerprint": 3295787737534410207
-              }
+              "text": "The results are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 477,
-            "output_tokens": 14,
-            "total_tokens": 491,
+            "input_tokens": 473,
+            "output_tokens": 13,
+            "total_tokens": 486,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -559,43 +563,46 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "gen-1790914844-LA4fXmOOmEq0Up9fI7d5"
+            "response_id": "gen-1790976485-3OW3OZd849YiqspXsRee"
           },
           "native": {
             "item": {
-              "content": "The labels are crimson-harbor and silver-orchard.",
+              "content": "The results are crimson-harbor and silver-orchard.",
               "role": "assistant"
             },
-            "fingerprint": 17511034586454729307
+            "fingerprint": 3437498290367338106
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 477,
-              "completion_tokens": 14,
-              "total_tokens": 491,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 13,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 473,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 486
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790914844-LA4fXmOOmEq0Up9fI7d5",
+            "response_id": "gen-1790976485-3OW3OZd849YiqspXsRee",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default"
+              "object": "chat.completion.chunk"
             }
           }
         }
@@ -622,7 +629,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " labels"
+            "text": " results"
           }
         },
         {
@@ -630,7 +637,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " are"
+            "text": " are crimson-har"
           }
         },
         {
@@ -638,7 +645,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " crimson"
+            "text": "bor and silver-"
           }
         },
         {
@@ -646,71 +653,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "-h"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ar"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "bor"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " and"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " silver"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "-"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "orch"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ard"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
+            "text": "orchard."
           }
         },
         {
@@ -720,17 +663,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The labels are crimson-harbor and silver-orchard.",
-              "native": {
-                "item": {
-                  "content": "The labels are crimson-harbor and silver-orchard."
-                },
-                "fingerprint": 3295787737534410207
-              }
+              "text": "The results are crimson-harbor and silver-orchard."
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     }
   ]
 }

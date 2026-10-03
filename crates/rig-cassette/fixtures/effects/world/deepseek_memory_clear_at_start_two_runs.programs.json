@@ -230,13 +230,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready",
-                "native": {
-                  "item": {
-                    "content": "ready"
-                  },
-                  "fingerprint": 815434921069355996
-                }
+                "text": "ready"
               }
             ],
             "head": {
@@ -253,7 +247,7 @@
                   "content": "ready",
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             },
             "done": true,
@@ -276,13 +270,7 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready"
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "usage": {
@@ -303,7 +291,7 @@
                   "content": "ready",
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               },
               "finish_reason": "stop",
               "raw": {
@@ -358,7 +346,7 @@
                 "content": "ready",
                 "role": "assistant"
               },
-              "fingerprint": 16268972914252074274
+              "fingerprint": 5329546866666182096
             }
           }
         },
@@ -366,13 +354,7 @@
           "bevy_ecs::hierarchy::ChildOf": 10,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready"
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           }
         },

@@ -119,7 +119,7 @@
                 "item": {
                   "text": "The number is 169."
                 },
-                "fingerprint": 11085361638528759855
+                "fingerprint": 14867055607564542871
               }
             }
           ],
@@ -142,7 +142,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 11621067515166692845
+            "fingerprint": 13425564892417382995
           },
           "finish_reason": "stop",
           "raw": {
@@ -251,7 +251,7 @@
                     "item": {
                       "text": "The number is 169."
                     },
-                    "fingerprint": 11085361638528759855
+                    "fingerprint": 14867055607564542871
                   }
                 }
               ],
@@ -268,7 +268,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 11621067515166692845
+                "fingerprint": 13425564892417382995
               }
             },
             {
@@ -328,7 +328,7 @@
                 "item": {
                   "text": "The result of doubling 169 is 338."
                 },
-                "fingerprint": 877254494323005544
+                "fingerprint": 4525800143724332576
               }
             }
           ],
@@ -351,7 +351,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 2944559702927948743
+            "fingerprint": 5920580305851013607
           },
           "finish_reason": "stop",
           "raw": {

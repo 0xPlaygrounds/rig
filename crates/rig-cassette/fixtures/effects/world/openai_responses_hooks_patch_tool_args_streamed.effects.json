@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 27,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 39,
+        "batch": 34,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,21 +18,21 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 41,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 52,
+        "batch": 42,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 67,
+        "batch": 57,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 70,
+        "batch": 59,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -48,7 +48,7 @@
         }
       },
       {
-        "batch": 77,
+        "batch": 63,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -181,7 +181,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -205,7 +205,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15225529309292478096
+                "fingerprint": 4400277581272372328
               }
             }
           ],
@@ -227,54 +227,84 @@
           "provider_request_id": "req_7d16a52810a54dc88af1721590263bcc",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_05d734328b009d52016abf4a1da29487d0823d9e89c408c400",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_05d734328b009d52016abf4a1da29487d0823d9e89c408c400",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0ofY6nEs8rcJCapRZde8LDeia9vecjfbmncPsr8kujAW-ZVzE9CdOAmhG543uWiLCDpzNkLrJFLiuhSBkKQTSJL-eblo_X2-eLTHOTJprQ_QxCh2-dmpbCZIpVECcylBQWDkJedIt7jFw_-qpClARgjq4w6fMy65uv1Jv6SNZfeeG_98TmNt-9cZ1my_DyBdHwDq1fbYW2wh3vOircW036sQSS2nnK00vJfIBemv0RYItnHn8TYHZCHnHLZRQ5ac4ciF3sObbKjpfYbcZdvJT6x1nXKYznuFNYsu0IyOraKXMLjYlz2b5NvnfUhqplAxwxjhw1ys5Q7v3d-HP6N2sUsooQirxTePAMDhxmFb8WKMV6NL2xBrTxqpA9ITIu4BQ7KxVrBvh0mKXC6jk_Eps-Ov2EI1bue_I0lffI4BmJrA0F_aHya50tpScP_-bWDgd4EY0fewQ5vgo391bdA4P0l8BMptZaVix3tpj0pHgMKouMgb2ZYhSJMlJdTTekoPg86gdEpBD9yPrar1jMVSnujyLNsnTHB_FK9-E3ZosCf1CN5ZDyHKQtKB_-lpVRaf2VIEnmKV-8HxG3LnU_Rp8HbVOB594mpP65683d8pu7iQwp3kjkRyejm0ZSFcgWvYSIjRcbCy_Z3GFi9ToZTWo7ABcVt2HmSU4EkPYJpLZrAvaMCDLJdlTDGGQ7KafV-LXGhA4w2oh5a02qNgC0B2DgOa0jgYf1YbuYh5oJWr1M9bCtEbpBjrTQHzcXL10ynliB3-BWuuiSVFOP6ELWbYqn8lP15XWMIUTwXu_-VYOxqEJzBylL3wyky-FPirj0L934D0f054qUr9BoYGkZBkaHlqoVLQdZjonjVh7CRp-ccJ7XNhWizUPryaTirdnrWK7MnGoNI05s2M7g1UHCQ-iPuH9UvSRqBTRvFnrg7tYajFewr6fEKjkqjpHQcnUyGy9Lyg1croT8Ney739_Ffhce6LAkVupJbdMgiGhh8HIM3R3EYIKk5H9tSMHG97yg-c4BVg0IMx83akVqCN77OjMRlsRYMEWhyZsaX02RJEGG8nx7qVKd-rlGlYIiFxYyXuO06bXzD05ERkdPLBsCLnFdiVavQQ9T8iEami4EDXiGMG7WT6w4k7OIbAeAoOtf_7aTpUzvyL-dNEOUXSwyckfes_798dADzvuo5zoxwRw-bBqDwlje5G2QH3dm4cyXwiXDvbC2to8iZHFd1dQLw55XugTECtTihfOe7jnsbuqAys3Kl3TnIFrHmnqlpy94W1d_Unjt3-6Bgl2ONlWuVgsGBwsN6J51OQYGtoHEn1Kbo4b5GS0o_CEAHeF6u3_Ps7ZGAyNPHbDaXV3wATzkx6vFZfniAOnFt7qEJZyrHHzUj8newxPNFRMcGKJXjMrvxiqiqcNaKhOe2XYTyW1GYOb1iwRBO3WiEvLYI8dHYi215c0Uj08BMJLAiV4dugLaTDwbf89Meh7aVtZKIH8GAv0KX13zgCg8rIbprroUm9x1B0brWSJLENneDGcrx6yXg1QOjtjdTsRfbqRdqTrUg2T0XgQGuhdZ1mwyJdsY1z1Va4bnUCjD9IBuwfCkhcmxJ9-0JaChkMWa57rdAqEKEzP40HAJhnrDH0Lg7B6XEPxQzvUpsnodBvU9pBuL1Z-kMLI73s4wk7kUk7WUyUQ2Kaa38WA==",
+                "id": "rs_05d734328b009d52016abf4a1e392487d0b644d0e5697d6497",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"x\":17,\"y\":25}",
+                "call_id": "call_zRACJZmHuoPji54azvHkQO5V",
+                "id": "fc_05d734328b009d52016abf4a1f069887d0a53e0e71c2cd5a16",
+                "name": "add",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
-            "usage": {
-              "input_tokens": 104,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 113,
-              "output_tokens_details": {
-                "reasoning_tokens": 64
-              },
-              "total_tokens": 217
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_05d734328b009d52016abf4a1e392487d0b644d0e5697d6497",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0ofY6nEs8rcJCapRZde8LDeia9vecjfbmncPsr8kujAW-ZVzE9CdOAmhG543uWiLCDpzNkLrJFLiuhSBkKQTSJL-eblo_X2-eLTHOTJprQ_QxCh2-dmpbCZIpVECcylBQWDkJedIt7jFw_-qpClARgjq4w6fMy65uv1Jv6SNZfeeG_98TmNt-9cZ1my_DyBdHwDq1fbYW2wh3vOircW036sQSS2nnK00vJfIBemv0RYItnHn8TYHZCHnHLZRQ5ac4ciF3sObbKjpfYbcZdvJT6x1nXKYznuFNYsu0IyOraKXMLjYlz2b5NvnfUhqplAxwxjhw1ys5Q7v3d-HP6N2sUsooQirxTePAMDhxmFb8WKMV6NL2xBrTxqpA9ITIu4BQ7KxVrBvh0mKXC6jk_Eps-Ov2EI1bue_I0lffI4BmJrA0F_aHya50tpScP_-bWDgd4EY0fewQ5vgo391bdA4P0l8BMptZaVix3tpj0pHgMKouMgb2ZYhSJMlJdTTekoPg86gdEpBD9yPrar1jMVSnujyLNsnTHB_FK9-E3ZosCf1CN5ZDyHKQtKB_-lpVRaf2VIEnmKV-8HxG3LnU_Rp8HbVOB594mpP65683d8pu7iQwp3kjkRyejm0ZSFcgWvYSIjRcbCy_Z3GFi9ToZTWo7ABcVt2HmSU4EkPYJpLZrAvaMCDLJdlTDGGQ7KafV-LXGhA4w2oh5a02qNgC0B2DgOa0jgYf1YbuYh5oJWr1M9bCtEbpBjrTQHzcXL10ynliB3-BWuuiSVFOP6ELWbYqn8lP15XWMIUTwXu_-VYOxqEJzBylL3wyky-FPirj0L934D0f054qUr9BoYGkZBkaHlqoVLQdZjonjVh7CRp-ccJ7XNhWizUPryaTirdnrWK7MnGoNI05s2M7g1UHCQ-iPuH9UvSRqBTRvFnrg7tYajFewr6fEKjkqjpHQcnUyGy9Lyg1croT8Ney739_Ffhce6LAkVupJbdMgiGhh8HIM3R3EYIKk5H9tSMHG97yg-c4BVg0IMx83akVqCN77OjMRlsRYMEWhyZsaX02RJEGG8nx7qVKd-rlGlYIiFxYyXuO06bXzD05ERkdPLBsCLnFdiVavQQ9T8iEami4EDXiGMG7WT6w4k7OIbAeAoOtf_7aTpUzvyL-dNEOUXSwyckfes_798dADzvuo5zoxwRw-bBqDwlje5G2QH3dm4cyXwiXDvbC2to8iZHFd1dQLw55XugTECtTihfOe7jnsbuqAys3Kl3TnIFrHmnqlpy94W1d_Unjt3-6Bgl2ONlWuVgsGBwsN6J51OQYGtoHEn1Kbo4b5GS0o_CEAHeF6u3_Ps7ZGAyNPHbDaXV3wATzkx6vFZfniAOnFt7qEJZyrHHzUj8newxPNFRMcGKJXjMrvxiqiqcNaKhOe2XYTyW1GYOb1iwRBO3WiEvLYI8dHYi215c0Uj08BMJLAiV4dugLaTDwbf89Meh7aVtZKIH8GAv0KX13zgCg8rIbprroUm9x1B0brWSJLENneDGcrx6yXg1QOjtjdTsRfbqRdqTrUg2T0XgQGuhdZ1mwyJdsY1z1Va4bnUCjD9IBuwfCkhcmxJ9-0JaChkMWa57rdAqEKEzP40HAJhnrDH0Lg7B6XEPxQzvUpsnodBvU9pBuL1Z-kMLI73s4wk7kUk7WUyUQ2Kaa38WA==",
-                "status": null
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
               },
-              {
-                "id": "fc_05d734328b009d52016abf4a1f069887d0a53e0e71c2cd5a16",
-                "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_zRACJZmHuoPji54azvHkQO5V",
-                "name": "add",
-                "status": "completed",
-                "type": "function_call"
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -293,22 +323,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "usage": {
+              "input_tokens": 104,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 113,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 217
+            },
+            "user": null
           }
         }
       },
@@ -337,7 +370,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -346,7 +379,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -354,7 +387,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"x\":17,\"y\":25}"
           }
         },
@@ -362,7 +395,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -384,12 +417,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15225529309292478096
+                "fingerprint": 4400277581272372328
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -453,7 +491,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -477,7 +515,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15225529309292478096
+                    "fingerprint": 4400277581272372328
                   }
                 }
               ],
@@ -565,7 +603,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],
@@ -587,53 +625,83 @@
           "provider_request_id": "req_5721a0c4a5df4e6bb8af4ab70a32bf84",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_05d734328b009d52016abf4a1f52c087d08f13c86c15bf11bd",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_05d734328b009d52016abf4a1f52c087d08f13c86c15bf11bd",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "42",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_05d734328b009d52016abf4a1fe83087d0b964171f2c1f9640",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
-            "usage": {
-              "input_tokens": 225,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 5,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 230
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "id": "msg_05d734328b009d52016abf4a1fe83087d0b964171f2c1f9640",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "42",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -652,22 +720,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "usage": {
+              "input_tokens": 225,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 5,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 230
+            },
+            "user": null
           }
         }
       },
@@ -711,12 +782,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

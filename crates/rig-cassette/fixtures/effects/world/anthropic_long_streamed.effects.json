@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -48,6 +48,14 @@
         }
       },
       {
+        "batch": 19,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
         "batch": 20,
         "id": 2,
         "kind": {
@@ -64,37 +72,29 @@
         }
       },
       {
-        "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 25,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 26,
+        "batch": 21,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 22,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 35,
+        "batch": 28,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 29,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -102,37 +102,29 @@
         }
       },
       {
-        "batch": 36,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 39,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 40,
+        "batch": 29,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 30,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 49,
+        "batch": 36,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 38,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -140,116 +132,174 @@
         }
       },
       {
-        "batch": 50,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 53,
-        "id": 6,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 54,
+        "batch": 38,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 39,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 63,
+        "batch": 46,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 6
         }
       },
       {
-        "batch": 64,
+        "batch": 47,
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 5
         }
       },
       {
-        "batch": 65,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 66,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 67,
+        "batch": 48,
         "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 68,
+        "batch": 49,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 75,
+        "batch": 55,
         "id": 10,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 8
+        }
+      },
+      {
+        "batch": 56,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 57,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 58,
+        "id": 10,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 59,
+        "id": 11,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 65,
+        "id": 12,
+        "kind": {
+          "delivery": "stream",
+          "items": 7
+        }
+      },
+      {
+        "batch": 66,
+        "id": 12,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 67,
+        "id": 13,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 74,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 5
+        }
+      },
+      {
+        "batch": 75,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
         "batch": 76,
-        "id": 10,
+        "id": 14,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
         "batch": 77,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 78,
-        "id": 10,
+        "id": 14,
         "kind": {
           "delivery": "stream",
           "items": 3
         }
       },
       {
-        "batch": 79,
-        "id": 10,
+        "batch": 78,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 80,
+        "id": 14,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 80,
+        "id": 14,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 82,
+        "id": 15,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 89,
+        "id": 16,
         "kind": {
           "delivery": "stream",
           "items": 3
@@ -257,99 +307,75 @@
       },
       {
         "batch": 90,
-        "id": 10,
+        "id": 16,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
+        "batch": 94,
+        "id": 16,
         "kind": {
           "delivery": "stream",
           "items": 3
         }
       },
       {
-        "batch": 91,
-        "id": 10,
+        "batch": 94,
+        "id": 16,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 92,
-        "id": 11,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 100,
-        "id": 12,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 101,
-        "id": 12,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 102,
-        "id": 12,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 102,
-        "id": 12,
+        "batch": 96,
+        "id": 17,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 103,
-        "id": 13,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 110,
-        "id": 14,
+        "id": 18,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
-        "batch": 111,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 112,
-        "id": 14,
+        "batch": 104,
+        "id": 18,
         "kind": {
           "delivery": "stream",
           "items": 3
         }
       },
       {
+        "batch": 105,
+        "id": 18,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 106,
+        "id": 19,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
         "batch": 113,
-        "id": 14,
+        "id": 20,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 4
         }
       },
       {
         "batch": 114,
-        "id": 14,
+        "id": 20,
         "kind": {
           "delivery": "stream",
           "items": 3
@@ -357,152 +383,6 @@
       },
       {
         "batch": 115,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 116,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 118,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 119,
-        "id": 14,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 120,
-        "id": 15,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 127,
-        "id": 16,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 128,
-        "id": 16,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 129,
-        "id": 16,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 138,
-        "id": 16,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 139,
-        "id": 16,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 140,
-        "id": 17,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 147,
-        "id": 18,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 148,
-        "id": 18,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 149,
-        "id": 18,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 150,
-        "id": 18,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 151,
-        "id": 19,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 158,
-        "id": 20,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 159,
-        "id": 20,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 160,
-        "id": 20,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 161,
         "id": 20,
         "kind": {
           "delivery": "outcome"
@@ -720,7 +600,7 @@
                   "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                   "type": "text"
                 },
-                "fingerprint": 8722871757796076692
+                "fingerprint": 10467860637490036730
               }
             },
             {
@@ -742,7 +622,7 @@
                   "name": "list_files",
                   "type": "tool_use"
                 },
-                "fingerprint": 1105696561684938548
+                "fingerprint": 4291536359511843900
               }
             }
           ],
@@ -857,7 +737,7 @@
                   "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                   "type": "text"
                 },
-                "fingerprint": 8722871757796076692
+                "fingerprint": 10467860637490036730
               }
             }
           }
@@ -902,12 +782,17 @@
                   "name": "list_files",
                   "type": "tool_use"
                 },
-                "fingerprint": 1105696561684938548
+                "fingerprint": 4291536359511843900
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -968,7 +853,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -990,7 +875,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -1102,7 +987,7 @@
                   "text": "Now let me read the README.md file:",
                   "type": "text"
                 },
-                "fingerprint": 6269424263789580522
+                "fingerprint": 2444938797179649616
               }
             },
             {
@@ -1128,7 +1013,7 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 4106209620787924083
+                "fingerprint": 7892671865380687483
               }
             }
           ],
@@ -1227,7 +1112,7 @@
                   "text": "Now let me read the README.md file:",
                   "type": "text"
                 },
-                "fingerprint": 6269424263789580522
+                "fingerprint": 2444938797179649616
               }
             }
           }
@@ -1276,12 +1161,17 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 4106209620787924083
+                "fingerprint": 7892671865380687483
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1342,7 +1232,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -1364,7 +1254,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -1406,7 +1296,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -1432,7 +1322,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -1544,7 +1434,7 @@
                   "text": "Now let me read the tests/basic.rs file:",
                   "type": "text"
                 },
-                "fingerprint": 17511553077620779618
+                "fingerprint": 4987555910873365550
               }
             },
             {
@@ -1570,7 +1460,7 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 5480800075169071017
+                "fingerprint": 165827168596666329
               }
             }
           ],
@@ -1661,7 +1551,7 @@
                   "text": "Now let me read the tests/basic.rs file:",
                   "type": "text"
                 },
-                "fingerprint": 17511553077620779618
+                "fingerprint": 4987555910873365550
               }
             }
           }
@@ -1710,12 +1600,17 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 5480800075169071017
+                "fingerprint": 165827168596666329
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1776,7 +1671,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -1798,7 +1693,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -1840,7 +1735,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -1866,7 +1761,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -1908,7 +1803,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -1934,7 +1829,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -2046,7 +1941,7 @@
                   "text": "Now let me read the src/lib.rs file:",
                   "type": "text"
                 },
-                "fingerprint": 15544357704980876528
+                "fingerprint": 9777819535647303652
               }
             },
             {
@@ -2072,7 +1967,7 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 14772905694608282895
+                "fingerprint": 1380774057162370251
               }
             }
           ],
@@ -2155,7 +2050,7 @@
                   "text": "Now let me read the src/lib.rs file:",
                   "type": "text"
                 },
-                "fingerprint": 15544357704980876528
+                "fingerprint": 9777819535647303652
               }
             }
           }
@@ -2204,12 +2099,17 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 14772905694608282895
+                "fingerprint": 1380774057162370251
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -2270,7 +2170,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -2292,7 +2192,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -2334,7 +2234,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -2360,7 +2260,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -2402,7 +2302,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -2428,7 +2328,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -2470,7 +2370,7 @@
                       "text": "Now let me read the src/lib.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 15544357704980876528
+                    "fingerprint": 9777819535647303652
                   }
                 },
                 {
@@ -2496,7 +2396,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14772905694608282895
+                    "fingerprint": 1380774057162370251
                   }
                 }
               ],
@@ -2608,7 +2508,7 @@
                   "text": "Now let me run the tests to see which one fails:",
                   "type": "text"
                 },
-                "fingerprint": 6444105561695379985
+                "fingerprint": 9737398986250766497
               }
             },
             {
@@ -2630,7 +2530,7 @@
                   "name": "run_tests",
                   "type": "tool_use"
                 },
-                "fingerprint": 17726402675253059414
+                "fingerprint": 2679749193294215368
               }
             }
           ],
@@ -2737,7 +2637,7 @@
                   "text": "Now let me run the tests to see which one fails:",
                   "type": "text"
                 },
-                "fingerprint": 6444105561695379985
+                "fingerprint": 9737398986250766497
               }
             }
           }
@@ -2782,12 +2682,17 @@
                   "name": "run_tests",
                   "type": "tool_use"
                 },
-                "fingerprint": 17726402675253059414
+                "fingerprint": 2679749193294215368
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -2848,7 +2753,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -2870,7 +2775,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -2912,7 +2817,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -2938,7 +2843,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -2980,7 +2885,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -3006,7 +2911,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -3048,7 +2953,7 @@
                       "text": "Now let me read the src/lib.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 15544357704980876528
+                    "fingerprint": 9777819535647303652
                   }
                 },
                 {
@@ -3074,7 +2979,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14772905694608282895
+                    "fingerprint": 1380774057162370251
                   }
                 }
               ],
@@ -3116,7 +3021,7 @@
                       "text": "Now let me run the tests to see which one fails:",
                       "type": "text"
                     },
-                    "fingerprint": 6444105561695379985
+                    "fingerprint": 9737398986250766497
                   }
                 },
                 {
@@ -3138,7 +3043,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17726402675253059414
+                    "fingerprint": 2679749193294215368
                   }
                 }
               ],
@@ -3250,7 +3155,7 @@
                   "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:",
                   "type": "text"
                 },
-                "fingerprint": 8155589398651823064
+                "fingerprint": 15200649575588995468
               }
             },
             {
@@ -3278,7 +3183,7 @@
                   "name": "write_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 7408795694902750169
+                "fingerprint": 3494492466574497491
               }
             }
           ],
@@ -3425,7 +3330,7 @@
                   "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:",
                   "type": "text"
                 },
-                "fingerprint": 8155589398651823064
+                "fingerprint": 15200649575588995468
               }
             }
           }
@@ -3476,12 +3381,17 @@
                   "name": "write_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 7408795694902750169
+                "fingerprint": 3494492466574497491
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -3542,7 +3452,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -3564,7 +3474,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -3606,7 +3516,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -3632,7 +3542,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -3674,7 +3584,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -3700,7 +3610,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -3742,7 +3652,7 @@
                       "text": "Now let me read the src/lib.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 15544357704980876528
+                    "fingerprint": 9777819535647303652
                   }
                 },
                 {
@@ -3768,7 +3678,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14772905694608282895
+                    "fingerprint": 1380774057162370251
                   }
                 }
               ],
@@ -3810,7 +3720,7 @@
                       "text": "Now let me run the tests to see which one fails:",
                       "type": "text"
                     },
-                    "fingerprint": 6444105561695379985
+                    "fingerprint": 9737398986250766497
                   }
                 },
                 {
@@ -3832,7 +3742,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17726402675253059414
+                    "fingerprint": 2679749193294215368
                   }
                 }
               ],
@@ -3874,7 +3784,7 @@
                       "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 8155589398651823064
+                    "fingerprint": 15200649575588995468
                   }
                 },
                 {
@@ -3902,7 +3812,7 @@
                       "name": "write_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7408795694902750169
+                    "fingerprint": 3494492466574497491
                   }
                 }
               ],
@@ -4014,7 +3924,7 @@
                   "text": "Now let me run the tests again:",
                   "type": "text"
                 },
-                "fingerprint": 14026973798179552479
+                "fingerprint": 4892253789485022425
               }
             },
             {
@@ -4036,7 +3946,7 @@
                   "name": "run_tests",
                   "type": "tool_use"
                 },
-                "fingerprint": 11291136146739556306
+                "fingerprint": 9155209342188286844
               }
             }
           ],
@@ -4111,7 +4021,7 @@
                   "text": "Now let me run the tests again:",
                   "type": "text"
                 },
-                "fingerprint": 14026973798179552479
+                "fingerprint": 4892253789485022425
               }
             }
           }
@@ -4156,12 +4066,17 @@
                   "name": "run_tests",
                   "type": "tool_use"
                 },
-                "fingerprint": 11291136146739556306
+                "fingerprint": 9155209342188286844
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -4222,7 +4137,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -4244,7 +4159,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -4286,7 +4201,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -4312,7 +4227,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -4354,7 +4269,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -4380,7 +4295,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -4422,7 +4337,7 @@
                       "text": "Now let me read the src/lib.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 15544357704980876528
+                    "fingerprint": 9777819535647303652
                   }
                 },
                 {
@@ -4448,7 +4363,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14772905694608282895
+                    "fingerprint": 1380774057162370251
                   }
                 }
               ],
@@ -4490,7 +4405,7 @@
                       "text": "Now let me run the tests to see which one fails:",
                       "type": "text"
                     },
-                    "fingerprint": 6444105561695379985
+                    "fingerprint": 9737398986250766497
                   }
                 },
                 {
@@ -4512,7 +4427,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17726402675253059414
+                    "fingerprint": 2679749193294215368
                   }
                 }
               ],
@@ -4554,7 +4469,7 @@
                       "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 8155589398651823064
+                    "fingerprint": 15200649575588995468
                   }
                 },
                 {
@@ -4582,7 +4497,7 @@
                       "name": "write_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7408795694902750169
+                    "fingerprint": 3494492466574497491
                   }
                 }
               ],
@@ -4624,7 +4539,7 @@
                       "text": "Now let me run the tests again:",
                       "type": "text"
                     },
-                    "fingerprint": 14026973798179552479
+                    "fingerprint": 4892253789485022425
                   }
                 },
                 {
@@ -4646,7 +4561,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11291136146739556306
+                    "fingerprint": 9155209342188286844
                   }
                 }
               ],
@@ -4758,7 +4673,7 @@
                   "text": "Good! The first test passes now. The second test is failing because `days_in_week()` returns 8 but should return 7. Let me read src/calendar.rs:",
                   "type": "text"
                 },
-                "fingerprint": 12706125732792543174
+                "fingerprint": 206064193198997942
               }
             },
             {
@@ -4784,7 +4699,7 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 8412959411876456826
+                "fingerprint": 17478375072298950718
               }
             }
           ],
@@ -4955,7 +4870,7 @@
                   "text": "Good! The first test passes now. The second test is failing because `days_in_week()` returns 8 but should return 7. Let me read src/calendar.rs:",
                   "type": "text"
                 },
-                "fingerprint": 12706125732792543174
+                "fingerprint": 206064193198997942
               }
             }
           }
@@ -5004,12 +4919,17 @@
                   "name": "read_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 8412959411876456826
+                "fingerprint": 17478375072298950718
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -5070,7 +4990,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -5092,7 +5012,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -5134,7 +5054,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -5160,7 +5080,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -5202,7 +5122,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -5228,7 +5148,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -5270,7 +5190,7 @@
                       "text": "Now let me read the src/lib.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 15544357704980876528
+                    "fingerprint": 9777819535647303652
                   }
                 },
                 {
@@ -5296,7 +5216,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14772905694608282895
+                    "fingerprint": 1380774057162370251
                   }
                 }
               ],
@@ -5338,7 +5258,7 @@
                       "text": "Now let me run the tests to see which one fails:",
                       "type": "text"
                     },
-                    "fingerprint": 6444105561695379985
+                    "fingerprint": 9737398986250766497
                   }
                 },
                 {
@@ -5360,7 +5280,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17726402675253059414
+                    "fingerprint": 2679749193294215368
                   }
                 }
               ],
@@ -5402,7 +5322,7 @@
                       "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 8155589398651823064
+                    "fingerprint": 15200649575588995468
                   }
                 },
                 {
@@ -5430,7 +5350,7 @@
                       "name": "write_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7408795694902750169
+                    "fingerprint": 3494492466574497491
                   }
                 }
               ],
@@ -5472,7 +5392,7 @@
                       "text": "Now let me run the tests again:",
                       "type": "text"
                     },
-                    "fingerprint": 14026973798179552479
+                    "fingerprint": 4892253789485022425
                   }
                 },
                 {
@@ -5494,7 +5414,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11291136146739556306
+                    "fingerprint": 9155209342188286844
                   }
                 }
               ],
@@ -5536,7 +5456,7 @@
                       "text": "Good! The first test passes now. The second test is failing because `days_in_week()` returns 8 but should return 7. Let me read src/calendar.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 12706125732792543174
+                    "fingerprint": 206064193198997942
                   }
                 },
                 {
@@ -5562,7 +5482,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 8412959411876456826
+                    "fingerprint": 17478375072298950718
                   }
                 }
               ],
@@ -5674,7 +5594,7 @@
                   "text": "Now let me fix src/calendar.rs to return 7 instead of 8:",
                   "type": "text"
                 },
-                "fingerprint": 13537705182948724712
+                "fingerprint": 2878905213742454752
               }
             },
             {
@@ -5702,7 +5622,7 @@
                   "name": "write_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 11835507669046848783
+                "fingerprint": 4348076904377165533
               }
             }
           ],
@@ -5817,7 +5737,7 @@
                   "text": "Now let me fix src/calendar.rs to return 7 instead of 8:",
                   "type": "text"
                 },
-                "fingerprint": 13537705182948724712
+                "fingerprint": 2878905213742454752
               }
             }
           }
@@ -5868,12 +5788,17 @@
                   "name": "write_file",
                   "type": "tool_use"
                 },
-                "fingerprint": 11835507669046848783
+                "fingerprint": 4348076904377165533
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -5934,7 +5859,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -5956,7 +5881,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -5998,7 +5923,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -6024,7 +5949,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -6066,7 +5991,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -6092,7 +6017,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -6134,7 +6059,7 @@
                       "text": "Now let me read the src/lib.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 15544357704980876528
+                    "fingerprint": 9777819535647303652
                   }
                 },
                 {
@@ -6160,7 +6085,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14772905694608282895
+                    "fingerprint": 1380774057162370251
                   }
                 }
               ],
@@ -6202,7 +6127,7 @@
                       "text": "Now let me run the tests to see which one fails:",
                       "type": "text"
                     },
-                    "fingerprint": 6444105561695379985
+                    "fingerprint": 9737398986250766497
                   }
                 },
                 {
@@ -6224,7 +6149,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17726402675253059414
+                    "fingerprint": 2679749193294215368
                   }
                 }
               ],
@@ -6266,7 +6191,7 @@
                       "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 8155589398651823064
+                    "fingerprint": 15200649575588995468
                   }
                 },
                 {
@@ -6294,7 +6219,7 @@
                       "name": "write_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7408795694902750169
+                    "fingerprint": 3494492466574497491
                   }
                 }
               ],
@@ -6336,7 +6261,7 @@
                       "text": "Now let me run the tests again:",
                       "type": "text"
                     },
-                    "fingerprint": 14026973798179552479
+                    "fingerprint": 4892253789485022425
                   }
                 },
                 {
@@ -6358,7 +6283,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11291136146739556306
+                    "fingerprint": 9155209342188286844
                   }
                 }
               ],
@@ -6400,7 +6325,7 @@
                       "text": "Good! The first test passes now. The second test is failing because `days_in_week()` returns 8 but should return 7. Let me read src/calendar.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 12706125732792543174
+                    "fingerprint": 206064193198997942
                   }
                 },
                 {
@@ -6426,7 +6351,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 8412959411876456826
+                    "fingerprint": 17478375072298950718
                   }
                 }
               ],
@@ -6468,7 +6393,7 @@
                       "text": "Now let me fix src/calendar.rs to return 7 instead of 8:",
                       "type": "text"
                     },
-                    "fingerprint": 13537705182948724712
+                    "fingerprint": 2878905213742454752
                   }
                 },
                 {
@@ -6496,7 +6421,7 @@
                       "name": "write_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11835507669046848783
+                    "fingerprint": 4348076904377165533
                   }
                 }
               ],
@@ -6608,7 +6533,7 @@
                   "text": "Now let me run the tests again:",
                   "type": "text"
                 },
-                "fingerprint": 14026973798179552479
+                "fingerprint": 4892253789485022425
               }
             },
             {
@@ -6630,7 +6555,7 @@
                   "name": "run_tests",
                   "type": "tool_use"
                 },
-                "fingerprint": 15009708598759205900
+                "fingerprint": 11948307859028331242
               }
             }
           ],
@@ -6713,7 +6638,7 @@
                   "text": "Now let me run the tests again:",
                   "type": "text"
                 },
-                "fingerprint": 14026973798179552479
+                "fingerprint": 4892253789485022425
               }
             }
           }
@@ -6758,12 +6683,17 @@
                   "name": "run_tests",
                   "type": "tool_use"
                 },
-                "fingerprint": 15009708598759205900
+                "fingerprint": 11948307859028331242
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -6824,7 +6754,7 @@
                       "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
                       "type": "text"
                     },
-                    "fingerprint": 8722871757796076692
+                    "fingerprint": 10467860637490036730
                   }
                 },
                 {
@@ -6846,7 +6776,7 @@
                       "name": "list_files",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1105696561684938548
+                    "fingerprint": 4291536359511843900
                   }
                 }
               ],
@@ -6888,7 +6818,7 @@
                       "text": "Now let me read the README.md file:",
                       "type": "text"
                     },
-                    "fingerprint": 6269424263789580522
+                    "fingerprint": 2444938797179649616
                   }
                 },
                 {
@@ -6914,7 +6844,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4106209620787924083
+                    "fingerprint": 7892671865380687483
                   }
                 }
               ],
@@ -6956,7 +6886,7 @@
                       "text": "Now let me read the tests/basic.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 17511553077620779618
+                    "fingerprint": 4987555910873365550
                   }
                 },
                 {
@@ -6982,7 +6912,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 5480800075169071017
+                    "fingerprint": 165827168596666329
                   }
                 }
               ],
@@ -7024,7 +6954,7 @@
                       "text": "Now let me read the src/lib.rs file:",
                       "type": "text"
                     },
-                    "fingerprint": 15544357704980876528
+                    "fingerprint": 9777819535647303652
                   }
                 },
                 {
@@ -7050,7 +6980,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14772905694608282895
+                    "fingerprint": 1380774057162370251
                   }
                 }
               ],
@@ -7092,7 +7022,7 @@
                       "text": "Now let me run the tests to see which one fails:",
                       "type": "text"
                     },
-                    "fingerprint": 6444105561695379985
+                    "fingerprint": 9737398986250766497
                   }
                 },
                 {
@@ -7114,7 +7044,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17726402675253059414
+                    "fingerprint": 2679749193294215368
                   }
                 }
               ],
@@ -7156,7 +7086,7 @@
                       "text": "The test is failing because `days_in_year()` returns 360 but should return 365. Let me fix this in src/lib.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 8155589398651823064
+                    "fingerprint": 15200649575588995468
                   }
                 },
                 {
@@ -7184,7 +7114,7 @@
                       "name": "write_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7408795694902750169
+                    "fingerprint": 3494492466574497491
                   }
                 }
               ],
@@ -7226,7 +7156,7 @@
                       "text": "Now let me run the tests again:",
                       "type": "text"
                     },
-                    "fingerprint": 14026973798179552479
+                    "fingerprint": 4892253789485022425
                   }
                 },
                 {
@@ -7248,7 +7178,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11291136146739556306
+                    "fingerprint": 9155209342188286844
                   }
                 }
               ],
@@ -7290,7 +7220,7 @@
                       "text": "Good! The first test passes now. The second test is failing because `days_in_week()` returns 8 but should return 7. Let me read src/calendar.rs:",
                       "type": "text"
                     },
-                    "fingerprint": 12706125732792543174
+                    "fingerprint": 206064193198997942
                   }
                 },
                 {
@@ -7316,7 +7246,7 @@
                       "name": "read_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 8412959411876456826
+                    "fingerprint": 17478375072298950718
                   }
                 }
               ],
@@ -7358,7 +7288,7 @@
                       "text": "Now let me fix src/calendar.rs to return 7 instead of 8:",
                       "type": "text"
                     },
-                    "fingerprint": 13537705182948724712
+                    "fingerprint": 2878905213742454752
                   }
                 },
                 {
@@ -7386,7 +7316,7 @@
                       "name": "write_file",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11835507669046848783
+                    "fingerprint": 4348076904377165533
                   }
                 }
               ],
@@ -7428,7 +7358,7 @@
                       "text": "Now let me run the tests again:",
                       "type": "text"
                     },
-                    "fingerprint": 14026973798179552479
+                    "fingerprint": 4892253789485022425
                   }
                 },
                 {
@@ -7450,7 +7380,7 @@
                       "name": "run_tests",
                       "type": "tool_use"
                     },
-                    "fingerprint": 15009708598759205900
+                    "fingerprint": 11948307859028331242
                   }
                 }
               ],
@@ -7562,7 +7492,7 @@
                   "text": "Perfect! All tests pass now. \n\ndone",
                   "type": "text"
                 },
-                "fingerprint": 13324885976707728702
+                "fingerprint": 8162107004485097200
               }
             }
           ],
@@ -7661,12 +7591,17 @@
                   "text": "Perfect! All tests pass now. \n\ndone",
                   "type": "text"
                 },
-                "fingerprint": 13324885976707728702
+                "fingerprint": 8162107004485097200
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      },
       "scope": "golden/run#0"
     }
   ]

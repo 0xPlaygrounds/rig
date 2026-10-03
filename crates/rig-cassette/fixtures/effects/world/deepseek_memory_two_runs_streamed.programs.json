@@ -218,13 +218,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready",
-                "native": {
-                  "item": {
-                    "content": "ready"
-                  },
-                  "fingerprint": 815434921069355996
-                }
+                "text": "ready"
               }
             ],
             "head": {
@@ -241,7 +235,7 @@
                   "content": "ready",
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             },
             "done": true,
@@ -264,13 +258,7 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready"
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "usage": {
@@ -291,19 +279,19 @@
                   "content": "ready",
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               },
               "finish_reason": "stop",
               "raw": {
                 "usage": {
-                  "prompt_tokens": 22,
                   "completion_tokens": 1,
-                  "total_tokens": 23,
+                  "prompt_cache_hit_tokens": 0,
+                  "prompt_cache_miss_tokens": 22,
+                  "prompt_tokens": 22,
                   "prompt_tokens_details": {
                     "cached_tokens": 0
                   },
-                  "prompt_cache_hit_tokens": 0,
-                  "prompt_cache_miss_tokens": 22
+                  "total_tokens": 23
                 },
                 "finish_reason": "stop",
                 "response_id": "e8306f6a-44cb-4b57-9649-dfd7894bc120",
@@ -344,31 +332,24 @@
                   "part": 0,
                   "content": {
                     "type": "text",
-                    "text": "ready",
-                    "native": {
-                      "item": {
-                        "content": "ready"
-                      },
-                      "fingerprint": 815434921069355996
-                    }
+                    "text": "ready"
                   }
                 }
               }
             ],
             "text": "ready",
+            "origin": {
+              "api": "openai.chat",
+              "provider": "deepseek",
+              "model": "deepseek-chat"
+            },
             "outcome": {
               "Ok": {
                 "outcome": "completion",
                 "choice": [
                   {
                     "type": "text",
-                    "text": "ready",
-                    "native": {
-                      "item": {
-                        "content": "ready"
-                      },
-                      "fingerprint": 815434921069355996
-                    }
+                    "text": "ready"
                   }
                 ],
                 "usage": {
@@ -389,19 +370,19 @@
                     "content": "ready",
                     "role": "assistant"
                   },
-                  "fingerprint": 16268972914252074274
+                  "fingerprint": 5329546866666182096
                 },
                 "finish_reason": "stop",
                 "raw": {
                   "usage": {
-                    "prompt_tokens": 22,
                     "completion_tokens": 1,
-                    "total_tokens": 23,
+                    "prompt_cache_hit_tokens": 0,
+                    "prompt_cache_miss_tokens": 22,
+                    "prompt_tokens": 22,
                     "prompt_tokens_details": {
                       "cached_tokens": 0
                     },
-                    "prompt_cache_hit_tokens": 0,
-                    "prompt_cache_miss_tokens": 22
+                    "total_tokens": 23
                   },
                   "finish_reason": "stop",
                   "response_id": "e8306f6a-44cb-4b57-9649-dfd7894bc120",
@@ -435,7 +416,7 @@
                 "content": "ready",
                 "role": "assistant"
               },
-              "fingerprint": 16268972914252074274
+              "fingerprint": 5329546866666182096
             }
           }
         },
@@ -443,13 +424,7 @@
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready"
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           }
         },

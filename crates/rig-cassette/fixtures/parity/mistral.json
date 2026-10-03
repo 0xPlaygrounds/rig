@@ -4,12 +4,7 @@
     "choice": [
       {
         "text": "{\"release_lane\": \"canary\", \"risk\": \"low\", \"checks\": {\"compile\": true, \"replay\": true}}",
-        "native": {
-          "item": {
-            "content": "{\"release_lane\": \"canary\", \"risk\": \"low\", \"checks\": {\"compile\": true, \"replay\": true}}"
-          },
-          "fingerprint": 3828489108360085891
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -53,12 +48,7 @@
     "choice": [
       {
         "text": "{\"lane\": \"canary\", \"checks\": {\"compile\": true, \"replay\": true}, \"risk\": \"low\"}",
-        "native": {
-          "item": {
-            "content": "{\"lane\": \"canary\", \"checks\": {\"compile\": true, \"replay\": true}, \"risk\": \"low\"}"
-          },
-          "fingerprint": 7608576287090729677
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -131,7 +121,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2544518018727833871
+            "fingerprint": 15121087452766862197
           }
         }
       }
@@ -148,12 +138,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 261,
         "completion_tokens": 69,
-        "total_tokens": 330,
+        "prompt_tokens": 261,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 330
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -182,7 +172,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2080574771313621503
+            "fingerprint": 878327116590416411
           }
         }
       }
@@ -250,7 +240,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6535260347334356262
+            "fingerprint": 15027721907931047584
           }
         }
       }
@@ -318,7 +308,7 @@
               "id": "call_REDACTED_3",
               "type": "function"
             },
-            "fingerprint": 17112301823144964620
+            "fingerprint": 1954504948767458968
           }
         }
       }
@@ -374,12 +364,7 @@
     "choice": [
       {
         "text": "no-tool-answer",
-        "native": {
-          "item": {
-            "content": "no-tool-answer"
-          },
-          "fingerprint": 6033012156835078666
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -418,17 +403,88 @@
       }
     }
   },
+  "capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "{\"total\": 5}",
+        "native": null
+      },
+      {
+        "tool_call": {
+          "id": "WUGhWTMPW",
+          "name": "add",
+          "arguments": {
+            "x": 2,
+            "y": 3
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"x\": 2, \"y\": 3}",
+                "name": "add"
+              },
+              "id": "WUGhWTMPW",
+              "type": "function"
+            },
+            "fingerprint": 14255660119974952541
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 114,
+      "output_tokens": 22,
+      "total_tokens": 136,
+      "cached_input_tokens": 0
+    },
+    "response_id": "34b1e82e9ae9489b925393b4cf5cff4f",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-7d40-77a5-ba70-e5e11ee2d8c4",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": "{\"total\": 5}",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\": 2, \"y\": 3}",
+                  "name": "add"
+                },
+                "id": "WUGhWTMPW",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "34b1e82e9ae9489b925393b4cf5cff4f",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 22,
+        "prompt_tokens": 114,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "service_tier": "standard",
+        "total_tokens": 136
+      }
+    }
+  },
   "capability_edges/streaming_with_two_candidates_answers_from_the_first.yaml#0": {
     "mode": "streaming",
     "choice": [
       {
         "text": "Aardvark",
-        "native": {
-          "item": {
-            "content": "Aardvark"
-          },
-          "fingerprint": 7299683734448891977
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -443,13 +499,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 20,
         "completion_tokens": 8,
-        "total_tokens": 28,
+        "prompt_tokens": 20,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 28
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -466,12 +522,7 @@
     "choice": [
       {
         "text": "lantern-42",
-        "native": {
-          "item": {
-            "content": "lantern-42"
-          },
-          "fingerprint": 2397671781758352426
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -516,12 +567,7 @@
     "choice": [
       {
         "text": "lantern-42",
-        "native": {
-          "item": {
-            "content": "lantern-42"
-          },
-          "fingerprint": 2397671781758352426
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -566,12 +612,7 @@
     "choice": [
       {
         "text": "lantern-42",
-        "native": {
-          "item": {
-            "content": "lantern-42"
-          },
-          "fingerprint": 2397671781758352426
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -586,13 +627,13 @@
     "provider_request_id": "01a0fb75-31b4-7860-8386-30da02c01d4a",
     "raw": {
       "usage": {
-        "prompt_tokens": 37,
         "completion_tokens": 6,
-        "total_tokens": 43,
+        "prompt_tokens": 37,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 43
       },
       "finish_reason": "stop",
       "response_id": "c0a365247be643298abf98490eb0220c",
@@ -609,12 +650,7 @@
     "choice": [
       {
         "text": "lantern-42",
-        "native": {
-          "item": {
-            "content": "lantern-42"
-          },
-          "fingerprint": 2397671781758352426
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -629,13 +665,13 @@
     "provider_request_id": "01a0fb75-5fce-739a-b3e1-5d62560e7ce0",
     "raw": {
       "usage": {
-        "prompt_tokens": 37,
         "completion_tokens": 6,
-        "total_tokens": 43,
+        "prompt_tokens": 37,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 43
       },
       "finish_reason": "stop",
       "response_id": "91742126830b49f4a26251f5c1f58ecc",
@@ -647,17 +683,859 @@
       }
     }
   },
+  "history_survival_matrix/streaming.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "120PdF0G9",
+          "name": "lookup_record",
+          "arguments": {
+            "record": "alpha"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"record\": \"alpha\"}",
+                "name": "lookup_record"
+              },
+              "id": "120PdF0G9",
+              "type": "function"
+            },
+            "fingerprint": 14795399674485967102
+          }
+        }
+      },
+      {
+        "tool_call": {
+          "id": "NBzWTU9pp",
+          "name": "lookup_record",
+          "arguments": {
+            "record": "beta"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"record\": \"beta\"}",
+                "name": "lookup_record"
+              },
+              "id": "NBzWTU9pp",
+              "type": "function"
+            },
+            "fingerprint": 13565657209176159898
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 224,
+      "output_tokens": 21,
+      "total_tokens": 245,
+      "cached_input_tokens": 0
+    },
+    "response_id": "9b40220410974d709af517fff7ea4212",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-bb52-7d08-a9c0-f694ecf0e101",
+    "raw": {
+      "usage": {
+        "completion_tokens": 21,
+        "prompt_tokens": 224,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "service_tier": "standard",
+        "total_tokens": 245
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "9b40220410974d709af517fff7ea4212",
+      "model": "mistral-small-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefghijklmnopq"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "OgFKC228R",
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"alpha-code-7431\"}",
+                "name": "verify_code"
+              },
+              "id": "OgFKC228R",
+              "type": "function"
+            },
+            "fingerprint": 2269820646726470390
+          }
+        }
+      },
+      {
+        "tool_call": {
+          "id": "chxgNpm0k",
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"beta-code-2286\"}",
+                "name": "verify_code"
+              },
+              "id": "chxgNpm0k",
+              "type": "function"
+            },
+            "fingerprint": 5756362719621309855
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 271,
+      "output_tokens": 33,
+      "total_tokens": 304,
+      "cached_input_tokens": 208
+    },
+    "response_id": "dfd02f28107a461bb0e95462d3ea0d5f",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-bd26-7cb6-9a2d-4ba6e32c096e",
+    "raw": {
+      "usage": {
+        "completion_tokens": 33,
+        "prompt_tokens": 271,
+        "prompt_tokens_details": {
+          "cached_tokens": 208
+        },
+        "service_tier": "standard",
+        "total_tokens": 304
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "dfd02f28107a461bb0e95462d3ea0d5f",
+      "model": "mistral-small-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefghijklmnopqrstuvwxy"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#2": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "mBz5i9onH",
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"beta-code-2286\"}",
+                "name": "verify_code"
+              },
+              "id": "mBz5i9onH",
+              "type": "function"
+            },
+            "fingerprint": 3233747586666492976
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 319,
+      "output_tokens": 17,
+      "total_tokens": 336,
+      "cached_input_tokens": 240
+    },
+    "response_id": "794542c77c83476f8cce46eccb1852c3",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-bf4f-7e0c-9f03-1c51724bb7d8",
+    "raw": {
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 319,
+        "prompt_tokens_details": {
+          "cached_tokens": 240
+        },
+        "service_tier": "standard",
+        "total_tokens": 336
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "794542c77c83476f8cce46eccb1852c3",
+      "model": "mistral-small-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefghijklmnopqrstuvwxyz0123456"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#3": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "alpha-code-7431: verified\nbeta-code-2286: verified",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 346,
+      "output_tokens": 20,
+      "total_tokens": 366,
+      "cached_input_tokens": 288
+    },
+    "response_id": "aaaac3c6944b4b7c8205d3f5a6ac3931",
+    "finish_reason": "stop",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-c199-7b27-9c90-f9b8692908dd",
+    "raw": {
+      "usage": {
+        "completion_tokens": 20,
+        "prompt_tokens": 346,
+        "prompt_tokens_details": {
+          "cached_tokens": 288
+        },
+        "service_tier": "standard",
+        "total_tokens": 366
+      },
+      "finish_reason": "stop",
+      "response_id": "aaaac3c6944b4b7c8205d3f5a6ac3931",
+      "model": "mistral-small-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefg"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#4": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "XnBlkMiZw",
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"alpha-code-7431\"}",
+                "name": "verify_code"
+              },
+              "id": "XnBlkMiZw",
+              "type": "function"
+            },
+            "fingerprint": 6604171210943540514
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 381,
+      "output_tokens": 17,
+      "total_tokens": 398,
+      "cached_input_tokens": 320
+    },
+    "response_id": "686e1af671c5423882402ce7a16580b7",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-c3bb-7608-ab4b-d519628514d6",
+    "raw": {
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 381,
+        "prompt_tokens_details": {
+          "cached_tokens": 320
+        },
+        "service_tier": "standard",
+        "total_tokens": 398
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "686e1af671c5423882402ce7a16580b7",
+      "model": "mistral-small-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefghijklmnopqrstuvwxyz0"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#5": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "alpha-code-7431: verified (unchanged)",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 408,
+      "output_tokens": 14,
+      "total_tokens": 422,
+      "cached_input_tokens": 352
+    },
+    "response_id": "4d66d4461c2f426a9f8a29d6e18376b8",
+    "finish_reason": "stop",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-c565-7832-9a98-4587c4424a63",
+    "raw": {
+      "usage": {
+        "completion_tokens": 14,
+        "prompt_tokens": 408,
+        "prompt_tokens_details": {
+          "cached_tokens": 352
+        },
+        "service_tier": "standard",
+        "total_tokens": 422
+      },
+      "finish_reason": "stop",
+      "response_id": "4d66d4461c2f426a9f8a29d6e18376b8",
+      "model": "mistral-small-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefghijklmnopqrstuvwxyz01"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#6": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "alpha-code-7431,beta-code-2286",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 441,
+      "output_tokens": 16,
+      "total_tokens": 457,
+      "cached_input_tokens": 384
+    },
+    "response_id": "6600439edc08446bb8189ef58a9e1988",
+    "finish_reason": "stop",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-c768-79c0-a1ac-a1441f9212cb",
+    "raw": {
+      "usage": {
+        "completion_tokens": 16,
+        "prompt_tokens": 441,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "service_tier": "standard",
+        "total_tokens": 457
+      },
+      "finish_reason": "stop",
+      "response_id": "6600439edc08446bb8189ef58a9e1988",
+      "model": "mistral-small-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefgh"
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "yPtOZHzXS",
+          "name": "lookup_record",
+          "arguments": {
+            "record": "alpha"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"record\": \"alpha\"}",
+                "name": "lookup_record"
+              },
+              "id": "yPtOZHzXS",
+              "type": "function"
+            },
+            "fingerprint": 11389159696442141820
+          }
+        }
+      },
+      {
+        "tool_call": {
+          "id": "VkGQ9Zu5g",
+          "name": "lookup_record",
+          "arguments": {
+            "record": "beta"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"record\": \"beta\"}",
+                "name": "lookup_record"
+              },
+              "id": "VkGQ9Zu5g",
+              "type": "function"
+            },
+            "fingerprint": 11613668971684861642
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 224,
+      "output_tokens": 21,
+      "total_tokens": 245,
+      "cached_input_tokens": 192
+    },
+    "response_id": "76ed2c6c432a4ecd89f2df7bcc46f7de",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-f8ff-7b16-8c0f-726faf918e40",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": "",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"record\": \"alpha\"}",
+                  "name": "lookup_record"
+                },
+                "id": "yPtOZHzXS",
+                "index": 0,
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{\"record\": \"beta\"}",
+                  "name": "lookup_record"
+                },
+                "id": "VkGQ9Zu5g",
+                "index": 1,
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "76ed2c6c432a4ecd89f2df7bcc46f7de",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 21,
+        "prompt_tokens": 224,
+        "prompt_tokens_details": {
+          "cached_tokens": 192
+        },
+        "service_tier": "standard",
+        "total_tokens": 245
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "bxaK7pSPC",
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"alpha-code-7431\"}",
+                "name": "verify_code"
+              },
+              "id": "bxaK7pSPC",
+              "type": "function"
+            },
+            "fingerprint": 7345388509269975635
+          }
+        }
+      },
+      {
+        "tool_call": {
+          "id": "R32NChxDC",
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"beta-code-2286\"}",
+                "name": "verify_code"
+              },
+              "id": "R32NChxDC",
+              "type": "function"
+            },
+            "fingerprint": 8963018321589828850
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 271,
+      "output_tokens": 33,
+      "total_tokens": 304,
+      "cached_input_tokens": 240
+    },
+    "response_id": "e97f03c451cf4a6b834ba951b2562cda",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-fad6-7391-9f32-2da21defcebf",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": "",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\": \"alpha-code-7431\"}",
+                  "name": "verify_code"
+                },
+                "id": "bxaK7pSPC",
+                "index": 0,
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{\"code\": \"beta-code-2286\"}",
+                  "name": "verify_code"
+                },
+                "id": "R32NChxDC",
+                "index": 1,
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "e97f03c451cf4a6b834ba951b2562cda",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 33,
+        "prompt_tokens": 271,
+        "prompt_tokens_details": {
+          "cached_tokens": 240
+        },
+        "service_tier": "standard",
+        "total_tokens": 304
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#2": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "cMtGWA0xy",
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"beta-code-2286\"}",
+                "name": "verify_code"
+              },
+              "id": "cMtGWA0xy",
+              "type": "function"
+            },
+            "fingerprint": 6100209452127498589
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 319,
+      "output_tokens": 17,
+      "total_tokens": 336,
+      "cached_input_tokens": 288
+    },
+    "response_id": "327a03d77bf04d5e8aefea4c13e7560f",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-fcc3-770a-a44e-2bfcfdc04e24",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": "",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\": \"beta-code-2286\"}",
+                  "name": "verify_code"
+                },
+                "id": "cMtGWA0xy",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "327a03d77bf04d5e8aefea4c13e7560f",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 319,
+        "prompt_tokens_details": {
+          "cached_tokens": 288
+        },
+        "service_tier": "standard",
+        "total_tokens": 336
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#3": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "alpha-code-7431: verified\nbeta-code-2286: verified",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 346,
+      "output_tokens": 20,
+      "total_tokens": 366,
+      "cached_input_tokens": 320
+    },
+    "response_id": "1fbcf68e48b3417e9a57b8b5f28679b1",
+    "finish_reason": "stop",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea0-fea8-7c1c-90ea-904ca346a203",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "alpha-code-7431: verified\nbeta-code-2286: verified",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "1fbcf68e48b3417e9a57b8b5f28679b1",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 20,
+        "prompt_tokens": 346,
+        "prompt_tokens_details": {
+          "cached_tokens": 320
+        },
+        "service_tier": "standard",
+        "total_tokens": 366
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#4": {
+    "mode": "unary",
+    "choice": [
+      {
+        "tool_call": {
+          "id": "ajTpWsFc9",
+          "name": "verify_code",
+          "arguments": {
+            "code": "alpha-code-7431"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\": \"alpha-code-7431\"}",
+                "name": "verify_code"
+              },
+              "id": "ajTpWsFc9",
+              "type": "function"
+            },
+            "fingerprint": 4546478004522355065
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 381,
+      "output_tokens": 17,
+      "total_tokens": 398,
+      "cached_input_tokens": 352
+    },
+    "response_id": "f496a153718a4fdaa974d464280478cb",
+    "finish_reason": "tool_calls",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea1-0064-7e19-b33b-a833b601e251",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": "",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\": \"alpha-code-7431\"}",
+                  "name": "verify_code"
+                },
+                "id": "ajTpWsFc9",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "f496a153718a4fdaa974d464280478cb",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 17,
+        "prompt_tokens": 381,
+        "prompt_tokens_details": {
+          "cached_tokens": 352
+        },
+        "service_tier": "standard",
+        "total_tokens": 398
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#5": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "alpha-code-7431: verified, unchanged.",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 408,
+      "output_tokens": 13,
+      "total_tokens": 421,
+      "cached_input_tokens": 384
+    },
+    "response_id": "b2fb3cf9f7eb4ad4be2a90dd6dd9bb64",
+    "finish_reason": "stop",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea1-0203-7008-93ec-0382d9783a9c",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "alpha-code-7431: verified, unchanged.",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "b2fb3cf9f7eb4ad4be2a90dd6dd9bb64",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 13,
+        "prompt_tokens": 408,
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        },
+        "service_tier": "standard",
+        "total_tokens": 421
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#6": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "alpha-code-7431, beta-code-2286",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 440,
+      "output_tokens": 16,
+      "total_tokens": 456,
+      "cached_input_tokens": 400
+    },
+    "response_id": "7d25a4aebb344a0f9c442686529df297",
+    "finish_reason": "stop",
+    "model": "mistral-small-latest",
+    "provider_request_id": "01a0fea1-0468-731d-a682-dcf6fc6bfb08",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "alpha-code-7431, beta-code-2286",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "7d25a4aebb344a0f9c442686529df297",
+      "model": "mistral-small-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 16,
+        "prompt_tokens": 440,
+        "prompt_tokens_details": {
+          "cached_tokens": 400
+        },
+        "service_tier": "standard",
+        "total_tokens": 456
+      }
+    }
+  },
   "multimodal_content/blocking_agent_prompt_sends_a_base64_image.yaml#0": {
     "mode": "unary",
     "choice": [
       {
         "text": "Red",
-        "native": {
-          "item": {
-            "content": "Red"
-          },
-          "fingerprint": 14879100744783986916
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -702,12 +1580,7 @@
     "choice": [
       {
         "text": "BANANA-7391",
-        "native": {
-          "item": {
-            "content": "BANANA-7391"
-          },
-          "fingerprint": 11438418046488813923
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -752,12 +1625,7 @@
     "choice": [
       {
         "text": "The sun was setting slowly, casting long shadows across the empty field.",
-        "native": {
-          "item": {
-            "content": "The sun was setting slowly, casting long shadows across the empty field."
-          },
-          "fingerprint": 5868217715847721822
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -804,12 +1672,7 @@
     "choice": [
       {
         "text": "The code word is BANANA-7391 and the image's color is red.",
-        "native": {
-          "item": {
-            "content": "The code word is BANANA-7391 and the image's color is red."
-          },
-          "fingerprint": 9347518025688369054
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -854,12 +1717,7 @@
     "choice": [
       {
         "text": "BANANA",
-        "native": {
-          "item": {
-            "content": "BANANA"
-          },
-          "fingerprint": 17715646924393346326
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -904,12 +1762,7 @@
     "choice": [
       {
         "text": "BANANA-7391",
-        "native": {
-          "item": {
-            "content": "BANANA-7391"
-          },
-          "fingerprint": 11438418046488813923
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -954,12 +1807,7 @@
     "choice": [
       {
         "text": "Red",
-        "native": {
-          "item": {
-            "content": "Red"
-          },
-          "fingerprint": 14879100744783986916
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1004,12 +1852,7 @@
     "choice": [
       {
         "text": "Red",
-        "native": {
-          "item": {
-            "content": "Red"
-          },
-          "fingerprint": 14879100744783986916
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1054,12 +1897,7 @@
     "choice": [
       {
         "text": "The image shows the Eiffel Tower, a famous landmark in Paris, France, standing tall against a clear blue sky.",
-        "native": {
-          "item": {
-            "content": "The image shows the Eiffel Tower, a famous landmark in Paris, France, standing tall against a clear blue sky."
-          },
-          "fingerprint": 16425372374967468556
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1104,12 +1942,7 @@
     "choice": [
       {
         "text": "BANANA-7391",
-        "native": {
-          "item": {
-            "content": "BANANA-7391"
-          },
-          "fingerprint": 11438418046488813923
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1154,12 +1987,7 @@
     "choice": [
       {
         "text": "Red.",
-        "native": {
-          "item": {
-            "content": "Red."
-          },
-          "fingerprint": 15457288636655109704
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1204,12 +2032,7 @@
     "choice": [
       {
         "text": "The sun was setting slowly, casting long shadows across the empty field.",
-        "native": {
-          "item": {
-            "content": "The sun was setting slowly, casting long shadows across the empty field."
-          },
-          "fingerprint": 5868217715847721822
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1256,12 +2079,7 @@
     "choice": [
       {
         "text": "WALRUS-4412",
-        "native": {
-          "item": {
-            "content": "WALRUS-4412"
-          },
-          "fingerprint": 15193225755473264949
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1306,12 +2124,7 @@
     "choice": [
       {
         "text": "Paris",
-        "native": {
-          "item": {
-            "content": "Paris"
-          },
-          "fingerprint": 10014039168603989904
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1356,12 +2169,7 @@
     "choice": [
       {
         "text": "You attached two images, and they are both red.",
-        "native": {
-          "item": {
-            "content": "You attached two images, and they are both red."
-          },
-          "fingerprint": 8749373514945160893
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1406,12 +2214,7 @@
     "choice": [
       {
         "text": "Red",
-        "native": {
-          "item": {
-            "content": "Red"
-          },
-          "fingerprint": 14879100744783986916
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1456,12 +2259,7 @@
     "choice": [
       {
         "text": "BANANA-7391",
-        "native": {
-          "item": {
-            "content": "BANANA-7391"
-          },
-          "fingerprint": 11438418046488813923
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1476,13 +2274,13 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 51,
         "completion_tokens": 9,
-        "total_tokens": 60,
+        "prompt_tokens": 51,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 60
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -1499,12 +2297,7 @@
     "choice": [
       {
         "text": "The sun was setting slowly, casting long shadows across the empty field.",
-        "native": {
-          "item": {
-            "content": "The sun was setting slowly, casting long shadows across the empty field."
-          },
-          "fingerprint": 5868217715847721822
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1519,15 +2312,15 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 11,
         "completion_tokens": 15,
-        "total_tokens": 401,
-        "prompt_tokens_details": {
-          "cached_tokens": 9,
-          "audio_tokens": 375
-        },
         "prompt_audio_seconds": 5,
-        "service_tier": "standard"
+        "prompt_tokens": 11,
+        "prompt_tokens_details": {
+          "audio_tokens": 375,
+          "cached_tokens": 9
+        },
+        "service_tier": "standard",
+        "total_tokens": 401
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -1544,12 +2337,7 @@
     "choice": [
       {
         "text": "Red.",
-        "native": {
-          "item": {
-            "content": "Red."
-          },
-          "fingerprint": 15457288636655109704
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1564,13 +2352,13 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 38,
         "completion_tokens": 3,
-        "total_tokens": 41,
+        "prompt_tokens": 38,
         "prompt_tokens_details": {
           "cached_tokens": 16
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 41
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -1587,12 +2375,7 @@
     "choice": [
       {
         "text": "Paris",
-        "native": {
-          "item": {
-            "content": "Paris"
-          },
-          "fingerprint": 10014039168603989904
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1607,13 +2390,13 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 34,
         "completion_tokens": 2,
-        "total_tokens": 36,
+        "prompt_tokens": 34,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 36
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -1625,17 +2408,261 @@
       }
     }
   },
+  "prompt_caching/blocking_probe.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "cache probe ready",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1783,
+      "output_tokens": 4,
+      "total_tokens": 1787,
+      "cached_input_tokens": 0
+    },
+    "response_id": "3e8ab5d1ac6347ce8f8b53c22ba7508a",
+    "finish_reason": "stop",
+    "model": "mistral-large-latest",
+    "provider_request_id": "01a0fea6-2dea-77c3-bffc-597409cba250",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "cache probe ready",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "3e8ab5d1ac6347ce8f8b53c22ba7508a",
+      "model": "mistral-large-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 4,
+        "prompt_tokens": 1783,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "service_tier": "standard",
+        "total_tokens": 1787
+      }
+    }
+  },
+  "prompt_caching/blocking_probe.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "cache probe ready",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1783,
+      "output_tokens": 4,
+      "total_tokens": 1787,
+      "cached_input_tokens": 0
+    },
+    "response_id": "2580b29d843c40a292eda13e22c680ea",
+    "finish_reason": "stop",
+    "model": "mistral-large-latest",
+    "provider_request_id": "01a0fea6-30c9-78fa-857a-801b2139621e",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "cache probe ready",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "2580b29d843c40a292eda13e22c680ea",
+      "model": "mistral-large-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 4,
+        "prompt_tokens": 1783,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "service_tier": "standard",
+        "total_tokens": 1787
+      }
+    }
+  },
+  "prompt_caching/blocking_probe.yaml#2": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "probe still ready",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1805,
+      "output_tokens": 4,
+      "total_tokens": 1809,
+      "cached_input_tokens": 1664
+    },
+    "response_id": "7468cbf64ae64863a5621dde5f2a686d",
+    "finish_reason": "stop",
+    "model": "mistral-large-latest",
+    "provider_request_id": "01a0fea6-3697-7a4e-a51d-a0abfc282554",
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "probe still ready",
+            "role": "assistant",
+            "tool_calls": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "7468cbf64ae64863a5621dde5f2a686d",
+      "model": "mistral-large-latest",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 4,
+        "prompt_tokens": 1805,
+        "prompt_tokens_details": {
+          "cached_tokens": 1664
+        },
+        "service_tier": "standard",
+        "total_tokens": 1809
+      }
+    }
+  },
+  "prompt_caching/streaming_probe.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "cache probe ready",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1783,
+      "output_tokens": 4,
+      "total_tokens": 1787,
+      "cached_input_tokens": 1664
+    },
+    "response_id": "cb6055530ff34bd58391778383647333",
+    "finish_reason": "stop",
+    "model": "mistral-large-latest",
+    "provider_request_id": "01a0fea1-66ee-7f96-bb48-3fd23b2d0076",
+    "raw": {
+      "usage": {
+        "completion_tokens": 4,
+        "prompt_tokens": 1783,
+        "prompt_tokens_details": {
+          "cached_tokens": 1664
+        },
+        "service_tier": "standard",
+        "total_tokens": 1787
+      },
+      "finish_reason": "stop",
+      "response_id": "cb6055530ff34bd58391778383647333",
+      "model": "mistral-large-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefghijklmnopqrstuvwxyz0123456789"
+      }
+    }
+  },
+  "prompt_caching/streaming_probe.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "cache probe ready",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1783,
+      "output_tokens": 4,
+      "total_tokens": 1787,
+      "cached_input_tokens": 0
+    },
+    "response_id": "483db0e2f18b4de3a6e4e0381dc42eec",
+    "finish_reason": "stop",
+    "model": "mistral-large-latest",
+    "provider_request_id": "01a0fea1-69b9-7c9a-a612-e8042e0f5a40",
+    "raw": {
+      "usage": {
+        "completion_tokens": 4,
+        "prompt_tokens": 1783,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "service_tier": "standard",
+        "total_tokens": 1787
+      },
+      "finish_reason": "stop",
+      "response_id": "483db0e2f18b4de3a6e4e0381dc42eec",
+      "model": "mistral-large-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefghijklmnopqrstuvwxyz0"
+      }
+    }
+  },
+  "prompt_caching/streaming_probe.yaml#2": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "probe still ready",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1805,
+      "output_tokens": 4,
+      "total_tokens": 1809,
+      "cached_input_tokens": 0
+    },
+    "response_id": "9698f5fb4bed4935acb51d1e32c4f4e0",
+    "finish_reason": "stop",
+    "model": "mistral-large-latest",
+    "provider_request_id": "01a0fea1-6c5f-750d-b974-06d922afe5c7",
+    "raw": {
+      "usage": {
+        "completion_tokens": 4,
+        "prompt_tokens": 1805,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "service_tier": "standard",
+        "total_tokens": 1809
+      },
+      "finish_reason": "stop",
+      "response_id": "9698f5fb4bed4935acb51d1e32c4f4e0",
+      "model": "mistral-large-latest",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "p": "abcdefg"
+      }
+    }
+  },
   "raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml#0": {
     "mode": "unary",
     "choice": [
       {
         "text": "Pong",
-        "native": {
-          "item": {
-            "content": "Pong"
-          },
-          "fingerprint": 4755220227079083713
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1680,12 +2707,7 @@
     "choice": [
       {
         "text": "Pong",
-        "native": {
-          "item": {
-            "content": "Pong"
-          },
-          "fingerprint": 4755220227079083713
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1730,12 +2752,7 @@
     "choice": [
       {
         "text": "Pong",
-        "native": {
-          "item": {
-            "content": "Pong"
-          },
-          "fingerprint": 4755220227079083713
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1794,7 +2811,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 17636827591569057929
+            "fingerprint": 12239551362144923493
           }
         }
       }
@@ -1851,12 +2868,7 @@
     "choice": [
       {
         "text": "Pong",
-        "native": {
-          "item": {
-            "content": "Pong"
-          },
-          "fingerprint": 4755220227079083713
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1871,13 +2883,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 23,
         "completion_tokens": 3,
-        "total_tokens": 26,
+        "prompt_tokens": 23,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 26
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -1894,12 +2906,7 @@
     "choice": [
       {
         "text": "Pong",
-        "native": {
-          "item": {
-            "content": "Pong"
-          },
-          "fingerprint": 4755220227079083713
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1914,13 +2921,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 23,
         "completion_tokens": 3,
-        "total_tokens": 26,
+        "prompt_tokens": 23,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 26
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -1951,7 +2958,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 17636827591569057929
+            "fingerprint": 12239551362144923493
           }
         }
       }
@@ -1968,13 +2975,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 101,
         "completion_tokens": 11,
-        "total_tokens": 112,
+        "prompt_tokens": 101,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 112
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -1991,12 +2998,7 @@
     "choice": [
       {
         "text": "{\"error\": \"No tool calls were made, but the requested output format was not fully adhered to as per instructions. Here is the corrected JSON object based on your initial request without tool usage: {\\\"valid_output\\\": {\\\"total\\\": 42}}}\"}",
-        "native": {
-          "item": {
-            "content": "{\"error\": \"No tool calls were made, but the requested output format was not fully adhered to as per instructions. Here is the corrected JSON object based on your initial request without tool usage: {\\\"valid_output\\\": {\\\"total\\\": 42}}}\"}"
-          },
-          "fingerprint": 12551243398962618140
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2041,12 +3043,7 @@
     "choice": [
       {
         "text": "{\"error\": \"No tool calls were made as requested to return only the specified JSON object.\"}",
-        "native": {
-          "item": {
-            "content": "{\"error\": \"No tool calls were made as requested to return only the specified JSON object.\"}"
-          },
-          "fingerprint": 14604663655985183490
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2091,12 +3088,7 @@
     "choice": [
       {
         "text": "{\"response\": {\"valid_json_object\": {\"data\": {\"output\": {\"json\": {\"total\": 42}}}}}}",
-        "native": {
-          "item": {
-            "content": "{\"response\": {\"valid_json_object\": {\"data\": {\"output\": {\"json\": {\"total\": 42}}}}}}"
-          },
-          "fingerprint": 17751777031685128616
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2156,7 +3148,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -2213,12 +3205,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2263,12 +3250,7 @@
     "choice": [
       {
         "text": "Cobalt.",
-        "native": {
-          "item": {
-            "content": "Cobalt."
-          },
-          "fingerprint": 3057968628776047240
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2313,12 +3295,7 @@
     "choice": [
       {
         "text": "{\"total\": 42}",
-        "native": {
-          "item": {
-            "content": "{\"total\": 42}"
-          },
-          "fingerprint": 4293216228718691539
-        }
+        "native": null
       },
       {
         "tool_call": {
@@ -2337,7 +3314,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 11823785309550219049
+            "fingerprint": 8931902745795215783
           }
         }
       }
@@ -2394,12 +3371,7 @@
     "choice": [
       {
         "text": "{\"total\": 42}",
-        "native": {
-          "item": {
-            "content": "{\"total\": 42}"
-          },
-          "fingerprint": 4293216228718691539
-        }
+        "native": null
       },
       {
         "tool_call": {
@@ -2418,7 +3390,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 11823785309550219049
+            "fingerprint": 8931902745795215783
           }
         }
       }
@@ -2475,12 +3447,7 @@
     "choice": [
       {
         "text": "{\"total\": 42}",
-        "native": {
-          "item": {
-            "content": "{\"total\": 42}"
-          },
-          "fingerprint": 4293216228718691539
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2540,7 +3507,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -2597,12 +3564,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2647,12 +3609,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2697,12 +3654,7 @@
     "choice": [
       {
         "text": "{\"error\": \"No tool calls were made, but the requested output format was not fully adhered to as per instructions. Here is the corrected JSON object based on your initial request without tool usage:\", \"data\": {\"total\": 42}}",
-        "native": {
-          "item": {
-            "content": "{\"error\": \"No tool calls were made, but the requested output format was not fully adhered to as per instructions. Here is the corrected JSON object based on your initial request without tool usage:\", \"data\": {\"total\": 42}}"
-          },
-          "fingerprint": 2990243631893258153
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2717,13 +3669,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 88,
         "completion_tokens": 50,
-        "total_tokens": 138,
+        "prompt_tokens": 88,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 138
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2740,12 +3692,7 @@
     "choice": [
       {
         "text": "{\"error\": \"No tool execution allowed. Here is the requested JSON object without tool calls:\", \"data\": {\"total\": 42}}",
-        "native": {
-          "item": {
-            "content": "{\"error\": \"No tool execution allowed. Here is the requested JSON object without tool calls:\", \"data\": {\"total\": 42}}"
-          },
-          "fingerprint": 12748172624132331691
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2760,13 +3707,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 88,
         "completion_tokens": 30,
-        "total_tokens": 118,
+        "prompt_tokens": 88,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 118
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2783,12 +3730,7 @@
     "choice": [
       {
         "text": "{\"response\": {\"valid_json\": true, \"data\": {\"status\": \"success\", \"result\": {\"total\": 42}}} }",
-        "native": {
-          "item": {
-            "content": "{\"response\": {\"valid_json\": true, \"data\": {\"status\": \"success\", \"result\": {\"total\": 42}}} }"
-          },
-          "fingerprint": 8305194078218295351
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2803,13 +3745,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 20,
         "completion_tokens": 30,
-        "total_tokens": 50,
+        "prompt_tokens": 20,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 50
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2841,7 +3783,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -2858,13 +3800,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 92,
         "completion_tokens": 18,
-        "total_tokens": 110,
+        "prompt_tokens": 92,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 110
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2881,12 +3823,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2901,13 +3838,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 76,
         "completion_tokens": 4,
-        "total_tokens": 80,
+        "prompt_tokens": 76,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 80
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2924,12 +3861,7 @@
     "choice": [
       {
         "text": "Cobalt.",
-        "native": {
-          "item": {
-            "content": "Cobalt."
-          },
-          "fingerprint": 3057968628776047240
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2944,13 +3876,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 8,
         "completion_tokens": 5,
-        "total_tokens": 13,
+        "prompt_tokens": 8,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 13
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2967,12 +3899,7 @@
     "choice": [
       {
         "text": "{\"total\": 42}",
-        "native": {
-          "item": {
-            "content": "{\"total\": 42}"
-          },
-          "fingerprint": 4293216228718691539
-        }
+        "native": null
       },
       {
         "tool_call": {
@@ -2991,7 +3918,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 11823785309550219049
+            "fingerprint": 8931902745795215783
           }
         }
       }
@@ -3008,13 +3935,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 88,
         "completion_tokens": 25,
-        "total_tokens": 113,
+        "prompt_tokens": 88,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 113
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3031,12 +3958,7 @@
     "choice": [
       {
         "text": "{\"total\": 42}",
-        "native": {
-          "item": {
-            "content": "{\"total\": 42}"
-          },
-          "fingerprint": 4293216228718691539
-        }
+        "native": null
       },
       {
         "tool_call": {
@@ -3055,7 +3977,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 11823785309550219049
+            "fingerprint": 8931902745795215783
           }
         }
       }
@@ -3072,13 +3994,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 88,
         "completion_tokens": 25,
-        "total_tokens": 113,
+        "prompt_tokens": 88,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 113
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3095,12 +4017,7 @@
     "choice": [
       {
         "text": "{\"total\": 42}",
-        "native": {
-          "item": {
-            "content": "{\"total\": 42}"
-          },
-          "fingerprint": 4293216228718691539
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3115,13 +4032,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 20,
         "completion_tokens": 8,
-        "total_tokens": 28,
+        "prompt_tokens": 20,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 28
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3153,7 +4070,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -3170,13 +4087,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 104,
         "completion_tokens": 18,
-        "total_tokens": 122,
+        "prompt_tokens": 104,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 122
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3193,12 +4110,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3213,13 +4125,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 88,
         "completion_tokens": 4,
-        "total_tokens": 92,
+        "prompt_tokens": 88,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 92
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3236,12 +4148,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3256,13 +4163,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 20,
         "completion_tokens": 4,
-        "total_tokens": 24,
+        "prompt_tokens": 20,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 24
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3279,12 +4186,7 @@
     "choice": [
       {
         "text": "identity probe",
-        "native": {
-          "item": {
-            "content": "identity probe"
-          },
-          "fingerprint": 2316853423349693407
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3329,12 +4231,7 @@
     "choice": [
       {
         "text": "identity probe",
-        "native": {
-          "item": {
-            "content": "identity probe"
-          },
-          "fingerprint": 2316853423349693407
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3349,13 +4246,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 21,
         "completion_tokens": 3,
-        "total_tokens": 24,
+        "prompt_tokens": 21,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 24
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3372,12 +4269,7 @@
     "choice": [
       {
         "text": "Cobalt.",
-        "native": {
-          "item": {
-            "content": "Cobalt."
-          },
-          "fingerprint": 3057968628776047240
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3422,12 +4314,7 @@
     "choice": [
       {
         "text": "Cobalt.",
-        "native": {
-          "item": {
-            "content": "Cobalt."
-          },
-          "fingerprint": 3057968628776047240
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3496,7 +4383,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -3553,12 +4440,7 @@
     "choice": [
       {
         "text": "Here",
-        "native": {
-          "item": {
-            "content": "Here"
-          },
-          "fingerprint": 13962639740912032293
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3603,12 +4485,7 @@
     "choice": [
       {
         "text": "Here",
-        "native": {
-          "item": {
-            "content": "Here"
-          },
-          "fingerprint": 13962639740912032293
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3702,12 +4579,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3752,12 +4624,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3826,7 +4693,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -3883,12 +4750,7 @@
     "choice": [
       {
         "text": "c",
-        "native": {
-          "item": {
-            "content": "c"
-          },
-          "fingerprint": 14072190512188186018
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3933,12 +4795,7 @@
     "choice": [
       {
         "text": "c",
-        "native": {
-          "item": {
-            "content": "c"
-          },
-          "fingerprint": 14072190512188186018
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4032,12 +4889,7 @@
     "choice": [
       {
         "text": "Cobalt.",
-        "native": {
-          "item": {
-            "content": "Cobalt."
-          },
-          "fingerprint": 3057968628776047240
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4052,13 +4904,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 8,
         "completion_tokens": 5,
-        "total_tokens": 13,
+        "prompt_tokens": 8,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 13
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4075,12 +4927,7 @@
     "choice": [
       {
         "text": "Cobalt.",
-        "native": {
-          "item": {
-            "content": "Cobalt."
-          },
-          "fingerprint": 3057968628776047240
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4095,13 +4942,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 8,
         "completion_tokens": 10,
-        "total_tokens": 18,
+        "prompt_tokens": 8,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 18
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4133,7 +4980,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -4150,13 +4997,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 116,
         "completion_tokens": 18,
-        "total_tokens": 134,
+        "prompt_tokens": 116,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 134
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4173,12 +5020,7 @@
     "choice": [
       {
         "text": "Here",
-        "native": {
-          "item": {
-            "content": "Here"
-          },
-          "fingerprint": 13962639740912032293
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4193,13 +5035,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 18,
         "completion_tokens": 1,
-        "total_tokens": 19,
+        "prompt_tokens": 18,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 19
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4216,12 +5058,7 @@
     "choice": [
       {
         "text": "Here",
-        "native": {
-          "item": {
-            "content": "Here"
-          },
-          "fingerprint": 13962639740912032293
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4236,13 +5073,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 18,
         "completion_tokens": 2,
-        "total_tokens": 20,
+        "prompt_tokens": 18,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 20
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4269,13 +5106,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 116,
         "completion_tokens": 1,
-        "total_tokens": 117,
+        "prompt_tokens": 116,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 117
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4292,12 +5129,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4312,13 +5144,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 20,
         "completion_tokens": 4,
-        "total_tokens": 24,
+        "prompt_tokens": 20,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 24
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4335,12 +5167,7 @@
     "choice": [
       {
         "text": "cobalt",
-        "native": {
-          "item": {
-            "content": "cobalt"
-          },
-          "fingerprint": 17662161074525361476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4355,13 +5182,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 20,
         "completion_tokens": 8,
-        "total_tokens": 28,
+        "prompt_tokens": 20,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 28
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4393,7 +5220,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8517055294109079744
+            "fingerprint": 1006284203714743828
           }
         }
       }
@@ -4410,13 +5237,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 128,
         "completion_tokens": 18,
-        "total_tokens": 146,
+        "prompt_tokens": 128,
         "prompt_tokens_details": {
           "cached_tokens": 96
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 146
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4433,12 +5260,7 @@
     "choice": [
       {
         "text": "c",
-        "native": {
-          "item": {
-            "content": "c"
-          },
-          "fingerprint": 14072190512188186018
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4453,13 +5275,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 30,
         "completion_tokens": 1,
-        "total_tokens": 31,
+        "prompt_tokens": 30,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 31
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4476,12 +5298,7 @@
     "choice": [
       {
         "text": "c",
-        "native": {
-          "item": {
-            "content": "c"
-          },
-          "fingerprint": 14072190512188186018
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4496,13 +5313,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 30,
         "completion_tokens": 2,
-        "total_tokens": 32,
+        "prompt_tokens": 30,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 32
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4529,13 +5346,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 128,
         "completion_tokens": 1,
-        "total_tokens": 129,
+        "prompt_tokens": 128,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 129
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -4574,7 +5391,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -4653,7 +5470,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -4724,7 +5541,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -4744,7 +5561,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -4824,7 +5641,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -4844,7 +5661,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -4922,7 +5739,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -4991,7 +5808,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -5070,7 +5887,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -5149,7 +5966,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -5220,7 +6037,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -5240,7 +6057,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -5320,7 +6137,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -5340,7 +6157,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -5418,7 +6235,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -5487,7 +6304,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -5566,7 +6383,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -5583,13 +6400,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 159,
         "completion_tokens": 35,
-        "total_tokens": 194,
+        "prompt_tokens": 159,
         "prompt_tokens_details": {
           "cached_tokens": 128
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 194
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -5628,7 +6445,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -5645,13 +6462,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 159,
         "completion_tokens": 35,
-        "total_tokens": 194,
+        "prompt_tokens": 159,
         "prompt_tokens_details": {
           "cached_tokens": 128
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 194
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -5682,7 +6499,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -5702,7 +6519,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -5719,13 +6536,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 148,
         "completion_tokens": 19,
-        "total_tokens": 167,
+        "prompt_tokens": 148,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 167
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -5756,7 +6573,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -5776,7 +6593,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -5793,13 +6610,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 148,
         "completion_tokens": 19,
-        "total_tokens": 167,
+        "prompt_tokens": 148,
         "prompt_tokens_details": {
           "cached_tokens": 128
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 167
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -5828,7 +6645,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -5845,13 +6662,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 74,
         "completion_tokens": 5,
-        "total_tokens": 79,
+        "prompt_tokens": 74,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 79
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -5880,7 +6697,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -5897,13 +6714,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 74,
         "completion_tokens": 5,
-        "total_tokens": 79,
+        "prompt_tokens": 74,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 79
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -5942,7 +6759,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -5959,13 +6776,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 171,
         "completion_tokens": 35,
-        "total_tokens": 206,
+        "prompt_tokens": 171,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 206
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -6004,7 +6821,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2815712164255875228
+            "fingerprint": 14865855676726230944
           }
         }
       }
@@ -6021,13 +6838,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 171,
         "completion_tokens": 35,
-        "total_tokens": 206,
+        "prompt_tokens": 171,
         "prompt_tokens_details": {
           "cached_tokens": 144
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 206
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -6058,7 +6875,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -6078,7 +6895,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -6095,13 +6912,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 160,
         "completion_tokens": 19,
-        "total_tokens": 179,
+        "prompt_tokens": 160,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 179
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -6132,7 +6949,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 4751204429311756659
+            "fingerprint": 3559451348320498859
           }
         }
       },
@@ -6152,7 +6969,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6634251249464674341
+            "fingerprint": 10614000362800820827
           }
         }
       }
@@ -6169,13 +6986,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 160,
         "completion_tokens": 19,
-        "total_tokens": 179,
+        "prompt_tokens": 160,
         "prompt_tokens_details": {
           "cached_tokens": 128
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 179
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -6204,7 +7021,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -6221,13 +7038,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 86,
         "completion_tokens": 5,
-        "total_tokens": 91,
+        "prompt_tokens": 86,
         "prompt_tokens_details": {
           "cached_tokens": 16
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 91
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -6256,7 +7073,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -6273,13 +7090,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 86,
         "completion_tokens": 5,
-        "total_tokens": 91,
+        "prompt_tokens": 86,
         "prompt_tokens_details": {
           "cached_tokens": 16
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 91
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -6310,7 +7127,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -6381,7 +7198,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -6435,7 +7252,26 @@
   },
   "tool_truncation_matrix/blocking_ministral_3b_low_agent.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 4,
@@ -6485,7 +7321,26 @@
   },
   "tool_truncation_matrix/blocking_ministral_3b_low_model.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 4,
@@ -6535,7 +7390,18 @@
   },
   "tool_truncation_matrix/blocking_ministral_3b_mid_agent.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 16,
@@ -6585,7 +7451,18 @@
   },
   "tool_truncation_matrix/blocking_ministral_3b_mid_model.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 16,
@@ -6652,7 +7529,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -6723,7 +7600,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -6777,7 +7654,26 @@
   },
   "tool_truncation_matrix/blocking_mistral_small_low_agent.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 4,
@@ -6827,7 +7723,26 @@
   },
   "tool_truncation_matrix/blocking_mistral_small_low_model.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 4,
@@ -6877,7 +7792,18 @@
   },
   "tool_truncation_matrix/blocking_mistral_small_mid_agent.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 16,
@@ -6927,7 +7853,18 @@
   },
   "tool_truncation_matrix/blocking_mistral_small_mid_model.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 16,
@@ -6994,7 +7931,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -7011,13 +7948,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 125,
         "completion_tokens": 47,
-        "total_tokens": 172,
+        "prompt_tokens": 125,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 172
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7048,7 +7985,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -7065,13 +8002,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 125,
         "completion_tokens": 47,
-        "total_tokens": 172,
+        "prompt_tokens": 125,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 172
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7085,7 +8022,26 @@
   },
   "tool_truncation_matrix/streaming_ministral_3b_low_agent.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 4,
@@ -7098,13 +8054,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 125,
         "completion_tokens": 4,
-        "total_tokens": 129,
+        "prompt_tokens": 125,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 129
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7118,7 +8074,26 @@
   },
   "tool_truncation_matrix/streaming_ministral_3b_low_model.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 4,
@@ -7131,13 +8106,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 125,
         "completion_tokens": 4,
-        "total_tokens": 129,
+        "prompt_tokens": 125,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 129
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7151,7 +8126,18 @@
   },
   "tool_truncation_matrix/streaming_ministral_3b_mid_agent.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 16,
@@ -7164,13 +8150,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 125,
         "completion_tokens": 16,
-        "total_tokens": 141,
+        "prompt_tokens": 125,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 141
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7184,7 +8170,18 @@
   },
   "tool_truncation_matrix/streaming_ministral_3b_mid_model.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 125,
       "output_tokens": 16,
@@ -7197,13 +8194,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 125,
         "completion_tokens": 16,
-        "total_tokens": 141,
+        "prompt_tokens": 125,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 141
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7234,7 +8231,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -7251,13 +8248,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 137,
         "completion_tokens": 47,
-        "total_tokens": 184,
+        "prompt_tokens": 137,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 184
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7288,7 +8285,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 8912289558797131798
+            "fingerprint": 6842051912673804058
           }
         }
       }
@@ -7305,13 +8302,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 137,
         "completion_tokens": 47,
-        "total_tokens": 184,
+        "prompt_tokens": 137,
         "prompt_tokens_details": {
           "cached_tokens": 112
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 184
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7325,7 +8322,26 @@
   },
   "tool_truncation_matrix/streaming_mistral_small_low_agent.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 4,
@@ -7338,13 +8354,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 137,
         "completion_tokens": 4,
-        "total_tokens": 141,
+        "prompt_tokens": 137,
         "prompt_tokens_details": {
           "cached_tokens": 112
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 141
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7358,7 +8374,26 @@
   },
   "tool_truncation_matrix/streaming_mistral_small_low_model.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {},
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "",
+                "name": "file_report"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": 14947959938349887088
+          }
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 4,
@@ -7371,13 +8406,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 137,
         "completion_tokens": 4,
-        "total_tokens": 141,
+        "prompt_tokens": 137,
         "prompt_tokens_details": {
           "cached_tokens": 112
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 141
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7391,7 +8426,18 @@
   },
   "tool_truncation_matrix/streaming_mistral_small_mid_agent.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 16,
@@ -7404,13 +8450,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 137,
         "completion_tokens": 16,
-        "total_tokens": 153,
+        "prompt_tokens": 137,
         "prompt_tokens_details": {
           "cached_tokens": 112
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 153
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",
@@ -7424,7 +8470,18 @@
   },
   "tool_truncation_matrix/streaming_mistral_small_mid_model.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "call_REDACTED_1",
+          "name": "file_report",
+          "arguments": {
+            "summary": "The cache warmer raced the artifact uploader"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 137,
       "output_tokens": 16,
@@ -7437,13 +8494,13 @@
     "provider_request_id": "req_REDACTED_1",
     "raw": {
       "usage": {
-        "prompt_tokens": 137,
         "completion_tokens": 16,
-        "total_tokens": 153,
+        "prompt_tokens": 137,
         "prompt_tokens_details": {
           "cached_tokens": 112
         },
-        "service_tier": "standard"
+        "service_tier": "standard",
+        "total_tokens": 153
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-REDACTED_1",

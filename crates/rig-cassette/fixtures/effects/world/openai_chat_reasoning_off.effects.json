@@ -77,15 +77,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that provides performance like C/C++ while using a strong static type system and an ownership/borrowing model to prevent data races and many classes of memory bugs at compile time. Memory safety matters because it eliminates crashes, security vulnerabilities (like buffer overflows and use-after-free), and unpredictable behavior, enabling more reliable and secure software.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Rust is a modern systems programming language that provides performance like C/C++ while using a strong static type system and an ownership/borrowing model to prevent data races and many classes of memory bugs at compile time. Memory safety matters because it eliminates crashes, security vulnerabilities (like buffer overflows and use-after-free), and unpredictable behavior, enabling more reliable and secure software.",
-                  "refusal": null
-                },
-                "fingerprint": 3409552623171009880
-              }
+              "text": "Rust is a modern systems programming language that provides performance like C/C++ while using a strong static type system and an ownership/borrowing model to prevent data races and many classes of memory bugs at compile time. Memory safety matters because it eliminates crashes, security vulnerabilities (like buffer overflows and use-after-free), and unpredictable behavior, enabling more reliable and secure software."
             }
           ],
           "usage": {
@@ -109,7 +101,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 16818842831433009196
+            "fingerprint": 16191486630615255628
           },
           "provider_request_id": "req_69b52aa3111948cea97e5c3af9e16e1a",
           "finish_reason": "stop",

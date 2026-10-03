@@ -183,8 +183,8 @@
           "rig_ecs::agent::StreamRequested": false,
           "rig_ecs::agent::Usage": {
             "input_tokens": 34,
-            "output_tokens": 1,
-            "total_tokens": 35,
+            "output_tokens": 2,
+            "total_tokens": 36,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -223,14 +223,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready",
-                "native": {
-                  "item": {
-                    "content": "ready",
-                    "refusal": null
-                  },
-                  "fingerprint": 815434921069355996
-                }
+                "text": "ready"
               }
             ],
             "head": {
@@ -239,7 +232,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_a071cf61-48d3-47b5-b8b4-24a641bd6676"
+                "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
               },
               "stop": "stop",
               "native": {
@@ -248,7 +241,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             },
             "done": true,
@@ -271,20 +264,13 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "content": "ready",
-                      "refusal": null
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "usage": {
                 "input_tokens": 34,
-                "output_tokens": 1,
-                "total_tokens": 35,
+                "output_tokens": 2,
+                "total_tokens": 36,
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0
               },
@@ -293,7 +279,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_a071cf61-48d3-47b5-b8b4-24a641bd6676"
+                "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
               },
               "native": {
                 "item": {
@@ -301,7 +287,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               },
               "finish_reason": "stop",
               "raw": {
@@ -317,7 +303,7 @@
                   }
                 ],
                 "created": 0,
-                "id": "resp_a071cf61-48d3-47b5-b8b4-24a641bd6676",
+                "id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "object": "chat.completion",
                 "usage": {
@@ -328,7 +314,7 @@
                   },
                   "cache_creation_input_tokens": 0,
                   "cache_read_input_tokens": 0,
-                  "completion_tokens": 1,
+                  "completion_tokens": 2,
                   "completion_tokens_details": {
                     "audio_tokens": 0,
                     "image_tokens": 0,
@@ -341,7 +327,7 @@
                     "cached_tokens": 0,
                     "video_tokens": 0
                   },
-                  "total_tokens": 35
+                  "total_tokens": 36
                 }
               }
             }
@@ -360,7 +346,7 @@
               "provider": "doubleword",
               "model": "Qwen/Qwen3.5-397B-A17B-FP8",
               "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-              "response_id": "resp_a071cf61-48d3-47b5-b8b4-24a641bd6676"
+              "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
             },
             "stop": "stop",
             "native": {
@@ -369,7 +355,7 @@
                 "refusal": null,
                 "role": "assistant"
               },
-              "fingerprint": 16268972914252074274
+              "fingerprint": 5329546866666182096
             }
           }
         },
@@ -377,14 +363,7 @@
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready",
-                  "refusal": null
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           }
         },

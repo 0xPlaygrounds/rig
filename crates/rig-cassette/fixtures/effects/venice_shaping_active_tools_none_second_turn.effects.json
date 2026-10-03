@@ -118,7 +118,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "4J7bu767t"
+                "provider": "vH6V56b83"
               },
               "function": {
                 "name": "add",
@@ -133,10 +133,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "4J7bu767t",
+                  "id": "vH6V56b83",
                   "type": "function"
                 },
-                "fingerprint": 1563233571438058879
+                "fingerprint": 9729326276688713539
               }
             }
           ],
@@ -150,7 +150,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RgfnPyR1DCIdasb41AZlrSvO"
+            "response_id": "chatcmpl-Rh0tCDPngGx95x2P99Pgz2a4"
           },
           "native": {
             "item": {
@@ -164,12 +164,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "4J7bu767t",
+                  "id": "vH6V56b83",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 3370905802229113853
+            "fingerprint": 17586780681865451601
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -189,7 +189,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "4J7bu767t",
+                      "id": "vH6V56b83",
                       "type": "function"
                     }
                   ]
@@ -201,7 +201,7 @@
               "usd": 0.00010696875
             },
             "created": 0,
-            "id": "chatcmpl-RgfnPyR1DCIdasb41AZlrSvO",
+            "id": "chatcmpl-Rh0tCDPngGx95x2P99Pgz2a4",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -279,7 +279,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "4J7bu767t"
+                    "provider": "vH6V56b83"
                   },
                   "function": {
                     "name": "add",
@@ -294,10 +294,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "4J7bu767t",
+                      "id": "vH6V56b83",
                       "type": "function"
                     },
-                    "fingerprint": 1563233571438058879
+                    "fingerprint": 9729326276688713539
                   }
                 }
               ],
@@ -306,7 +306,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RgfnPyR1DCIdasb41AZlrSvO"
+                "response_id": "chatcmpl-Rh0tCDPngGx95x2P99Pgz2a4"
               },
               "stop": "tool_use",
               "native": {
@@ -321,12 +321,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "4J7bu767t",
+                      "id": "vH6V56b83",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 3370905802229113853
+                "fingerprint": 17586780681865451601
               }
             },
             {
@@ -335,7 +335,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "4J7bu767t"
+                    "provider": "vH6V56b83"
                   },
                   "name": "add",
                   "content": [
@@ -364,27 +364,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42",
-                  "name": null
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           ],
           "usage": {
-            "input_tokens": 1043,
+            "input_tokens": 1045,
             "output_tokens": 3,
-            "total_tokens": 1046
+            "total_tokens": 1048
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-Rwu99Q9I3kB0G6xPJ6jNCY7P"
+            "response_id": "chatcmpl-RyuHW4i8PHE8MaEeH1J67HnN"
           },
           "native": {
             "item": {
@@ -393,7 +386,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 5372475738331673531
+            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {
@@ -413,17 +406,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00009853125
+              "usd": 0.00009871875000000001
             },
             "created": 0,
-            "id": "chatcmpl-Rwu99Q9I3kB0G6xPJ6jNCY7P",
+            "id": "chatcmpl-RyuHW4i8PHE8MaEeH1J67HnN",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
               "completion_tokens": 3,
-              "prompt_tokens": 1043,
-              "total_tokens": 1046
+              "prompt_tokens": 1045,
+              "total_tokens": 1048
             },
             "venice_parameters": {
               "disable_thinking": false,

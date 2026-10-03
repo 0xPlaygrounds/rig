@@ -75,14 +75,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language designed for performance and safety, particularly focused on memory safety without needing a garbage collector. Memory safety matters because it helps prevent issues like buffer overflows and data races, which can lead to security vulnerabilities and program crashes.",
-              "native": {
-                "item": {
-                  "content": "Rust is a systems programming language designed for performance and safety, particularly focused on memory safety without needing a garbage collector. Memory safety matters because it helps prevent issues like buffer overflows and data races, which can lead to security vulnerabilities and program crashes.",
-                  "refusal": null
-                },
-                "fingerprint": 16134454494845198759
-              }
+              "text": "Rust is a systems programming language designed for performance and safety, particularly focused on memory safety without needing a garbage collector. Memory safety matters because it helps prevent issues like buffer overflows and data races, which can lead to security vulnerabilities and program crashes."
             }
           ],
           "usage": {
@@ -107,7 +100,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 16687622896195081473
+            "fingerprint": 17949103529434807857
           },
           "finish_reason": "stop",
           "raw": {

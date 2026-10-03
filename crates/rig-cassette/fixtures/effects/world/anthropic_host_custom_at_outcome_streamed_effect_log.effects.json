@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 12,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,28 +10,28 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 12,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 23,
+        "batch": 21,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -39,7 +39,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 22,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -47,7 +47,7 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 23,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -200,7 +200,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12087459688596924811
+                "fingerprint": 16396864856540745803
               }
             }
           ],
@@ -284,12 +284,17 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12087459688596924811
+                "fingerprint": 16396864856540745803
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -389,7 +394,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 12087459688596924811
+                    "fingerprint": 16396864856540745803
                   }
                 }
               ],
@@ -465,7 +470,7 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],
@@ -532,12 +537,17 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     }
   ]

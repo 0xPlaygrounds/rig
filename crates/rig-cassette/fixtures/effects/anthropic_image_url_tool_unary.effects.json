@@ -129,7 +129,7 @@
                   "text": "Let me calculate that for you!",
                   "type": "text"
                 },
-                "fingerprint": 12486621916382416694
+                "fingerprint": 13623876372302441694
               }
             },
             {
@@ -157,7 +157,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 8400014666233678114
+                "fingerprint": 8653796102995512626
               }
             }
           ],
@@ -286,7 +286,7 @@
                       "text": "Let me calculate that for you!",
                       "type": "text"
                     },
-                    "fingerprint": 12486621916382416694
+                    "fingerprint": 13623876372302441694
                   }
                 },
                 {
@@ -314,7 +314,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 8400014666233678114
+                    "fingerprint": 8653796102995512626
                   }
                 }
               ],
@@ -390,7 +390,7 @@
                   "text": "The dominant color is **red**, and 17 + 25 = **42**.",
                   "type": "text"
                 },
-                "fingerprint": 3003779457782187452
+                "fingerprint": 16573923704974805956
               }
             }
           ],

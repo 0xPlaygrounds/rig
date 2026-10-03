@@ -134,14 +134,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\n\"release\": {\n\"lane\": \"canary\",\n\"risk\": \"low\"\n},\n\"checks\": [\n{\n\"name\": \"compile\",\n\"required\": true\n},\n{\n\"name\": \"replay\",\n\"required\": true\n}\n]\n}",
-              "native": {
-                "item": {
-                  "content": "{\n\"release\": {\n\"lane\": \"canary\",\n\"risk\": \"low\"\n},\n\"checks\": [\n{\n\"name\": \"compile\",\n\"required\": true\n},\n{\n\"name\": \"replay\",\n\"required\": true\n}\n]\n}",
-                  "refusal": null
-                },
-                "fingerprint": 9291408713327953590
-              }
+              "text": "{\n\"release\": {\n\"lane\": \"canary\",\n\"risk\": \"low\"\n},\n\"checks\": [\n{\n\"name\": \"compile\",\n\"required\": true\n},\n{\n\"name\": \"replay\",\n\"required\": true\n}\n]\n}"
             }
           ],
           "usage": {
@@ -166,7 +159,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 11100786260725255842
+            "fingerprint": 6835327497146807362
           },
           "finish_reason": "stop",
           "raw": {

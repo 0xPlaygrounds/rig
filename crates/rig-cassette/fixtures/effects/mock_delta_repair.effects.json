@@ -176,7 +176,12 @@
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "mock.script",
+        "provider": "mock",
+        "model": "mock-model"
+      }
     },
     {
       "tool_output": {},
@@ -348,7 +353,12 @@
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "mock.script",
+        "provider": "mock",
+        "model": "mock-model"
+      }
     }
   ]
 }

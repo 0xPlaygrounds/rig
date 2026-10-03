@@ -139,7 +139,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "2gYkDn3iy"
+                "provider": "DWiD2TjJS"
               },
               "function": {
                 "name": "add",
@@ -154,10 +154,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "2gYkDn3iy",
+                  "id": "DWiD2TjJS",
                   "type": "function"
                 },
-                "fingerprint": 7814945835504558955
+                "fingerprint": 4081483706676085698
               }
             }
           ],
@@ -171,7 +171,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RJjaV5REov5wBpC6ZWGP8Vvi"
+            "response_id": "chatcmpl-RyaFrPBw7T6Hbzk9jZ8123LA"
           },
           "native": {
             "item": {
@@ -185,12 +185,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "2gYkDn3iy",
+                  "id": "DWiD2TjJS",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 15367710301359309873
+            "fingerprint": 3893606187230784266
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -210,7 +210,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "2gYkDn3iy",
+                      "id": "DWiD2TjJS",
                       "type": "function"
                     }
                   ]
@@ -222,7 +222,7 @@
               "usd": 0.0001145625
             },
             "created": 0,
-            "id": "chatcmpl-RJjaV5REov5wBpC6ZWGP8Vvi",
+            "id": "chatcmpl-RyaFrPBw7T6Hbzk9jZ8123LA",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -302,7 +302,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "2gYkDn3iy"
+                    "provider": "DWiD2TjJS"
                   },
                   "function": {
                     "name": "add",
@@ -317,10 +317,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "2gYkDn3iy",
+                      "id": "DWiD2TjJS",
                       "type": "function"
                     },
-                    "fingerprint": 7814945835504558955
+                    "fingerprint": 4081483706676085698
                   }
                 }
               ],
@@ -329,7 +329,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RJjaV5REov5wBpC6ZWGP8Vvi"
+                "response_id": "chatcmpl-RyaFrPBw7T6Hbzk9jZ8123LA"
               },
               "stop": "tool_use",
               "native": {
@@ -344,12 +344,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "2gYkDn3iy",
+                      "id": "DWiD2TjJS",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 15367710301359309873
+                "fingerprint": 3893606187230784266
               }
             },
             {
@@ -358,7 +358,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "2gYkDn3iy"
+                    "provider": "DWiD2TjJS"
                   },
                   "name": "add",
                   "content": [
@@ -409,36 +409,29 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"meetup\", \"summary\": \"The sum of 17 and 25 is 42. Join us for an exciting Rust meetup in Seattle!\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"meetup\", \"summary\": \"The sum of 17 and 25 is 42. Join us for an exciting Rust meetup in Seattle!\"}",
-                  "name": null
-                },
-                "fingerprint": 12016569800921775958
-              }
+              "text": "{\"category\": \"Social\", \"summary\": \"The sum of 17 and 25 is 42.\", \"title\": \"Rust Meetup in Seattle\"}"
             }
           ],
           "usage": {
-            "input_tokens": 1214,
-            "output_tokens": 51,
-            "total_tokens": 1265
+            "input_tokens": 1212,
+            "output_tokens": 37,
+            "total_tokens": 1249
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-R3x8eB0C1mLr1DXyBxy2TbLG"
+            "response_id": "chatcmpl-RsLShN2kyAOpNO43F4v8p4VR"
           },
           "native": {
             "item": {
-              "content": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"meetup\", \"summary\": \"The sum of 17 and 25 is 42. Join us for an exciting Rust meetup in Seattle!\"}",
+              "content": "{\"category\": \"Social\", \"summary\": \"The sum of 17 and 25 is 42.\", \"title\": \"Rust Meetup in Seattle\"}",
               "name": null,
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 8670581873268655012
+            "fingerprint": 15167748814738594222
           },
           "finish_reason": "stop",
           "raw": {
@@ -448,7 +441,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"meetup\", \"summary\": \"The sum of 17 and 25 is 42. Join us for an exciting Rust meetup in Seattle!\"}",
+                  "content": "{\"category\": \"Social\", \"summary\": \"The sum of 17 and 25 is 42.\", \"title\": \"Rust Meetup in Seattle\"}",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
@@ -458,17 +451,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.0001265625
+              "usd": 0.000122875
             },
             "created": 0,
-            "id": "chatcmpl-R3x8eB0C1mLr1DXyBxy2TbLG",
+            "id": "chatcmpl-RsLShN2kyAOpNO43F4v8p4VR",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 51,
-              "prompt_tokens": 1214,
-              "total_tokens": 1265
+              "completion_tokens": 37,
+              "prompt_tokens": 1212,
+              "total_tokens": 1249
             },
             "venice_parameters": {
               "disable_thinking": false,

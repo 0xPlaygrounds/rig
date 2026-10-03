@@ -80,18 +80,12 @@
                 "item": {
                   "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise."
                 },
-                "fingerprint": 318516036024415933
+                "fingerprint": 18068909297515616677
               }
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that enforces memory safety and thread safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that can cause crashes, security vulnerabilities, and unpredictable behavior.",
-              "native": {
-                "item": {
-                  "content": "Rust is a systems programming language that enforces memory safety and thread safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that can cause crashes, security vulnerabilities, and unpredictable behavior."
-                },
-                "fingerprint": 1162996453183919512
-              }
+              "text": "Rust is a systems programming language that enforces memory safety and thread safety at compile time through its ownership and borrowing rules, without needing a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that can cause crashes, security vulnerabilities, and unpredictable behavior."
             }
           ],
           "usage": {
@@ -114,7 +108,7 @@
               "reasoning_content": "We need answer in one or two sentences. Explain Rust and why memory safety matters. Concise.",
               "role": "assistant"
             },
-            "fingerprint": 17912014182413203522
+            "fingerprint": 8156402336947078872
           },
           "finish_reason": "stop",
           "raw": {

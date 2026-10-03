@@ -162,7 +162,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_RglXiSNd1siiEzQ8AjTVfnPj"
+                "provider": "call_CwifGUEWz5OUUse3OW56yruT"
               },
               "function": {
                 "name": "add",
@@ -177,26 +177,26 @@
                     "arguments": "{\"x\":17,\"y\":25}",
                     "name": "add"
                   },
-                  "id": "call_RglXiSNd1siiEzQ8AjTVfnPj",
+                  "id": "call_CwifGUEWz5OUUse3OW56yruT",
                   "type": "function"
                 },
-                "fingerprint": 18367068012458762270
+                "fingerprint": 5339397514344677325
               }
             }
           ],
           "usage": {
             "input_tokens": 291,
-            "output_tokens": 346,
-            "total_tokens": 637,
+            "output_tokens": 218,
+            "total_tokens": 509,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 320
+            "reasoning_tokens": 192
           },
           "origin": {
             "api": "openai.chat",
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPaAuXixbii5WlaoFKAaFw35d6mU"
+            "response_id": "chatcmpl-EUeDUIIP6o7cz8Hha7XfK0BGqwRKc"
           },
           "native": {
             "item": {
@@ -210,14 +210,14 @@
                     "arguments": "{\"x\":17,\"y\":25}",
                     "name": "add"
                   },
-                  "id": "call_RglXiSNd1siiEzQ8AjTVfnPj",
+                  "id": "call_CwifGUEWz5OUUse3OW56yruT",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 106219414483258602
+            "fingerprint": 9140207864631555283
           },
-          "provider_request_id": "req_4a7958b21a1941c68bc59a3918728713",
+          "provider_request_id": "req_8b05ec0a9bc44d3ba5d08eee624013c2",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -235,7 +235,7 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_RglXiSNd1siiEzQ8AjTVfnPj",
+                      "id": "call_CwifGUEWz5OUUse3OW56yruT",
                       "type": "function"
                     }
                   ]
@@ -243,17 +243,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPaAuXixbii5WlaoFKAaFw35d6mU",
+            "id": "chatcmpl-EUeDUIIP6o7cz8Hha7XfK0BGqwRKc",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 346,
+              "completion_tokens": 218,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 320,
+                "reasoning_tokens": 192,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 291,
@@ -261,7 +261,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 637
+              "total_tokens": 509
             }
           }
         }
@@ -321,7 +321,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_RglXiSNd1siiEzQ8AjTVfnPj"
+                    "provider": "call_CwifGUEWz5OUUse3OW56yruT"
                   },
                   "function": {
                     "name": "add",
@@ -336,10 +336,10 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_RglXiSNd1siiEzQ8AjTVfnPj",
+                      "id": "call_CwifGUEWz5OUUse3OW56yruT",
                       "type": "function"
                     },
-                    "fingerprint": 18367068012458762270
+                    "fingerprint": 5339397514344677325
                   }
                 }
               ],
@@ -348,7 +348,7 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPaAuXixbii5WlaoFKAaFw35d6mU"
+                "response_id": "chatcmpl-EUeDUIIP6o7cz8Hha7XfK0BGqwRKc"
               },
               "stop": "tool_use",
               "native": {
@@ -363,12 +363,12 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_RglXiSNd1siiEzQ8AjTVfnPj",
+                      "id": "call_CwifGUEWz5OUUse3OW56yruT",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 106219414483258602
+                "fingerprint": 9140207864631555283
               }
             },
             {
@@ -377,7 +377,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_RglXiSNd1siiEzQ8AjTVfnPj"
+                    "provider": "call_CwifGUEWz5OUUse3OW56yruT"
                   },
                   "name": "add",
                   "content": [
@@ -451,41 +451,33 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42.\"\n}",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42.\"\n}",
-                  "refusal": null
-                },
-                "fingerprint": 2941036300794901982
-              }
+              "text": "{\n  \"title\": \"Rust Seattle Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"17 + 25 = 42\"\n}"
             }
           ],
           "usage": {
             "input_tokens": 322,
-            "output_tokens": 749,
-            "total_tokens": 1071,
+            "output_tokens": 873,
+            "total_tokens": 1195,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 704
+            "reasoning_tokens": 832
           },
           "origin": {
             "api": "openai.chat",
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPaDQ07EfWX7kCbMt0kTYFsZpzKe"
+            "response_id": "chatcmpl-EUeDW4fgt0p9Tgenq0xFxHgzTS73P"
           },
           "native": {
             "item": {
               "annotations": [],
-              "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42.\"\n}",
+              "content": "{\n  \"title\": \"Rust Seattle Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"17 + 25 = 42\"\n}",
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 14035402253080772190
+            "fingerprint": 14266776551214839420
           },
-          "provider_request_id": "req_4fc38dccbc0b4c6db806aa0c85e3ede2",
+          "provider_request_id": "req_9a42ae5a0a36496f9528a89b3e911bcb",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -494,24 +486,24 @@
                 "index": 0,
                 "message": {
                   "annotations": [],
-                  "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42.\"\n}",
+                  "content": "{\n  \"title\": \"Rust Seattle Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"17 + 25 = 42\"\n}",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPaDQ07EfWX7kCbMt0kTYFsZpzKe",
+            "id": "chatcmpl-EUeDW4fgt0p9Tgenq0xFxHgzTS73P",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 749,
+              "completion_tokens": 873,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 704,
+                "reasoning_tokens": 832,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 322,
@@ -519,7 +511,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 1071
+              "total_tokens": 1195
             }
           }
         }

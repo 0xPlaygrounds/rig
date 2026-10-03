@@ -318,7 +318,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 12401461780161830332
+                  "fingerprint": 9112623473347207456
                 }
               }
             ],
@@ -386,7 +386,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12401461780161830332
+                    "fingerprint": 9112623473347207456
                   }
                 }
               ],
@@ -626,7 +626,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12401461780161830332
+                "fingerprint": 9112623473347207456
               }
             }
           }
@@ -643,7 +643,8 @@
               "call": {
                 "provider": "call_rhUBecjSqzM2bL8p0XIKwEwZ"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -690,7 +691,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 14427687305149691945
+                  "fingerprint": 14840376470190664285
                 }
               },
               {
@@ -715,7 +716,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 9132132867701971401
+                  "fingerprint": 8846790980902890473
                 }
               },
               {
@@ -740,7 +741,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 594105975185989459
+                  "fingerprint": 8757642650208818463
                 }
               },
               {
@@ -765,7 +766,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 9476532590870202295
+                  "fingerprint": 10105645410342069275
                 }
               },
               {
@@ -790,7 +791,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 7127098077739367003
+                  "fingerprint": 8723675243280055279
                 }
               },
               {
@@ -815,7 +816,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 3347410068217491663
+                  "fingerprint": 11578610277976937179
                 }
               }
             ],
@@ -883,7 +884,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 14427687305149691945
+                    "fingerprint": 14840376470190664285
                   }
                 },
                 {
@@ -908,7 +909,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9132132867701971401
+                    "fingerprint": 8846790980902890473
                   }
                 },
                 {
@@ -933,7 +934,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 594105975185989459
+                    "fingerprint": 8757642650208818463
                   }
                 },
                 {
@@ -958,7 +959,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9476532590870202295
+                    "fingerprint": 10105645410342069275
                   }
                 },
                 {
@@ -983,7 +984,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7127098077739367003
+                    "fingerprint": 8723675243280055279
                   }
                 },
                 {
@@ -1008,7 +1009,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3347410068217491663
+                    "fingerprint": 11578610277976937179
                   }
                 }
               ],
@@ -1459,7 +1460,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 14427687305149691945
+                "fingerprint": 14840376470190664285
               }
             }
           }
@@ -1488,7 +1489,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9132132867701971401
+                "fingerprint": 8846790980902890473
               }
             }
           }
@@ -1517,7 +1518,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 594105975185989459
+                "fingerprint": 8757642650208818463
               }
             }
           }
@@ -1546,7 +1547,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9476532590870202295
+                "fingerprint": 10105645410342069275
               }
             }
           }
@@ -1575,7 +1576,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7127098077739367003
+                "fingerprint": 8723675243280055279
               }
             }
           }
@@ -1604,7 +1605,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 3347410068217491663
+                "fingerprint": 11578610277976937179
               }
             }
           }
@@ -1621,7 +1622,8 @@
               "call": {
                 "provider": "call_hdq4UHmihDuHNx7f5PF9v5t3"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1645,7 +1647,8 @@
               "call": {
                 "provider": "call_yDnA4JTU1wxDG6PLqVusIC60"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1669,7 +1672,8 @@
               "call": {
                 "provider": "call_tu18NuZTCO0SIrluOGL3I6Db"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1693,7 +1697,8 @@
               "call": {
                 "provider": "call_vuTmT4oQzgZ9XwCWlUXf4QNF"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1717,7 +1722,8 @@
               "call": {
                 "provider": "call_gn7dqAAZjaT1Os3TNwllOZhT"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1741,7 +1747,8 @@
               "call": {
                 "provider": "call_nqHKQciLIJCegr93BZqGI1vP"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1784,7 +1791,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 10820783091778223324
+                  "fingerprint": 12754263704940027694
                 }
               },
               {
@@ -1809,7 +1816,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 1836950123456244345
+                  "fingerprint": 16877113401945420899
                 }
               },
               {
@@ -1834,7 +1841,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 4804027896095814218
+                  "fingerprint": 13705949798621021820
                 }
               },
               {
@@ -1859,7 +1866,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 12998286458147159311
+                  "fingerprint": 15313061588343136385
                 }
               },
               {
@@ -1884,7 +1891,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 15416031637610690795
+                  "fingerprint": 7846196377407249407
                 }
               },
               {
@@ -1909,7 +1916,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 12771532934667871868
+                  "fingerprint": 11488257769597076208
                 }
               }
             ],
@@ -1977,7 +1984,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10820783091778223324
+                    "fingerprint": 12754263704940027694
                   }
                 },
                 {
@@ -2002,7 +2009,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1836950123456244345
+                    "fingerprint": 16877113401945420899
                   }
                 },
                 {
@@ -2027,7 +2034,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4804027896095814218
+                    "fingerprint": 13705949798621021820
                   }
                 },
                 {
@@ -2052,7 +2059,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12998286458147159311
+                    "fingerprint": 15313061588343136385
                   }
                 },
                 {
@@ -2077,7 +2084,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15416031637610690795
+                    "fingerprint": 7846196377407249407
                   }
                 },
                 {
@@ -2102,7 +2109,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12771532934667871868
+                    "fingerprint": 11488257769597076208
                   }
                 }
               ],
@@ -2535,7 +2542,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10820783091778223324
+                "fingerprint": 12754263704940027694
               }
             }
           }
@@ -2564,7 +2571,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1836950123456244345
+                "fingerprint": 16877113401945420899
               }
             }
           }
@@ -2593,7 +2600,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4804027896095814218
+                "fingerprint": 13705949798621021820
               }
             }
           }
@@ -2622,7 +2629,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12998286458147159311
+                "fingerprint": 15313061588343136385
               }
             }
           }
@@ -2651,7 +2658,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15416031637610690795
+                "fingerprint": 7846196377407249407
               }
             }
           }
@@ -2680,7 +2687,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12771532934667871868
+                "fingerprint": 11488257769597076208
               }
             }
           }
@@ -2697,7 +2704,8 @@
               "call": {
                 "provider": "call_j3fHmtfccPcCnrzfu4PkwCZ0"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2718,7 +2726,8 @@
               "call": {
                 "provider": "call_AJrdtphTfmolZ7mnQbh2i6gT"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2739,7 +2748,8 @@
               "call": {
                 "provider": "call_fhVysfXFWKqgRcYOsPfghR4w"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2760,7 +2770,8 @@
               "call": {
                 "provider": "call_z07PlTFHDErNc610EllvAM8E"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2781,7 +2792,8 @@
               "call": {
                 "provider": "call_GxnATTBd3OGNJ0VK7cfaEP9P"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2802,7 +2814,8 @@
               "call": {
                 "provider": "call_0GJNmkCs0DswQxN1aWCr6NPU"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2842,7 +2855,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 4782165139236939779
+                  "fingerprint": 16203297939195760239
                 }
               }
             ],
@@ -2910,7 +2923,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4782165139236939779
+                    "fingerprint": 16203297939195760239
                   }
                 }
               ],
@@ -3144,7 +3157,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4782165139236939779
+                "fingerprint": 16203297939195760239
               }
             }
           }
@@ -3161,7 +3174,8 @@
               "call": {
                 "provider": "call_iYhgjNQ92a5QLcpZFG0zkIyr"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -3198,7 +3212,7 @@
                     "status": "completed",
                     "type": "message"
                   },
-                  "fingerprint": 11875678367458493829
+                  "fingerprint": 3379068498360755367
                 }
               }
             ],
@@ -3257,7 +3271,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 11875678367458493829
+                    "fingerprint": 3379068498360755367
                   }
                 }
               ],
@@ -3460,7 +3474,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 11875678367458493829
+                "fingerprint": 3379068498360755367
               }
             }
           }
@@ -3539,7 +3553,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12401461780161830332
+                "fingerprint": 9112623473347207456
               }
             }
           }
@@ -3556,7 +3570,8 @@
               "call": {
                 "provider": "call_rhUBecjSqzM2bL8p0XIKwEwZ"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -3616,7 +3631,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 14427687305149691945
+                "fingerprint": 14840376470190664285
               }
             }
           }
@@ -3645,7 +3660,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9132132867701971401
+                "fingerprint": 8846790980902890473
               }
             }
           }
@@ -3674,7 +3689,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 594105975185989459
+                "fingerprint": 8757642650208818463
               }
             }
           }
@@ -3703,7 +3718,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9476532590870202295
+                "fingerprint": 10105645410342069275
               }
             }
           }
@@ -3732,7 +3747,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7127098077739367003
+                "fingerprint": 8723675243280055279
               }
             }
           }
@@ -3761,7 +3776,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 3347410068217491663
+                "fingerprint": 11578610277976937179
               }
             }
           }
@@ -3778,7 +3793,8 @@
               "call": {
                 "provider": "call_hdq4UHmihDuHNx7f5PF9v5t3"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -3801,7 +3817,8 @@
               "call": {
                 "provider": "call_yDnA4JTU1wxDG6PLqVusIC60"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -3824,7 +3841,8 @@
               "call": {
                 "provider": "call_tu18NuZTCO0SIrluOGL3I6Db"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -3847,7 +3865,8 @@
               "call": {
                 "provider": "call_vuTmT4oQzgZ9XwCWlUXf4QNF"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -3870,7 +3889,8 @@
               "call": {
                 "provider": "call_gn7dqAAZjaT1Os3TNwllOZhT"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -3893,7 +3913,8 @@
               "call": {
                 "provider": "call_nqHKQciLIJCegr93BZqGI1vP"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -3949,7 +3970,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10820783091778223324
+                "fingerprint": 12754263704940027694
               }
             }
           }
@@ -3978,7 +3999,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1836950123456244345
+                "fingerprint": 16877113401945420899
               }
             }
           }
@@ -4007,7 +4028,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4804027896095814218
+                "fingerprint": 13705949798621021820
               }
             }
           }
@@ -4036,7 +4057,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12998286458147159311
+                "fingerprint": 15313061588343136385
               }
             }
           }
@@ -4065,7 +4086,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15416031637610690795
+                "fingerprint": 7846196377407249407
               }
             }
           }
@@ -4094,7 +4115,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12771532934667871868
+                "fingerprint": 11488257769597076208
               }
             }
           }
@@ -4111,7 +4132,8 @@
               "call": {
                 "provider": "call_j3fHmtfccPcCnrzfu4PkwCZ0"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4131,7 +4153,8 @@
               "call": {
                 "provider": "call_AJrdtphTfmolZ7mnQbh2i6gT"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4151,7 +4174,8 @@
               "call": {
                 "provider": "call_fhVysfXFWKqgRcYOsPfghR4w"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4171,7 +4195,8 @@
               "call": {
                 "provider": "call_z07PlTFHDErNc610EllvAM8E"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4191,7 +4216,8 @@
               "call": {
                 "provider": "call_GxnATTBd3OGNJ0VK7cfaEP9P"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4211,7 +4237,8 @@
               "call": {
                 "provider": "call_0GJNmkCs0DswQxN1aWCr6NPU"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4264,7 +4291,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4782165139236939779
+                "fingerprint": 16203297939195760239
               }
             }
           }
@@ -4281,7 +4308,8 @@
               "call": {
                 "provider": "call_iYhgjNQ92a5QLcpZFG0zkIyr"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4331,7 +4359,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 11875678367458493829
+                "fingerprint": 3379068498360755367
               }
             }
           }

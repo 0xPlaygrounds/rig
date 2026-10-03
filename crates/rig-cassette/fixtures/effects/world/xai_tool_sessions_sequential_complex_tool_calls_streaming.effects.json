@@ -2,35 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 22,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 24,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 25,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -38,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -54,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -66,11 +42,19 @@
         }
       },
       {
-        "batch": 31,
+        "batch": 30,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -90,7 +74,7 @@
         }
       },
       {
-        "batch": 46,
+        "batch": 41,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -98,7 +82,7 @@
         }
       },
       {
-        "batch": 50,
+        "batch": 45,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -106,21 +90,21 @@
         }
       },
       {
-        "batch": 68,
+        "batch": 61,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 69,
+        "batch": 62,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 92,
+        "batch": 80,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -128,7 +112,7 @@
         }
       },
       {
-        "batch": 93,
+        "batch": 81,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -136,7 +120,7 @@
         }
       },
       {
-        "batch": 94,
+        "batch": 82,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -144,7 +128,7 @@
         }
       },
       {
-        "batch": 100,
+        "batch": 88,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -152,7 +136,7 @@
         }
       },
       {
-        "batch": 107,
+        "batch": 101,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -160,21 +144,21 @@
         }
       },
       {
-        "batch": 121,
+        "batch": 111,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 123,
+        "batch": 113,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 145,
+        "batch": 131,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -182,7 +166,7 @@
         }
       },
       {
-        "batch": 146,
+        "batch": 132,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -190,7 +174,7 @@
         }
       },
       {
-        "batch": 147,
+        "batch": 133,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -198,7 +182,7 @@
         }
       },
       {
-        "batch": 154,
+        "batch": 136,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -206,7 +190,7 @@
         }
       },
       {
-        "batch": 159,
+        "batch": 141,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -214,21 +198,21 @@
         }
       },
       {
-        "batch": 172,
+        "batch": 152,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 174,
+        "batch": 153,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 197,
+        "batch": 175,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -236,7 +220,7 @@
         }
       },
       {
-        "batch": 203,
+        "batch": 179,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -244,21 +228,21 @@
         }
       },
       {
-        "batch": 215,
+        "batch": 192,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 216,
+        "batch": 194,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 236,
+        "batch": 208,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -266,7 +250,7 @@
         }
       },
       {
-        "batch": 239,
+        "batch": 211,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -274,63 +258,7 @@
         }
       },
       {
-        "batch": 240,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 241,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 242,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 243,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 244,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 245,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 246,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 247,
+        "batch": 212,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -338,7 +266,7 @@
         }
       },
       {
-        "batch": 248,
+        "batch": 213,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -346,47 +274,7 @@
         }
       },
       {
-        "batch": 249,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 250,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 251,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 252,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 253,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 254,
+        "batch": 214,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -394,7 +282,7 @@
         }
       },
       {
-        "batch": 255,
+        "batch": 215,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -402,7 +290,23 @@
         }
       },
       {
-        "batch": 256,
+        "batch": 216,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 217,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 218,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -410,7 +314,7 @@
         }
       },
       {
-        "batch": 260,
+        "batch": 219,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -418,7 +322,47 @@
         }
       },
       {
-        "batch": 272,
+        "batch": 220,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 221,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 222,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 223,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 226,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 235,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -733,7 +677,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 995873926103930295
+                "fingerprint": 14689008083079713927
               }
             },
             {
@@ -754,7 +698,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10893370864192360050
+                "fingerprint": 1058881456214831828
               }
             }
           ],
@@ -775,55 +719,65 @@
           "provider_request_id": "70c3774e-a273-9a07-8c8b-f4a61f074043",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "70c3774e-a273-9a07-8c8b-f4a61f074043",
-            "object": "response",
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "70c3774e-a273-9a07-8c8b-f4a61f074043",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            },
             "model": "grok-4.3",
-            "reasoning": {
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 743,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "output_tokens": 367,
-              "output_tokens_details": {
-                "reasoning_tokens": 361
-              },
-              "total_tokens": 1110
-            },
+            "object": "response",
             "output": [
               {
-                "type": "reasoning",
+                "encrypted_content": "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",
                 "id": "rs_70c3774e-a273-9a07-8c8b-f4a61f074043",
+                "status": "completed",
                 "summary": [
                   {
-                    "type": "summary_text",
-                    "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text."
+                    "text": "Running the production-readiness scenario.\n\nThe scenario requires four sequential tool calls: ping_empty, inspect_manifest with the exact note and flags, join_labels with the specified labels and separator, and escape_echo with the exact escaped text.",
+                    "type": "summary_text"
                   }
                 ],
-                "encrypted_content": "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",
-                "status": "completed"
+                "type": "reasoning"
               },
               {
-                "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
                 "arguments": "{}",
                 "call_id": "call-2d2983ce-88cc-489d-bccb-8c9cd0ff6044-0",
+                "id": "fc_70c3774e-a273-9a07-8c8b-f4a61f074043_0",
                 "name": "ping_empty",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 0.699999988079071,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
             "tools": [
               {
-                "type": "function",
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
                 "name": "ping_empty",
                 "parameters": {
                   "properties": {},
@@ -831,10 +785,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Return EMPTY-OK. This tool takes no arguments."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Validate a nested deployment manifest.",
                 "name": "inspect_manifest",
                 "parameters": {
                   "properties": {
@@ -887,10 +841,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Validate a nested deployment manifest."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Join label strings with the requested separator.",
                 "name": "join_labels",
                 "parameters": {
                   "properties": {
@@ -911,10 +865,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Join label strings with the requested separator."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Echo a string containing escaping-sensitive characters.",
                 "name": "escape_echo",
                 "parameters": {
                   "properties": {
@@ -928,23 +882,31 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Echo a string containing escaping-sensitive characters."
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 0.949999988079071,
             "truncation": "disabled",
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            "usage": {
+              "context_details": {
+                "input_tokens": 743,
+                "output_tokens": 370
+              },
+              "cost_in_usd_ticks": 16446500,
+              "input_tokens": 743,
+              "input_tokens_details": {
+                "cached_tokens": 192
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 367,
+              "output_tokens_details": {
+                "reasoning_tokens": 361
+              },
+              "total_tokens": 1110
             },
-            "parallel_tool_calls": false,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -1074,7 +1036,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 995873926103930295
+                "fingerprint": 14689008083079713927
               }
             }
           }
@@ -1083,7 +1045,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -1091,7 +1053,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{}"
           }
         },
@@ -1099,7 +1061,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1118,12 +1080,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10893370864192360050
+                "fingerprint": 1058881456214831828
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "xai",
+        "model": "grok-4.3"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -1192,7 +1159,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 995873926103930295
+                    "fingerprint": 14689008083079713927
                   }
                 },
                 {
@@ -1213,7 +1180,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10893370864192360050
+                    "fingerprint": 1058881456214831828
                   }
                 }
               ],
@@ -1379,7 +1346,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 16124421267036647775
+                "fingerprint": 6192271412375732631
               }
             },
             {
@@ -1417,7 +1384,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12651762188212728195
+                "fingerprint": 8654680008573901541
               }
             }
           ],
@@ -1438,55 +1405,65 @@
           "provider_request_id": "60e5f77f-0ac4-93db-9d34-c41e266c493f",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "60e5f77f-0ac4-93db-9d34-c41e266c493f",
-            "object": "response",
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "60e5f77f-0ac4-93db-9d34-c41e266c493f",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            },
             "model": "grok-4.3",
-            "reasoning": {
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 1121,
-              "input_tokens_details": {
-                "cached_tokens": 704
-              },
-              "output_tokens": 196,
-              "output_tokens_details": {
-                "reasoning_tokens": 123
-              },
-              "total_tokens": 1317
-            },
+            "object": "response",
             "output": [
               {
-                "type": "reasoning",
+                "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
                 "id": "rs_60e5f77f-0ac4-93db-9d34-c41e266c493f",
+                "status": "completed",
                 "summary": [
                   {
-                    "type": "summary_text",
-                    "text": "The first tool call returned an empty OK result."
+                    "text": "The first tool call returned an empty OK result.",
+                    "type": "summary_text"
                   }
                 ],
-                "encrypted_content": "Po/SQWYLufBXWRfXb5NQgvLPBcSFZqGBzTfLiWBkr16G+1fR8EiXZIknBUzaJ0yUODe2XyZ7L4fA07SlTUHp2+sJ5dCpSvG+fu4W4DeBjPGrmbf+fBo4XPKpyRJxU+SfMaNpH0DkvCsaZ+FvEYDozAfUGhGqTMzjqEiqEQC/3igEFywuyLOBOM6yD2Y85Z5r5bNarLBCpHV8C7I+AdbmIHNeUJT6rphNcRdPRnFeoby/d19JEjsV4qIDSNGWb5AtXORxXCXwewe2kY0HvOlnu7N52PQkZ2YhfQJeloBih8xZHQd+WV/3z2nRFMKuf2gwtxSZZqwLC5BaLSBOAmk5p8IikQlC362ClTX9ippxzcysBBKgKLfPU1wLlWaE8vrdmVShjYUr4sMg6d8E+uawZ25W1m354ePBTCPabcDKfs+B4fMLYGWeeLDfs/g6z4YTpsNZ1Wzrvad/0z3kTCQbY72Efw/Xfj/fLjj6/TJrcZm8i9JS27h1Yl7wmSywE0aAOv0eVwXvf0Hlda/t9PilbyuCwhfvGpJkRIpoGcN/56G6wpXhJjxcAjHWVHlmzpguZTjagj5a0C2VMbRfNEeyq8xuKxqXEhi60pZ1fJ3HGF8CeUqvRw4X6TD4MA04M53hsy5rzTn/",
-                "status": "completed"
+                "type": "reasoning"
               },
               {
-                "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
                 "arguments": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}",
                 "call_id": "call-84a772a9-2d10-4524-8bcf-6e0a9ceb5c65-1",
+                "id": "fc_60e5f77f-0ac4-93db-9d34-c41e266c493f_0",
                 "name": "inspect_manifest",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 0.699999988079071,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
             "tools": [
               {
-                "type": "function",
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
                 "name": "ping_empty",
                 "parameters": {
                   "properties": {},
@@ -1494,10 +1471,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Return EMPTY-OK. This tool takes no arguments."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Validate a nested deployment manifest.",
                 "name": "inspect_manifest",
                 "parameters": {
                   "properties": {
@@ -1550,10 +1527,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Validate a nested deployment manifest."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Join label strings with the requested separator.",
                 "name": "join_labels",
                 "parameters": {
                   "properties": {
@@ -1574,10 +1551,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Join label strings with the requested separator."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Echo a string containing escaping-sensitive characters.",
                 "name": "escape_echo",
                 "parameters": {
                   "properties": {
@@ -1591,23 +1568,31 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Echo a string containing escaping-sensitive characters."
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 0.949999988079071,
             "truncation": "disabled",
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            "usage": {
+              "context_details": {
+                "input_tokens": 1121,
+                "output_tokens": 199
+              },
+              "cost_in_usd_ticks": 11520500,
+              "input_tokens": 1121,
+              "input_tokens_details": {
+                "cached_tokens": 704
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 196,
+              "output_tokens_details": {
+                "reasoning_tokens": 123
+              },
+              "total_tokens": 1317
             },
-            "parallel_tool_calls": false,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -1665,7 +1650,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 16124421267036647775
+                "fingerprint": 6192271412375732631
               }
             }
           }
@@ -1674,7 +1659,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -1682,7 +1667,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}"
           }
         },
@@ -1690,7 +1675,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1726,12 +1711,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12651762188212728195
+                "fingerprint": 8654680008573901541
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "xai",
+        "model": "grok-4.3"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -1800,7 +1790,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 995873926103930295
+                    "fingerprint": 14689008083079713927
                   }
                 },
                 {
@@ -1821,7 +1811,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10893370864192360050
+                    "fingerprint": 1058881456214831828
                   }
                 }
               ],
@@ -1871,7 +1861,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 16124421267036647775
+                    "fingerprint": 6192271412375732631
                   }
                 },
                 {
@@ -1909,7 +1899,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12651762188212728195
+                    "fingerprint": 8654680008573901541
                   }
                 }
               ],
@@ -2075,7 +2065,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 16979434181988051414
+                "fingerprint": 10092555462247041044
               }
             },
             {
@@ -2104,7 +2094,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1774883752759615433
+                "fingerprint": 10350060004672450685
               }
             }
           ],
@@ -2125,55 +2115,65 @@
           "provider_request_id": "a19f3b34-122d-9747-93fc-06fca2407c5e",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "a19f3b34-122d-9747-93fc-06fca2407c5e",
-            "object": "response",
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "a19f3b34-122d-9747-93fc-06fca2407c5e",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            },
             "model": "grok-4.3",
-            "reasoning": {
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 1331,
-              "input_tokens_details": {
-                "cached_tokens": 1088
-              },
-              "output_tokens": 166,
-              "output_tokens_details": {
-                "reasoning_tokens": 138
-              },
-              "total_tokens": 1497
-            },
+            "object": "response",
             "output": [
               {
-                "type": "reasoning",
+                "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
                 "id": "rs_a19f3b34-122d-9747-93fc-06fca2407c5e",
+                "status": "completed",
                 "summary": [
                   {
-                    "type": "summary_text",
-                    "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK."
+                    "text": "The second tool completed successfully. The manifest check returned MANIFEST-OK.",
+                    "type": "summary_text"
                   }
                 ],
-                "encrypted_content": "6dQXHOB04Yvsx96kj4kofL2vriqLJgFYVRjdJWzIETgD/dCXuz/yqX5HrdRApF+q1SPKtsHJAQk8FbVdDwKCMxGHwR+d0hA0anKp9UlKxKFQZly0DZ92b+7ZBpX7Gkt45Ajq5+m/hhmTvMz67DslAhtabinPQ/q/EAo0PZDMlGYblz3Kb4l3LhBThBu2vJh/YdOTz0c/pmbOWAH6OvisoPLO9mJpk8FJCe8wyn2Il/92WwLxEofbjrHWB13lfHEgCyh+L5IdPpl1RdzFIUElERCc/AT2GhZzBV6wJLFD1hVB8iu9Qb7D/WhNmSdsQkOuVP+GH5osjx4AQ8MDjc70EYoMsqn+uM4T5gxtiNWK4H3PRRrWOhI7q37YZksnLLuRMDeUDtIDMYVfTCUfw3yZtuwsurlonpLWC88Ak1AXj+/8KLmE4KFdo0pP+0V6+fwQn4+yZv5DlxtoaQ1S7UWW5mP68x7zcl9rZHt9V8f4dg+HrOY7fUR+xaXJMiClx3+0QwjhtCvh4dTGuQhQbKJCf9GBZosyniHr7+6psFNj9P8/yjNkvfsRJzQFUdO1qSspSOUdyrpSv97cN5p8x1B/A6TRrDHc2PSE/XS+v4nNupSyBpgfKDQvu1mIEadPjgtSIE/VXxWdBjciyONfs4qxnubizO1YMkrNZdeRE1ygtSBSbdljpN3FG0ZIOH0qyr+f1zCDOV2heqROYe8GxfjE",
-                "status": "completed"
+                "type": "reasoning"
               },
               {
-                "id": "fc_a19f3b34-122d-9747-93fc-06fca2407c5e_0",
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                 "call_id": "call-81f363d6-0303-45ec-9709-80fdda00de7c-2",
+                "id": "fc_a19f3b34-122d-9747-93fc-06fca2407c5e_0",
                 "name": "join_labels",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 0.699999988079071,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
             "tools": [
               {
-                "type": "function",
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
                 "name": "ping_empty",
                 "parameters": {
                   "properties": {},
@@ -2181,10 +2181,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Return EMPTY-OK. This tool takes no arguments."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Validate a nested deployment manifest.",
                 "name": "inspect_manifest",
                 "parameters": {
                   "properties": {
@@ -2237,10 +2237,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Validate a nested deployment manifest."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Join label strings with the requested separator.",
                 "name": "join_labels",
                 "parameters": {
                   "properties": {
@@ -2261,10 +2261,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Join label strings with the requested separator."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Echo a string containing escaping-sensitive characters.",
                 "name": "escape_echo",
                 "parameters": {
                   "properties": {
@@ -2278,23 +2278,31 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Echo a string containing escaping-sensitive characters."
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 0.949999988079071,
             "truncation": "disabled",
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            "usage": {
+              "context_details": {
+                "input_tokens": 1331,
+                "output_tokens": 170
+              },
+              "cost_in_usd_ticks": 9363500,
+              "input_tokens": 1331,
+              "input_tokens_details": {
+                "cached_tokens": 1088
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 166,
+              "output_tokens_details": {
+                "reasoning_tokens": 138
+              },
+              "total_tokens": 1497
             },
-            "parallel_tool_calls": false,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -2352,7 +2360,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 16979434181988051414
+                "fingerprint": 10092555462247041044
               }
             }
           }
@@ -2361,7 +2369,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -2369,7 +2377,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}"
           }
         },
@@ -2377,7 +2385,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -2404,12 +2412,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1774883752759615433
+                "fingerprint": 10350060004672450685
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "xai",
+        "model": "grok-4.3"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -2478,7 +2491,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 995873926103930295
+                    "fingerprint": 14689008083079713927
                   }
                 },
                 {
@@ -2499,7 +2512,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10893370864192360050
+                    "fingerprint": 1058881456214831828
                   }
                 }
               ],
@@ -2549,7 +2562,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 16124421267036647775
+                    "fingerprint": 6192271412375732631
                   }
                 },
                 {
@@ -2587,7 +2600,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12651762188212728195
+                    "fingerprint": 8654680008573901541
                   }
                 }
               ],
@@ -2637,7 +2650,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 16979434181988051414
+                    "fingerprint": 10092555462247041044
                   }
                 },
                 {
@@ -2666,7 +2679,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1774883752759615433
+                    "fingerprint": 10350060004672450685
                   }
                 }
               ],
@@ -2827,7 +2840,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -2850,7 +2863,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5848518932379350254
+                "fingerprint": 9733804691474563374
               }
             }
           ],
@@ -2871,50 +2884,60 @@
           "provider_request_id": "7e619926-07a2-95ad-b099-4ee143dbf7dd",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "7e619926-07a2-95ad-b099-4ee143dbf7dd",
-            "object": "response",
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "7e619926-07a2-95ad-b099-4ee143dbf7dd",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            },
             "model": "grok-4.3",
-            "reasoning": {
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 1521,
-              "input_tokens_details": {
-                "cached_tokens": 1280
-              },
-              "output_tokens": 100,
-              "output_tokens_details": {
-                "reasoning_tokens": 73
-              },
-              "total_tokens": 1621
-            },
+            "object": "response",
             "output": [
               {
-                "type": "reasoning",
-                "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
-                "summary": [],
                 "encrypted_content": "OEFHrv2VQDrN8yRbIQLYajIvIxjprqr+Lzj0vR0wcvQtFbWg96B5Yp940JBKB2AZZmjxWyXzsIsA8KK7hcM/Wew8+icaqA3+j6CoibWTr1mjxe/6PYH79zYvQSbsZagwe67UyXotz/ZwIWhynbE51kJfY9NNz6jYDBBxXkKnwjpZojTfy/00hiA56G7rZs6H0RORWfivJ0jqg+cBceslCILZYPrWZL3KRMnpW5VsZQr/uSytMzgEXmowiYrv1DUa7FMoi7fReJQjhG5jM87wYbXQEscca3X/chX1oYlOA8/UDotmQLR63d+P4RVEq/L3SFMoCnXo2t7OURUcWHWWbJkDt6gbO4AuwQXfcKcmT4wfUaaYHXDOHvdE",
-                "status": "completed"
+                "id": "rs_7e619926-07a2-95ad-b099-4ee143dbf7dd",
+                "status": "completed",
+                "summary": [],
+                "type": "reasoning"
               },
               {
-                "id": "fc_7e619926-07a2-95ad-b099-4ee143dbf7dd_0",
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                 "call_id": "call-dbb890b9-e175-4214-9a9d-b25245e009db-3",
+                "id": "fc_7e619926-07a2-95ad-b099-4ee143dbf7dd_0",
                 "name": "escape_echo",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "reasoning": {
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 0.699999988079071,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "tool_choice": "auto",
             "tools": [
               {
-                "type": "function",
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
                 "name": "ping_empty",
                 "parameters": {
                   "properties": {},
@@ -2922,10 +2945,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Return EMPTY-OK. This tool takes no arguments."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Validate a nested deployment manifest.",
                 "name": "inspect_manifest",
                 "parameters": {
                   "properties": {
@@ -2978,10 +3001,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Validate a nested deployment manifest."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Join label strings with the requested separator.",
                 "name": "join_labels",
                 "parameters": {
                   "properties": {
@@ -3002,10 +3025,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Join label strings with the requested separator."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Echo a string containing escaping-sensitive characters.",
                 "name": "escape_echo",
                 "parameters": {
                   "properties": {
@@ -3019,23 +3042,31 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Echo a string containing escaping-sensitive characters."
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 0.949999988079071,
             "truncation": "disabled",
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            "usage": {
+              "context_details": {
+                "input_tokens": 1521,
+                "output_tokens": 103
+              },
+              "cost_in_usd_ticks": 8072500,
+              "input_tokens": 1521,
+              "input_tokens_details": {
+                "cached_tokens": 1280
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 100,
+              "output_tokens_details": {
+                "reasoning_tokens": 73
+              },
+              "total_tokens": 1621
             },
-            "parallel_tool_calls": false,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -3064,7 +3095,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -3073,7 +3104,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -3081,7 +3112,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}"
           }
         },
@@ -3089,7 +3120,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -3110,12 +3141,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5848518932379350254
+                "fingerprint": 9733804691474563374
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "xai",
+        "model": "grok-4.3"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -3184,7 +3220,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 995873926103930295
+                    "fingerprint": 14689008083079713927
                   }
                 },
                 {
@@ -3205,7 +3241,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10893370864192360050
+                    "fingerprint": 1058881456214831828
                   }
                 }
               ],
@@ -3255,7 +3291,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 16124421267036647775
+                    "fingerprint": 6192271412375732631
                   }
                 },
                 {
@@ -3293,7 +3329,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12651762188212728195
+                    "fingerprint": 8654680008573901541
                   }
                 }
               ],
@@ -3343,7 +3379,7 @@
                       ],
                       "type": "reasoning"
                     },
-                    "fingerprint": 16979434181988051414
+                    "fingerprint": 10092555462247041044
                   }
                 },
                 {
@@ -3372,7 +3408,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1774883752759615433
+                    "fingerprint": 10350060004672450685
                   }
                 }
               ],
@@ -3417,7 +3453,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -3440,7 +3476,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5848518932379350254
+                    "fingerprint": 9733804691474563374
                   }
                 }
               ],
@@ -3601,7 +3637,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -3622,7 +3658,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10198683419951598249
+                "fingerprint": 1218011299984180513
               }
             }
           ],
@@ -3643,56 +3679,66 @@
           "provider_request_id": "ec67783a-e3de-9f07-b74c-be0908503aae",
           "finish_reason": "stop",
           "raw": {
-            "id": "ec67783a-e3de-9f07-b74c-be0908503aae",
-            "object": "response",
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "ec67783a-e3de-9f07-b74c-be0908503aae",
             "incomplete_details": null,
             "instructions": null,
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {
+              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            },
             "model": "grok-4.3",
+            "object": "response",
+            "output": [
+              {
+                "encrypted_content": "DhMyEysUazeAV26cJsUPojmdHaA8Q44cppinQkn1A5Jwg6DviG1Civ68B9UywnW1zOY4xEUZxjrvKQX0O9RIe984fYtlubF/zWIOExqTuGU0PnJSkzSAyL0Pia7mkWuAEaZwiy20N6e470C+t8fMq+j1uzfgIXQo7FcBfsEdhUYZb6aQStyCW8Caick",
+                "id": "rs_ec67783a-e3de-9f07-b74c-be0908503aae",
+                "status": "completed",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_ec67783a-e3de-9f07-b74c-be0908503aae",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": false,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
             "reasoning": {
               "effort": null,
               "summary": null
             },
-            "usage": {
-              "input_tokens": 1651,
-              "input_tokens_details": {
-                "cached_tokens": 192
-              },
-              "output_tokens": 53,
-              "output_tokens_details": {
-                "reasoning_tokens": 33
-              },
-              "total_tokens": 1704
-            },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_ec67783a-e3de-9f07-b74c-be0908503aae",
-                "summary": [],
-                "encrypted_content": "DhMyEysUazeAV26cJsUPojmdHaA8Q44cppinQkn1A5Jwg6DviG1Civ68B9UywnW1zOY4xEUZxjrvKQX0O9RIe984fYtlubF/zWIOExqTuGU0PnJSkzSAyL0Pia7mkWuAEaZwiy20N6e470C+t8fMq+j1uzfgIXQo7FcBfsEdhUYZb6aQStyCW8Caick",
-                "status": "completed"
-              },
-              {
-                "id": "msg_ec67783a-e3de-9f07-b74c-be0908503aae",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "Production readiness complete: EMPTY-OK MANIFEST-OK LABELS-OK ESCAPE-OK.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 0.699999988079071,
+            "text": {
+              "format": {
+                "type": "text"
               }
-            ],
+            },
+            "tool_choice": "auto",
             "tools": [
               {
-                "type": "function",
+                "description": "Return EMPTY-OK. This tool takes no arguments.",
                 "name": "ping_empty",
                 "parameters": {
                   "properties": {},
@@ -3700,10 +3746,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Return EMPTY-OK. This tool takes no arguments."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Validate a nested deployment manifest.",
                 "name": "inspect_manifest",
                 "parameters": {
                   "properties": {
@@ -3756,10 +3802,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Validate a nested deployment manifest."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Join label strings with the requested separator.",
                 "name": "join_labels",
                 "parameters": {
                   "properties": {
@@ -3780,10 +3826,10 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Join label strings with the requested separator."
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Echo a string containing escaping-sensitive characters.",
                 "name": "escape_echo",
                 "parameters": {
                   "properties": {
@@ -3797,23 +3843,31 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Echo a string containing escaping-sensitive characters."
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 0.949999988079071,
             "truncation": "disabled",
-            "metadata": {
-              "system_fingerprint": "fp_eb3c003fc66c14ed"
+            "usage": {
+              "context_details": {
+                "input_tokens": 1651,
+                "output_tokens": 61
+              },
+              "cost_in_usd_ticks": 19946500,
+              "input_tokens": 1651,
+              "input_tokens_details": {
+                "cached_tokens": 192
+              },
+              "num_server_side_tools_used": 0,
+              "num_sources_used": 0,
+              "output_tokens": 53,
+              "output_tokens_details": {
+                "reasoning_tokens": 33
+              },
+              "total_tokens": 1704
             },
-            "parallel_tool_calls": false,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -3842,7 +3896,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -4038,12 +4092,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10198683419951598249
+                "fingerprint": 1218011299984180513
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "xai",
+        "model": "grok-4.3"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -116,14 +116,14 @@
                 "item": {
                   "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
                 },
-                "fingerprint": 4457780082167571940
+                "fingerprint": 3105953242091332720
               }
             }
           ],
           "usage": {
-            "input_tokens": 68,
+            "input_tokens": 67,
             "output_tokens": 107,
-            "total_tokens": 175,
+            "total_tokens": 174,
             "reasoning_tokens": 80
           },
           "origin": {
@@ -131,14 +131,14 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "oXizaoHIJ7yCz7IPvIfHuAM"
+            "response_id": "oQ_AarKkNcukmtkP0dbS8Qc"
           },
           "native": {
             "item": {
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 10076436555367638636
+            "fingerprint": 10308843102601499360
           },
           "finish_reason": "stop",
           "raw": {
@@ -157,19 +157,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "oXizaoHIJ7yCz7IPvIfHuAM",
+            "responseId": "oQ_AarKkNcukmtkP0dbS8Qc",
             "usageMetadata": {
               "candidatesTokenCount": 27,
-              "promptTokenCount": 68,
+              "promptTokenCount": 67,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 68
+                  "tokenCount": 67
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 80,
-              "totalTokenCount": 175
+              "totalTokenCount": 174
             }
           }
         }

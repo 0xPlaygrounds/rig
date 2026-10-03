@@ -239,7 +239,7 @@
                   "item": {
                     "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
                   },
-                  "fingerprint": 6969616469263934968
+                  "fingerprint": 13815496812336077730
                 }
               },
               {
@@ -264,7 +264,7 @@
                     "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
                     "type": "function"
                   },
-                  "fingerprint": 15901733177064101633
+                  "fingerprint": 805869510244306993
                 }
               }
             ],
@@ -293,7 +293,7 @@
                     }
                   ]
                 },
-                "fingerprint": 40030546454504198
+                "fingerprint": 15464414479245990676
               }
             },
             "done": true,
@@ -321,7 +321,7 @@
                     "item": {
                       "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
                     },
-                    "fingerprint": 6969616469263934968
+                    "fingerprint": 13815496812336077730
                   }
                 },
                 {
@@ -346,7 +346,7 @@
                       "id": "call_00_hnAM2ynSS6NSzW7jorYZ1678",
                       "type": "function"
                     },
-                    "fingerprint": 15901733177064101633
+                    "fingerprint": 805869510244306993
                   }
                 }
               ],
@@ -380,7 +380,7 @@
                     }
                   ]
                 },
-                "fingerprint": 40030546454504198
+                "fingerprint": 15464414479245990676
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -461,7 +461,7 @@
                   }
                 ]
               },
-              "fingerprint": 40030546454504198
+              "fingerprint": 15464414479245990676
             }
           }
         },
@@ -474,7 +474,7 @@
                 "item": {
                   "reasoning_content": "The user provided a text: \"Alice is a 25 year old developer.\" I need to extract structured data: name, age, profession.\n\nName: Alice\nAge: 25\nProfession: developer\n\nSubmit."
                 },
-                "fingerprint": 6969616469263934968
+                "fingerprint": 13815496812336077730
               }
             }
           }

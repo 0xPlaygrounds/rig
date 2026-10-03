@@ -106,7 +106,7 @@
                 "item": {
                   "reasoning_content": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace."
                 },
-                "fingerprint": 1264718677367950229
+                "fingerprint": 368475463730783697
               }
             },
             {
@@ -131,7 +131,7 @@
                   "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381",
                   "type": "function"
                 },
-                "fingerprint": 17005894645400276812
+                "fingerprint": 1417657237032380838
               }
             }
           ],
@@ -165,7 +165,7 @@
                 }
               ]
             },
-            "fingerprint": 4048840895822048742
+            "fingerprint": 17423597761825338420
           },
           "finish_reason": "tool_calls",
           "raw": {

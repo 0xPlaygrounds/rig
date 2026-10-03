@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 24,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 26,
+        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 29,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 31,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -191,7 +191,7 @@
                   "id": "call_BpbgaN2bEwYW34EbOsYJQpIM",
                   "type": "function"
                 },
-                "fingerprint": 4257207997715590371
+                "fingerprint": 3121039051628235691
               }
             },
             {
@@ -214,7 +214,7 @@
                   "id": "call_RtM8ybJUkyh7CK1d8donWsC3",
                   "type": "function"
                 },
-                "fingerprint": 3655098555348361984
+                "fingerprint": 9048724230678161766
               }
             }
           ],
@@ -255,21 +255,25 @@
                 }
               ]
             },
-            "fingerprint": 5520608808222387144
+            "fingerprint": 7906341572721291726
           },
           "provider_request_id": "req_23dff62b153d49c7b65d6cdbab4190bd",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 90,
               "completion_tokens": 42,
-              "total_tokens": 132,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 90,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 132
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-ERDAy43pAROqR342mOcEOmQVKAWrx",
@@ -326,7 +330,7 @@
                   "id": "call_BpbgaN2bEwYW34EbOsYJQpIM",
                   "type": "function"
                 },
-                "fingerprint": 4257207997715590371
+                "fingerprint": 3121039051628235691
               }
             }
           }
@@ -372,12 +376,17 @@
                   "id": "call_RtM8ybJUkyh7CK1d8donWsC3",
                   "type": "function"
                 },
-                "fingerprint": 3655098555348361984
+                "fingerprint": 9048724230678161766
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "parity/run#0"
     },
     {

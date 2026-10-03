@@ -77,13 +77,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
-              "native": {
-                "item": {
-                  "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences"
-                },
-                "fingerprint": 6847093931200498153
-              }
+              "text": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences"
             }
           ],
           "usage": {
@@ -102,7 +96,7 @@
               "content": "Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences",
               "role": "assistant"
             },
-            "fingerprint": 2858682494129410557
+            "fingerprint": 890959966931501331
           },
           "finish_reason": "length",
           "raw": {

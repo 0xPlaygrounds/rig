@@ -95,14 +95,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\n  \"category\": \"Technology\",\n  \"summary\": \"Seattle Rust Meetup\",\n  \"title\": \"Seattle Rust User Group Monthly Meetup\"\n}",
-              "native": {
-                "item": {
-                  "content": "{\n  \"category\": \"Technology\",\n  \"summary\": \"Seattle Rust Meetup\",\n  \"title\": \"Seattle Rust User Group Monthly Meetup\"\n}",
-                  "refusal": null
-                },
-                "fingerprint": 10566148990263889074
-              }
+              "text": "{\n  \"category\": \"Technology\",\n  \"summary\": \"Seattle Rust Meetup\",\n  \"title\": \"Seattle Rust User Group Monthly Meetup\"\n}"
             }
           ],
           "usage": {
@@ -125,7 +118,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 12094915118701029848
+            "fingerprint": 2551208615549248974
           },
           "finish_reason": "stop",
           "raw": {

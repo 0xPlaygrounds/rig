@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 6
         }
       },
       {
@@ -38,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -54,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -110,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -126,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -138,111 +138,7 @@
         }
       },
       {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 24,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 31,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 32,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 33,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -315,13 +211,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
-                },
-                "fingerprint": 17143301763609373726
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
             }
           ],
           "usage": {
@@ -342,19 +232,19 @@
               "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
               "role": "assistant"
             },
-            "fingerprint": 9989023589069902286
+            "fingerprint": 10451453978944546474
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 96,
               "completion_tokens": 33,
-              "total_tokens": 129,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 96,
+              "prompt_tokens": 96,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 96
+              "total_tokens": 129
             },
             "finish_reason": "stop",
             "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
@@ -647,17 +537,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
-                },
-                "fingerprint": 17143301763609373726
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     }
   ]

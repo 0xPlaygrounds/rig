@@ -163,12 +163,17 @@
                   "id": "call_ceb2f9a1fbe147df99e5bfd2",
                   "type": "function"
                 },
-                "fingerprint": 32097677207837789
+                "fingerprint": 15520083190546774551
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     }
   ]
 }

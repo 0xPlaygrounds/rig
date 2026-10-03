@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 27,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 25,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 34,
+        "batch": 31,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,39 @@
         }
       },
       {
+        "batch": 32,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 33,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 35,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -48,47 +80,7 @@
         }
       },
       {
-        "batch": 38,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 39,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 41,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
+        "batch": 37,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -211,7 +203,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_vF2oalP8UdAGPVhtX44M2006"
+                "provider": "call_00_D8pOIAJzP8g1zPkltCGZ4221"
               },
               "function": {
                 "name": "add",
@@ -226,10 +218,10 @@
                     "arguments": "{\"x\": 2, \"y\": 3}",
                     "name": "add"
                   },
-                  "id": "call_00_vF2oalP8UdAGPVhtX44M2006",
+                  "id": "call_00_D8pOIAJzP8g1zPkltCGZ4221",
                   "type": "function"
                 },
-                "fingerprint": 4958063950133235357
+                "fingerprint": 15765566111649120288
               }
             }
           ],
@@ -244,7 +236,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "78ab35a5-4407-44c5-a692-62f6aba944c1"
+            "response_id": "cd4bf931-9510-42f4-beeb-f680a7a2766a"
           },
           "native": {
             "item": {
@@ -256,27 +248,27 @@
                     "arguments": "{\"x\": 2, \"y\": 3}",
                     "name": "add"
                   },
-                  "id": "call_00_vF2oalP8UdAGPVhtX44M2006",
+                  "id": "call_00_D8pOIAJzP8g1zPkltCGZ4221",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 8954014301416315865
+            "fingerprint": 14529569089008947250
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 309,
               "completion_tokens": 52,
-              "total_tokens": 361,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 181,
+              "prompt_tokens": 309,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 181
+              "total_tokens": 361
             },
             "finish_reason": "tool_calls",
-            "response_id": "78ab35a5-4407-44c5-a692-62f6aba944c1",
+            "response_id": "cd4bf931-9510-42f4-beeb-f680a7a2766a",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -311,7 +303,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_vF2oalP8UdAGPVhtX44M2006"
+                "provider": "call_00_D8pOIAJzP8g1zPkltCGZ4221"
               },
               "function": {
                 "name": "add",
@@ -326,15 +318,20 @@
                     "arguments": "{\"x\": 2, \"y\": 3}",
                     "name": "add"
                   },
-                  "id": "call_00_vF2oalP8UdAGPVhtX44M2006",
+                  "id": "call_00_D8pOIAJzP8g1zPkltCGZ4221",
                   "type": "function"
                 },
-                "fingerprint": 4958063950133235357
+                "fingerprint": 15765566111649120288
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -390,7 +387,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_vF2oalP8UdAGPVhtX44M2006"
+                    "provider": "call_00_D8pOIAJzP8g1zPkltCGZ4221"
                   },
                   "function": {
                     "name": "add",
@@ -405,10 +402,10 @@
                         "arguments": "{\"x\": 2, \"y\": 3}",
                         "name": "add"
                       },
-                      "id": "call_00_vF2oalP8UdAGPVhtX44M2006",
+                      "id": "call_00_D8pOIAJzP8g1zPkltCGZ4221",
                       "type": "function"
                     },
-                    "fingerprint": 4958063950133235357
+                    "fingerprint": 15765566111649120288
                   }
                 }
               ],
@@ -417,7 +414,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "78ab35a5-4407-44c5-a692-62f6aba944c1"
+                "response_id": "cd4bf931-9510-42f4-beeb-f680a7a2766a"
               },
               "stop": "tool_use",
               "native": {
@@ -430,12 +427,12 @@
                         "arguments": "{\"x\": 2, \"y\": 3}",
                         "name": "add"
                       },
-                      "id": "call_00_vF2oalP8UdAGPVhtX44M2006",
+                      "id": "call_00_D8pOIAJzP8g1zPkltCGZ4221",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8954014301416315865
+                "fingerprint": 14529569089008947250
               }
             },
             {
@@ -444,7 +441,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_vF2oalP8UdAGPVhtX44M2006"
+                    "provider": "call_00_D8pOIAJzP8g1zPkltCGZ4221"
                   },
                   "name": "add",
                   "content": [
@@ -495,13 +492,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "2 + 3 = 5",
-              "native": {
-                "item": {
-                  "content": "2 + 3 = 5"
-                },
-                "fingerprint": 15164235075327557177
-              }
+              "text": "2 + 3 = 5"
             }
           ],
           "usage": {
@@ -515,29 +506,29 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "5dfca876-c320-4944-9c54-e849e4e15a37"
+            "response_id": "d16fc1b3-b193-4102-9f50-f76f6f2ce662"
           },
           "native": {
             "item": {
               "content": "2 + 3 = 5",
               "role": "assistant"
             },
-            "fingerprint": 18371248748751663009
+            "fingerprint": 1378530497831400427
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 374,
               "completion_tokens": 7,
-              "total_tokens": 381,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 246,
+              "prompt_tokens": 374,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 246
+              "total_tokens": 381
             },
             "finish_reason": "stop",
-            "response_id": "5dfca876-c320-4944-9c54-e849e4e15a37",
+            "response_id": "d16fc1b3-b193-4102-9f50-f76f6f2ce662",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -619,17 +610,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "2 + 3 = 5",
-              "native": {
-                "item": {
-                  "content": "2 + 3 = 5"
-                },
-                "fingerprint": 15164235075327557177
-              }
+              "text": "2 + 3 = 5"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -85,14 +85,14 @@
                 "item": {
                   "text": "GAMMA-33 ZULU-99"
                 },
-                "fingerprint": 18041984267339580370
+                "fingerprint": 13072258098003475438
               }
             }
           ],
           "usage": {
-            "input_tokens": 53,
+            "input_tokens": 52,
             "output_tokens": 60,
-            "total_tokens": 113,
+            "total_tokens": 112,
             "reasoning_tokens": 51
           },
           "origin": {
@@ -100,14 +100,14 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "pXizar31Ooi-qtsPpfaNwQQ"
+            "response_id": "PRDAarjIHYCoqtsP3L2PqQM"
           },
           "native": {
             "item": {
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 17837582668208769922
+            "fingerprint": 15353137995579017438
           },
           "finish_reason": "stop",
           "raw": {
@@ -126,19 +126,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "pXizar31Ooi-qtsPpfaNwQQ",
+            "responseId": "PRDAarjIHYCoqtsP3L2PqQM",
             "usageMetadata": {
               "candidatesTokenCount": 9,
-              "promptTokenCount": 53,
+              "promptTokenCount": 52,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 53
+                  "tokenCount": 52
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 51,
-              "totalTokenCount": 113
+              "totalTokenCount": 112
             }
           }
         }

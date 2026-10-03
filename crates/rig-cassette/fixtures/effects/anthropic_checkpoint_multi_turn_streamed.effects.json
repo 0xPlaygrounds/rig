@@ -111,7 +111,7 @@
                   "text": "I'll start by calling checkpoint_step with token=start.",
                   "type": "text"
                 },
-                "fingerprint": 12936876649898317401
+                "fingerprint": 4149299540996641675
               }
             },
             {
@@ -137,7 +137,7 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 4721713932761284983
+                "fingerprint": 13625759875855272331
               }
             }
           ],
@@ -236,7 +236,7 @@
                   "text": "I'll start by calling checkpoint_step with token=start.",
                   "type": "text"
                 },
-                "fingerprint": 12936876649898317401
+                "fingerprint": 4149299540996641675
               }
             }
           }
@@ -285,12 +285,17 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 4721713932761284983
+                "fingerprint": 13625759875855272331
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      }
     },
     {
       "tool_output": {},
@@ -353,7 +358,7 @@
                       "text": "I'll start by calling checkpoint_step with token=start.",
                       "type": "text"
                     },
-                    "fingerprint": 12936876649898317401
+                    "fingerprint": 4149299540996641675
                   }
                 },
                 {
@@ -379,7 +384,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4721713932761284983
+                    "fingerprint": 13625759875855272331
                   }
                 }
               ],
@@ -454,7 +459,7 @@
                   "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
                   "type": "text"
                 },
-                "fingerprint": 7237165070405339194
+                "fingerprint": 14415868062087110
               }
             },
             {
@@ -480,7 +485,7 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 16840398654581379040
+                "fingerprint": 3122817508938628244
               }
             }
           ],
@@ -579,7 +584,7 @@
                   "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
                   "type": "text"
                 },
-                "fingerprint": 7237165070405339194
+                "fingerprint": 14415868062087110
               }
             }
           }
@@ -628,12 +633,17 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 16840398654581379040
+                "fingerprint": 3122817508938628244
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      }
     },
     {
       "tool_output": {},
@@ -696,7 +706,7 @@
                       "text": "I'll start by calling checkpoint_step with token=start.",
                       "type": "text"
                     },
-                    "fingerprint": 12936876649898317401
+                    "fingerprint": 4149299540996641675
                   }
                 },
                 {
@@ -722,7 +732,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4721713932761284983
+                    "fingerprint": 13625759875855272331
                   }
                 }
               ],
@@ -768,7 +778,7 @@
                       "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
                       "type": "text"
                     },
-                    "fingerprint": 7237165070405339194
+                    "fingerprint": 14415868062087110
                   }
                 },
                 {
@@ -794,7 +804,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 16840398654581379040
+                    "fingerprint": 3122817508938628244
                   }
                 }
               ],
@@ -869,7 +879,7 @@
                   "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
                   "type": "text"
                 },
-                "fingerprint": 2586537906401683227
+                "fingerprint": 4380595574838704509
               }
             },
             {
@@ -895,7 +905,7 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 7695642908813718609
+                "fingerprint": 6816708686085776353
               }
             }
           ],
@@ -994,7 +1004,7 @@
                   "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
                   "type": "text"
                 },
-                "fingerprint": 2586537906401683227
+                "fingerprint": 4380595574838704509
               }
             }
           }
@@ -1043,12 +1053,17 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 7695642908813718609
+                "fingerprint": 6816708686085776353
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      }
     },
     {
       "tool_output": {},
@@ -1111,7 +1126,7 @@
                       "text": "I'll start by calling checkpoint_step with token=start.",
                       "type": "text"
                     },
-                    "fingerprint": 12936876649898317401
+                    "fingerprint": 4149299540996641675
                   }
                 },
                 {
@@ -1137,7 +1152,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4721713932761284983
+                    "fingerprint": 13625759875855272331
                   }
                 }
               ],
@@ -1183,7 +1198,7 @@
                       "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
                       "type": "text"
                     },
-                    "fingerprint": 7237165070405339194
+                    "fingerprint": 14415868062087110
                   }
                 },
                 {
@@ -1209,7 +1224,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 16840398654581379040
+                    "fingerprint": 3122817508938628244
                   }
                 }
               ],
@@ -1255,7 +1270,7 @@
                       "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
                       "type": "text"
                     },
-                    "fingerprint": 2586537906401683227
+                    "fingerprint": 4380595574838704509
                   }
                 },
                 {
@@ -1281,7 +1296,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7695642908813718609
+                    "fingerprint": 6816708686085776353
                   }
                 }
               ],
@@ -1356,7 +1371,7 @@
                   "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
                   "type": "text"
                 },
-                "fingerprint": 882992453871664156
+                "fingerprint": 523895773205672040
               }
             },
             {
@@ -1382,7 +1397,7 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 14805938102741543483
+                "fingerprint": 6146593507639280415
               }
             }
           ],
@@ -1465,7 +1480,7 @@
                   "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
                   "type": "text"
                 },
-                "fingerprint": 882992453871664156
+                "fingerprint": 523895773205672040
               }
             }
           }
@@ -1514,12 +1529,17 @@
                   "name": "checkpoint_step",
                   "type": "tool_use"
                 },
-                "fingerprint": 14805938102741543483
+                "fingerprint": 6146593507639280415
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      }
     },
     {
       "tool_output": {},
@@ -1582,7 +1602,7 @@
                       "text": "I'll start by calling checkpoint_step with token=start.",
                       "type": "text"
                     },
-                    "fingerprint": 12936876649898317401
+                    "fingerprint": 4149299540996641675
                   }
                 },
                 {
@@ -1608,7 +1628,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4721713932761284983
+                    "fingerprint": 13625759875855272331
                   }
                 }
               ],
@@ -1654,7 +1674,7 @@
                       "text": "Now I'll call checkpoint_step with the next_token \"cobalt-17\".",
                       "type": "text"
                     },
-                    "fingerprint": 7237165070405339194
+                    "fingerprint": 14415868062087110
                   }
                 },
                 {
@@ -1680,7 +1700,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 16840398654581379040
+                    "fingerprint": 3122817508938628244
                   }
                 }
               ],
@@ -1726,7 +1746,7 @@
                       "text": "Now I'll call checkpoint_step with the next_token \"orchard-29\".",
                       "type": "text"
                     },
-                    "fingerprint": 2586537906401683227
+                    "fingerprint": 4380595574838704509
                   }
                 },
                 {
@@ -1752,7 +1772,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7695642908813718609
+                    "fingerprint": 6816708686085776353
                   }
                 }
               ],
@@ -1798,7 +1818,7 @@
                       "text": "Now I'll call checkpoint_step with the next_token \"harbor-43\".",
                       "type": "text"
                     },
-                    "fingerprint": 882992453871664156
+                    "fingerprint": 523895773205672040
                   }
                 },
                 {
@@ -1824,7 +1844,7 @@
                       "name": "checkpoint_step",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14805938102741543483
+                    "fingerprint": 6146593507639280415
                   }
                 }
               ],
@@ -1899,7 +1919,7 @@
                   "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete",
                   "type": "text"
                 },
-                "fingerprint": 17699134755372334105
+                "fingerprint": 15114414772940467533
               }
             }
           ],
@@ -2046,12 +2066,17 @@
                   "text": "The checkpoint sequence is complete. The result shows done=true with no next_token.\n\ncheckpoint-complete",
                   "type": "text"
                 },
-                "fingerprint": 17699134755372334105
+                "fingerprint": 15114414772940467533
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5-20251001"
+      }
     }
   ]
 }

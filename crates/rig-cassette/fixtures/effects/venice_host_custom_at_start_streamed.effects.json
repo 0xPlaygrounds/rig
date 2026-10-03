@@ -92,13 +92,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready"
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           ],
           "usage": {
@@ -119,13 +113,13 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 16268972914252074274
+            "fingerprint": 5329546866666182096
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 975,
               "completion_tokens": 2,
+              "prompt_tokens": 975,
               "total_tokens": 977
             },
             "finish_reason": "stop",
@@ -167,17 +161,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "content": "ready"
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      }
     }
   ]
 }

@@ -364,7 +364,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 18067958561955903875
+                "fingerprint": 9478789405036343235
               }
             },
             {
@@ -387,7 +387,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12188314996616677932
+                "fingerprint": 11134201045454595708
               }
             },
             {
@@ -410,7 +410,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6127037926452720319
+                "fingerprint": 2192225149281288411
               }
             },
             {
@@ -433,7 +433,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2330724216459022673
+                "fingerprint": 14860971017853183773
               }
             }
           ],
@@ -792,7 +792,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -815,7 +815,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -838,7 +838,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -861,7 +861,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -927,7 +927,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -1022,7 +1023,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1863341298295044616
+                "fingerprint": 9775631742820121766
               }
             }
           ],
@@ -1274,7 +1275,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -1297,7 +1298,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -1320,7 +1321,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -1343,7 +1344,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -1409,7 +1410,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -1434,7 +1436,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1863341298295044616
+                    "fingerprint": 9775631742820121766
                   }
                 }
               ],
@@ -1559,7 +1561,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17517630787067812453
+                "fingerprint": 6223205782444366173
               }
             }
           ],
@@ -1811,7 +1813,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -1834,7 +1836,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -1857,7 +1859,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -1880,7 +1882,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -1946,7 +1948,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -1971,7 +1974,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1863341298295044616
+                    "fingerprint": 9775631742820121766
                   }
                 }
               ],
@@ -2026,7 +2029,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17517630787067812453
+                    "fingerprint": 6223205782444366173
                   }
                 }
               ],
@@ -2148,7 +2151,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12979623746551640397
+                "fingerprint": 13336964844370058141
               }
             }
           ],
@@ -2400,7 +2403,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -2423,7 +2426,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -2446,7 +2449,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -2469,7 +2472,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -2535,7 +2538,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -2560,7 +2564,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1863341298295044616
+                    "fingerprint": 9775631742820121766
                   }
                 }
               ],
@@ -2615,7 +2619,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17517630787067812453
+                    "fingerprint": 6223205782444366173
                   }
                 }
               ],
@@ -2667,7 +2671,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12979623746551640397
+                    "fingerprint": 13336964844370058141
                   }
                 }
               ],
@@ -2792,7 +2796,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7282835195222516615
+                "fingerprint": 14311289306345818977
               }
             }
           ],
@@ -3044,7 +3048,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -3067,7 +3071,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -3090,7 +3094,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -3113,7 +3117,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -3179,7 +3183,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -3204,7 +3209,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1863341298295044616
+                    "fingerprint": 9775631742820121766
                   }
                 }
               ],
@@ -3259,7 +3264,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17517630787067812453
+                    "fingerprint": 6223205782444366173
                   }
                 }
               ],
@@ -3311,7 +3316,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12979623746551640397
+                    "fingerprint": 13336964844370058141
                   }
                 }
               ],
@@ -3366,7 +3371,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7282835195222516615
+                    "fingerprint": 14311289306345818977
                   }
                 }
               ],
@@ -3488,7 +3493,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4056414740040558931
+                "fingerprint": 11285371091343319551
               }
             }
           ],
@@ -3740,7 +3745,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -3763,7 +3768,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -3786,7 +3791,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -3809,7 +3814,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -3875,7 +3880,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -3900,7 +3906,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1863341298295044616
+                    "fingerprint": 9775631742820121766
                   }
                 }
               ],
@@ -3955,7 +3961,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17517630787067812453
+                    "fingerprint": 6223205782444366173
                   }
                 }
               ],
@@ -4007,7 +4013,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12979623746551640397
+                    "fingerprint": 13336964844370058141
                   }
                 }
               ],
@@ -4062,7 +4068,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7282835195222516615
+                    "fingerprint": 14311289306345818977
                   }
                 }
               ],
@@ -4114,7 +4120,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4056414740040558931
+                    "fingerprint": 11285371091343319551
                   }
                 }
               ],
@@ -4239,7 +4245,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 18136899558436429528
+                "fingerprint": 2027259531273426306
               }
             }
           ],
@@ -4491,7 +4497,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -4514,7 +4520,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -4537,7 +4543,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -4560,7 +4566,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -4626,7 +4632,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -4651,7 +4658,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1863341298295044616
+                    "fingerprint": 9775631742820121766
                   }
                 }
               ],
@@ -4706,7 +4713,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17517630787067812453
+                    "fingerprint": 6223205782444366173
                   }
                 }
               ],
@@ -4758,7 +4765,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12979623746551640397
+                    "fingerprint": 13336964844370058141
                   }
                 }
               ],
@@ -4813,7 +4820,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7282835195222516615
+                    "fingerprint": 14311289306345818977
                   }
                 }
               ],
@@ -4865,7 +4872,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4056414740040558931
+                    "fingerprint": 11285371091343319551
                   }
                 }
               ],
@@ -4920,7 +4927,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18136899558436429528
+                    "fingerprint": 2027259531273426306
                   }
                 }
               ],
@@ -5042,7 +5049,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13814650377415116209
+                "fingerprint": 5063296590609988913
               }
             }
           ],
@@ -5294,7 +5301,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18067958561955903875
+                    "fingerprint": 9478789405036343235
                   }
                 },
                 {
@@ -5317,7 +5324,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12188314996616677932
+                    "fingerprint": 11134201045454595708
                   }
                 },
                 {
@@ -5340,7 +5347,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6127037926452720319
+                    "fingerprint": 2192225149281288411
                   }
                 },
                 {
@@ -5363,7 +5370,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2330724216459022673
+                    "fingerprint": 14860971017853183773
                   }
                 }
               ],
@@ -5429,7 +5436,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -5454,7 +5462,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1863341298295044616
+                    "fingerprint": 9775631742820121766
                   }
                 }
               ],
@@ -5509,7 +5517,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17517630787067812453
+                    "fingerprint": 6223205782444366173
                   }
                 }
               ],
@@ -5561,7 +5569,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12979623746551640397
+                    "fingerprint": 13336964844370058141
                   }
                 }
               ],
@@ -5616,7 +5624,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7282835195222516615
+                    "fingerprint": 14311289306345818977
                   }
                 }
               ],
@@ -5668,7 +5676,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4056414740040558931
+                    "fingerprint": 11285371091343319551
                   }
                 }
               ],
@@ -5723,7 +5731,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18136899558436429528
+                    "fingerprint": 2027259531273426306
                   }
                 }
               ],
@@ -5775,7 +5783,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13814650377415116209
+                    "fingerprint": 5063296590609988913
                   }
                 }
               ],
@@ -5897,7 +5905,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 16950038988497426807
+                "fingerprint": 17621867238521964955
               }
             }
           ],

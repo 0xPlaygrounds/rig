@@ -113,7 +113,7 @@
                 "item": {
                   "reasoning_content": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit."
                 },
-                "fingerprint": 17253170193157454755
+                "fingerprint": 12150265052958880711
               }
             },
             {
@@ -138,7 +138,7 @@
                   "id": "call_00_SgewdJKcqwzsfe6l5NSP9539",
                   "type": "function"
                 },
-                "fingerprint": 3341909044958838286
+                "fingerprint": 14695144940651838752
               }
             }
           ],
@@ -172,7 +172,7 @@
                 }
               ]
             },
-            "fingerprint": 6598382608120574466
+            "fingerprint": 9988390814866380896
           },
           "finish_reason": "tool_calls",
           "raw": {

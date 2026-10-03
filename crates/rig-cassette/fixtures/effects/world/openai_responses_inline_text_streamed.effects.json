@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 22,
+        "batch": 23,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -54,15 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 31,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -74,15 +66,7 @@
         }
       },
       {
-        "batch": 35,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
+        "batch": 38,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -174,7 +158,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -195,7 +179,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 17672256777754227434
+                "fingerprint": 3348718059324345086
               }
             }
           ],
@@ -217,26 +201,94 @@
           "provider_request_id": "req_443881de25e649088585afe5de5a9000",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_062941540710f7e6016abf49b03e6887d0b928a0f9192f6e8b",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_062941540710f7e6016abf49b03e6887d0b928a0f9192f6e8b",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0my_B8DC5zmqEKs72TbeceQ_Dpjv72eLckZPRlhe1qExvY7wxGYrKKuaviIZOYG8BXN5d9V7ECtDKNP3vg2Q3UbNWSBUio2moxGx2RCDVEQ9fKFI0KQpq27hMdaymEZTtAfFLPQzTVoUW2WbIzhrR5b5LRP7BHDsAjqWV717ZWZn1_PmMeFSbdvxYQgqhlNN7TeGndglQPLmuAbAJt1ei3Bktn8_GSxyI4Tqk87NOZRapcEUbUyJEoiVfx-OGtMcUA28qZF9Io4XIwy9i-SGn2OlQr0D7PF80ciRynRfrOe7uN45c2aNL9PRb5r_EMb6TdZtXRUdX2F1nGNMsU1N72i5wEVpxg8p_iqNQu6o4SwQjgXif9lp-fX-Hqpcaqm0blbHz8OjntC_gfJLwTLGiv2JAFp0V8jYyoSvRyEHN6HQ4GqLkiB00wZlZqkKhJN8KFJIK97SYpnLhobcjfgqvDGxCzSo1vJILQdMJvKfuHoFTbShiiTrgOUb04eHLL7FrxrO7zxyw76FakzFcInOzZLYlZrW_LJLBwkM5dbcficus1F_dMuJEN-e_fkhnfSn2ZesTdYySPMl2eWNJgAjOFfxKJPPCc1s9pkWvJ-D1MRLNNHozkID7B9TXlDPDLMKxQt349-VRqskSXwVYU5dJw8E-Qs606ZTy_C_q3pbfCcP7A6_bqMDdXeLnsl6DCNuILgt8UFh-Xs-WEb7Cg6dnhKYzjNodpPkrvxRUbY01pafF-KcduBW9S2dUgk5GM5C9kA2SYoBGTLqbTcsH2DdqtFYTXA1zElc4sQS1Il-U8sL5qpwem-2cs5ebL0hKSkec_ggNBiAc4qP67gYixmXSUIuzdErV33AbSJVWrQiygmka4-ymjLQVcNDvw0_ocewWB_x5qEcnSFJwpcR8iPo_1vwwBPRpSgGy4MrG50hT7ny1DculTjVNL2F-qFCxU66OOdPp1Ce3fJCHAg36-zq8XgMnetkmmhHqgxqpbYR44kpfHE_bcsxIzYml1U-3M7GVJQvgtYZDYzcID3caulVcTjQGY9Y_5UmpXq01bHE5ta4HkeuXcnjD5beCnC6i-fn8qumM1aL9CizKgDz5pp7P6HH9I4w1SfZr14iODwqKGtg4BMuX4PgkwUi3Z2D-853r0hssJYbLkaCIaY3Q7zTqeTmjQupWLWgWAY2f1bdluk2t3mxy0tslx-sKaavtA3lgyFSmo1xccrKdNHgN--V6E0ssffB28gVw4NYYZdr9vw8bbJGx-dNu-BiTATOglnQjjvL2aVGbTC-XpeWw26IWlD2w41BfNv7lqG8Ud1ChKe2arIcDcfsDFXrjERCKcLBbGT0XIg5VwTn4VKPM4mpJFBTGHGpiGre4W0VqVbgEPRR_iPgefmKTUrV10D43Tfti8DIQJlVUekYJyz4Y46U7XAN7u5sZzEBLh6mYSHJso1gUJhBtZpAG3JuYWHIaxg8GpzEDcoykrTsLc4n5397azkzkbHTLq96_hufXh2aNq8Gu2ZhDGVsCzyK8OUkUYrfarD00FTCB09ujZ8B8fX7Ut8xCUw7H8Td9gtg5700Muv1XD9UTKVBrbRE0yetbKf9w8L6Yed-18ba2OKM11-WQwJWNVDHVkdojflpB8eHMqKJaAwUyuE7en44mrhh4_lM0znGCCR4DmUCN-8uxmsRmenjR0CQHALvqO7KDYQ5H68hix5RDOAErfM6gYHNrEMCbUrOHIQh0gMGh4hO_OClBd1VmzR9V4yOOQz_Ekb6AX3T7Zq63P_tEqQ1tjauNJdXQ-I-Y7PcfDx12Y7wHVyGQhOLjyWkaWTvHIsibKrYRAcmWM1QccbpqPY6FrtQXhhgFnFNB7hQnbvKzPARJ4z8rcPYw==",
+                "id": "rs_062941540710f7e6016abf49b1518887d0a2cdb38ee4dcade8",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The dominant non-background color is bright red.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_062941540710f7e6016abf49b1f35487d09414348de34dfcea",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 43,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 121,
               "output_tokens_details": {
@@ -244,42 +296,7 @@
               },
               "total_tokens": 164
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_062941540710f7e6016abf49b1518887d0a2cdb38ee4dcade8",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0my_B8DC5zmqEKs72TbeceQ_Dpjv72eLckZPRlhe1qExvY7wxGYrKKuaviIZOYG8BXN5d9V7ECtDKNP3vg2Q3UbNWSBUio2moxGx2RCDVEQ9fKFI0KQpq27hMdaymEZTtAfFLPQzTVoUW2WbIzhrR5b5LRP7BHDsAjqWV717ZWZn1_PmMeFSbdvxYQgqhlNN7TeGndglQPLmuAbAJt1ei3Bktn8_GSxyI4Tqk87NOZRapcEUbUyJEoiVfx-OGtMcUA28qZF9Io4XIwy9i-SGn2OlQr0D7PF80ciRynRfrOe7uN45c2aNL9PRb5r_EMb6TdZtXRUdX2F1nGNMsU1N72i5wEVpxg8p_iqNQu6o4SwQjgXif9lp-fX-Hqpcaqm0blbHz8OjntC_gfJLwTLGiv2JAFp0V8jYyoSvRyEHN6HQ4GqLkiB00wZlZqkKhJN8KFJIK97SYpnLhobcjfgqvDGxCzSo1vJILQdMJvKfuHoFTbShiiTrgOUb04eHLL7FrxrO7zxyw76FakzFcInOzZLYlZrW_LJLBwkM5dbcficus1F_dMuJEN-e_fkhnfSn2ZesTdYySPMl2eWNJgAjOFfxKJPPCc1s9pkWvJ-D1MRLNNHozkID7B9TXlDPDLMKxQt349-VRqskSXwVYU5dJw8E-Qs606ZTy_C_q3pbfCcP7A6_bqMDdXeLnsl6DCNuILgt8UFh-Xs-WEb7Cg6dnhKYzjNodpPkrvxRUbY01pafF-KcduBW9S2dUgk5GM5C9kA2SYoBGTLqbTcsH2DdqtFYTXA1zElc4sQS1Il-U8sL5qpwem-2cs5ebL0hKSkec_ggNBiAc4qP67gYixmXSUIuzdErV33AbSJVWrQiygmka4-ymjLQVcNDvw0_ocewWB_x5qEcnSFJwpcR8iPo_1vwwBPRpSgGy4MrG50hT7ny1DculTjVNL2F-qFCxU66OOdPp1Ce3fJCHAg36-zq8XgMnetkmmhHqgxqpbYR44kpfHE_bcsxIzYml1U-3M7GVJQvgtYZDYzcID3caulVcTjQGY9Y_5UmpXq01bHE5ta4HkeuXcnjD5beCnC6i-fn8qumM1aL9CizKgDz5pp7P6HH9I4w1SfZr14iODwqKGtg4BMuX4PgkwUi3Z2D-853r0hssJYbLkaCIaY3Q7zTqeTmjQupWLWgWAY2f1bdluk2t3mxy0tslx-sKaavtA3lgyFSmo1xccrKdNHgN--V6E0ssffB28gVw4NYYZdr9vw8bbJGx-dNu-BiTATOglnQjjvL2aVGbTC-XpeWw26IWlD2w41BfNv7lqG8Ud1ChKe2arIcDcfsDFXrjERCKcLBbGT0XIg5VwTn4VKPM4mpJFBTGHGpiGre4W0VqVbgEPRR_iPgefmKTUrV10D43Tfti8DIQJlVUekYJyz4Y46U7XAN7u5sZzEBLh6mYSHJso1gUJhBtZpAG3JuYWHIaxg8GpzEDcoykrTsLc4n5397azkzkbHTLq96_hufXh2aNq8Gu2ZhDGVsCzyK8OUkUYrfarD00FTCB09ujZ8B8fX7Ut8xCUw7H8Td9gtg5700Muv1XD9UTKVBrbRE0yetbKf9w8L6Yed-18ba2OKM11-WQwJWNVDHVkdojflpB8eHMqKJaAwUyuE7en44mrhh4_lM0znGCCR4DmUCN-8uxmsRmenjR0CQHALvqO7KDYQ5H68hix5RDOAErfM6gYHNrEMCbUrOHIQh0gMGh4hO_OClBd1VmzR9V4yOOQz_Ekb6AX3T7Zq63P_tEqQ1tjauNJdXQ-I-Y7PcfDx12Y7wHVyGQhOLjyWkaWTvHIsibKrYRAcmWM1QccbpqPY6FrtQXhhgFnFNB7hQnbvKzPARJ4z8rcPYw==",
-                "status": null
-              },
-              {
-                "id": "msg_062941540710f7e6016abf49b1f35487d09414348de34dfcea",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The dominant non-background color is bright red.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -308,7 +325,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -416,12 +433,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 17672256777754227434
+                "fingerprint": 3348718059324345086
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

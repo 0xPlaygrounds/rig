@@ -149,7 +149,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -173,7 +173,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2217134950779960862
+                "fingerprint": 10505327874113898194
               }
             }
           ],
@@ -379,7 +379,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -403,7 +403,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2217134950779960862
+                    "fingerprint": 10505327874113898194
                   }
                 }
               ],
@@ -491,7 +491,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],

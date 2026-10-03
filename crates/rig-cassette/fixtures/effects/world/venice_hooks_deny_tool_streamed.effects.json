@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 26,
+        "batch": 25,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,26 +10,10 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 32,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 33,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -37,7 +21,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -58,798 +42,6 @@
       },
       {
         "batch": 37,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 38,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 39,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 41,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 42,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 44,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 45,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 47,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 48,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 49,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 50,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 53,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 55,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 58,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 59,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 61,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 62,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 63,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 64,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 66,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 67,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 68,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 70,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 71,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 72,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 73,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 74,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 75,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 76,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 77,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 78,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 79,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 80,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 81,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 82,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 83,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 84,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 85,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 86,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 87,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 88,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 92,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 93,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 94,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 95,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 96,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 97,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 98,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 99,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 100,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 101,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 102,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 103,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 104,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 105,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 106,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 107,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 108,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 109,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 110,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 111,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 112,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 113,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 114,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 115,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 116,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 118,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 119,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 120,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 121,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 122,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 123,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 124,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 125,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 126,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 127,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 128,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 129,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 130,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 131,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 132,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 133,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 135,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 136,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 137,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 138,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 139,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 140,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 142,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 142,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -971,7 +163,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "8Fg1RDxOu"
+                "provider": "gW0svWDS1"
               },
               "function": {
                 "name": "add",
@@ -986,10 +178,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "8Fg1RDxOu",
+                  "id": "gW0svWDS1",
                   "type": "function"
                 },
-                "fingerprint": 17484702116729506487
+                "fingerprint": 2581836548612041903
               }
             }
           ],
@@ -1003,7 +195,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RlwdjKCXyvC4wlaxUHUAinBO"
+            "response_id": "chatcmpl-RIqRYFco0hED9R3hzZcgGRV6"
           },
           "native": {
             "item": {
@@ -1016,22 +208,22 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "8Fg1RDxOu",
+                  "id": "gW0svWDS1",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 14417917877953157565
+            "fingerprint": 17321223756826059221
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 1093,
               "completion_tokens": 18,
+              "prompt_tokens": 1093,
               "total_tokens": 1111
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RlwdjKCXyvC4wlaxUHUAinBO",
+            "response_id": "chatcmpl-RIqRYFco0hED9R3hzZcgGRV6",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -1070,7 +262,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "8Fg1RDxOu"
+                "provider": "gW0svWDS1"
               },
               "function": {
                 "name": "add",
@@ -1085,15 +277,20 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "8Fg1RDxOu",
+                  "id": "gW0svWDS1",
                   "type": "function"
                 },
-                "fingerprint": 17484702116729506487
+                "fingerprint": 2581836548612041903
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1124,7 +321,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "8Fg1RDxOu"
+                    "provider": "gW0svWDS1"
                   },
                   "function": {
                     "name": "add",
@@ -1139,10 +336,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "8Fg1RDxOu",
+                      "id": "gW0svWDS1",
                       "type": "function"
                     },
-                    "fingerprint": 17484702116729506487
+                    "fingerprint": 2581836548612041903
                   }
                 }
               ],
@@ -1151,7 +348,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RlwdjKCXyvC4wlaxUHUAinBO"
+                "response_id": "chatcmpl-RIqRYFco0hED9R3hzZcgGRV6"
               },
               "stop": "tool_use",
               "native": {
@@ -1165,12 +362,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "8Fg1RDxOu",
+                      "id": "gW0svWDS1",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 14417917877953157565
+                "fingerprint": 17321223756826059221
               }
             },
             {
@@ -1179,7 +376,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "8Fg1RDxOu"
+                    "provider": "gW0svWDS1"
                   },
                   "name": "add",
                   "content": [
@@ -1187,7 +384,8 @@
                       "type": "text",
                       "text": "add is disabled for this run"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -1230,44 +428,38 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42.",
-              "native": {
-                "item": {
-                  "content": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42."
-                },
-                "fingerprint": 15236060875056964933
-              }
+              "text": "42"
             }
           ],
           "usage": {
             "input_tokens": 1135,
-            "output_tokens": 107,
-            "total_tokens": 1242
+            "output_tokens": 3,
+            "total_tokens": 1138
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RM8JkDxapUySfjjLMnxdVovM"
+            "response_id": "chatcmpl-RrmoEvYusnhMBU1VDy8AOwWh"
           },
           "native": {
             "item": {
-              "content": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42.",
+              "content": "42",
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 11905453493860401679
+            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
+              "completion_tokens": 3,
               "prompt_tokens": 1135,
-              "completion_tokens": 107,
-              "total_tokens": 1242
+              "total_tokens": 1138
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RM8JkDxapUySfjjLMnxdVovM",
+            "response_id": "chatcmpl-RrmoEvYusnhMBU1VDy8AOwWh",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -1275,7 +467,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00013315625
+                "usd": 0.00010715625
               }
             }
           }
@@ -1295,694 +487,6 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "I"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "'m"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " unable"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " to"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " assist"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " with"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " that"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " specific"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " request"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " as"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " add"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " tool"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " currently"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " unavailable"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " However"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " I"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " can"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " help"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " guide"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " you"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " through"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " addition"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " process"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " yourself"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ".\n\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "To"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " add"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "1"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "7"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " and"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "5"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " you"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " can"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " follow"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " these"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " simple"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " steps"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ":\n\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "1"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " Start"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " with"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " first"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " number"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " which"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "1"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "7"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ".\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " Add"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " second"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " number"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "5"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " to"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " it"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ".\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "3"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "1"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "7"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " +"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "5"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " equals"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
             "text": "4"
           }
         },
@@ -1992,150 +496,6 @@
             "event": "text",
             "part": 0,
             "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ".\n\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "So"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": ","
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " sum"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " of"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "1"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "7"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " and"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "5"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "4"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
           }
         },
         {
@@ -2145,17 +505,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42.",
-              "native": {
-                "item": {
-                  "content": "I'm unable to assist with that specific request as the add tool is currently unavailable. However, I can help guide you through the addition process yourself.\n\nTo add 17 and 25, you can follow these simple steps:\n\n1. Start with the first number, which is 17.\n2. Add the second number, 25, to it.\n3. 17 + 25 equals 42.\n\nSo, the sum of 17 and 25 is 42."
-                },
-                "fingerprint": 15236060875056964933
-              }
+              "text": "42"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     }
   ]

@@ -115,7 +115,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_0JrtoGvbUN1Gu95hpj4gNUqa"
+                "provider": "call_do69SRJvs6CwRMzSf25knf9x"
               },
               "function": {
                 "name": "add",
@@ -130,10 +130,10 @@
                     "arguments": "{\"x\":17,\"y\":25}",
                     "name": "add"
                   },
-                  "id": "call_0JrtoGvbUN1Gu95hpj4gNUqa",
+                  "id": "call_do69SRJvs6CwRMzSf25knf9x",
                   "type": "function"
                 },
-                "fingerprint": 18290144373756765782
+                "fingerprint": 13316241293645243387
               }
             }
           ],
@@ -149,7 +149,7 @@
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPYIt6DUtOIg4N5FUPWUdvI6yRBV"
+            "response_id": "chatcmpl-EUe6dXWVu9rjo1aLa6Gn7C8yROjN1"
           },
           "native": {
             "item": {
@@ -163,14 +163,14 @@
                     "arguments": "{\"x\":17,\"y\":25}",
                     "name": "add"
                   },
-                  "id": "call_0JrtoGvbUN1Gu95hpj4gNUqa",
+                  "id": "call_do69SRJvs6CwRMzSf25knf9x",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 7248125316911861374
+            "fingerprint": 15947871103938669165
           },
-          "provider_request_id": "req_ad4ef731722a40b89183986404f81226",
+          "provider_request_id": "req_a1626277dcaf4cad8ff3623f3fea943a",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -188,7 +188,7 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_0JrtoGvbUN1Gu95hpj4gNUqa",
+                      "id": "call_do69SRJvs6CwRMzSf25knf9x",
                       "type": "function"
                     }
                   ]
@@ -196,7 +196,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPYIt6DUtOIg4N5FUPWUdvI6yRBV",
+            "id": "chatcmpl-EUe6dXWVu9rjo1aLa6Gn7C8yROjN1",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
@@ -248,7 +248,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_0JrtoGvbUN1Gu95hpj4gNUqa"
+                    "provider": "call_do69SRJvs6CwRMzSf25knf9x"
                   },
                   "function": {
                     "name": "add",
@@ -263,10 +263,10 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_0JrtoGvbUN1Gu95hpj4gNUqa",
+                      "id": "call_do69SRJvs6CwRMzSf25knf9x",
                       "type": "function"
                     },
-                    "fingerprint": 18290144373756765782
+                    "fingerprint": 13316241293645243387
                   }
                 }
               ],
@@ -275,7 +275,7 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPYIt6DUtOIg4N5FUPWUdvI6yRBV"
+                "response_id": "chatcmpl-EUe6dXWVu9rjo1aLa6Gn7C8yROjN1"
               },
               "stop": "tool_use",
               "native": {
@@ -290,12 +290,12 @@
                         "arguments": "{\"x\":17,\"y\":25}",
                         "name": "add"
                       },
-                      "id": "call_0JrtoGvbUN1Gu95hpj4gNUqa",
+                      "id": "call_do69SRJvs6CwRMzSf25knf9x",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7248125316911861374
+                "fingerprint": 15947871103938669165
               }
             },
             {
@@ -304,7 +304,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_0JrtoGvbUN1Gu95hpj4gNUqa"
+                    "provider": "call_do69SRJvs6CwRMzSf25knf9x"
                   },
                   "name": "add",
                   "content": [
@@ -312,7 +312,8 @@
                       "type": "text",
                       "text": "add is disabled for this run"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -355,30 +356,22 @@
           "choice": [
             {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "42",
-                  "refusal": null
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           ],
           "usage": {
             "input_tokens": 221,
-            "output_tokens": 394,
-            "total_tokens": 615,
+            "output_tokens": 138,
+            "total_tokens": 359,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 384
+            "reasoning_tokens": 128
           },
           "origin": {
             "api": "openai.chat",
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPYKu6W2lEAtpzpz9UqyI44pKJ73"
+            "response_id": "chatcmpl-EUe6frjxCfJDDqCjDBUzEjEj7xvyp"
           },
           "native": {
             "item": {
@@ -387,9 +380,9 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 5372475738331673531
+            "fingerprint": 7497150175235120171
           },
-          "provider_request_id": "req_68770ad4e9d3422391f98c1b611fefaf",
+          "provider_request_id": "req_528e5abeebfd462689e0833b091139be",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -405,17 +398,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPYKu6W2lEAtpzpz9UqyI44pKJ73",
+            "id": "chatcmpl-EUe6frjxCfJDDqCjDBUzEjEj7xvyp",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 394,
+              "completion_tokens": 138,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 384,
+                "reasoning_tokens": 128,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 221,
@@ -423,7 +416,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 615
+              "total_tokens": 359
             }
           }
         }

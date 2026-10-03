@@ -147,7 +147,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {
@@ -219,6 +219,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "mock.script",
+        "provider": "mock",
+        "model": "mock-model"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -289,7 +294,7 @@
               "origin": {
                 "api": "mock.script",
                 "provider": "mock",
-                "model": ""
+                "model": "mock-model"
               },
               "stop": "tool_use"
             },
@@ -345,7 +350,7 @@
           "origin": {
             "api": "mock.script",
             "provider": "mock",
-            "model": ""
+            "model": "mock-model"
           },
           "finish_reason": null,
           "raw": {
@@ -384,6 +389,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "mock.script",
+        "provider": "mock",
+        "model": "mock-model"
+      },
       "scope": "parity/run#0"
     }
   ]

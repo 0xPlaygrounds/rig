@@ -99,13 +99,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar",
-              "native": {
-                "item": {
-                  "content": "cedar"
-                },
-                "fingerprint": 1019647121729191188
-              }
+              "text": "cedar"
             }
           ],
           "usage": {
@@ -126,13 +120,13 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 452362687342519526
+            "fingerprint": 10831170027988163448
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 979,
               "completion_tokens": 3,
+              "prompt_tokens": 979,
               "total_tokens": 982
             },
             "finish_reason": "stop",
@@ -182,17 +176,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "cedar",
-              "native": {
-                "item": {
-                  "content": "cedar"
-                },
-                "fingerprint": 1019647121729191188
-              }
+              "text": "cedar"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "parity/run#0"
     }
   ]

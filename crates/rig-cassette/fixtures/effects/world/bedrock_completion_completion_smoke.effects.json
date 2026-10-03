@@ -90,26 +90,26 @@
           },
           "finish_reason": "stop",
           "raw": {
+            "metrics": {
+              "latencyMs": 611
+            },
             "output": {
-              "Message": {
-                "role": "Assistant",
+              "message": {
                 "content": [
                   {
-                    "Text": "Rust is a systems programming language focused on safety, speed, and concurrency. Memory safety in Rust is crucial to prevent common bugs like null pointer dereferencing, buffer overflows, and data races, ensuring reliable and secure software."
+                    "text": "Rust is a systems programming language focused on safety, speed, and concurrency. Memory safety in Rust is crucial to prevent common bugs like null pointer dereferencing, buffer overflows, and data races, ensuring reliable and secure software."
                   }
-                ]
+                ],
+                "role": "assistant"
               }
             },
-            "stop_reason": "EndTurn",
+            "stopReason": "end_turn",
             "usage": {
-              "input_tokens": 27,
-              "output_tokens": 48,
-              "total_tokens": 75
-            },
-            "metrics": {
-              "latency_ms": 611
-            },
-            "additional_model_response_fields": null
+              "inputTokens": 27,
+              "outputTokens": 48,
+              "serverToolUsage": {},
+              "totalTokens": 75
+            }
           }
         }
       },

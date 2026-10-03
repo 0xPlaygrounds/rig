@@ -150,7 +150,7 @@
                   "thinking": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
                   "type": "thinking"
                 },
-                "fingerprint": 4233208250215470214
+                "fingerprint": 12137829141099656376
               }
             },
             {
@@ -178,7 +178,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12883656693083741136
+                "fingerprint": 12699762321019868972
               }
             }
           ],
@@ -307,7 +307,7 @@
                       "thinking": "The user wants me to use the add tool to add 17 and 25, and then reply with just the number (the result).\n\nLet me call the add function with x=17 and y=25.",
                       "type": "thinking"
                     },
-                    "fingerprint": 4233208250215470214
+                    "fingerprint": 12137829141099656376
                   }
                 },
                 {
@@ -335,7 +335,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 12883656693083741136
+                    "fingerprint": 12699762321019868972
                   }
                 }
               ],
@@ -416,7 +416,7 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],

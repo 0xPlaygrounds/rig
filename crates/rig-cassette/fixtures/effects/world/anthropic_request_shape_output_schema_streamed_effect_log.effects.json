@@ -2,6 +2,14 @@
   "header": {
     "deliveries": [
       {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 8,
         "id": 0,
         "kind": {
@@ -14,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +54,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -62,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -75,14 +83,6 @@
       },
       {
         "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -179,7 +179,7 @@
                   "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
                   "type": "text"
                 },
-                "fingerprint": 8852174664572854497
+                "fingerprint": 300146754468271823
               }
             }
           ],
@@ -366,12 +366,17 @@
                   "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust programming language enthusiasts in Seattle to share projects, discuss best practices, and network with fellow developers.\"}",
                   "type": "text"
                 },
-                "fingerprint": 8852174664572854497
+                "fingerprint": 300146754468271823
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     }
   ]

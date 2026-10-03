@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -110,7 +110,7 @@
                 "item": {
                   "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
                 },
-                "fingerprint": 5363687893723055404
+                "fingerprint": 11568383327230518152
               }
             }
           ],
@@ -131,20 +131,21 @@
               "index": 0,
               "finishReason": "MAX_TOKENS"
             },
-            "fingerprint": 6186690227088006628
+            "fingerprint": 11793810135226508192
           },
           "finish_reason": "length",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 28,
               "candidatesTokenCount": 24,
-              "totalTokenCount": 52,
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 28
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 52
             },
             "finish_reason": "MAX_TOKENS",
             "model_version": "gemini-2.5-flash",
@@ -197,12 +198,17 @@
                 "item": {
                   "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
                 },
-                "fingerprint": 5363687893723055404
+                "fingerprint": 11568383327230518152
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

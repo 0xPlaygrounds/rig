@@ -73,6 +73,7 @@
               "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
               "native": {
                 "item": {
+                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
                   "reasoning_details": [
                     {
                       "format": "unknown",
@@ -80,10 +81,9 @@
                       "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
                       "type": "reasoning.text"
                     }
-                  ],
-                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
+                  ]
                 },
-                "fingerprint": 13779281817960623678
+                "fingerprint": 2685599256985917388
               }
             }
           ],
@@ -115,7 +115,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 14725531762298226224
+            "fingerprint": 964408412300737314
           },
           "finish_reason": "length",
           "raw": {

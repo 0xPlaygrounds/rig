@@ -183,7 +183,7 @@
                   "id": "call_j82HULGovdKPJ0JF91oHJilA",
                   "type": "function"
                 },
-                "fingerprint": 9316370507579961778
+                "fingerprint": 14465949056492491030
               }
             },
             {
@@ -206,7 +206,7 @@
                   "id": "call_D8TQZS49jUduGBLky6yNyrth",
                   "type": "function"
                 },
-                "fingerprint": 3624529968457598852
+                "fingerprint": 15696088951615307610
               }
             }
           ],
@@ -249,7 +249,7 @@
                 }
               ]
             },
-            "fingerprint": 4945522681164259187
+            "fingerprint": 497855576835411269
           },
           "provider_request_id": "req_794d936d784d4694899183ba2fb7ea3b",
           "finish_reason": "tool_calls",

@@ -4,13 +4,7 @@
     "choice": [
       {
         "text": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
-        "native": {
-          "item": {
-            "content": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
-            "padding": "ab"
-          },
-          "fingerprint": 16745454607975641505
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -146,7 +140,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 3599050531058674630
+            "fingerprint": 15602353414173670196
           }
         }
       }
@@ -276,7 +270,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 10954679250147334216
+            "fingerprint": 3177546441342826218
           }
         }
       }
@@ -389,7 +383,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 9709271410861418767
+            "fingerprint": 3828908185059869465
           }
         }
       }
@@ -502,7 +496,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 16153260419015349715
+            "fingerprint": 2287921980047520621
           }
         }
       }
@@ -616,7 +610,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 18396974755299980481
+            "fingerprint": 7039445904868117067
           }
         }
       }
@@ -729,7 +723,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 11043197271789592617
+            "fingerprint": 460536884325056435
           }
         }
       }
@@ -842,7 +836,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2642448250675498728
+            "fingerprint": 12908725377621566586
           }
         }
       }
@@ -956,7 +950,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 18053554476929678027
+            "fingerprint": 14744261219499203297
           }
         }
       }
@@ -1071,7 +1065,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 7426217684439603947
+            "fingerprint": 7044830949790940213
           }
         }
       }
@@ -1188,7 +1182,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 13426955969152161594
+            "fingerprint": 5225879750185934286
           }
         }
       }
@@ -1301,7 +1295,7 @@
               "id": "call_REDACTED_3",
               "type": "function"
             },
-            "fingerprint": 13772759418581287101
+            "fingerprint": 647816040979521231
           }
         }
       }
@@ -1412,7 +1406,7 @@
               "id": "call_REDACTED_4",
               "type": "function"
             },
-            "fingerprint": 12299841034943373398
+            "fingerprint": 14136875772154825388
           }
         }
       }
@@ -1524,7 +1518,7 @@
               "id": "call_REDACTED_5",
               "type": "function"
             },
-            "fingerprint": 12309877008023772024
+            "fingerprint": 2935743646630559410
           }
         }
       }
@@ -1636,7 +1630,7 @@
               "id": "call_REDACTED_6",
               "type": "function"
             },
-            "fingerprint": 10301886996291798087
+            "fingerprint": 18087025218805404837
           }
         }
       }
@@ -1747,7 +1741,7 @@
               "id": "call_REDACTED_7",
               "type": "function"
             },
-            "fingerprint": 1763133231349868429
+            "fingerprint": 8886954994400948983
           }
         }
       }
@@ -1859,7 +1853,7 @@
               "id": "call_REDACTED_8",
               "type": "function"
             },
-            "fingerprint": 8200508725674960463
+            "fingerprint": 14178004471471122981
           }
         }
       },
@@ -1880,7 +1874,7 @@
               "id": "call_REDACTED_9",
               "type": "function"
             },
-            "fingerprint": 15998656342141896142
+            "fingerprint": 92534309774561128
           }
         }
       }
@@ -2001,7 +1995,7 @@
               "id": "call_REDACTED_10",
               "type": "function"
             },
-            "fingerprint": 14702186421697128871
+            "fingerprint": 14420247607139495835
           }
         }
       }
@@ -2098,13 +2092,7 @@
     "choice": [
       {
         "text": "Rust is a systems programming language focused on safety, speed, and concurrency, offering memory safety without needing a garbage collector. Memory safety matters to prevent issues like data races, null pointer dereferencing, and buffer overflows, which can lead to unpredictable behavior, security vulnerabilities, or crashes.",
-        "native": {
-          "item": {
-            "content": "Rust is a systems programming language focused on safety, speed, and concurrency, offering memory safety without needing a garbage collector. Memory safety matters to prevent issues like data races, null pointer dereferencing, and buffer overflows, which can lead to unpredictable behavior, security vulnerabilities, or crashes.",
-            "padding": "abcdefghijklmnopqrstuvwxyz0123"
-          },
-          "fingerprint": 11547888514873356564
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2236,7 +2224,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12239064563605224523
+            "fingerprint": 6705201795511895461
           }
         }
       },
@@ -2254,7 +2242,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 6590085557209625956
+            "fingerprint": 1640436114200090950
           }
         }
       }
@@ -2359,13 +2347,7 @@
     "choice": [
       {
         "text": "The last line of the file `test.txt` is: \"hello world\". However, I am unable to read the first line at this time.",
-        "native": {
-          "item": {
-            "content": "The last line of the file `test.txt` is: \"hello world\". However, I am unable to read the first line at this time.",
-            "padding": "abcdefghijklmnopqrstuvwxyz01"
-          },
-          "fingerprint": 15995950573574495622
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2451,13 +2433,7 @@
     "choice": [
       {
         "text": "Alright, buckle up! Let’s start with some giggles:\n\nWhy don’t skeletons fight each other?\n\n**Because they don’t have the guts!** 🦴😂\n\n---\n\nDid you hear about the mathematician who’s afraid of negative numbers?\n\n**He’ll stop at nothing to avoid them.** ➖\n\n---\n\nWhat’s orange, sounds like a parrot, and makes no sense?\n\n**A carrot.** 🥕\n\n---\n\nAnd if none of these work, just remember: I’ve told a lot of jokes in my life... but never one in space.  \nBecause **it’s impossible to follow through when there’s no atmosphere.**\n\n---\n\nYour turn! What's your favorite type of joke? I'll hit you with the best one in my arsenal.",
-        "native": {
-          "item": {
-            "content": "Alright, buckle up! Let’s start with some giggles:\n\nWhy don’t skeletons fight each other?\n\n**Because they don’t have the guts!** 🦴😂\n\n---\n\nDid you hear about the mathematician who’s afraid of negative numbers?\n\n**He’ll stop at nothing to avoid them.** ➖\n\n---\n\nWhat’s orange, sounds like a parrot, and makes no sense?\n\n**A carrot.** 🥕\n\n---\n\nAnd if none of these work, just remember: I’ve told a lot of jokes in my life... but never one in space.  \nBecause **it’s impossible to follow through when there’s no atmosphere.**\n\n---\n\nYour turn! What's your favorite type of joke? I'll hit you with the best one in my arsenal.",
-            "padding": "abc"
-          },
-          "fingerprint": 2578437354157939645
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2577,12 +2553,7 @@
     "choice": [
       {
         "text": "The next solar eclipse is an **annular solar eclipse** on **October 14, 2023**. It will be visible across parts of the **Western Hemisphere**, including the western United States, Central America, and South America.",
-        "native": {
-          "item": {
-            "content": "The next solar eclipse is an **annular solar eclipse** on **October 14, 2023**. It will be visible across parts of the **Western Hemisphere**, including the western United States, Central America, and South America."
-          },
-          "fingerprint": 14700050318735683947
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2598,16 +2569,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 28,
         "completion_tokens": 49,
-        "total_tokens": 77,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 28,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 77
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2675,12 +2647,7 @@
     "choice": [
       {
         "text": "A solar eclipse occurs when the Moon passes between the Earth and the Sun, temporarily blocking all or part of the Sun's light from reaching the Earth. This alignment happens only during a new moon and can result in a total, partial, or annular eclipse, depending on the Moon's distance from Earth and the observer's location. The phenomenon is visible only from specific regions along the Moon's shadow path.",
-        "native": {
-          "item": {
-            "content": "A solar eclipse occurs when the Moon passes between the Earth and the Sun, temporarily blocking all or part of the Sun's light from reaching the Earth. This alignment happens only during a new moon and can result in a total, partial, or annular eclipse, depending on the Moon's distance from Earth and the observer's location. The phenomenon is visible only from specific regions along the Moon's shadow path."
-          },
-          "fingerprint": 10561821396610061644
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2696,16 +2663,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 35,
         "completion_tokens": 82,
-        "total_tokens": 117,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 35,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 117
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2788,7 +2756,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 5514572691749289533
+            "fingerprint": 14361105933639794023
           }
         }
       }
@@ -2806,16 +2774,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 136,
         "completion_tokens": 18,
-        "total_tokens": 154,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 136,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 154
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2883,12 +2852,7 @@
     "choice": [
       {
         "text": "The result of 2 - 5 is -3.",
-        "native": {
-          "item": {
-            "content": "The result of 2 - 5 is -3."
-          },
-          "fingerprint": 10612878147311186356
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2904,16 +2868,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 162,
         "completion_tokens": 14,
-        "total_tokens": 176,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 162,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 176
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -2993,7 +2958,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2080574771313621503
+            "fingerprint": 878327116590416411
           }
         }
       }
@@ -3011,16 +2976,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 110,
         "completion_tokens": 14,
-        "total_tokens": 124,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 110,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 124
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3088,12 +3054,7 @@
     "choice": [
       {
         "text": "The harbor label is \"crimson-harbor.\"",
-        "native": {
-          "item": {
-            "content": "The harbor label is \"crimson-harbor.\""
-          },
-          "fingerprint": 1494773344342923880
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3109,16 +3070,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 67,
         "completion_tokens": 12,
-        "total_tokens": 79,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 67,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 79
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -3198,7 +3160,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 12672728700725927677
+            "fingerprint": 14046099150200094619
           }
         }
       }
@@ -3216,16 +3178,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 57,
         "completion_tokens": 11,
-        "total_tokens": 68,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 57,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 68
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3305,7 +3268,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2080574771313621503
+            "fingerprint": 878327116590416411
           }
         }
       },
@@ -3323,7 +3286,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 78742795939620733
+            "fingerprint": 5087501006202091469
           }
         }
       }
@@ -3341,16 +3304,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 157,
         "completion_tokens": 46,
-        "total_tokens": 203,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 157,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 203
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3433,7 +3397,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 5514572691749289533
+            "fingerprint": 14361105933639794023
           }
         }
       }
@@ -3451,16 +3415,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 122,
         "completion_tokens": 18,
-        "total_tokens": 140,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 122,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 140
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3528,12 +3493,7 @@
     "choice": [
       {
         "text": "\\( 2 - 5 = -3 \\)",
-        "native": {
-          "item": {
-            "content": "\\( 2 - 5 = -3 \\)"
-          },
-          "fingerprint": 6663675794596328027
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3549,16 +3509,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 148,
         "completion_tokens": 13,
-        "total_tokens": 161,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 148,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 161
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -3638,7 +3599,7 @@
               "id": "call_REDACTED_1",
               "type": "function"
             },
-            "fingerprint": 2080574771313621503
+            "fingerprint": 878327116590416411
           }
         }
       },
@@ -3656,7 +3617,7 @@
               "id": "call_REDACTED_2",
               "type": "function"
             },
-            "fingerprint": 78742795939620733
+            "fingerprint": 5087501006202091469
           }
         }
       }
@@ -3674,16 +3635,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 157,
         "completion_tokens": 46,
-        "total_tokens": 203,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 157,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 203
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3751,12 +3713,7 @@
     "choice": [
       {
         "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
-        "native": {
-          "item": {
-            "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
-          },
-          "fingerprint": 8453353300682549933
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3772,16 +3729,17 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 225,
         "completion_tokens": 26,
-        "total_tokens": 251,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 225,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 251
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -3849,13 +3807,7 @@
     "choice": [
       {
         "text": "{\"city\":\"New York City\",\"current\":{\"description\":\"Mostly sunny\",\"humidity_pct\":60,\"temperature_f\":75.0}}",
-        "native": {
-          "item": {
-            "content": "{\"city\":\"New York City\",\"current\":{\"description\":\"Mostly sunny\",\"humidity_pct\":60,\"temperature_f\":75.0}}",
-            "padding": "a"
-          },
-          "fingerprint": 3609776291163371522
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3975,13 +3927,7 @@
     "choice": [
       {
         "text": "{\"city\":\"Los Angeles\",\"current\":{\"description\":\"Sunny\",\"humidity_pct\":40,\"temperature_f\":75.0}}",
-        "native": {
-          "item": {
-            "content": "{\"city\":\"Los Angeles\",\"current\":{\"description\":\"Sunny\",\"humidity_pct\":40,\"temperature_f\":75.0}}",
-            "padding": "abcde"
-          },
-          "fingerprint": 14659051752444493815
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4101,13 +4047,7 @@
     "choice": [
       {
         "text": "{\"city\":\"Chicago\",\"current\":{\"description\":\"Partly cloudy\",\"humidity_pct\":65,\"temperature_f\":55.0}}",
-        "native": {
-          "item": {
-            "content": "{\"city\":\"Chicago\",\"current\":{\"description\":\"Partly cloudy\",\"humidity_pct\":65,\"temperature_f\":55.0}}",
-            "padding": "abcdefghijk"
-          },
-          "fingerprint": 15505535592732098242
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4227,13 +4167,7 @@
     "choice": [
       {
         "text": "{\"category\":\"Technology Meetups\",\"summary\":\"A gathering for Rust programming enthusiasts to network and share knowledge.\",\"title\":\"Rust Enthusiasts Seattle Meetup\"}",
-        "native": {
-          "item": {
-            "content": "{\"category\":\"Technology Meetups\",\"summary\":\"A gathering for Rust programming enthusiasts to network and share knowledge.\",\"title\":\"Rust Enthusiasts Seattle Meetup\"}",
-            "padding": "abcde"
-          },
-          "fingerprint": 10297759485534717599
-        }
+        "native": null
       }
     ],
     "usage": {

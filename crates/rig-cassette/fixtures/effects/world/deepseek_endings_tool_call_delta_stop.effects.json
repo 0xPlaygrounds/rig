@@ -287,6 +287,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     }
   ]

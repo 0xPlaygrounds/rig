@@ -196,14 +196,54 @@
         "stream": false
       },
       "outcome": {
-        "Err": {
-          "kind": "response",
-          "retryable": false,
-          "message": "ResponseError: Gemini stopped with finish_reason=MalformedFunctionCall: Malformed function call: tool",
-          "code": null,
-          "http_status": null,
-          "refusal": false,
-          "source_chain": []
+        "Ok": {
+          "outcome": "completion",
+          "choice": [],
+          "usage": {
+            "input_tokens": 465,
+            "output_tokens": 0,
+            "total_tokens": 465
+          },
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "oHizavC1EsejqtsPtJ_XwA0"
+          },
+          "native": {
+            "item": {
+              "finishMessage": "Malformed function call: tool",
+              "finishReason": "MALFORMED_FUNCTION_CALL",
+              "index": 0
+            },
+            "fingerprint": 675868731199239589
+          },
+          "finish_reason": {
+            "other": "MALFORMED_FUNCTION_CALL"
+          },
+          "raw": {
+            "candidates": [
+              {
+                "finishMessage": "Malformed function call: tool",
+                "finishReason": "MALFORMED_FUNCTION_CALL",
+                "index": 0
+              }
+            ],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "oHizavC1EsejqtsPtJ_XwA0",
+            "usageMetadata": {
+              "promptTokenCount": 465,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 465
+                }
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 465
+            }
+          }
         }
       }
     }

@@ -133,7 +133,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4601915957530260307
+                "fingerprint": 2671565402294423011
               }
             },
             {
@@ -156,7 +156,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 273848652771411979
+                "fingerprint": 17491144958214162051
               }
             },
             {
@@ -179,7 +179,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13201432404989572921
+                "fingerprint": 122461497484788697
               }
             }
           ],
@@ -456,7 +456,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4601915957530260307
+                    "fingerprint": 2671565402294423011
                   }
                 },
                 {
@@ -479,7 +479,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 273848652771411979
+                    "fingerprint": 17491144958214162051
                   }
                 },
                 {
@@ -502,7 +502,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13201432404989572921
+                    "fingerprint": 122461497484788697
                   }
                 }
               ],
@@ -542,7 +542,8 @@
                       "type": "text",
                       "text": "the tool failed"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 },
                 {
                   "type": "toolresult",
@@ -614,7 +615,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           ],

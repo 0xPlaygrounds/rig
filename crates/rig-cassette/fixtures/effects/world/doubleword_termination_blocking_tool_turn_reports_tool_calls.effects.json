@@ -141,7 +141,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "chatcmpl-tool-b9bd7fadb9f5c1e5"
+                "provider": "chatcmpl-tool-9dd2e6c2fba4b2ed"
               },
               "function": {
                 "name": "add",
@@ -156,10 +156,10 @@
                     "arguments": "{\"x\": 2, \"y\": 3}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-b9bd7fadb9f5c1e5",
+                  "id": "chatcmpl-tool-9dd2e6c2fba4b2ed",
                   "type": "function"
                 },
-                "fingerprint": 11198992871379315296
+                "fingerprint": 1675331005513976400
               }
             }
           ],
@@ -175,7 +175,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-9B",
             "response_model": "Qwen/Qwen3.5-9B",
-            "response_id": "resp_6d3cc3ab-4e1d-4776-82a3-67f132c6691b"
+            "response_id": "resp_33461d94-9cd0-4f10-99fb-225348e20a8f"
           },
           "native": {
             "item": {
@@ -187,12 +187,12 @@
                     "arguments": "{\"x\": 2, \"y\": 3}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-b9bd7fadb9f5c1e5",
+                  "id": "chatcmpl-tool-9dd2e6c2fba4b2ed",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 16144530342796911722
+            "fingerprint": 6445288690443623258
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -209,7 +209,7 @@
                         "arguments": "{\"x\": 2, \"y\": 3}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-b9bd7fadb9f5c1e5",
+                      "id": "chatcmpl-tool-9dd2e6c2fba4b2ed",
                       "type": "function"
                     }
                   ]
@@ -217,7 +217,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_6d3cc3ab-4e1d-4776-82a3-67f132c6691b",
+            "id": "resp_33461d94-9cd0-4f10-99fb-225348e20a8f",
             "model": "Qwen/Qwen3.5-9B",
             "object": "chat.completion",
             "usage": {
@@ -301,7 +301,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "chatcmpl-tool-b9bd7fadb9f5c1e5"
+                    "provider": "chatcmpl-tool-9dd2e6c2fba4b2ed"
                   },
                   "function": {
                     "name": "add",
@@ -316,10 +316,10 @@
                         "arguments": "{\"x\": 2, \"y\": 3}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-b9bd7fadb9f5c1e5",
+                      "id": "chatcmpl-tool-9dd2e6c2fba4b2ed",
                       "type": "function"
                     },
-                    "fingerprint": 11198992871379315296
+                    "fingerprint": 1675331005513976400
                   }
                 }
               ],
@@ -328,7 +328,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-9B",
                 "response_model": "Qwen/Qwen3.5-9B",
-                "response_id": "resp_6d3cc3ab-4e1d-4776-82a3-67f132c6691b"
+                "response_id": "resp_33461d94-9cd0-4f10-99fb-225348e20a8f"
               },
               "stop": "tool_use",
               "native": {
@@ -341,12 +341,12 @@
                         "arguments": "{\"x\": 2, \"y\": 3}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-b9bd7fadb9f5c1e5",
+                      "id": "chatcmpl-tool-9dd2e6c2fba4b2ed",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 16144530342796911722
+                "fingerprint": 6445288690443623258
               }
             },
             {
@@ -355,7 +355,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "chatcmpl-tool-b9bd7fadb9f5c1e5"
+                    "provider": "chatcmpl-tool-9dd2e6c2fba4b2ed"
                   },
                   "name": "add",
                   "content": [
@@ -408,14 +408,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "2 + 3 = 5",
-              "native": {
-                "item": {
-                  "content": "2 + 3 = 5",
-                  "refusal": null
-                },
-                "fingerprint": 15164235075327557177
-              }
+              "text": "2 + 3 = 5"
             }
           ],
           "usage": {
@@ -430,7 +423,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-9B",
             "response_model": "Qwen/Qwen3.5-9B",
-            "response_id": "resp_6d397ab8-b52c-4d4b-ac3b-021586677e61"
+            "response_id": "resp_f0e8a884-8ac7-4f97-99f5-3f487fa2e274"
           },
           "native": {
             "item": {
@@ -438,7 +431,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 18371248748751663009
+            "fingerprint": 1378530497831400427
           },
           "finish_reason": "stop",
           "raw": {
@@ -454,7 +447,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_6d397ab8-b52c-4d4b-ac3b-021586677e61",
+            "id": "resp_f0e8a884-8ac7-4f97-99f5-3f487fa2e274",
             "model": "Qwen/Qwen3.5-9B",
             "object": "chat.completion",
             "usage": {

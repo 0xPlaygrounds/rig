@@ -209,18 +209,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll start by listing the repository files.",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files."
-                },
-                "fingerprint": 8528915275346856014
-              }
+              "text": "I'll start by listing the repository files."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
               },
               "function": {
                 "name": "list_files",
@@ -232,10 +226,10 @@
                     "arguments": "{}",
                     "name": "list_files"
                   },
-                  "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                  "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                   "type": "function"
                 },
-                "fingerprint": 3301336779343338028
+                "fingerprint": 17212728858332157574
               }
             }
           ],
@@ -250,7 +244,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+            "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
           },
           "native": {
             "item": {
@@ -262,12 +256,12 @@
                     "arguments": "{}",
                     "name": "list_files"
                   },
-                  "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                  "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 7988457405222726045
+            "fingerprint": 11140493236039734921
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -285,7 +279,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "index": 0,
                       "type": "function"
                     }
@@ -294,7 +288,7 @@
               }
             ],
             "created": 0,
-            "id": "10f683e3-588d-413e-ad27-3af1909858ff",
+            "id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -363,18 +357,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -386,10 +374,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -398,7 +386,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -411,12 +399,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -425,7 +413,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -517,7 +505,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
               },
               "function": {
                 "name": "read_file",
@@ -531,10 +519,10 @@
                     "arguments": "{\"path\": \"README.md\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                  "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                   "type": "function"
                 },
-                "fingerprint": 5389489860912015638
+                "fingerprint": 11326034289365121895
               }
             }
           ],
@@ -549,7 +537,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+            "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
           },
           "native": {
             "item": {
@@ -561,12 +549,12 @@
                     "arguments": "{\"path\": \"README.md\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                  "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 8190967108427494754
+            "fingerprint": 6507785073356452941
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -584,7 +572,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "index": 0,
                       "type": "function"
                     }
@@ -593,7 +581,7 @@
               }
             ],
             "created": 0,
-            "id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced",
+            "id": "d43c1e53-854f-48ba-b42d-f63d05d6498f",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -662,18 +650,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -685,10 +667,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -697,7 +679,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -710,12 +692,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -724,7 +706,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -742,7 +724,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -756,10 +738,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -768,7 +750,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -781,12 +763,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -795,7 +777,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -887,7 +869,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
               },
               "function": {
                 "name": "read_file",
@@ -901,10 +883,10 @@
                     "arguments": "{\"path\": \"tests/basic.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                  "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                   "type": "function"
                 },
-                "fingerprint": 11268423959783784007
+                "fingerprint": 3677263074518802649
               }
             }
           ],
@@ -919,7 +901,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+            "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
           },
           "native": {
             "item": {
@@ -931,12 +913,12 @@
                     "arguments": "{\"path\": \"tests/basic.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                  "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 13344039091349048847
+            "fingerprint": 15643782840622418289
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -954,7 +936,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "index": 0,
                       "type": "function"
                     }
@@ -963,7 +945,7 @@
               }
             ],
             "created": 0,
-            "id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765",
+            "id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -1032,18 +1014,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -1055,10 +1031,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -1067,7 +1043,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -1080,12 +1056,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -1094,7 +1070,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -1112,7 +1088,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -1126,10 +1102,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -1138,7 +1114,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -1151,12 +1127,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -1165,7 +1141,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -1183,7 +1159,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -1197,10 +1173,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -1209,7 +1185,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -1222,12 +1198,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -1236,7 +1212,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -1328,7 +1304,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
               },
               "function": {
                 "name": "read_file",
@@ -1342,10 +1318,10 @@
                     "arguments": "{\"path\": \"src/lib.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                  "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                   "type": "function"
                 },
-                "fingerprint": 18312680491719546601
+                "fingerprint": 10449515890886522845
               }
             }
           ],
@@ -1360,7 +1336,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+            "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
           },
           "native": {
             "item": {
@@ -1372,12 +1348,12 @@
                     "arguments": "{\"path\": \"src/lib.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                  "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 10547434919850619173
+            "fingerprint": 10298378166042568213
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1395,7 +1371,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "index": 0,
                       "type": "function"
                     }
@@ -1404,7 +1380,7 @@
               }
             ],
             "created": 0,
-            "id": "12afcdca-1919-44c5-8d64-33a0928c4b58",
+            "id": "6e6a92bf-b0be-4762-a113-61a0a65ececb",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -1473,18 +1449,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -1496,10 +1466,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -1508,7 +1478,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -1521,12 +1491,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -1535,7 +1505,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -1553,7 +1523,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -1567,10 +1537,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -1579,7 +1549,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -1592,12 +1562,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -1606,7 +1576,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -1624,7 +1594,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -1638,10 +1608,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -1650,7 +1620,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -1663,12 +1633,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -1677,7 +1647,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -1695,7 +1665,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -1709,10 +1679,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -1721,7 +1691,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -1734,12 +1704,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -1748,7 +1718,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -1840,7 +1810,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
               },
               "function": {
                 "name": "run_tests",
@@ -1852,10 +1822,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                  "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                   "type": "function"
                 },
-                "fingerprint": 8141912478460722946
+                "fingerprint": 17212211036796686132
               }
             }
           ],
@@ -1870,7 +1840,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+            "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
           },
           "native": {
             "item": {
@@ -1882,12 +1852,12 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                  "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 4387331440209345018
+            "fingerprint": 12748312809397798752
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1905,7 +1875,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "index": 0,
                       "type": "function"
                     }
@@ -1914,7 +1884,7 @@
               }
             ],
             "created": 0,
-            "id": "c32c322a-0257-4ef7-aa84-ca2e244c659e",
+            "id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -1991,18 +1961,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -2014,10 +1978,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -2026,7 +1990,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -2039,12 +2003,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -2053,7 +2017,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -2071,7 +2035,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -2085,10 +2049,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -2097,7 +2061,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -2110,12 +2074,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -2124,7 +2088,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -2142,7 +2106,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -2156,10 +2120,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -2168,7 +2132,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -2181,12 +2145,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -2195,7 +2159,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -2213,7 +2177,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -2227,10 +2191,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -2239,7 +2203,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -2252,12 +2216,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -2266,7 +2230,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -2284,7 +2248,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2296,10 +2260,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     },
-                    "fingerprint": 8141912478460722946
+                    "fingerprint": 17212211036796686132
                   }
                 }
               ],
@@ -2308,7 +2272,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+                "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
               },
               "stop": "tool_use",
               "native": {
@@ -2321,12 +2285,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4387331440209345018
+                "fingerprint": 12748312809397798752
               }
             },
             {
@@ -2335,7 +2299,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2343,7 +2307,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -2426,18 +2391,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "The runner reported a transient failure, so I'll call it again.",
-              "native": {
-                "item": {
-                  "content": "The runner reported a transient failure, so I'll call it again."
-                },
-                "fingerprint": 16932507470925000165
-              }
+              "text": "The runner reported a transient failure, so I'll call it again."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
               },
               "function": {
                 "name": "run_tests",
@@ -2449,10 +2408,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                  "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                   "type": "function"
                 },
-                "fingerprint": 16462301964725544751
+                "fingerprint": 8982348679083185295
               }
             }
           ],
@@ -2467,7 +2426,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "42af806f-35e5-4040-94c0-6ff1c60aaab1"
+            "response_id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad"
           },
           "native": {
             "item": {
@@ -2479,12 +2438,12 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                  "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 501540192492275865
+            "fingerprint": 16624107265208398447
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -2502,7 +2461,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "index": 0,
                       "type": "function"
                     }
@@ -2511,7 +2470,7 @@
               }
             ],
             "created": 0,
-            "id": "42af806f-35e5-4040-94c0-6ff1c60aaab1",
+            "id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -2580,18 +2539,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -2603,10 +2556,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -2615,7 +2568,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -2628,12 +2581,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -2642,7 +2595,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -2660,7 +2613,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -2674,10 +2627,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -2686,7 +2639,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -2699,12 +2652,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -2713,7 +2666,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -2731,7 +2684,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -2745,10 +2698,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -2757,7 +2710,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -2770,12 +2723,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -2784,7 +2737,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -2802,7 +2755,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -2816,10 +2769,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -2828,7 +2781,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -2841,12 +2794,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -2855,7 +2808,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -2873,7 +2826,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2885,10 +2838,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     },
-                    "fingerprint": 8141912478460722946
+                    "fingerprint": 17212211036796686132
                   }
                 }
               ],
@@ -2897,7 +2850,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+                "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
               },
               "stop": "tool_use",
               "native": {
@@ -2910,12 +2863,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4387331440209345018
+                "fingerprint": 12748312809397798752
               }
             },
             {
@@ -2924,7 +2877,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2932,7 +2885,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -2941,18 +2895,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The runner reported a transient failure, so I'll call it again.",
-                  "native": {
-                    "item": {
-                      "content": "The runner reported a transient failure, so I'll call it again."
-                    },
-                    "fingerprint": 16932507470925000165
-                  }
+                  "text": "The runner reported a transient failure, so I'll call it again."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2964,10 +2912,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     },
-                    "fingerprint": 16462301964725544751
+                    "fingerprint": 8982348679083185295
                   }
                 }
               ],
@@ -2976,7 +2924,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "42af806f-35e5-4040-94c0-6ff1c60aaab1"
+                "response_id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad"
               },
               "stop": "tool_use",
               "native": {
@@ -2989,12 +2937,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 501540192492275865
+                "fingerprint": 16624107265208398447
               }
             },
             {
@@ -3003,7 +2951,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3094,18 +3042,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-              "native": {
-                "item": {
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
-                },
-                "fingerprint": 11399324153512162361
-              }
+              "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
               },
               "function": {
                 "name": "write_file",
@@ -3120,10 +3062,10 @@
                     "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                  "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                   "type": "function"
                 },
-                "fingerprint": 4269030568482658288
+                "fingerprint": 14950162930972778980
               }
             }
           ],
@@ -3138,7 +3080,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "be9d534c-6719-4585-abea-943c3cbd989e"
+            "response_id": "6ce581ec-6281-4303-9140-3f5035a1a64d"
           },
           "native": {
             "item": {
@@ -3150,12 +3092,12 @@
                     "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                  "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 18138686188470162416
+            "fingerprint": 438281262316203964
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -3173,7 +3115,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "index": 0,
                       "type": "function"
                     }
@@ -3182,7 +3124,7 @@
               }
             ],
             "created": 0,
-            "id": "be9d534c-6719-4585-abea-943c3cbd989e",
+            "id": "6ce581ec-6281-4303-9140-3f5035a1a64d",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -3251,18 +3193,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -3274,10 +3210,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -3286,7 +3222,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -3299,12 +3235,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -3313,7 +3249,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -3331,7 +3267,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -3345,10 +3281,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -3357,7 +3293,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -3370,12 +3306,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -3384,7 +3320,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -3402,7 +3338,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -3416,10 +3352,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -3428,7 +3364,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -3441,12 +3377,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -3455,7 +3391,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -3473,7 +3409,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -3487,10 +3423,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -3499,7 +3435,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -3512,12 +3448,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -3526,7 +3462,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -3544,7 +3480,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3556,10 +3492,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     },
-                    "fingerprint": 8141912478460722946
+                    "fingerprint": 17212211036796686132
                   }
                 }
               ],
@@ -3568,7 +3504,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+                "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
               },
               "stop": "tool_use",
               "native": {
@@ -3581,12 +3517,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4387331440209345018
+                "fingerprint": 12748312809397798752
               }
             },
             {
@@ -3595,7 +3531,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3603,7 +3539,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -3612,18 +3549,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The runner reported a transient failure, so I'll call it again.",
-                  "native": {
-                    "item": {
-                      "content": "The runner reported a transient failure, so I'll call it again."
-                    },
-                    "fingerprint": 16932507470925000165
-                  }
+                  "text": "The runner reported a transient failure, so I'll call it again."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3635,10 +3566,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     },
-                    "fingerprint": 16462301964725544751
+                    "fingerprint": 8982348679083185295
                   }
                 }
               ],
@@ -3647,7 +3578,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "42af806f-35e5-4040-94c0-6ff1c60aaab1"
+                "response_id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad"
               },
               "stop": "tool_use",
               "native": {
@@ -3660,12 +3591,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 501540192492275865
+                "fingerprint": 16624107265208398447
               }
             },
             {
@@ -3674,7 +3605,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3691,18 +3622,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "native": {
-                    "item": {
-                      "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
-                    },
-                    "fingerprint": 11399324153512162361
-                  }
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "function": {
                     "name": "write_file",
@@ -3717,10 +3642,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     },
-                    "fingerprint": 4269030568482658288
+                    "fingerprint": 14950162930972778980
                   }
                 }
               ],
@@ -3729,7 +3654,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "be9d534c-6719-4585-abea-943c3cbd989e"
+                "response_id": "6ce581ec-6281-4303-9140-3f5035a1a64d"
               },
               "stop": "tool_use",
               "native": {
@@ -3742,12 +3667,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18138686188470162416
+                "fingerprint": 438281262316203964
               }
             },
             {
@@ -3756,7 +3681,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "name": "write_file",
                   "content": [
@@ -3848,7 +3773,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
               },
               "function": {
                 "name": "run_tests",
@@ -3860,10 +3785,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                  "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                   "type": "function"
                 },
-                "fingerprint": 16956507402674013014
+                "fingerprint": 6383381422390840246
               }
             }
           ],
@@ -3878,7 +3803,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "37b82ca2-9af4-46ee-abbd-b1bba4261d61"
+            "response_id": "f927173d-b23e-49dd-975c-6acf2fd9a0d6"
           },
           "native": {
             "item": {
@@ -3890,12 +3815,12 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                  "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 12922052730869264386
+            "fingerprint": 6921563305482765450
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -3913,7 +3838,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "index": 0,
                       "type": "function"
                     }
@@ -3922,7 +3847,7 @@
               }
             ],
             "created": 0,
-            "id": "37b82ca2-9af4-46ee-abbd-b1bba4261d61",
+            "id": "f927173d-b23e-49dd-975c-6acf2fd9a0d6",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -3991,18 +3916,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -4014,10 +3933,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -4026,7 +3945,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -4039,12 +3958,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -4053,7 +3972,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -4071,7 +3990,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -4085,10 +4004,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -4097,7 +4016,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -4110,12 +4029,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -4124,7 +4043,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -4142,7 +4061,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -4156,10 +4075,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -4168,7 +4087,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -4181,12 +4100,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -4195,7 +4114,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -4213,7 +4132,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -4227,10 +4146,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -4239,7 +4158,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -4252,12 +4171,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -4266,7 +4185,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -4284,7 +4203,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4296,10 +4215,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     },
-                    "fingerprint": 8141912478460722946
+                    "fingerprint": 17212211036796686132
                   }
                 }
               ],
@@ -4308,7 +4227,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+                "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
               },
               "stop": "tool_use",
               "native": {
@@ -4321,12 +4240,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4387331440209345018
+                "fingerprint": 12748312809397798752
               }
             },
             {
@@ -4335,7 +4254,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4343,7 +4262,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -4352,18 +4272,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The runner reported a transient failure, so I'll call it again.",
-                  "native": {
-                    "item": {
-                      "content": "The runner reported a transient failure, so I'll call it again."
-                    },
-                    "fingerprint": 16932507470925000165
-                  }
+                  "text": "The runner reported a transient failure, so I'll call it again."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4375,10 +4289,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     },
-                    "fingerprint": 16462301964725544751
+                    "fingerprint": 8982348679083185295
                   }
                 }
               ],
@@ -4387,7 +4301,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "42af806f-35e5-4040-94c0-6ff1c60aaab1"
+                "response_id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad"
               },
               "stop": "tool_use",
               "native": {
@@ -4400,12 +4314,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 501540192492275865
+                "fingerprint": 16624107265208398447
               }
             },
             {
@@ -4414,7 +4328,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4431,18 +4345,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "native": {
-                    "item": {
-                      "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
-                    },
-                    "fingerprint": 11399324153512162361
-                  }
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "function": {
                     "name": "write_file",
@@ -4457,10 +4365,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     },
-                    "fingerprint": 4269030568482658288
+                    "fingerprint": 14950162930972778980
                   }
                 }
               ],
@@ -4469,7 +4377,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "be9d534c-6719-4585-abea-943c3cbd989e"
+                "response_id": "6ce581ec-6281-4303-9140-3f5035a1a64d"
               },
               "stop": "tool_use",
               "native": {
@@ -4482,12 +4390,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18138686188470162416
+                "fingerprint": 438281262316203964
               }
             },
             {
@@ -4496,7 +4404,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "name": "write_file",
                   "content": [
@@ -4514,7 +4422,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4526,10 +4434,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     },
-                    "fingerprint": 16956507402674013014
+                    "fingerprint": 6383381422390840246
                   }
                 }
               ],
@@ -4538,7 +4446,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "37b82ca2-9af4-46ee-abbd-b1bba4261d61"
+                "response_id": "f927173d-b23e-49dd-975c-6acf2fd9a0d6"
               },
               "stop": "tool_use",
               "native": {
@@ -4551,12 +4459,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12922052730869264386
+                "fingerprint": 6921563305482765450
               }
             },
             {
@@ -4565,7 +4473,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4656,18 +4564,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-              "native": {
-                "item": {
-                  "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
-                },
-                "fingerprint": 4631006669550505354
-              }
+              "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_OlSIjaWZjSqNrU8JKPnt4743"
+                "provider": "call_00_Of4Z7OzjeRxslgITGV2S1584"
               },
               "function": {
                 "name": "read_file",
@@ -4681,10 +4583,10 @@
                     "arguments": "{\"path\": \"src/calendar.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                  "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                   "type": "function"
                 },
-                "fingerprint": 995625131896328375
+                "fingerprint": 16155902688900039
               }
             }
           ],
@@ -4699,7 +4601,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "9a4e68b2-5268-4053-a40b-c76b38e60428"
+            "response_id": "8dad8450-38df-452c-a094-b21674d4bcb3"
           },
           "native": {
             "item": {
@@ -4711,12 +4613,12 @@
                     "arguments": "{\"path\": \"src/calendar.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                  "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 16999342105416540276
+            "fingerprint": 9969168231961356266
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -4734,7 +4636,7 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                      "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                       "index": 0,
                       "type": "function"
                     }
@@ -4743,7 +4645,7 @@
               }
             ],
             "created": 0,
-            "id": "9a4e68b2-5268-4053-a40b-c76b38e60428",
+            "id": "8dad8450-38df-452c-a094-b21674d4bcb3",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -4812,18 +4714,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -4835,10 +4731,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -4847,7 +4743,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -4860,12 +4756,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -4874,7 +4770,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -4892,7 +4788,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -4906,10 +4802,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -4918,7 +4814,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -4931,12 +4827,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -4945,7 +4841,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -4963,7 +4859,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -4977,10 +4873,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -4989,7 +4885,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -5002,12 +4898,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -5016,7 +4912,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -5034,7 +4930,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -5048,10 +4944,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -5060,7 +4956,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -5073,12 +4969,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -5087,7 +4983,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -5105,7 +5001,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5117,10 +5013,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     },
-                    "fingerprint": 8141912478460722946
+                    "fingerprint": 17212211036796686132
                   }
                 }
               ],
@@ -5129,7 +5025,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+                "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
               },
               "stop": "tool_use",
               "native": {
@@ -5142,12 +5038,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4387331440209345018
+                "fingerprint": 12748312809397798752
               }
             },
             {
@@ -5156,7 +5052,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5164,7 +5060,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -5173,18 +5070,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The runner reported a transient failure, so I'll call it again.",
-                  "native": {
-                    "item": {
-                      "content": "The runner reported a transient failure, so I'll call it again."
-                    },
-                    "fingerprint": 16932507470925000165
-                  }
+                  "text": "The runner reported a transient failure, so I'll call it again."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5196,10 +5087,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     },
-                    "fingerprint": 16462301964725544751
+                    "fingerprint": 8982348679083185295
                   }
                 }
               ],
@@ -5208,7 +5099,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "42af806f-35e5-4040-94c0-6ff1c60aaab1"
+                "response_id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad"
               },
               "stop": "tool_use",
               "native": {
@@ -5221,12 +5112,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 501540192492275865
+                "fingerprint": 16624107265208398447
               }
             },
             {
@@ -5235,7 +5126,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5252,18 +5143,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "native": {
-                    "item": {
-                      "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
-                    },
-                    "fingerprint": 11399324153512162361
-                  }
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "function": {
                     "name": "write_file",
@@ -5278,10 +5163,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     },
-                    "fingerprint": 4269030568482658288
+                    "fingerprint": 14950162930972778980
                   }
                 }
               ],
@@ -5290,7 +5175,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "be9d534c-6719-4585-abea-943c3cbd989e"
+                "response_id": "6ce581ec-6281-4303-9140-3f5035a1a64d"
               },
               "stop": "tool_use",
               "native": {
@@ -5303,12 +5188,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18138686188470162416
+                "fingerprint": 438281262316203964
               }
             },
             {
@@ -5317,7 +5202,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "name": "write_file",
                   "content": [
@@ -5335,7 +5220,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5347,10 +5232,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     },
-                    "fingerprint": 16956507402674013014
+                    "fingerprint": 6383381422390840246
                   }
                 }
               ],
@@ -5359,7 +5244,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "37b82ca2-9af4-46ee-abbd-b1bba4261d61"
+                "response_id": "f927173d-b23e-49dd-975c-6acf2fd9a0d6"
               },
               "stop": "tool_use",
               "native": {
@@ -5372,12 +5257,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12922052730869264386
+                "fingerprint": 6921563305482765450
               }
             },
             {
@@ -5386,7 +5271,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5403,18 +5288,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-                  "native": {
-                    "item": {
-                      "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
-                    },
-                    "fingerprint": 4631006669550505354
-                  }
+                  "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_OlSIjaWZjSqNrU8JKPnt4743"
+                    "provider": "call_00_Of4Z7OzjeRxslgITGV2S1584"
                   },
                   "function": {
                     "name": "read_file",
@@ -5428,10 +5307,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                      "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                       "type": "function"
                     },
-                    "fingerprint": 995625131896328375
+                    "fingerprint": 16155902688900039
                   }
                 }
               ],
@@ -5440,7 +5319,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "9a4e68b2-5268-4053-a40b-c76b38e60428"
+                "response_id": "8dad8450-38df-452c-a094-b21674d4bcb3"
               },
               "stop": "tool_use",
               "native": {
@@ -5453,12 +5332,12 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                      "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 16999342105416540276
+                "fingerprint": 9969168231961356266
               }
             },
             {
@@ -5467,7 +5346,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_OlSIjaWZjSqNrU8JKPnt4743"
+                    "provider": "call_00_Of4Z7OzjeRxslgITGV2S1584"
                   },
                   "name": "read_file",
                   "content": [
@@ -5559,7 +5438,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_2nh1jmz0J7g7QbX0oMjX9680"
+                "provider": "call_00_raBdWOOFpUF7yDs8lvje0801"
               },
               "function": {
                 "name": "write_file",
@@ -5574,10 +5453,10 @@
                     "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_00_2nh1jmz0J7g7QbX0oMjX9680",
+                  "id": "call_00_raBdWOOFpUF7yDs8lvje0801",
                   "type": "function"
                 },
-                "fingerprint": 16331232211768709816
+                "fingerprint": 3261594364527530141
               }
             }
           ],
@@ -5592,7 +5471,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "20caea8b-53e7-4e6a-9d9a-f8d9b161b2c1"
+            "response_id": "de23040e-0ef6-452f-a34b-8d8913e9c62a"
           },
           "native": {
             "item": {
@@ -5604,12 +5483,12 @@
                     "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_00_2nh1jmz0J7g7QbX0oMjX9680",
+                  "id": "call_00_raBdWOOFpUF7yDs8lvje0801",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 8745460189788819918
+            "fingerprint": 11197833909947119037
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -5627,7 +5506,7 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_2nh1jmz0J7g7QbX0oMjX9680",
+                      "id": "call_00_raBdWOOFpUF7yDs8lvje0801",
                       "index": 0,
                       "type": "function"
                     }
@@ -5636,7 +5515,7 @@
               }
             ],
             "created": 0,
-            "id": "20caea8b-53e7-4e6a-9d9a-f8d9b161b2c1",
+            "id": "de23040e-0ef6-452f-a34b-8d8913e9c62a",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -5705,18 +5584,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -5728,10 +5601,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -5740,7 +5613,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -5753,12 +5626,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -5767,7 +5640,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -5785,7 +5658,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -5799,10 +5672,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -5811,7 +5684,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -5824,12 +5697,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -5838,7 +5711,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -5856,7 +5729,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -5870,10 +5743,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -5882,7 +5755,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -5895,12 +5768,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -5909,7 +5782,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -5927,7 +5800,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -5941,10 +5814,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -5953,7 +5826,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -5966,12 +5839,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -5980,7 +5853,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -5998,7 +5871,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "function": {
                     "name": "run_tests",
@@ -6010,10 +5883,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     },
-                    "fingerprint": 8141912478460722946
+                    "fingerprint": 17212211036796686132
                   }
                 }
               ],
@@ -6022,7 +5895,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+                "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
               },
               "stop": "tool_use",
               "native": {
@@ -6035,12 +5908,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4387331440209345018
+                "fingerprint": 12748312809397798752
               }
             },
             {
@@ -6049,7 +5922,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "name": "run_tests",
                   "content": [
@@ -6057,7 +5930,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -6066,18 +5940,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The runner reported a transient failure, so I'll call it again.",
-                  "native": {
-                    "item": {
-                      "content": "The runner reported a transient failure, so I'll call it again."
-                    },
-                    "fingerprint": 16932507470925000165
-                  }
+                  "text": "The runner reported a transient failure, so I'll call it again."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "function": {
                     "name": "run_tests",
@@ -6089,10 +5957,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     },
-                    "fingerprint": 16462301964725544751
+                    "fingerprint": 8982348679083185295
                   }
                 }
               ],
@@ -6101,7 +5969,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "42af806f-35e5-4040-94c0-6ff1c60aaab1"
+                "response_id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad"
               },
               "stop": "tool_use",
               "native": {
@@ -6114,12 +5982,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 501540192492275865
+                "fingerprint": 16624107265208398447
               }
             },
             {
@@ -6128,7 +5996,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "name": "run_tests",
                   "content": [
@@ -6145,18 +6013,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "native": {
-                    "item": {
-                      "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
-                    },
-                    "fingerprint": 11399324153512162361
-                  }
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "function": {
                     "name": "write_file",
@@ -6171,10 +6033,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     },
-                    "fingerprint": 4269030568482658288
+                    "fingerprint": 14950162930972778980
                   }
                 }
               ],
@@ -6183,7 +6045,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "be9d534c-6719-4585-abea-943c3cbd989e"
+                "response_id": "6ce581ec-6281-4303-9140-3f5035a1a64d"
               },
               "stop": "tool_use",
               "native": {
@@ -6196,12 +6058,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18138686188470162416
+                "fingerprint": 438281262316203964
               }
             },
             {
@@ -6210,7 +6072,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "name": "write_file",
                   "content": [
@@ -6228,7 +6090,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "function": {
                     "name": "run_tests",
@@ -6240,10 +6102,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     },
-                    "fingerprint": 16956507402674013014
+                    "fingerprint": 6383381422390840246
                   }
                 }
               ],
@@ -6252,7 +6114,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "37b82ca2-9af4-46ee-abbd-b1bba4261d61"
+                "response_id": "f927173d-b23e-49dd-975c-6acf2fd9a0d6"
               },
               "stop": "tool_use",
               "native": {
@@ -6265,12 +6127,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12922052730869264386
+                "fingerprint": 6921563305482765450
               }
             },
             {
@@ -6279,7 +6141,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "name": "run_tests",
                   "content": [
@@ -6296,18 +6158,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-                  "native": {
-                    "item": {
-                      "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
-                    },
-                    "fingerprint": 4631006669550505354
-                  }
+                  "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_OlSIjaWZjSqNrU8JKPnt4743"
+                    "provider": "call_00_Of4Z7OzjeRxslgITGV2S1584"
                   },
                   "function": {
                     "name": "read_file",
@@ -6321,10 +6177,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                      "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                       "type": "function"
                     },
-                    "fingerprint": 995625131896328375
+                    "fingerprint": 16155902688900039
                   }
                 }
               ],
@@ -6333,7 +6189,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "9a4e68b2-5268-4053-a40b-c76b38e60428"
+                "response_id": "8dad8450-38df-452c-a094-b21674d4bcb3"
               },
               "stop": "tool_use",
               "native": {
@@ -6346,12 +6202,12 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                      "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 16999342105416540276
+                "fingerprint": 9969168231961356266
               }
             },
             {
@@ -6360,7 +6216,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_OlSIjaWZjSqNrU8JKPnt4743"
+                    "provider": "call_00_Of4Z7OzjeRxslgITGV2S1584"
                   },
                   "name": "read_file",
                   "content": [
@@ -6378,7 +6234,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_2nh1jmz0J7g7QbX0oMjX9680"
+                    "provider": "call_00_raBdWOOFpUF7yDs8lvje0801"
                   },
                   "function": {
                     "name": "write_file",
@@ -6393,10 +6249,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_2nh1jmz0J7g7QbX0oMjX9680",
+                      "id": "call_00_raBdWOOFpUF7yDs8lvje0801",
                       "type": "function"
                     },
-                    "fingerprint": 16331232211768709816
+                    "fingerprint": 3261594364527530141
                   }
                 }
               ],
@@ -6405,7 +6261,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "20caea8b-53e7-4e6a-9d9a-f8d9b161b2c1"
+                "response_id": "de23040e-0ef6-452f-a34b-8d8913e9c62a"
               },
               "stop": "tool_use",
               "native": {
@@ -6418,12 +6274,12 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_2nh1jmz0J7g7QbX0oMjX9680",
+                      "id": "call_00_raBdWOOFpUF7yDs8lvje0801",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8745460189788819918
+                "fingerprint": 11197833909947119037
               }
             },
             {
@@ -6432,7 +6288,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_2nh1jmz0J7g7QbX0oMjX9680"
+                    "provider": "call_00_raBdWOOFpUF7yDs8lvje0801"
                   },
                   "name": "write_file",
                   "content": [
@@ -6524,7 +6380,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_ATibQeyGPVBiGDRw6U1L6727"
+                "provider": "call_00_DL0lGp1gv4juL4mZ8NSE5045"
               },
               "function": {
                 "name": "run_tests",
@@ -6536,10 +6392,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_ATibQeyGPVBiGDRw6U1L6727",
+                  "id": "call_00_DL0lGp1gv4juL4mZ8NSE5045",
                   "type": "function"
                 },
-                "fingerprint": 15196647518600687526
+                "fingerprint": 2316150152805216580
               }
             }
           ],
@@ -6554,7 +6410,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "b8fc01ab-a73e-4856-8992-1906aa754d75"
+            "response_id": "4d0b7671-5b63-400e-a340-eb7f9866b6bf"
           },
           "native": {
             "item": {
@@ -6566,12 +6422,12 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_00_ATibQeyGPVBiGDRw6U1L6727",
+                  "id": "call_00_DL0lGp1gv4juL4mZ8NSE5045",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 4962454632308687074
+            "fingerprint": 1031455504888741696
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -6589,7 +6445,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_ATibQeyGPVBiGDRw6U1L6727",
+                      "id": "call_00_DL0lGp1gv4juL4mZ8NSE5045",
                       "index": 0,
                       "type": "function"
                     }
@@ -6598,7 +6454,7 @@
               }
             ],
             "created": 0,
-            "id": "b8fc01ab-a73e-4856-8992-1906aa754d75",
+            "id": "4d0b7671-5b63-400e-a340-eb7f9866b6bf",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -6667,18 +6523,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "function": {
                     "name": "list_files",
@@ -6690,10 +6540,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     },
-                    "fingerprint": 3301336779343338028
+                    "fingerprint": 17212728858332157574
                   }
                 }
               ],
@@ -6702,7 +6552,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10f683e3-588d-413e-ad27-3af1909858ff"
+                "response_id": "8ad0e167-2938-47b3-93b4-a16d0d6dee27"
               },
               "stop": "tool_use",
               "native": {
@@ -6715,12 +6565,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462",
+                      "id": "call_00_chHFq7DAb7KA8JpjtllI9360",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7988457405222726045
+                "fingerprint": 11140493236039734921
               }
             },
             {
@@ -6729,7 +6579,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_Oe2Mx8bOrhL1jFxMa5BD2462"
+                    "provider": "call_00_chHFq7DAb7KA8JpjtllI9360"
                   },
                   "name": "list_files",
                   "content": [
@@ -6747,7 +6597,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "function": {
                     "name": "read_file",
@@ -6761,10 +6611,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     },
-                    "fingerprint": 5389489860912015638
+                    "fingerprint": 11326034289365121895
                   }
                 }
               ],
@@ -6773,7 +6623,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "d31f6e32-d7b7-4abe-983e-7f4d8f0b3ced"
+                "response_id": "d43c1e53-854f-48ba-b42d-f63d05d6498f"
               },
               "stop": "tool_use",
               "native": {
@@ -6786,12 +6636,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_TRJx9FuwlHQnQEJ8Phhx4535",
+                      "id": "call_00_iS753KRIeIQWC0cUSdPL9077",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8190967108427494754
+                "fingerprint": 6507785073356452941
               }
             },
             {
@@ -6800,7 +6650,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_TRJx9FuwlHQnQEJ8Phhx4535"
+                    "provider": "call_00_iS753KRIeIQWC0cUSdPL9077"
                   },
                   "name": "read_file",
                   "content": [
@@ -6818,7 +6668,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "function": {
                     "name": "read_file",
@@ -6832,10 +6682,10 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     },
-                    "fingerprint": 11268423959783784007
+                    "fingerprint": 3677263074518802649
                   }
                 }
               ],
@@ -6844,7 +6694,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "4f24e3c4-2499-48d2-bd16-ab8ca278b765"
+                "response_id": "93dc50a3-e82a-40a4-b89b-e33bf910ecf1"
               },
               "stop": "tool_use",
               "native": {
@@ -6857,12 +6707,12 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_nwGDpvcCr2aYa9XNla8V7563",
+                      "id": "call_00_edem4XXWmST9v9DlUUoF4151",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13344039091349048847
+                "fingerprint": 15643782840622418289
               }
             },
             {
@@ -6871,7 +6721,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_nwGDpvcCr2aYa9XNla8V7563"
+                    "provider": "call_00_edem4XXWmST9v9DlUUoF4151"
                   },
                   "name": "read_file",
                   "content": [
@@ -6889,7 +6739,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "function": {
                     "name": "read_file",
@@ -6903,10 +6753,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     },
-                    "fingerprint": 18312680491719546601
+                    "fingerprint": 10449515890886522845
                   }
                 }
               ],
@@ -6915,7 +6765,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "12afcdca-1919-44c5-8d64-33a0928c4b58"
+                "response_id": "6e6a92bf-b0be-4762-a113-61a0a65ececb"
               },
               "stop": "tool_use",
               "native": {
@@ -6928,12 +6778,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_aRUSsSER46fXRQmi7LRz3159",
+                      "id": "call_00_jrBK4i7ptVKPaMA705Rh5912",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10547434919850619173
+                "fingerprint": 10298378166042568213
               }
             },
             {
@@ -6942,7 +6792,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aRUSsSER46fXRQmi7LRz3159"
+                    "provider": "call_00_jrBK4i7ptVKPaMA705Rh5912"
                   },
                   "name": "read_file",
                   "content": [
@@ -6960,7 +6810,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "function": {
                     "name": "run_tests",
@@ -6972,10 +6822,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     },
-                    "fingerprint": 8141912478460722946
+                    "fingerprint": 17212211036796686132
                   }
                 }
               ],
@@ -6984,7 +6834,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "c32c322a-0257-4ef7-aa84-ca2e244c659e"
+                "response_id": "66ad7f30-ffe9-4922-ae2e-a968dbb4b23b"
               },
               "stop": "tool_use",
               "native": {
@@ -6997,12 +6847,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_suLNl6AMDXJoIXsqUxqu2428",
+                      "id": "call_00_TzP2ZkiqduyptqJrtUff5551",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4387331440209345018
+                "fingerprint": 12748312809397798752
               }
             },
             {
@@ -7011,7 +6861,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_suLNl6AMDXJoIXsqUxqu2428"
+                    "provider": "call_00_TzP2ZkiqduyptqJrtUff5551"
                   },
                   "name": "run_tests",
                   "content": [
@@ -7019,7 +6869,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -7028,18 +6879,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The runner reported a transient failure, so I'll call it again.",
-                  "native": {
-                    "item": {
-                      "content": "The runner reported a transient failure, so I'll call it again."
-                    },
-                    "fingerprint": 16932507470925000165
-                  }
+                  "text": "The runner reported a transient failure, so I'll call it again."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "function": {
                     "name": "run_tests",
@@ -7051,10 +6896,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     },
-                    "fingerprint": 16462301964725544751
+                    "fingerprint": 8982348679083185295
                   }
                 }
               ],
@@ -7063,7 +6908,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "42af806f-35e5-4040-94c0-6ff1c60aaab1"
+                "response_id": "95007e7a-9fb9-4f11-850c-16bb144ef5ad"
               },
               "stop": "tool_use",
               "native": {
@@ -7076,12 +6921,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_XFrG0eqQALLLKkgpBqDS5009",
+                      "id": "call_00_P0KgzFoBbKLGkQpcTdem2749",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 501540192492275865
+                "fingerprint": 16624107265208398447
               }
             },
             {
@@ -7090,7 +6935,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_XFrG0eqQALLLKkgpBqDS5009"
+                    "provider": "call_00_P0KgzFoBbKLGkQpcTdem2749"
                   },
                   "name": "run_tests",
                   "content": [
@@ -7107,18 +6952,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "native": {
-                    "item": {
-                      "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
-                    },
-                    "fingerprint": 11399324153512162361
-                  }
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "function": {
                     "name": "write_file",
@@ -7133,10 +6972,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     },
-                    "fingerprint": 4269030568482658288
+                    "fingerprint": 14950162930972778980
                   }
                 }
               ],
@@ -7145,7 +6984,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "be9d534c-6719-4585-abea-943c3cbd989e"
+                "response_id": "6ce581ec-6281-4303-9140-3f5035a1a64d"
               },
               "stop": "tool_use",
               "native": {
@@ -7158,12 +6997,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011",
+                      "id": "call_00_v1Ce9kOIPtVUcK9R020S7796",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18138686188470162416
+                "fingerprint": 438281262316203964
               }
             },
             {
@@ -7172,7 +7011,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_9Gnv2lp2pGjBCXMbRZlZ8011"
+                    "provider": "call_00_v1Ce9kOIPtVUcK9R020S7796"
                   },
                   "name": "write_file",
                   "content": [
@@ -7190,7 +7029,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "function": {
                     "name": "run_tests",
@@ -7202,10 +7041,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     },
-                    "fingerprint": 16956507402674013014
+                    "fingerprint": 6383381422390840246
                   }
                 }
               ],
@@ -7214,7 +7053,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "37b82ca2-9af4-46ee-abbd-b1bba4261d61"
+                "response_id": "f927173d-b23e-49dd-975c-6acf2fd9a0d6"
               },
               "stop": "tool_use",
               "native": {
@@ -7227,12 +7066,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_QRgs8ieuaOJ5X0zxkrHS0013",
+                      "id": "call_00_nEkQncIEQujxaEL0bScl8665",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12922052730869264386
+                "fingerprint": 6921563305482765450
               }
             },
             {
@@ -7241,7 +7080,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_QRgs8ieuaOJ5X0zxkrHS0013"
+                    "provider": "call_00_nEkQncIEQujxaEL0bScl8665"
                   },
                   "name": "run_tests",
                   "content": [
@@ -7258,18 +7097,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing.",
-                  "native": {
-                    "item": {
-                      "content": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
-                    },
-                    "fingerprint": 4631006669550505354
-                  }
+                  "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_OlSIjaWZjSqNrU8JKPnt4743"
+                    "provider": "call_00_Of4Z7OzjeRxslgITGV2S1584"
                   },
                   "function": {
                     "name": "read_file",
@@ -7283,10 +7116,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                      "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                       "type": "function"
                     },
-                    "fingerprint": 995625131896328375
+                    "fingerprint": 16155902688900039
                   }
                 }
               ],
@@ -7295,7 +7128,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "9a4e68b2-5268-4053-a40b-c76b38e60428"
+                "response_id": "8dad8450-38df-452c-a094-b21674d4bcb3"
               },
               "stop": "tool_use",
               "native": {
@@ -7308,12 +7141,12 @@
                         "arguments": "{\"path\": \"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_OlSIjaWZjSqNrU8JKPnt4743",
+                      "id": "call_00_Of4Z7OzjeRxslgITGV2S1584",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 16999342105416540276
+                "fingerprint": 9969168231961356266
               }
             },
             {
@@ -7322,7 +7155,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_OlSIjaWZjSqNrU8JKPnt4743"
+                    "provider": "call_00_Of4Z7OzjeRxslgITGV2S1584"
                   },
                   "name": "read_file",
                   "content": [
@@ -7340,7 +7173,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_2nh1jmz0J7g7QbX0oMjX9680"
+                    "provider": "call_00_raBdWOOFpUF7yDs8lvje0801"
                   },
                   "function": {
                     "name": "write_file",
@@ -7355,10 +7188,10 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_2nh1jmz0J7g7QbX0oMjX9680",
+                      "id": "call_00_raBdWOOFpUF7yDs8lvje0801",
                       "type": "function"
                     },
-                    "fingerprint": 16331232211768709816
+                    "fingerprint": 3261594364527530141
                   }
                 }
               ],
@@ -7367,7 +7200,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "20caea8b-53e7-4e6a-9d9a-f8d9b161b2c1"
+                "response_id": "de23040e-0ef6-452f-a34b-8d8913e9c62a"
               },
               "stop": "tool_use",
               "native": {
@@ -7380,12 +7213,12 @@
                         "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_00_2nh1jmz0J7g7QbX0oMjX9680",
+                      "id": "call_00_raBdWOOFpUF7yDs8lvje0801",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8745460189788819918
+                "fingerprint": 11197833909947119037
               }
             },
             {
@@ -7394,7 +7227,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_2nh1jmz0J7g7QbX0oMjX9680"
+                    "provider": "call_00_raBdWOOFpUF7yDs8lvje0801"
                   },
                   "name": "write_file",
                   "content": [
@@ -7412,7 +7245,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_ATibQeyGPVBiGDRw6U1L6727"
+                    "provider": "call_00_DL0lGp1gv4juL4mZ8NSE5045"
                   },
                   "function": {
                     "name": "run_tests",
@@ -7424,10 +7257,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_ATibQeyGPVBiGDRw6U1L6727",
+                      "id": "call_00_DL0lGp1gv4juL4mZ8NSE5045",
                       "type": "function"
                     },
-                    "fingerprint": 15196647518600687526
+                    "fingerprint": 2316150152805216580
                   }
                 }
               ],
@@ -7436,7 +7269,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "b8fc01ab-a73e-4856-8992-1906aa754d75"
+                "response_id": "4d0b7671-5b63-400e-a340-eb7f9866b6bf"
               },
               "stop": "tool_use",
               "native": {
@@ -7449,12 +7282,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_00_ATibQeyGPVBiGDRw6U1L6727",
+                      "id": "call_00_DL0lGp1gv4juL4mZ8NSE5045",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4962454632308687074
+                "fingerprint": 1031455504888741696
               }
             },
             {
@@ -7463,7 +7296,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_ATibQeyGPVBiGDRw6U1L6727"
+                    "provider": "call_00_DL0lGp1gv4juL4mZ8NSE5045"
                   },
                   "name": "run_tests",
                   "content": [
@@ -7554,13 +7387,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "done",
-              "native": {
-                "item": {
-                  "content": "done"
-                },
-                "fingerprint": 16950038988497426807
-              }
+              "text": "done"
             }
           ],
           "usage": {
@@ -7574,14 +7401,14 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "e09bc38d-eedb-471b-b8a4-7b060ca1b137"
+            "response_id": "f93dba67-062f-4e24-8999-4c880cbeede8"
           },
           "native": {
             "item": {
               "content": "done",
               "role": "assistant"
             },
-            "fingerprint": 18014957589545053405
+            "fingerprint": 13317791222948023665
           },
           "finish_reason": "stop",
           "raw": {
@@ -7597,7 +7424,7 @@
               }
             ],
             "created": 0,
-            "id": "e09bc38d-eedb-471b-b8a4-7b060ca1b137",
+            "id": "f93dba67-062f-4e24-8999-4c880cbeede8",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

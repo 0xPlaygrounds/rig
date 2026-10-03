@@ -68,21 +68,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using an ownership, borrowing, and lifetime system to enable high-performance, concurrent code. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (like buffer overflows and use-after-free), making software more reliable and secure.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using an ownership, borrowing, and lifetime system to enable high-performance, concurrent code. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (like buffer overflows and use-after-free), making software more reliable and secure.",
-                  "refusal": null
-                },
-                "fingerprint": 7979519100461759553
-              }
+              "text": "Rust is a systems programming language that delivers C/C++-level performance while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime system. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, data races, and leaks that cause crashes and security vulnerabilities, improving reliability and security."
             }
           ],
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 203,
-            "total_tokens": 240,
+            "output_tokens": 202,
+            "total_tokens": 239,
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
@@ -91,18 +83,18 @@
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPXQ8szYWmS1cdWjvExm7DP9Havl"
+            "response_id": "chatcmpl-EUe1hpdbEcwoGIpX9OOz4muLUX8Gr"
           },
           "native": {
             "item": {
               "annotations": [],
-              "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using an ownership, borrowing, and lifetime system to enable high-performance, concurrent code. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (like buffer overflows and use-after-free), making software more reliable and secure.",
+              "content": "Rust is a systems programming language that delivers C/C++-level performance while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime system. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, data races, and leaks that cause crashes and security vulnerabilities, improving reliability and security.",
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 2427914768790818279
+            "fingerprint": 16632323853793004437
           },
-          "provider_request_id": "req_31c5cb4a6f8f445285fc9b482ec4d351",
+          "provider_request_id": "req_3820b4621cea4eff8eb575f043610fb4",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -111,20 +103,20 @@
                 "index": 0,
                 "message": {
                   "annotations": [],
-                  "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using an ownership, borrowing, and lifetime system to enable high-performance, concurrent code. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (like buffer overflows and use-after-free), making software more reliable and secure.",
+                  "content": "Rust is a systems programming language that delivers C/C++-level performance while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime system. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, data races, and leaks that cause crashes and security vulnerabilities, improving reliability and security.",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPXQ8szYWmS1cdWjvExm7DP9Havl",
+            "id": "chatcmpl-EUe1hpdbEcwoGIpX9OOz4muLUX8Gr",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 203,
+              "completion_tokens": 202,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
@@ -136,7 +128,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 240
+              "total_tokens": 239
             }
           }
         }
@@ -169,15 +161,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using an ownership, borrowing, and lifetime system to enable high-performance, concurrent code. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (like buffer overflows and use-after-free), making software more reliable and secure.",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using an ownership, borrowing, and lifetime system to enable high-performance, concurrent code. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (like buffer overflows and use-after-free), making software more reliable and secure.",
-                      "refusal": null
-                    },
-                    "fingerprint": 7979519100461759553
-                  }
+                  "text": "Rust is a systems programming language that delivers C/C++-level performance while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime system. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, data races, and leaks that cause crashes and security vulnerabilities, improving reliability and security."
                 }
               ],
               "origin": {
@@ -185,17 +169,17 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPXQ8szYWmS1cdWjvExm7DP9Havl"
+                "response_id": "chatcmpl-EUe1hpdbEcwoGIpX9OOz4muLUX8Gr"
               },
               "stop": "stop",
               "native": {
                 "item": {
                   "annotations": [],
-                  "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using an ownership, borrowing, and lifetime system to enable high-performance, concurrent code. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (like buffer overflows and use-after-free), making software more reliable and secure.",
+                  "content": "Rust is a systems programming language that delivers C/C++-level performance while enforcing memory- and thread-safety via its ownership, borrowing, and lifetime system. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, data races, and leaks that cause crashes and security vulnerabilities, improving reliability and security.",
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 2427914768790818279
+                "fingerprint": 16632323853793004437
               }
             },
             {
@@ -224,41 +208,33 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using ownership, borrowing, and lifetimes for high-performance concurrent code. Memory safety prevents crashes, data corruption, and security vulnerabilities like buffer overflows and use-after-free, making software more reliable and secure DONE",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using ownership, borrowing, and lifetimes for high-performance concurrent code. Memory safety prevents crashes, data corruption, and security vulnerabilities like buffer overflows and use-after-free, making software more reliable and secure DONE",
-                  "refusal": null
-                },
-                "fingerprint": 37904172822096637
-              }
+              "text": "Rust is a systems programming language that provides C/C++-level performance while enforcing memory- and thread-safety via ownership, borrowing, and lifetimes. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities, improving reliability and security DONE"
             }
           ],
           "usage": {
-            "input_tokens": 121,
-            "output_tokens": 644,
-            "total_tokens": 765,
+            "input_tokens": 120,
+            "output_tokens": 583,
+            "total_tokens": 703,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 576
+            "reasoning_tokens": 512
           },
           "origin": {
             "api": "openai.chat",
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPXSFgXwmLf1JEJreITfvdQSAFtH"
+            "response_id": "chatcmpl-EUe1jqahqAgFFKpbZShAFU4Uv8Eyf"
           },
           "native": {
             "item": {
               "annotations": [],
-              "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using ownership, borrowing, and lifetimes for high-performance concurrent code. Memory safety prevents crashes, data corruption, and security vulnerabilities like buffer overflows and use-after-free, making software more reliable and secure DONE",
+              "content": "Rust is a systems programming language that provides C/C++-level performance while enforcing memory- and thread-safety via ownership, borrowing, and lifetimes. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities, improving reliability and security DONE",
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 11352539341418214641
+            "fingerprint": 12109762046479919281
           },
-          "provider_request_id": "req_03f53c37b07240cabe0cc9a4e163f710",
+          "provider_request_id": "req_8a4cec1878cc47d29e1c443e8a54d04c",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -267,32 +243,32 @@
                 "index": 0,
                 "message": {
                   "annotations": [],
-                  "content": "Rust is a modern systems programming language that guarantees memory and thread safety without a garbage collector by using ownership, borrowing, and lifetimes for high-performance concurrent code. Memory safety prevents crashes, data corruption, and security vulnerabilities like buffer overflows and use-after-free, making software more reliable and secure DONE",
+                  "content": "Rust is a systems programming language that provides C/C++-level performance while enforcing memory- and thread-safety via ownership, borrowing, and lifetimes. Memory safety matters because it prevents bugs like use-after-free, buffer overflows, and data races that cause crashes and security vulnerabilities, improving reliability and security DONE",
                   "refusal": null,
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPXSFgXwmLf1JEJreITfvdQSAFtH",
+            "id": "chatcmpl-EUe1jqahqAgFFKpbZShAFU4Uv8Eyf",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 644,
+              "completion_tokens": 583,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 576,
+                "reasoning_tokens": 512,
                 "rejected_prediction_tokens": 0
               },
-              "prompt_tokens": 121,
+              "prompt_tokens": 120,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 765
+              "total_tokens": 703
             }
           }
         }

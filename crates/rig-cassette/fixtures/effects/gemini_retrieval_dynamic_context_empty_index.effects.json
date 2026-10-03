@@ -105,7 +105,7 @@
                 "item": {
                   "text": "A \"glarb-glarb\" is not a recognized term or concept."
                 },
-                "fingerprint": 431720970330044720
+                "fingerprint": 1415932451144022576
               }
             }
           ],
@@ -127,7 +127,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 18142979439004244140
+            "fingerprint": 12863469073238205348
           },
           "finish_reason": "stop",
           "raw": {

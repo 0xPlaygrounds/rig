@@ -88,7 +88,7 @@
                 "item": {
                   "text": "The sky is blue."
                 },
-                "fingerprint": 13066144118535952107
+                "fingerprint": 9737323686000885399
               }
             }
           ],
@@ -110,21 +110,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 3979446710163865833
+            "fingerprint": 10293141901048301989
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 28,
               "candidatesTokenCount": 5,
-              "totalTokenCount": 59,
-              "thoughtsTokenCount": 26,
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 28
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 26,
+              "totalTokenCount": 59
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -161,12 +162,17 @@
                 "item": {
                   "text": "The sky is blue."
                 },
-                "fingerprint": 13066144118535952107
+                "fingerprint": 9737323686000885399
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "stress-agent/run#0"
     }
   ]

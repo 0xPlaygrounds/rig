@@ -326,7 +326,7 @@
                     },
                     "thoughtSignature": "Er8ECrwEAWkUfRNr3cQeX3MvTRs6FEgt8ZLKxdtHxdvRC0wZDmU41qIlCyyOA64a1QDtyqZ6fR86xlyKKErRzHah81abQ1RxVEa51RGilEw3NmErU8nsUU5iMY21D3oJulmKVpZ22b+j0TXXP4ZYYaREdMve5E6ucBS/nsbMqY/xYwtmwe+0ypATqT/P4eG3qhFtcrPOX0QXqn9N8BnBoC0xRExxj2YDdudiPjOtjW2hAXiPfXpmtdo7mEC1CDb/xOPcpmsWsuF3SbsOuXPpEgTjXrlCfev2LPOoaKn7Rrnqi1xCkrzYzILdePdbxqUUFXHs/pN91l4ezMwWLtUTSQZChCFVSpdwjIIjXd1BDIzBiBXYEfS6oOEPkMAgKhHWmFmH1/0vWgOTnWhW/fy3xL6ZExf2CIYEHiHtP1P4pLDXoP07AIXyi7s//JKc1AWgNsQ0QGWLXzaZx9C3iIoLQwKauPexiwwOYp8w4sAXWGbt9Zk9nWtOlRbFL9iQyeOt49HIYy+w//jKTKs8cnRnLUzfJbQO/uzl6kQpvLBTYIGWgEtIZs00tK5OT7ApP2K9fXguAbNOuqfQJXOEcImTnymuoiXpTYj0Pq4qkA/r6gHCpkue3cDTIovji7erBz2py3AhoUpjH+QwefX5pjpxJWN5kIkdVEMQnHc8CCZIng4YFJEVYg/nWmASDw1Y2J8rJb+gSLofX0rVUq4ypPnx6W7V8ENZFkBfn051kF8xSDGwpkdu8B2rZ/LkOqzQ1+xvpgM="
                   },
-                  "fingerprint": 13429609306366702878
+                  "fingerprint": 3096582976841788734
                 }
               }
             ],
@@ -345,7 +345,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2518838217460260934
+                "fingerprint": 2968508209904888410
               }
             },
             "done": true,
@@ -405,7 +405,7 @@
                       },
                       "thoughtSignature": "Er8ECrwEAWkUfRNr3cQeX3MvTRs6FEgt8ZLKxdtHxdvRC0wZDmU41qIlCyyOA64a1QDtyqZ6fR86xlyKKErRzHah81abQ1RxVEa51RGilEw3NmErU8nsUU5iMY21D3oJulmKVpZ22b+j0TXXP4ZYYaREdMve5E6ucBS/nsbMqY/xYwtmwe+0ypATqT/P4eG3qhFtcrPOX0QXqn9N8BnBoC0xRExxj2YDdudiPjOtjW2hAXiPfXpmtdo7mEC1CDb/xOPcpmsWsuF3SbsOuXPpEgTjXrlCfev2LPOoaKn7Rrnqi1xCkrzYzILdePdbxqUUFXHs/pN91l4ezMwWLtUTSQZChCFVSpdwjIIjXd1BDIzBiBXYEfS6oOEPkMAgKhHWmFmH1/0vWgOTnWhW/fy3xL6ZExf2CIYEHiHtP1P4pLDXoP07AIXyi7s//JKc1AWgNsQ0QGWLXzaZx9C3iIoLQwKauPexiwwOYp8w4sAXWGbt9Zk9nWtOlRbFL9iQyeOt49HIYy+w//jKTKs8cnRnLUzfJbQO/uzl6kQpvLBTYIGWgEtIZs00tK5OT7ApP2K9fXguAbNOuqfQJXOEcImTnymuoiXpTYj0Pq4qkA/r6gHCpkue3cDTIovji7erBz2py3AhoUpjH+QwefX5pjpxJWN5kIkdVEMQnHc8CCZIng4YFJEVYg/nWmASDw1Y2J8rJb+gSLofX0rVUq4ypPnx6W7V8ENZFkBfn051kF8xSDGwpkdu8B2rZ/LkOqzQ1+xvpgM="
                     },
-                    "fingerprint": 13429609306366702878
+                    "fingerprint": 3096582976841788734
                   }
                 }
               ],
@@ -428,7 +428,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2518838217460260934
+                "fingerprint": 2968508209904888410
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -536,7 +536,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 2518838217460260934
+              "fingerprint": 2968508209904888410
             }
           }
         },
@@ -568,7 +568,7 @@
                   },
                   "thoughtSignature": "Er8ECrwEAWkUfRNr3cQeX3MvTRs6FEgt8ZLKxdtHxdvRC0wZDmU41qIlCyyOA64a1QDtyqZ6fR86xlyKKErRzHah81abQ1RxVEa51RGilEw3NmErU8nsUU5iMY21D3oJulmKVpZ22b+j0TXXP4ZYYaREdMve5E6ucBS/nsbMqY/xYwtmwe+0ypATqT/P4eG3qhFtcrPOX0QXqn9N8BnBoC0xRExxj2YDdudiPjOtjW2hAXiPfXpmtdo7mEC1CDb/xOPcpmsWsuF3SbsOuXPpEgTjXrlCfev2LPOoaKn7Rrnqi1xCkrzYzILdePdbxqUUFXHs/pN91l4ezMwWLtUTSQZChCFVSpdwjIIjXd1BDIzBiBXYEfS6oOEPkMAgKhHWmFmH1/0vWgOTnWhW/fy3xL6ZExf2CIYEHiHtP1P4pLDXoP07AIXyi7s//JKc1AWgNsQ0QGWLXzaZx9C3iIoLQwKauPexiwwOYp8w4sAXWGbt9Zk9nWtOlRbFL9iQyeOt49HIYy+w//jKTKs8cnRnLUzfJbQO/uzl6kQpvLBTYIGWgEtIZs00tK5OT7ApP2K9fXguAbNOuqfQJXOEcImTnymuoiXpTYj0Pq4qkA/r6gHCpkue3cDTIovji7erBz2py3AhoUpjH+QwefX5pjpxJWN5kIkdVEMQnHc8CCZIng4YFJEVYg/nWmASDw1Y2J8rJb+gSLofX0rVUq4ypPnx6W7V8ENZFkBfn051kF8xSDGwpkdu8B2rZ/LkOqzQ1+xvpgM="
                 },
-                "fingerprint": 13429609306366702878
+                "fingerprint": 3096582976841788734
               }
             }
           }
@@ -585,7 +585,8 @@
               "call": {
                 "provider": "call_213821"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -636,7 +637,7 @@
                     },
                     "thoughtSignature": "EqUBCqIBAWkUfRO7N9lYu/dzHEGoK1jUU34+PmRC7FqJAPwYOIRzL5A7SjoZ8RK+AFkfO3qoLxVrSE6nCUQIveyy3fnTBWNlYIzluK8D8WRr7FaMeNpF1i432tg24AwdGNwiP3Ww+7Wc028s+IQFAQouKnmZ+QoLhnRpgs7GBi7UIEoWRz+VuDW9f/7BwCR9UaAVLq/R3nhgcXcd1PgzhhtZPuU/Y6tx"
                   },
-                  "fingerprint": 11563617448710088461
+                  "fingerprint": 12162792463428355513
                 }
               }
             ],
@@ -655,7 +656,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 3865412464393187839
+                "fingerprint": 339628578460508591
               }
             },
             "done": true,
@@ -715,7 +716,7 @@
                       },
                       "thoughtSignature": "EqUBCqIBAWkUfRO7N9lYu/dzHEGoK1jUU34+PmRC7FqJAPwYOIRzL5A7SjoZ8RK+AFkfO3qoLxVrSE6nCUQIveyy3fnTBWNlYIzluK8D8WRr7FaMeNpF1i432tg24AwdGNwiP3Ww+7Wc028s+IQFAQouKnmZ+QoLhnRpgs7GBi7UIEoWRz+VuDW9f/7BwCR9UaAVLq/R3nhgcXcd1PgzhhtZPuU/Y6tx"
                     },
-                    "fingerprint": 11563617448710088461
+                    "fingerprint": 12162792463428355513
                   }
                 }
               ],
@@ -738,7 +739,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 3865412464393187839
+                "fingerprint": 339628578460508591
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -842,7 +843,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 3865412464393187839
+              "fingerprint": 339628578460508591
             }
           }
         },
@@ -874,7 +875,7 @@
                   },
                   "thoughtSignature": "EqUBCqIBAWkUfRO7N9lYu/dzHEGoK1jUU34+PmRC7FqJAPwYOIRzL5A7SjoZ8RK+AFkfO3qoLxVrSE6nCUQIveyy3fnTBWNlYIzluK8D8WRr7FaMeNpF1i432tg24AwdGNwiP3Ww+7Wc028s+IQFAQouKnmZ+QoLhnRpgs7GBi7UIEoWRz+VuDW9f/7BwCR9UaAVLq/R3nhgcXcd1PgzhhtZPuU/Y6tx"
                 },
-                "fingerprint": 11563617448710088461
+                "fingerprint": 12162792463428355513
               }
             }
           }
@@ -891,7 +892,8 @@
               "call": {
                 "provider": "call_142773"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -938,7 +940,7 @@
                     },
                     "thoughtSignature": "EogBCoUBAWkUfRNkPWABTkc376NZ46Nb6wDPfRHXlDL1ftSkfH7mofa6nSqR+qOw/i5ixQ4dlHD5J0T1fo6L0yOArlf0ywv9G1RJoIlmRtjU5eLBTOF8s6GdT6enwIs83c5uh4nHki9zUXS3iLENYx8oSS9y684cPw812n5vaS9ycgmQXX1yrExZCQ=="
                   },
-                  "fingerprint": 17577742851822143767
+                  "fingerprint": 9594755978383641643
                 }
               }
             ],
@@ -957,7 +959,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 8196875774116673641
+                "fingerprint": 16694756615954841185
               }
             },
             "done": true,
@@ -1017,7 +1019,7 @@
                       },
                       "thoughtSignature": "EogBCoUBAWkUfRNkPWABTkc376NZ46Nb6wDPfRHXlDL1ftSkfH7mofa6nSqR+qOw/i5ixQ4dlHD5J0T1fo6L0yOArlf0ywv9G1RJoIlmRtjU5eLBTOF8s6GdT6enwIs83c5uh4nHki9zUXS3iLENYx8oSS9y684cPw812n5vaS9ycgmQXX1yrExZCQ=="
                     },
-                    "fingerprint": 17577742851822143767
+                    "fingerprint": 9594755978383641643
                   }
                 }
               ],
@@ -1040,7 +1042,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 8196875774116673641
+                "fingerprint": 16694756615954841185
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -1144,7 +1146,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 8196875774116673641
+              "fingerprint": 16694756615954841185
             }
           }
         },
@@ -1176,7 +1178,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRNkPWABTkc376NZ46Nb6wDPfRHXlDL1ftSkfH7mofa6nSqR+qOw/i5ixQ4dlHD5J0T1fo6L0yOArlf0ywv9G1RJoIlmRtjU5eLBTOF8s6GdT6enwIs83c5uh4nHki9zUXS3iLENYx8oSS9y684cPw812n5vaS9ycgmQXX1yrExZCQ=="
                 },
-                "fingerprint": 17577742851822143767
+                "fingerprint": 9594755978383641643
               }
             }
           }
@@ -1193,7 +1195,8 @@
               "call": {
                 "provider": "call_129296"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1240,7 +1243,7 @@
                     },
                     "thoughtSignature": "EogBCoUBAWkUfRMbQZ95Q1YZPARzy8sIa50YgFNQIAUN88O60qo9d7IU+9Z19FyirZlirdA2+VAmbhT7PgcH9fCfzqQZz4XvFZTEv4YTWcm1W4JY2lzTeshr+X2SAW4/ONxI+KNBggVc2GfECtvLkx/IGd7yaNjqQ6dUuljs7aBYv+lr5QWqBDBVkw=="
                   },
-                  "fingerprint": 13188865854665044820
+                  "fingerprint": 18234906619329031868
                 }
               }
             ],
@@ -1259,7 +1262,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 4303862924305943760
+                "fingerprint": 14301993925664529556
               }
             },
             "done": true,
@@ -1319,7 +1322,7 @@
                       },
                       "thoughtSignature": "EogBCoUBAWkUfRMbQZ95Q1YZPARzy8sIa50YgFNQIAUN88O60qo9d7IU+9Z19FyirZlirdA2+VAmbhT7PgcH9fCfzqQZz4XvFZTEv4YTWcm1W4JY2lzTeshr+X2SAW4/ONxI+KNBggVc2GfECtvLkx/IGd7yaNjqQ6dUuljs7aBYv+lr5QWqBDBVkw=="
                     },
-                    "fingerprint": 13188865854665044820
+                    "fingerprint": 18234906619329031868
                   }
                 }
               ],
@@ -1342,7 +1345,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 4303862924305943760
+                "fingerprint": 14301993925664529556
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -1446,7 +1449,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 4303862924305943760
+              "fingerprint": 14301993925664529556
             }
           }
         },
@@ -1478,7 +1481,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRMbQZ95Q1YZPARzy8sIa50YgFNQIAUN88O60qo9d7IU+9Z19FyirZlirdA2+VAmbhT7PgcH9fCfzqQZz4XvFZTEv4YTWcm1W4JY2lzTeshr+X2SAW4/ONxI+KNBggVc2GfECtvLkx/IGd7yaNjqQ6dUuljs7aBYv+lr5QWqBDBVkw=="
                 },
-                "fingerprint": 13188865854665044820
+                "fingerprint": 18234906619329031868
               }
             }
           }
@@ -1495,7 +1498,8 @@
               "call": {
                 "provider": "call_222016"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1542,7 +1546,7 @@
                     },
                     "thoughtSignature": "EogBCoUBAWkUfROCDi0DogXdp4/Fn1uY7SIzwIBQtNoEXscP+4kV6J7WPwaDgjpfOjv12LvXlU13Pk0a/Lujlt7EC+uhj2gCRSq+4CqMaqslyHoCm02gJWW1nd/V4dNhmpteqKhuhNzR0cxoN/NmMUJnGCsPa8RQz6nm+3oKxOXQ01sFLEFlFNemvg=="
                   },
-                  "fingerprint": 891231104594225808
+                  "fingerprint": 4423073039130116928
                 }
               }
             ],
@@ -1561,7 +1565,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2299224804467243000
+                "fingerprint": 12678392526232931916
               }
             },
             "done": true,
@@ -1621,7 +1625,7 @@
                       },
                       "thoughtSignature": "EogBCoUBAWkUfROCDi0DogXdp4/Fn1uY7SIzwIBQtNoEXscP+4kV6J7WPwaDgjpfOjv12LvXlU13Pk0a/Lujlt7EC+uhj2gCRSq+4CqMaqslyHoCm02gJWW1nd/V4dNhmpteqKhuhNzR0cxoN/NmMUJnGCsPa8RQz6nm+3oKxOXQ01sFLEFlFNemvg=="
                     },
-                    "fingerprint": 891231104594225808
+                    "fingerprint": 4423073039130116928
                   }
                 }
               ],
@@ -1644,7 +1648,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2299224804467243000
+                "fingerprint": 12678392526232931916
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -1748,7 +1752,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 2299224804467243000
+              "fingerprint": 12678392526232931916
             }
           }
         },
@@ -1780,7 +1784,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfROCDi0DogXdp4/Fn1uY7SIzwIBQtNoEXscP+4kV6J7WPwaDgjpfOjv12LvXlU13Pk0a/Lujlt7EC+uhj2gCRSq+4CqMaqslyHoCm02gJWW1nd/V4dNhmpteqKhuhNzR0cxoN/NmMUJnGCsPa8RQz6nm+3oKxOXQ01sFLEFlFNemvg=="
                 },
-                "fingerprint": 891231104594225808
+                "fingerprint": 4423073039130116928
               }
             }
           }
@@ -1797,7 +1801,8 @@
               "call": {
                 "provider": "call_232087"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -1844,7 +1849,7 @@
                     },
                     "thoughtSignature": "EogBCoUBAWkUfRP2fUM+0rPKA2r7d/wqeyayW8Eer5OBoum7OoP3lxx6S9IsoGQpyugnuYFlCJyXCdVtQly9ztdgPiJjTtJ+dmsSaH/WOznTEsRaE0+22x5bsAdeRAk0G/vl5VAmOE5l/lRmx4c2yf552hUVPovfvTYbOKG/il4Tn02+QUkJIZv9Rg=="
                   },
-                  "fingerprint": 16565407749799980224
+                  "fingerprint": 14228486688706488652
                 }
               }
             ],
@@ -1863,7 +1868,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2523431962942857316
+                "fingerprint": 12521288426742779268
               }
             },
             "done": true,
@@ -1923,7 +1928,7 @@
                       },
                       "thoughtSignature": "EogBCoUBAWkUfRP2fUM+0rPKA2r7d/wqeyayW8Eer5OBoum7OoP3lxx6S9IsoGQpyugnuYFlCJyXCdVtQly9ztdgPiJjTtJ+dmsSaH/WOznTEsRaE0+22x5bsAdeRAk0G/vl5VAmOE5l/lRmx4c2yf552hUVPovfvTYbOKG/il4Tn02+QUkJIZv9Rg=="
                     },
-                    "fingerprint": 16565407749799980224
+                    "fingerprint": 14228486688706488652
                   }
                 }
               ],
@@ -1946,7 +1951,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2523431962942857316
+                "fingerprint": 12521288426742779268
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -2050,7 +2055,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 2523431962942857316
+              "fingerprint": 12521288426742779268
             }
           }
         },
@@ -2082,7 +2087,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRP2fUM+0rPKA2r7d/wqeyayW8Eer5OBoum7OoP3lxx6S9IsoGQpyugnuYFlCJyXCdVtQly9ztdgPiJjTtJ+dmsSaH/WOznTEsRaE0+22x5bsAdeRAk0G/vl5VAmOE5l/lRmx4c2yf552hUVPovfvTYbOKG/il4Tn02+QUkJIZv9Rg=="
                 },
-                "fingerprint": 16565407749799980224
+                "fingerprint": 14228486688706488652
               }
             }
           }
@@ -2099,7 +2104,8 @@
               "call": {
                 "provider": "call_184349"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2146,7 +2152,7 @@
                     },
                     "thoughtSignature": "EogBCoUBAWkUfRP9Xb/PwY+leyUssaPloLu3eLzGg01BeS9E+ZeDtfPRYEwIcdJTwBhryAbk/D7BEElckcRosUp1auFH6TsHgIE4QNuGGslp6/ftA2Sq7KrVFTrpzeynSG3950XJCV0JtwuAd+eU2dA7OYQyNgJ1rQ/3XmCmkARLsPo5J4+5SwWnPg=="
                   },
-                  "fingerprint": 6934073250620806109
+                  "fingerprint": 18335123693347220757
                 }
               }
             ],
@@ -2165,7 +2171,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 16061807204021555567
+                "fingerprint": 3364310513865518507
               }
             },
             "done": true,
@@ -2225,7 +2231,7 @@
                       },
                       "thoughtSignature": "EogBCoUBAWkUfRP9Xb/PwY+leyUssaPloLu3eLzGg01BeS9E+ZeDtfPRYEwIcdJTwBhryAbk/D7BEElckcRosUp1auFH6TsHgIE4QNuGGslp6/ftA2Sq7KrVFTrpzeynSG3950XJCV0JtwuAd+eU2dA7OYQyNgJ1rQ/3XmCmkARLsPo5J4+5SwWnPg=="
                     },
-                    "fingerprint": 6934073250620806109
+                    "fingerprint": 18335123693347220757
                   }
                 }
               ],
@@ -2248,7 +2254,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 16061807204021555567
+                "fingerprint": 3364310513865518507
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -2352,7 +2358,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 16061807204021555567
+              "fingerprint": 3364310513865518507
             }
           }
         },
@@ -2384,7 +2390,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRP9Xb/PwY+leyUssaPloLu3eLzGg01BeS9E+ZeDtfPRYEwIcdJTwBhryAbk/D7BEElckcRosUp1auFH6TsHgIE4QNuGGslp6/ftA2Sq7KrVFTrpzeynSG3950XJCV0JtwuAd+eU2dA7OYQyNgJ1rQ/3XmCmkARLsPo5J4+5SwWnPg=="
                 },
-                "fingerprint": 6934073250620806109
+                "fingerprint": 18335123693347220757
               }
             }
           }
@@ -2401,7 +2407,8 @@
               "call": {
                 "provider": "call_265800"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2448,7 +2455,7 @@
                     },
                     "thoughtSignature": "Ev0JCvoJAWkUfRM4/ogXzcntINInINA1EdQiIsxTRO0JivPwRTvyx3AGW/i/ty+vatQY6zSgVF/D+bWNoNWv0/IuGscR3t+vSixrUHaK1ZDQs9nIFYkt0mtXlTU5sza5SGn8TLWf9m8vlouVvsVl9EyswDJ53n4X6m93pzOcSI34ttEx8nWoPa24sXviCrpZUca35wmxdzgR6+1y8QjxndJjWJvDd8zoKVVhebOUAeeCcX8UFvdj1H7f+EnvU1/xbMg1ibTvdE2VlRjr4aOLiOcW7G2AUo2HAb/aCzWtBdoi9LqdODq6OF+onjgw9DKhID+2kvaTrdvU12gZU9PXH3aYevXNXpq+s0Z5MsPaViSN6qHfGyZj6sLurjKNdbGNuPhFJ2otIG+h3O4noyMr0/MZBGTUPZO9VCxoPyXZj2BhT6d9Zy9dAFy2HHMHjSQj0wVR0mSl2cEpis1DymoEkvJNHsqCJv6YBD8kSTrcA/dHwHQUrYIkozZ2TmsDW9cfAvZSLVdG6/xfvb3mqX+gNOKxJELvgZyq/WZwrtxUAMcRMncqAkasK9Hbd/Dba7RfJsmv2psQrZAKgHyspbtLh6p+pWZAUtk17I2B9py2iuLQZguA95lf4oxXAKi26EF+hfK3kKOeFQ9RVjnFCPWGnuPkxNIDz0ajiESZcoewyTVOuLHHH/emIZR8k39dTWi9Uc9S0NFo5zlDSmLzZRjfx2B7EEQhcgJkERFfR1GsFS+Ju9ixJ+pdutRKdkqIFIX2pEJgtUzVlX8VcC/KmtZU6mO3PTgOtxSEApbesHN6kFu2q75NXmRnymgK9u8Fu2RNdMRpCHS9U0xXMFEFJJVxr0CTho4/R+aVbcCDqge/YyZiiJ5gU3YtnrZ8KmqXihsEywCHAuESrQRkhfI0R8OdepM7lkf7AqOo3Qbvyx5Ggv84ZFJobFdXGhhnUWY0/aoruUK32bLtgusaaBriC1F2yL/2ZKblntXuU4Et77fh7Vim+OPtsyfvaBJCrIc6R05LlQc6b2bIHENoH736EZO7brKJvok9v0/WjoJ9LDD4KltuL1omQOTFTwp56TB+a3SVrXVrjO/KVNJSpfXygMR6H5P1CWxfi6vHsamRpvrU0I9uV7lQSdDyOsBc6qPg0wQxB2DerRuENCTR1pdel3kJ3QDA9Yre0cGkdrvJEo61bLoIPAds2aNIXcJTLOBLQBQ4rhx9GavAijGYN9Ir//0+GdaCXr4CvUJi1HjCQ4mBLkefOi34JqumGEPVlke32Iaa6d0PbAL858i2yv95kooe5hoOBeeB+VxGCpqHu6C0Bk9mkC1kTfCHmGSdNCxz1bDo9Hw7OU6SiWgx6H0SNpa/TO8zs+1RBb5eWl+is2XlquRE3wRCE9dr+n2Y05olKNo5yYsD2puYOeLNZtKn8R2pKOmHiwJQvhqKzk+Iyohe4cvnKEZZ5kgCdSh3T/bhIexb38S0/fR2iWGAEuXZaU9/BZQYVSs/w3nyCwjsNS2ArFh7tiQdc2U4MAkb33e/N7rnqqBIFd9CQQpRiGm7A3JZSL6fja/NI7flSyevxfVvJXe320rynDxWsM9XA7Rk6HXbylkCPQfVko2ZQC8W3Lwv8WXBlw8F5g57mKuOuDtdgzgybiOBZEWIt3CGb8HttYQDxEpcfDc9kr5K7WqzcG2S1pLDzbJw8Q6NlLWWP9RFSbQ="
                   },
-                  "fingerprint": 17132166491144272609
+                  "fingerprint": 15190613186452952137
                 }
               },
               {
@@ -2476,7 +2483,7 @@
                       "name": "task_operation"
                     }
                   },
-                  "fingerprint": 9858303994700066893
+                  "fingerprint": 13276052107096365983
                 }
               }
             ],
@@ -2495,7 +2502,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 8598210425323235953
+                "fingerprint": 7929926202774570071
               }
             },
             "done": true,
@@ -2555,7 +2562,7 @@
                       },
                       "thoughtSignature": "Ev0JCvoJAWkUfRM4/ogXzcntINInINA1EdQiIsxTRO0JivPwRTvyx3AGW/i/ty+vatQY6zSgVF/D+bWNoNWv0/IuGscR3t+vSixrUHaK1ZDQs9nIFYkt0mtXlTU5sza5SGn8TLWf9m8vlouVvsVl9EyswDJ53n4X6m93pzOcSI34ttEx8nWoPa24sXviCrpZUca35wmxdzgR6+1y8QjxndJjWJvDd8zoKVVhebOUAeeCcX8UFvdj1H7f+EnvU1/xbMg1ibTvdE2VlRjr4aOLiOcW7G2AUo2HAb/aCzWtBdoi9LqdODq6OF+onjgw9DKhID+2kvaTrdvU12gZU9PXH3aYevXNXpq+s0Z5MsPaViSN6qHfGyZj6sLurjKNdbGNuPhFJ2otIG+h3O4noyMr0/MZBGTUPZO9VCxoPyXZj2BhT6d9Zy9dAFy2HHMHjSQj0wVR0mSl2cEpis1DymoEkvJNHsqCJv6YBD8kSTrcA/dHwHQUrYIkozZ2TmsDW9cfAvZSLVdG6/xfvb3mqX+gNOKxJELvgZyq/WZwrtxUAMcRMncqAkasK9Hbd/Dba7RfJsmv2psQrZAKgHyspbtLh6p+pWZAUtk17I2B9py2iuLQZguA95lf4oxXAKi26EF+hfK3kKOeFQ9RVjnFCPWGnuPkxNIDz0ajiESZcoewyTVOuLHHH/emIZR8k39dTWi9Uc9S0NFo5zlDSmLzZRjfx2B7EEQhcgJkERFfR1GsFS+Ju9ixJ+pdutRKdkqIFIX2pEJgtUzVlX8VcC/KmtZU6mO3PTgOtxSEApbesHN6kFu2q75NXmRnymgK9u8Fu2RNdMRpCHS9U0xXMFEFJJVxr0CTho4/R+aVbcCDqge/YyZiiJ5gU3YtnrZ8KmqXihsEywCHAuESrQRkhfI0R8OdepM7lkf7AqOo3Qbvyx5Ggv84ZFJobFdXGhhnUWY0/aoruUK32bLtgusaaBriC1F2yL/2ZKblntXuU4Et77fh7Vim+OPtsyfvaBJCrIc6R05LlQc6b2bIHENoH736EZO7brKJvok9v0/WjoJ9LDD4KltuL1omQOTFTwp56TB+a3SVrXVrjO/KVNJSpfXygMR6H5P1CWxfi6vHsamRpvrU0I9uV7lQSdDyOsBc6qPg0wQxB2DerRuENCTR1pdel3kJ3QDA9Yre0cGkdrvJEo61bLoIPAds2aNIXcJTLOBLQBQ4rhx9GavAijGYN9Ir//0+GdaCXr4CvUJi1HjCQ4mBLkefOi34JqumGEPVlke32Iaa6d0PbAL858i2yv95kooe5hoOBeeB+VxGCpqHu6C0Bk9mkC1kTfCHmGSdNCxz1bDo9Hw7OU6SiWgx6H0SNpa/TO8zs+1RBb5eWl+is2XlquRE3wRCE9dr+n2Y05olKNo5yYsD2puYOeLNZtKn8R2pKOmHiwJQvhqKzk+Iyohe4cvnKEZZ5kgCdSh3T/bhIexb38S0/fR2iWGAEuXZaU9/BZQYVSs/w3nyCwjsNS2ArFh7tiQdc2U4MAkb33e/N7rnqqBIFd9CQQpRiGm7A3JZSL6fja/NI7flSyevxfVvJXe320rynDxWsM9XA7Rk6HXbylkCPQfVko2ZQC8W3Lwv8WXBlw8F5g57mKuOuDtdgzgybiOBZEWIt3CGb8HttYQDxEpcfDc9kr5K7WqzcG2S1pLDzbJw8Q6NlLWWP9RFSbQ="
                     },
-                    "fingerprint": 17132166491144272609
+                    "fingerprint": 15190613186452952137
                   }
                 },
                 {
@@ -2583,7 +2590,7 @@
                         "name": "task_operation"
                       }
                     },
-                    "fingerprint": 9858303994700066893
+                    "fingerprint": 13276052107096365983
                   }
                 }
               ],
@@ -2606,7 +2613,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 8598210425323235953
+                "fingerprint": 7929926202774570071
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -2750,7 +2757,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 8598210425323235953
+              "fingerprint": 7929926202774570071
             }
           }
         },
@@ -2782,7 +2789,7 @@
                   },
                   "thoughtSignature": "Ev0JCvoJAWkUfRM4/ogXzcntINInINA1EdQiIsxTRO0JivPwRTvyx3AGW/i/ty+vatQY6zSgVF/D+bWNoNWv0/IuGscR3t+vSixrUHaK1ZDQs9nIFYkt0mtXlTU5sza5SGn8TLWf9m8vlouVvsVl9EyswDJ53n4X6m93pzOcSI34ttEx8nWoPa24sXviCrpZUca35wmxdzgR6+1y8QjxndJjWJvDd8zoKVVhebOUAeeCcX8UFvdj1H7f+EnvU1/xbMg1ibTvdE2VlRjr4aOLiOcW7G2AUo2HAb/aCzWtBdoi9LqdODq6OF+onjgw9DKhID+2kvaTrdvU12gZU9PXH3aYevXNXpq+s0Z5MsPaViSN6qHfGyZj6sLurjKNdbGNuPhFJ2otIG+h3O4noyMr0/MZBGTUPZO9VCxoPyXZj2BhT6d9Zy9dAFy2HHMHjSQj0wVR0mSl2cEpis1DymoEkvJNHsqCJv6YBD8kSTrcA/dHwHQUrYIkozZ2TmsDW9cfAvZSLVdG6/xfvb3mqX+gNOKxJELvgZyq/WZwrtxUAMcRMncqAkasK9Hbd/Dba7RfJsmv2psQrZAKgHyspbtLh6p+pWZAUtk17I2B9py2iuLQZguA95lf4oxXAKi26EF+hfK3kKOeFQ9RVjnFCPWGnuPkxNIDz0ajiESZcoewyTVOuLHHH/emIZR8k39dTWi9Uc9S0NFo5zlDSmLzZRjfx2B7EEQhcgJkERFfR1GsFS+Ju9ixJ+pdutRKdkqIFIX2pEJgtUzVlX8VcC/KmtZU6mO3PTgOtxSEApbesHN6kFu2q75NXmRnymgK9u8Fu2RNdMRpCHS9U0xXMFEFJJVxr0CTho4/R+aVbcCDqge/YyZiiJ5gU3YtnrZ8KmqXihsEywCHAuESrQRkhfI0R8OdepM7lkf7AqOo3Qbvyx5Ggv84ZFJobFdXGhhnUWY0/aoruUK32bLtgusaaBriC1F2yL/2ZKblntXuU4Et77fh7Vim+OPtsyfvaBJCrIc6R05LlQc6b2bIHENoH736EZO7brKJvok9v0/WjoJ9LDD4KltuL1omQOTFTwp56TB+a3SVrXVrjO/KVNJSpfXygMR6H5P1CWxfi6vHsamRpvrU0I9uV7lQSdDyOsBc6qPg0wQxB2DerRuENCTR1pdel3kJ3QDA9Yre0cGkdrvJEo61bLoIPAds2aNIXcJTLOBLQBQ4rhx9GavAijGYN9Ir//0+GdaCXr4CvUJi1HjCQ4mBLkefOi34JqumGEPVlke32Iaa6d0PbAL858i2yv95kooe5hoOBeeB+VxGCpqHu6C0Bk9mkC1kTfCHmGSdNCxz1bDo9Hw7OU6SiWgx6H0SNpa/TO8zs+1RBb5eWl+is2XlquRE3wRCE9dr+n2Y05olKNo5yYsD2puYOeLNZtKn8R2pKOmHiwJQvhqKzk+Iyohe4cvnKEZZ5kgCdSh3T/bhIexb38S0/fR2iWGAEuXZaU9/BZQYVSs/w3nyCwjsNS2ArFh7tiQdc2U4MAkb33e/N7rnqqBIFd9CQQpRiGm7A3JZSL6fja/NI7flSyevxfVvJXe320rynDxWsM9XA7Rk6HXbylkCPQfVko2ZQC8W3Lwv8WXBlw8F5g57mKuOuDtdgzgybiOBZEWIt3CGb8HttYQDxEpcfDc9kr5K7WqzcG2S1pLDzbJw8Q6NlLWWP9RFSbQ="
                 },
-                "fingerprint": 17132166491144272609
+                "fingerprint": 15190613186452952137
               }
             }
           }
@@ -2814,7 +2821,7 @@
                     "name": "task_operation"
                   }
                 },
-                "fingerprint": 9858303994700066893
+                "fingerprint": 13276052107096365983
               }
             }
           }
@@ -2831,7 +2838,8 @@
               "call": {
                 "provider": "call_266537"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2852,7 +2860,8 @@
               "call": {
                 "provider": "call_266538"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -2896,7 +2905,7 @@
                     },
                     "thoughtSignature": "EpwBCpkBAWkUfRNM0d65SfYORRG2Bo6LKKQT211ePJM/vL/KS2aPK+Mwe+gsdKTh+MFwe4/hww/SqWgTr/80pjoS8GCQ+gUPdF7wuqH5DMhCQkFzFbCEHwh5KKt/6b9nOlnq8hwLub+K4FF0JYHH4uGKyt/QnHrac72soV6aWGB6rDE8sGdD7t/mjZzC0qF6Wx7cMGVvPDcdHN7rb2ax"
                   },
-                  "fingerprint": 12606418374534041481
+                  "fingerprint": 10676570791662242329
                 }
               },
               {
@@ -2924,7 +2933,7 @@
                       "name": "task_operation"
                     }
                   },
-                  "fingerprint": 14249282178975380861
+                  "fingerprint": 6978374360642370187
                 }
               }
             ],
@@ -2943,7 +2952,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 255267046377839001
+                "fingerprint": 2578912673281058123
               }
             },
             "done": true,
@@ -3003,7 +3012,7 @@
                       },
                       "thoughtSignature": "EpwBCpkBAWkUfRNM0d65SfYORRG2Bo6LKKQT211ePJM/vL/KS2aPK+Mwe+gsdKTh+MFwe4/hww/SqWgTr/80pjoS8GCQ+gUPdF7wuqH5DMhCQkFzFbCEHwh5KKt/6b9nOlnq8hwLub+K4FF0JYHH4uGKyt/QnHrac72soV6aWGB6rDE8sGdD7t/mjZzC0qF6Wx7cMGVvPDcdHN7rb2ax"
                     },
-                    "fingerprint": 12606418374534041481
+                    "fingerprint": 10676570791662242329
                   }
                 },
                 {
@@ -3031,7 +3040,7 @@
                         "name": "task_operation"
                       }
                     },
-                    "fingerprint": 14249282178975380861
+                    "fingerprint": 6978374360642370187
                   }
                 }
               ],
@@ -3054,7 +3063,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 255267046377839001
+                "fingerprint": 2578912673281058123
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -3198,7 +3207,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 255267046377839001
+              "fingerprint": 2578912673281058123
             }
           }
         },
@@ -3230,7 +3239,7 @@
                   },
                   "thoughtSignature": "EpwBCpkBAWkUfRNM0d65SfYORRG2Bo6LKKQT211ePJM/vL/KS2aPK+Mwe+gsdKTh+MFwe4/hww/SqWgTr/80pjoS8GCQ+gUPdF7wuqH5DMhCQkFzFbCEHwh5KKt/6b9nOlnq8hwLub+K4FF0JYHH4uGKyt/QnHrac72soV6aWGB6rDE8sGdD7t/mjZzC0qF6Wx7cMGVvPDcdHN7rb2ax"
                 },
-                "fingerprint": 12606418374534041481
+                "fingerprint": 10676570791662242329
               }
             }
           }
@@ -3262,7 +3271,7 @@
                     "name": "task_operation"
                   }
                 },
-                "fingerprint": 14249282178975380861
+                "fingerprint": 6978374360642370187
               }
             }
           }
@@ -3279,7 +3288,8 @@
               "call": {
                 "provider": "call_178155"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -3300,7 +3310,8 @@
               "call": {
                 "provider": "call_178156"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -3344,7 +3355,7 @@
                     },
                     "thoughtSignature": "EpwBCpkBAWkUfRP45CdaZ9vjQSdh7ZDNjgNxjORjxiKlG4IwyS9Wp1XFi3MifWinDQlho/CSvTYnV+iKMU1ciLAFNELrM1zpywe73M4sEttLTO281PiG1wq3p+rwRPa7LDNrN4Klw9E8kND2+XDydHvt5N/fu2yywYr0T5WI52u4UKgU41dVZETGPd6ak99CJmkK6pTw/VFX5vbiWBeo"
                   },
-                  "fingerprint": 7669740033070385273
+                  "fingerprint": 575677690706837157
                 }
               },
               {
@@ -3372,7 +3383,7 @@
                       "name": "task_operation"
                     }
                   },
-                  "fingerprint": 15331838144579625233
+                  "fingerprint": 1887768162255877075
                 }
               }
             ],
@@ -3391,7 +3402,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 5409405950225772461
+                "fingerprint": 18283937147557123831
               }
             },
             "done": true,
@@ -3451,7 +3462,7 @@
                       },
                       "thoughtSignature": "EpwBCpkBAWkUfRP45CdaZ9vjQSdh7ZDNjgNxjORjxiKlG4IwyS9Wp1XFi3MifWinDQlho/CSvTYnV+iKMU1ciLAFNELrM1zpywe73M4sEttLTO281PiG1wq3p+rwRPa7LDNrN4Klw9E8kND2+XDydHvt5N/fu2yywYr0T5WI52u4UKgU41dVZETGPd6ak99CJmkK6pTw/VFX5vbiWBeo"
                     },
-                    "fingerprint": 7669740033070385273
+                    "fingerprint": 575677690706837157
                   }
                 },
                 {
@@ -3479,7 +3490,7 @@
                         "name": "task_operation"
                       }
                     },
-                    "fingerprint": 15331838144579625233
+                    "fingerprint": 1887768162255877075
                   }
                 }
               ],
@@ -3502,7 +3513,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 5409405950225772461
+                "fingerprint": 18283937147557123831
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -3646,7 +3657,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 5409405950225772461
+              "fingerprint": 18283937147557123831
             }
           }
         },
@@ -3678,7 +3689,7 @@
                   },
                   "thoughtSignature": "EpwBCpkBAWkUfRP45CdaZ9vjQSdh7ZDNjgNxjORjxiKlG4IwyS9Wp1XFi3MifWinDQlho/CSvTYnV+iKMU1ciLAFNELrM1zpywe73M4sEttLTO281PiG1wq3p+rwRPa7LDNrN4Klw9E8kND2+XDydHvt5N/fu2yywYr0T5WI52u4UKgU41dVZETGPd6ak99CJmkK6pTw/VFX5vbiWBeo"
                 },
-                "fingerprint": 7669740033070385273
+                "fingerprint": 575677690706837157
               }
             }
           }
@@ -3710,7 +3721,7 @@
                     "name": "task_operation"
                   }
                 },
-                "fingerprint": 15331838144579625233
+                "fingerprint": 1887768162255877075
               }
             }
           }
@@ -3727,7 +3738,8 @@
               "call": {
                 "provider": "call_224445"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -3748,7 +3760,8 @@
               "call": {
                 "provider": "call_224446"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -3792,7 +3805,7 @@
                     },
                     "thoughtSignature": "EqIBCp8BAWkUfRP19GvNavKEC3sJ/cBNhuvtC3E1fEwFZB3yXM53w2CxrlSlFp0WtTcNxTp9cKnLDxnOoRyyj90gecjAN0+qx7i9B1fDTRkwktTjL1HZtaTh2rXxef7zCYUsWWbRVhfvur+2NYhnhEtVOF3khu9IV4l4GoPfh8V91zrhr/mLS2eF4yiNyktnWYQDQsTHY2aTbeTen1vQ5nlr7YJ5"
                   },
-                  "fingerprint": 15430387820640765326
+                  "fingerprint": 10145262617666240524
                 }
               }
             ],
@@ -3811,7 +3824,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 16180705058943010508
+                "fingerprint": 16180361497893340678
               }
             },
             "done": true,
@@ -3871,7 +3884,7 @@
                       },
                       "thoughtSignature": "EqIBCp8BAWkUfRP19GvNavKEC3sJ/cBNhuvtC3E1fEwFZB3yXM53w2CxrlSlFp0WtTcNxTp9cKnLDxnOoRyyj90gecjAN0+qx7i9B1fDTRkwktTjL1HZtaTh2rXxef7zCYUsWWbRVhfvur+2NYhnhEtVOF3khu9IV4l4GoPfh8V91zrhr/mLS2eF4yiNyktnWYQDQsTHY2aTbeTen1vQ5nlr7YJ5"
                     },
-                    "fingerprint": 15430387820640765326
+                    "fingerprint": 10145262617666240524
                   }
                 }
               ],
@@ -3894,7 +3907,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 16180705058943010508
+                "fingerprint": 16180361497893340678
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -3996,7 +4009,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 16180705058943010508
+              "fingerprint": 16180361497893340678
             }
           }
         },
@@ -4028,7 +4041,7 @@
                   },
                   "thoughtSignature": "EqIBCp8BAWkUfRP19GvNavKEC3sJ/cBNhuvtC3E1fEwFZB3yXM53w2CxrlSlFp0WtTcNxTp9cKnLDxnOoRyyj90gecjAN0+qx7i9B1fDTRkwktTjL1HZtaTh2rXxef7zCYUsWWbRVhfvur+2NYhnhEtVOF3khu9IV4l4GoPfh8V91zrhr/mLS2eF4yiNyktnWYQDQsTHY2aTbeTen1vQ5nlr7YJ5"
                 },
-                "fingerprint": 15430387820640765326
+                "fingerprint": 10145262617666240524
               }
             }
           }
@@ -4045,7 +4058,8 @@
               "call": {
                 "provider": "call_238058"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           },
           "rig_ecs::agent::content::parts::ToolResultStatus": "Ok"
@@ -4072,7 +4086,7 @@
                     "text": "done",
                     "thoughtSignature": "Es8BCswBAWkUfRM4ug84OtCVumlQCgL6Fgcm1w6MHFNkfzI24jk2h5cq2vwC5D+e6J/d9+uU9+47uEBIeXJCj6KEDViV1Hfuz9AKjkxbBPWaBHKDifYcqOkxCLNOobxr6TbHFi93PcOAbrCD8kmGocTS7eNDI9MuH+Vv0nhWr0yXMZwV8ao+LpEJ55/n1/6Eo2A9eAc68bSkAzubsFE+493zp1q4aWzPOk5wZm8nTm0C00PVbFsgWAayW/CqX5FKrF4TL71B7kUdYnXyBJ2UCziE"
                   },
-                  "fingerprint": 16950038988497426807
+                  "fingerprint": 17621867238521964955
                 }
               }
             ],
@@ -4090,7 +4104,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 18014957589545053405
+                "fingerprint": 13317791222948023665
               }
             },
             "done": true,
@@ -4127,7 +4141,7 @@
                       "text": "done",
                       "thoughtSignature": "Es8BCswBAWkUfRM4ug84OtCVumlQCgL6Fgcm1w6MHFNkfzI24jk2h5cq2vwC5D+e6J/d9+uU9+47uEBIeXJCj6KEDViV1Hfuz9AKjkxbBPWaBHKDifYcqOkxCLNOobxr6TbHFi93PcOAbrCD8kmGocTS7eNDI9MuH+Vv0nhWr0yXMZwV8ao+LpEJ55/n1/6Eo2A9eAc68bSkAzubsFE+493zp1q4aWzPOk5wZm8nTm0C00PVbFsgWAayW/CqX5FKrF4TL71B7kUdYnXyBJ2UCziE"
                     },
-                    "fingerprint": 16950038988497426807
+                    "fingerprint": 17621867238521964955
                   }
                 }
               ],
@@ -4149,7 +4163,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 18014957589545053405
+                "fingerprint": 13317791222948023665
               },
               "finish_reason": "stop",
               "raw": {
@@ -4208,7 +4222,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 18014957589545053405
+              "fingerprint": 13317791222948023665
             }
           }
         },
@@ -4222,7 +4236,7 @@
                   "text": "done",
                   "thoughtSignature": "Es8BCswBAWkUfRM4ug84OtCVumlQCgL6Fgcm1w6MHFNkfzI24jk2h5cq2vwC5D+e6J/d9+uU9+47uEBIeXJCj6KEDViV1Hfuz9AKjkxbBPWaBHKDifYcqOkxCLNOobxr6TbHFi93PcOAbrCD8kmGocTS7eNDI9MuH+Vv0nhWr0yXMZwV8ao+LpEJ55/n1/6Eo2A9eAc68bSkAzubsFE+493zp1q4aWzPOk5wZm8nTm0C00PVbFsgWAayW/CqX5FKrF4TL71B7kUdYnXyBJ2UCziE"
                 },
-                "fingerprint": 16950038988497426807
+                "fingerprint": 17621867238521964955
               }
             }
           }
@@ -4280,7 +4294,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 2518838217460260934
+              "fingerprint": 2968508209904888410
             }
           }
         },
@@ -4312,7 +4326,7 @@
                   },
                   "thoughtSignature": "Er8ECrwEAWkUfRNr3cQeX3MvTRs6FEgt8ZLKxdtHxdvRC0wZDmU41qIlCyyOA64a1QDtyqZ6fR86xlyKKErRzHah81abQ1RxVEa51RGilEw3NmErU8nsUU5iMY21D3oJulmKVpZ22b+j0TXXP4ZYYaREdMve5E6ucBS/nsbMqY/xYwtmwe+0ypATqT/P4eG3qhFtcrPOX0QXqn9N8BnBoC0xRExxj2YDdudiPjOtjW2hAXiPfXpmtdo7mEC1CDb/xOPcpmsWsuF3SbsOuXPpEgTjXrlCfev2LPOoaKn7Rrnqi1xCkrzYzILdePdbxqUUFXHs/pN91l4ezMwWLtUTSQZChCFVSpdwjIIjXd1BDIzBiBXYEfS6oOEPkMAgKhHWmFmH1/0vWgOTnWhW/fy3xL6ZExf2CIYEHiHtP1P4pLDXoP07AIXyi7s//JKc1AWgNsQ0QGWLXzaZx9C3iIoLQwKauPexiwwOYp8w4sAXWGbt9Zk9nWtOlRbFL9iQyeOt49HIYy+w//jKTKs8cnRnLUzfJbQO/uzl6kQpvLBTYIGWgEtIZs00tK5OT7ApP2K9fXguAbNOuqfQJXOEcImTnymuoiXpTYj0Pq4qkA/r6gHCpkue3cDTIovji7erBz2py3AhoUpjH+QwefX5pjpxJWN5kIkdVEMQnHc8CCZIng4YFJEVYg/nWmASDw1Y2J8rJb+gSLofX0rVUq4ypPnx6W7V8ENZFkBfn051kF8xSDGwpkdu8B2rZ/LkOqzQ1+xvpgM="
                 },
-                "fingerprint": 13429609306366702878
+                "fingerprint": 3096582976841788734
               }
             }
           }
@@ -4329,7 +4343,8 @@
               "call": {
                 "provider": "call_213821"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4368,7 +4383,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 3865412464393187839
+              "fingerprint": 339628578460508591
             }
           }
         },
@@ -4400,7 +4415,7 @@
                   },
                   "thoughtSignature": "EqUBCqIBAWkUfRO7N9lYu/dzHEGoK1jUU34+PmRC7FqJAPwYOIRzL5A7SjoZ8RK+AFkfO3qoLxVrSE6nCUQIveyy3fnTBWNlYIzluK8D8WRr7FaMeNpF1i432tg24AwdGNwiP3Ww+7Wc028s+IQFAQouKnmZ+QoLhnRpgs7GBi7UIEoWRz+VuDW9f/7BwCR9UaAVLq/R3nhgcXcd1PgzhhtZPuU/Y6tx"
                 },
-                "fingerprint": 11563617448710088461
+                "fingerprint": 12162792463428355513
               }
             }
           }
@@ -4417,7 +4432,8 @@
               "call": {
                 "provider": "call_142773"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4452,7 +4468,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 8196875774116673641
+              "fingerprint": 16694756615954841185
             }
           }
         },
@@ -4484,7 +4500,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRNkPWABTkc376NZ46Nb6wDPfRHXlDL1ftSkfH7mofa6nSqR+qOw/i5ixQ4dlHD5J0T1fo6L0yOArlf0ywv9G1RJoIlmRtjU5eLBTOF8s6GdT6enwIs83c5uh4nHki9zUXS3iLENYx8oSS9y684cPw812n5vaS9ycgmQXX1yrExZCQ=="
                 },
-                "fingerprint": 17577742851822143767
+                "fingerprint": 9594755978383641643
               }
             }
           }
@@ -4501,7 +4517,8 @@
               "call": {
                 "provider": "call_129296"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4536,7 +4553,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 4303862924305943760
+              "fingerprint": 14301993925664529556
             }
           }
         },
@@ -4568,7 +4585,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRMbQZ95Q1YZPARzy8sIa50YgFNQIAUN88O60qo9d7IU+9Z19FyirZlirdA2+VAmbhT7PgcH9fCfzqQZz4XvFZTEv4YTWcm1W4JY2lzTeshr+X2SAW4/ONxI+KNBggVc2GfECtvLkx/IGd7yaNjqQ6dUuljs7aBYv+lr5QWqBDBVkw=="
                 },
-                "fingerprint": 13188865854665044820
+                "fingerprint": 18234906619329031868
               }
             }
           }
@@ -4585,7 +4602,8 @@
               "call": {
                 "provider": "call_222016"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4620,7 +4638,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 2299224804467243000
+              "fingerprint": 12678392526232931916
             }
           }
         },
@@ -4652,7 +4670,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfROCDi0DogXdp4/Fn1uY7SIzwIBQtNoEXscP+4kV6J7WPwaDgjpfOjv12LvXlU13Pk0a/Lujlt7EC+uhj2gCRSq+4CqMaqslyHoCm02gJWW1nd/V4dNhmpteqKhuhNzR0cxoN/NmMUJnGCsPa8RQz6nm+3oKxOXQ01sFLEFlFNemvg=="
                 },
-                "fingerprint": 891231104594225808
+                "fingerprint": 4423073039130116928
               }
             }
           }
@@ -4669,7 +4687,8 @@
               "call": {
                 "provider": "call_232087"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4704,7 +4723,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 2523431962942857316
+              "fingerprint": 12521288426742779268
             }
           }
         },
@@ -4736,7 +4755,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRP2fUM+0rPKA2r7d/wqeyayW8Eer5OBoum7OoP3lxx6S9IsoGQpyugnuYFlCJyXCdVtQly9ztdgPiJjTtJ+dmsSaH/WOznTEsRaE0+22x5bsAdeRAk0G/vl5VAmOE5l/lRmx4c2yf552hUVPovfvTYbOKG/il4Tn02+QUkJIZv9Rg=="
                 },
-                "fingerprint": 16565407749799980224
+                "fingerprint": 14228486688706488652
               }
             }
           }
@@ -4753,7 +4772,8 @@
               "call": {
                 "provider": "call_184349"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4788,7 +4808,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 16061807204021555567
+              "fingerprint": 3364310513865518507
             }
           }
         },
@@ -4820,7 +4840,7 @@
                   },
                   "thoughtSignature": "EogBCoUBAWkUfRP9Xb/PwY+leyUssaPloLu3eLzGg01BeS9E+ZeDtfPRYEwIcdJTwBhryAbk/D7BEElckcRosUp1auFH6TsHgIE4QNuGGslp6/ftA2Sq7KrVFTrpzeynSG3950XJCV0JtwuAd+eU2dA7OYQyNgJ1rQ/3XmCmkARLsPo5J4+5SwWnPg=="
                 },
-                "fingerprint": 6934073250620806109
+                "fingerprint": 18335123693347220757
               }
             }
           }
@@ -4837,7 +4857,8 @@
               "call": {
                 "provider": "call_265800"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4872,7 +4893,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 8598210425323235953
+              "fingerprint": 7929926202774570071
             }
           }
         },
@@ -4904,7 +4925,7 @@
                   },
                   "thoughtSignature": "Ev0JCvoJAWkUfRM4/ogXzcntINInINA1EdQiIsxTRO0JivPwRTvyx3AGW/i/ty+vatQY6zSgVF/D+bWNoNWv0/IuGscR3t+vSixrUHaK1ZDQs9nIFYkt0mtXlTU5sza5SGn8TLWf9m8vlouVvsVl9EyswDJ53n4X6m93pzOcSI34ttEx8nWoPa24sXviCrpZUca35wmxdzgR6+1y8QjxndJjWJvDd8zoKVVhebOUAeeCcX8UFvdj1H7f+EnvU1/xbMg1ibTvdE2VlRjr4aOLiOcW7G2AUo2HAb/aCzWtBdoi9LqdODq6OF+onjgw9DKhID+2kvaTrdvU12gZU9PXH3aYevXNXpq+s0Z5MsPaViSN6qHfGyZj6sLurjKNdbGNuPhFJ2otIG+h3O4noyMr0/MZBGTUPZO9VCxoPyXZj2BhT6d9Zy9dAFy2HHMHjSQj0wVR0mSl2cEpis1DymoEkvJNHsqCJv6YBD8kSTrcA/dHwHQUrYIkozZ2TmsDW9cfAvZSLVdG6/xfvb3mqX+gNOKxJELvgZyq/WZwrtxUAMcRMncqAkasK9Hbd/Dba7RfJsmv2psQrZAKgHyspbtLh6p+pWZAUtk17I2B9py2iuLQZguA95lf4oxXAKi26EF+hfK3kKOeFQ9RVjnFCPWGnuPkxNIDz0ajiESZcoewyTVOuLHHH/emIZR8k39dTWi9Uc9S0NFo5zlDSmLzZRjfx2B7EEQhcgJkERFfR1GsFS+Ju9ixJ+pdutRKdkqIFIX2pEJgtUzVlX8VcC/KmtZU6mO3PTgOtxSEApbesHN6kFu2q75NXmRnymgK9u8Fu2RNdMRpCHS9U0xXMFEFJJVxr0CTho4/R+aVbcCDqge/YyZiiJ5gU3YtnrZ8KmqXihsEywCHAuESrQRkhfI0R8OdepM7lkf7AqOo3Qbvyx5Ggv84ZFJobFdXGhhnUWY0/aoruUK32bLtgusaaBriC1F2yL/2ZKblntXuU4Et77fh7Vim+OPtsyfvaBJCrIc6R05LlQc6b2bIHENoH736EZO7brKJvok9v0/WjoJ9LDD4KltuL1omQOTFTwp56TB+a3SVrXVrjO/KVNJSpfXygMR6H5P1CWxfi6vHsamRpvrU0I9uV7lQSdDyOsBc6qPg0wQxB2DerRuENCTR1pdel3kJ3QDA9Yre0cGkdrvJEo61bLoIPAds2aNIXcJTLOBLQBQ4rhx9GavAijGYN9Ir//0+GdaCXr4CvUJi1HjCQ4mBLkefOi34JqumGEPVlke32Iaa6d0PbAL858i2yv95kooe5hoOBeeB+VxGCpqHu6C0Bk9mkC1kTfCHmGSdNCxz1bDo9Hw7OU6SiWgx6H0SNpa/TO8zs+1RBb5eWl+is2XlquRE3wRCE9dr+n2Y05olKNo5yYsD2puYOeLNZtKn8R2pKOmHiwJQvhqKzk+Iyohe4cvnKEZZ5kgCdSh3T/bhIexb38S0/fR2iWGAEuXZaU9/BZQYVSs/w3nyCwjsNS2ArFh7tiQdc2U4MAkb33e/N7rnqqBIFd9CQQpRiGm7A3JZSL6fja/NI7flSyevxfVvJXe320rynDxWsM9XA7Rk6HXbylkCPQfVko2ZQC8W3Lwv8WXBlw8F5g57mKuOuDtdgzgybiOBZEWIt3CGb8HttYQDxEpcfDc9kr5K7WqzcG2S1pLDzbJw8Q6NlLWWP9RFSbQ="
                 },
-                "fingerprint": 17132166491144272609
+                "fingerprint": 15190613186452952137
               }
             }
           }
@@ -4936,7 +4957,7 @@
                     "name": "task_operation"
                   }
                 },
-                "fingerprint": 9858303994700066893
+                "fingerprint": 13276052107096365983
               }
             }
           }
@@ -4953,7 +4974,8 @@
               "call": {
                 "provider": "call_266537"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -4973,7 +4995,8 @@
               "call": {
                 "provider": "call_266538"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -5005,7 +5028,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 255267046377839001
+              "fingerprint": 2578912673281058123
             }
           }
         },
@@ -5037,7 +5060,7 @@
                   },
                   "thoughtSignature": "EpwBCpkBAWkUfRNM0d65SfYORRG2Bo6LKKQT211ePJM/vL/KS2aPK+Mwe+gsdKTh+MFwe4/hww/SqWgTr/80pjoS8GCQ+gUPdF7wuqH5DMhCQkFzFbCEHwh5KKt/6b9nOlnq8hwLub+K4FF0JYHH4uGKyt/QnHrac72soV6aWGB6rDE8sGdD7t/mjZzC0qF6Wx7cMGVvPDcdHN7rb2ax"
                 },
-                "fingerprint": 12606418374534041481
+                "fingerprint": 10676570791662242329
               }
             }
           }
@@ -5069,7 +5092,7 @@
                     "name": "task_operation"
                   }
                 },
-                "fingerprint": 14249282178975380861
+                "fingerprint": 6978374360642370187
               }
             }
           }
@@ -5086,7 +5109,8 @@
               "call": {
                 "provider": "call_178155"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -5106,7 +5130,8 @@
               "call": {
                 "provider": "call_178156"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -5138,7 +5163,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 5409405950225772461
+              "fingerprint": 18283937147557123831
             }
           }
         },
@@ -5170,7 +5195,7 @@
                   },
                   "thoughtSignature": "EpwBCpkBAWkUfRP45CdaZ9vjQSdh7ZDNjgNxjORjxiKlG4IwyS9Wp1XFi3MifWinDQlho/CSvTYnV+iKMU1ciLAFNELrM1zpywe73M4sEttLTO281PiG1wq3p+rwRPa7LDNrN4Klw9E8kND2+XDydHvt5N/fu2yywYr0T5WI52u4UKgU41dVZETGPd6ak99CJmkK6pTw/VFX5vbiWBeo"
                 },
-                "fingerprint": 7669740033070385273
+                "fingerprint": 575677690706837157
               }
             }
           }
@@ -5202,7 +5227,7 @@
                     "name": "task_operation"
                   }
                 },
-                "fingerprint": 15331838144579625233
+                "fingerprint": 1887768162255877075
               }
             }
           }
@@ -5219,7 +5244,8 @@
               "call": {
                 "provider": "call_224445"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -5239,7 +5265,8 @@
               "call": {
                 "provider": "call_224446"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -5271,7 +5298,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 16180705058943010508
+              "fingerprint": 16180361497893340678
             }
           }
         },
@@ -5303,7 +5330,7 @@
                   },
                   "thoughtSignature": "EqIBCp8BAWkUfRP19GvNavKEC3sJ/cBNhuvtC3E1fEwFZB3yXM53w2CxrlSlFp0WtTcNxTp9cKnLDxnOoRyyj90gecjAN0+qx7i9B1fDTRkwktTjL1HZtaTh2rXxef7zCYUsWWbRVhfvur+2NYhnhEtVOF3khu9IV4l4GoPfh8V91zrhr/mLS2eF4yiNyktnWYQDQsTHY2aTbeTen1vQ5nlr7YJ5"
                 },
-                "fingerprint": 15430387820640765326
+                "fingerprint": 10145262617666240524
               }
             }
           }
@@ -5320,7 +5347,8 @@
               "call": {
                 "provider": "call_238058"
               },
-              "name": "task_operation"
+              "name": "task_operation",
+              "is_error": false
             }
           }
         },
@@ -5352,7 +5380,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 18014957589545053405
+              "fingerprint": 13317791222948023665
             }
           }
         },
@@ -5366,7 +5394,7 @@
                   "text": "done",
                   "thoughtSignature": "Es8BCswBAWkUfRM4ug84OtCVumlQCgL6Fgcm1w6MHFNkfzI24jk2h5cq2vwC5D+e6J/d9+uU9+47uEBIeXJCj6KEDViV1Hfuz9AKjkxbBPWaBHKDifYcqOkxCLNOobxr6TbHFi93PcOAbrCD8kmGocTS7eNDI9MuH+Vv0nhWr0yXMZwV8ao+LpEJ55/n1/6Eo2A9eAc68bSkAzubsFE+493zp1q4aWzPOk5wZm8nTm0C00PVbFsgWAayW/CqX5FKrF4TL71B7kUdYnXyBJ2UCziE"
                 },
-                "fingerprint": 16950038988497426807
+                "fingerprint": 17621867238521964955
               }
             }
           }

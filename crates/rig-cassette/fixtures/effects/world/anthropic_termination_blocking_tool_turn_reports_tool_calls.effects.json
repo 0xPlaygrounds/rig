@@ -161,7 +161,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 4421492779132994618
+                "fingerprint": 10173956785454999710
               }
             }
           ],
@@ -297,7 +297,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 4421492779132994618
+                    "fingerprint": 10173956785454999710
                   }
                 }
               ],
@@ -373,7 +373,7 @@
                   "text": "The result of 2 + 3 is **5**.",
                   "type": "text"
                 },
-                "fingerprint": 15533301940519827455
+                "fingerprint": 509825265736640893
               }
             }
           ],

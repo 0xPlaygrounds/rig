@@ -120,18 +120,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
+              "text": "The user provided an address: 123 Main St in Springfield, IL 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
               "native": {
                 "item": {
-                  "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701"
+                  "reasoning_content": "The user provided an address: 123 Main St in Springfield, IL 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701"
                 },
-                "fingerprint": 4695249510154464221
+                "fingerprint": 1413400913808674785
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_RxiGOALqiQeYFOmWght70756"
+                "provider": "call_00_YWCPy8c7hIz4usYbqCNS4588"
               },
               "function": {
                 "name": "submit",
@@ -148,31 +148,31 @@
                     "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
                     "name": "submit"
                   },
-                  "id": "call_00_RxiGOALqiQeYFOmWght70756",
+                  "id": "call_00_YWCPy8c7hIz4usYbqCNS4588",
                   "type": "function"
                 },
-                "fingerprint": 15870217736359584206
+                "fingerprint": 2429816738651874856
               }
             }
           ],
           "usage": {
             "input_tokens": 458,
-            "output_tokens": 132,
-            "total_tokens": 590,
-            "cached_input_tokens": 128,
-            "reasoning_tokens": 42
+            "output_tokens": 128,
+            "total_tokens": 586,
+            "cached_input_tokens": 256,
+            "reasoning_tokens": 38
           },
           "origin": {
             "api": "openai.chat",
             "provider": "deepseek",
             "model": "deepseek-v4-flash",
             "response_model": "deepseek-flash",
-            "response_id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c"
+            "response_id": "cd1d2d15-1906-4618-9f70-2b0444601316"
           },
           "native": {
             "item": {
               "content": "",
-              "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
+              "reasoning_content": "The user provided an address: 123 Main St in Springfield, IL 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
               "role": "assistant",
               "tool_calls": [
                 {
@@ -180,12 +180,12 @@
                     "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
                     "name": "submit"
                   },
-                  "id": "call_00_RxiGOALqiQeYFOmWght70756",
+                  "id": "call_00_YWCPy8c7hIz4usYbqCNS4588",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 8942204549625348918
+            "fingerprint": 3382500130044328772
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -196,7 +196,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need to extract structured data. Address: 123 Main St, Springfield, IL, 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
+                  "reasoning_content": "The user provided an address: 123 Main St in Springfield, IL 62701.\n\nStreet: 123 Main St\nCity: Springfield\nState: IL\nZip: 62701",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -204,7 +204,7 @@
                         "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
                         "name": "submit"
                       },
-                      "id": "call_00_RxiGOALqiQeYFOmWght70756",
+                      "id": "call_00_YWCPy8c7hIz4usYbqCNS4588",
                       "index": 0,
                       "type": "function"
                     }
@@ -213,22 +213,22 @@
               }
             ],
             "created": 0,
-            "id": "90dcfc96-1fec-44e2-bd0f-db706b55a32c",
+            "id": "cd1d2d15-1906-4618-9f70-2b0444601316",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 132,
+              "completion_tokens": 128,
               "completion_tokens_details": {
-                "reasoning_tokens": 42
+                "reasoning_tokens": 38
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 330,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 202,
               "prompt_tokens": 458,
               "prompt_tokens_details": {
-                "cached_tokens": 128
+                "cached_tokens": 256
               },
-              "total_tokens": 590
+              "total_tokens": 586
             }
           }
         }

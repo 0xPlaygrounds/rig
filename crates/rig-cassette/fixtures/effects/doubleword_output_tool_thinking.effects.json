@@ -95,6 +95,7 @@
               "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
               "native": {
                 "item": {
+                  "reasoning_content": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
@@ -102,10 +103,9 @@
                       "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
                       "type": "reasoning.text"
                     }
-                  ],
-                  "reasoning_content": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n"
+                  ]
                 },
-                "fingerprint": 14977430989314343933
+                "fingerprint": 9358781650192585869
               }
             },
             {
@@ -130,7 +130,7 @@
                   "id": "call_00a91a28eb7346ad91e4bc46",
                   "type": "function"
                 },
-                "fingerprint": 11338992491171436532
+                "fingerprint": 6765093233237610518
               }
             }
           ],
@@ -172,7 +172,7 @@
                 }
               ]
             },
-            "fingerprint": 8195627096180340800
+            "fingerprint": 16263604808945368446
           },
           "finish_reason": "tool_calls",
           "raw": {

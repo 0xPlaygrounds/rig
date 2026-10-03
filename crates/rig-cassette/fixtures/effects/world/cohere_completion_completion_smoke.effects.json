@@ -81,7 +81,7 @@
                   "text": "Rust is a systems programming language that focuses on safety, speed, and concurrency, achieving memory safety without a garbage collector by using a strict ownership model. Memory safety matters because it prevents common bugs like null pointer dereferencing, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, and unpredictable behavior in software.",
                   "type": "text"
                 },
-                "fingerprint": 12172159752332165752
+                "fingerprint": 10813826602933220550
               }
             }
           ],
@@ -107,7 +107,7 @@
               ],
               "role": "assistant"
             },
-            "fingerprint": 11525455428578550330
+            "fingerprint": 7147045306148689660
           },
           "finish_reason": "stop",
           "raw": {

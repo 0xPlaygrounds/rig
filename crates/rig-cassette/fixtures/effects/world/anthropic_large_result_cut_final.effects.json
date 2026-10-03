@@ -131,7 +131,7 @@
                   "name": "checkpoint_large",
                   "type": "tool_use"
                 },
-                "fingerprint": 14855033226692560064
+                "fingerprint": 15074635671658264256
               }
             }
           ],
@@ -258,7 +258,7 @@
                       "name": "checkpoint_large",
                       "type": "tool_use"
                     },
-                    "fingerprint": 14855033226692560064
+                    "fingerprint": 15074635671658264256
                   }
                 }
               ],
@@ -322,7 +322,7 @@
                   "text": "checkpoint-complete",
                   "type": "text"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           ],

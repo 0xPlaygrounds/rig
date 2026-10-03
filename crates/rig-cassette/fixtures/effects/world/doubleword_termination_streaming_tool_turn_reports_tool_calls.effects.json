@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 11,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,17 +10,33 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 18,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 19,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
         }
       },
       {
@@ -28,15 +44,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 21,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -44,43 +52,11 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 23,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 24,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 28,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -205,32 +181,32 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "chatcmpl-tool-a0a100031fffc96c"
+                "provider": "call_587f04067e864e9f9671b361"
               },
               "function": {
                 "name": "add",
                 "arguments": {
-                  "x": 2,
-                  "y": 3
+                  "x": 2.0,
+                  "y": 3.0
                 }
               },
               "native": {
                 "item": {
                   "function": {
-                    "arguments": "{\"x\": 2, \"y\": 3}",
+                    "arguments": "{\"x\": 2.0, \"y\": 3.0}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-a0a100031fffc96c",
+                  "id": "call_587f04067e864e9f9671b361",
                   "type": "function"
                 },
-                "fingerprint": 8127513813930507113
+                "fingerprint": 14231359865848475247
               }
             }
           ],
           "usage": {
-            "input_tokens": 317,
+            "input_tokens": 321,
             "output_tokens": 35,
-            "total_tokens": 352,
+            "total_tokens": 356,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -239,7 +215,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-9B",
             "response_model": "Qwen/Qwen3.5-9B",
-            "response_id": "gen-1790914945-A938iswQbBrJDlohnpJG"
+            "response_id": "gen-1790976765-RRP7weOo3epOg1lZw0Mg"
           },
           "native": {
             "item": {
@@ -248,39 +224,43 @@
               "tool_calls": [
                 {
                   "function": {
-                    "arguments": "{\"x\": 2, \"y\": 3}",
+                    "arguments": "{\"x\": 2.0, \"y\": 3.0}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-a0a100031fffc96c",
+                  "id": "call_587f04067e864e9f9671b361",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 9585864308007851449
+            "fingerprint": 18343717771308634713
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 317,
-              "completion_tokens": 35,
-              "total_tokens": 352,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 35,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 321,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 356
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790914945-A938iswQbBrJDlohnpJG",
+            "response_id": "gen-1790976765-RRP7weOo3epOg1lZw0Mg",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
@@ -303,7 +283,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"x\": 2, \"y\": 3}"
+            "json": "{\"x\": 2.0, \"y\": 3.0}"
           }
         },
         {
@@ -314,30 +294,35 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "chatcmpl-tool-a0a100031fffc96c"
+                "provider": "call_587f04067e864e9f9671b361"
               },
               "function": {
                 "name": "add",
                 "arguments": {
-                  "x": 2,
-                  "y": 3
+                  "x": 2.0,
+                  "y": 3.0
                 }
               },
               "native": {
                 "item": {
                   "function": {
-                    "arguments": "{\"x\": 2, \"y\": 3}",
+                    "arguments": "{\"x\": 2.0, \"y\": 3.0}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-a0a100031fffc96c",
+                  "id": "call_587f04067e864e9f9671b361",
                   "type": "function"
                 },
-                "fingerprint": 8127513813930507113
+                "fingerprint": 14231359865848475247
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-9B"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -347,19 +332,27 @@
       "kind": {
         "effect": "tool_call",
         "name": "add",
-        "args": "{\"x\":2,\"y\":3}"
+        "args": "{\"x\":2.0,\"y\":3.0}"
       },
       "outcome": {
         "Ok": {
           "outcome": "tool_result",
           "result": {
-            "status": "success",
-            "value": [
-              {
-                "type": "json",
-                "value": 5
-              }
-            ]
+            "status": "error",
+            "value": {
+              "kind": "invalid_args",
+              "message": "failed to parse tool arguments: invalid type: floating point `2.0`, expected i32 at line 1 column 8",
+              "model_output": [
+                {
+                  "type": "text",
+                  "text": "failed to parse tool arguments: invalid type: floating point `2.0`, expected i32 at line 1 column 8"
+                }
+              ],
+              "retryable": false,
+              "code": null,
+              "http_status": null,
+              "refusal": false
+            }
           }
         }
       },
@@ -393,25 +386,25 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "chatcmpl-tool-a0a100031fffc96c"
+                    "provider": "call_587f04067e864e9f9671b361"
                   },
                   "function": {
                     "name": "add",
                     "arguments": {
-                      "x": 2,
-                      "y": 3
+                      "x": 2.0,
+                      "y": 3.0
                     }
                   },
                   "native": {
                     "item": {
                       "function": {
-                        "arguments": "{\"x\": 2, \"y\": 3}",
+                        "arguments": "{\"x\": 2.0, \"y\": 3.0}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-a0a100031fffc96c",
+                      "id": "call_587f04067e864e9f9671b361",
                       "type": "function"
                     },
-                    "fingerprint": 8127513813930507113
+                    "fingerprint": 14231359865848475247
                   }
                 }
               ],
@@ -420,7 +413,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-9B",
                 "response_model": "Qwen/Qwen3.5-9B",
-                "response_id": "gen-1790914945-A938iswQbBrJDlohnpJG"
+                "response_id": "gen-1790976765-RRP7weOo3epOg1lZw0Mg"
               },
               "stop": "tool_use",
               "native": {
@@ -430,15 +423,15 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"x\": 2, \"y\": 3}",
+                        "arguments": "{\"x\": 2.0, \"y\": 3.0}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-a0a100031fffc96c",
+                      "id": "call_587f04067e864e9f9671b361",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9585864308007851449
+                "fingerprint": 18343717771308634713
               }
             },
             {
@@ -447,15 +440,16 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "chatcmpl-tool-a0a100031fffc96c"
+                    "provider": "call_587f04067e864e9f9671b361"
                   },
                   "name": "add",
                   "content": [
                     {
-                      "type": "json",
-                      "value": 5
+                      "type": "text",
+                      "text": "failed to parse tool arguments: invalid type: floating point `2.0`, expected i32 at line 1 column 8"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -500,19 +494,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "2 + 3 = 5",
-              "native": {
-                "item": {
-                  "content": "2 + 3 = 5"
-                },
-                "fingerprint": 15164235075327557177
-              }
+              "text": "2 + 3 = 5"
             }
           ],
           "usage": {
-            "input_tokens": 370,
+            "input_tokens": 400,
             "output_tokens": 8,
-            "total_tokens": 378,
+            "total_tokens": 408,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -521,38 +509,42 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-9B",
             "response_model": "Qwen/Qwen3.5-9B",
-            "response_id": "gen-1790914946-H3cWI51K2kJovB9rENt8"
+            "response_id": "gen-1790976765-jHyLzZipBa1NLygO5C9f"
           },
           "native": {
             "item": {
               "content": "2 + 3 = 5",
               "role": "assistant"
             },
-            "fingerprint": 18371248748751663009
+            "fingerprint": 1378530497831400427
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 370,
-              "completion_tokens": 8,
-              "total_tokens": 378,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 8,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 400,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 408
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790914946-H3cWI51K2kJovB9rENt8",
+            "response_id": "gen-1790976765-jHyLzZipBa1NLygO5C9f",
             "model": "Qwen/Qwen3.5-9B",
             "additional_params": {
               "created": 0,
@@ -633,17 +625,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "2 + 3 = 5",
-              "native": {
-                "item": {
-                  "content": "2 + 3 = 5"
-                },
-                "fingerprint": 15164235075327557177
-              }
+              "text": "2 + 3 = 5"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-9B"
+      },
       "scope": "parity/run#0"
     }
   ]

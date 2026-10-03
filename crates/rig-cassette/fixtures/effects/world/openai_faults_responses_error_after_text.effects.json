@@ -6,19 +6,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 13
+          "items": 21
         }
       },
       {
-        "batch": 3,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 8
-        }
-      },
-      {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -149,7 +141,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -299,6 +291,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

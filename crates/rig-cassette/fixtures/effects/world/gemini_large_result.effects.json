@@ -128,7 +128,7 @@
                     "name": "checkpoint_large"
                   }
                 },
-                "fingerprint": 16323594753492957356
+                "fingerprint": 13364093706645678558
               }
             }
           ],
@@ -150,7 +150,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 1786012205779404684
+            "fingerprint": 13709686464095557006
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -257,7 +257,7 @@
                         "name": "checkpoint_large"
                       }
                     },
-                    "fingerprint": 16323594753492957356
+                    "fingerprint": 13364093706645678558
                   }
                 }
               ],
@@ -275,7 +275,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 1786012205779404684
+                "fingerprint": 13709686464095557006
               }
             },
             {
@@ -328,7 +328,7 @@
                 "item": {
                   "text": "checkpoint-complete"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           ],
@@ -349,7 +349,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 6231790669279808033
+            "fingerprint": 8754285088019305819
           },
           "finish_reason": "stop",
           "raw": {

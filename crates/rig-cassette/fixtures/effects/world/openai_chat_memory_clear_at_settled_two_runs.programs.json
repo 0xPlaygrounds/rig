@@ -219,15 +219,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready",
-                "native": {
-                  "item": {
-                    "annotations": [],
-                    "content": "ready",
-                    "refusal": null
-                  },
-                  "fingerprint": 815434921069355996
-                }
+                "text": "ready"
               }
             ],
             "head": {
@@ -246,7 +238,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               }
             },
             "done": true,
@@ -269,15 +261,7 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "ready",
-                      "refusal": null
-                    },
-                    "fingerprint": 815434921069355996
-                  }
+                  "text": "ready"
                 }
               ],
               "usage": {
@@ -301,7 +285,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 16268972914252074274
+                "fingerprint": 5329546866666182096
               },
               "provider_request_id": "req_6764ffb4a8774849b8283cbed4987a3a",
               "finish_reason": "stop",
@@ -366,7 +350,7 @@
                 "refusal": null,
                 "role": "assistant"
               },
-              "fingerprint": 16268972914252074274
+              "fingerprint": 5329546866666182096
             }
           }
         },
@@ -374,15 +358,7 @@
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "ready",
-                  "refusal": null
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           }
         },

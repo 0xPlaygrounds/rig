@@ -111,18 +111,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll add 17 and 25 for you.",
-              "native": {
-                "item": {
-                  "content": "I'll add 17 and 25 for you."
-                },
-                "fingerprint": 9863645442859622190
-              }
+              "text": "I'll add 17 and 25 for you."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_heLY0YfRwQ3kb6Q5HAZv2398"
+                "provider": "call_00_t3VtTig4ql7I9EsL96ox0772"
               },
               "function": {
                 "name": "add",
@@ -137,10 +131,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_heLY0YfRwQ3kb6Q5HAZv2398",
+                  "id": "call_00_t3VtTig4ql7I9EsL96ox0772",
                   "type": "function"
                 },
-                "fingerprint": 1688699871732721581
+                "fingerprint": 16442951412978790618
               }
             }
           ],
@@ -155,7 +149,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "5270e5ab-bb85-46a8-862c-7d6dc504c7fb"
+            "response_id": "84cf59fb-7fa1-42da-af88-501b4da473e5"
           },
           "native": {
             "item": {
@@ -167,12 +161,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_heLY0YfRwQ3kb6Q5HAZv2398",
+                  "id": "call_00_t3VtTig4ql7I9EsL96ox0772",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 1443066466062580338
+            "fingerprint": 13582880393991364149
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -190,7 +184,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_heLY0YfRwQ3kb6Q5HAZv2398",
+                      "id": "call_00_t3VtTig4ql7I9EsL96ox0772",
                       "index": 0,
                       "type": "function"
                     }
@@ -199,7 +193,7 @@
               }
             ],
             "created": 0,
-            "id": "5270e5ab-bb85-46a8-862c-7d6dc504c7fb",
+            "id": "84cf59fb-7fa1-42da-af88-501b4da473e5",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -276,18 +270,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll add 17 and 25 for you.",
-                  "native": {
-                    "item": {
-                      "content": "I'll add 17 and 25 for you."
-                    },
-                    "fingerprint": 9863645442859622190
-                  }
+                  "text": "I'll add 17 and 25 for you."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_heLY0YfRwQ3kb6Q5HAZv2398"
+                    "provider": "call_00_t3VtTig4ql7I9EsL96ox0772"
                   },
                   "function": {
                     "name": "add",
@@ -302,10 +290,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_heLY0YfRwQ3kb6Q5HAZv2398",
+                      "id": "call_00_t3VtTig4ql7I9EsL96ox0772",
                       "type": "function"
                     },
-                    "fingerprint": 1688699871732721581
+                    "fingerprint": 16442951412978790618
                   }
                 }
               ],
@@ -314,7 +302,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "5270e5ab-bb85-46a8-862c-7d6dc504c7fb"
+                "response_id": "84cf59fb-7fa1-42da-af88-501b4da473e5"
               },
               "stop": "tool_use",
               "native": {
@@ -327,12 +315,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_heLY0YfRwQ3kb6Q5HAZv2398",
+                      "id": "call_00_t3VtTig4ql7I9EsL96ox0772",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 1443066466062580338
+                "fingerprint": 13582880393991364149
               }
             },
             {
@@ -341,7 +329,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_heLY0YfRwQ3kb6Q5HAZv2398"
+                    "provider": "call_00_t3VtTig4ql7I9EsL96ox0772"
                   },
                   "name": "add",
                   "content": [
@@ -349,7 +337,8 @@
                       "type": "text",
                       "text": "the adder is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -390,13 +379,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I did not call it again.",
-              "native": {
-                "item": {
-                  "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I did not call it again."
-                },
-                "fingerprint": 698669863712695495
-              }
+              "text": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again."
             }
           ],
           "usage": {
@@ -410,14 +393,14 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "8d5c878c-0f62-4f72-8cb4-d1bb213563fe"
+            "response_id": "a4072a1a-f3b6-482f-bd72-dd3f3ef05a4a"
           },
           "native": {
             "item": {
-              "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I did not call it again.",
+              "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again.",
               "role": "assistant"
             },
-            "fingerprint": 11135043933321550421
+            "fingerprint": 11937238000927371726
           },
           "finish_reason": "stop",
           "raw": {
@@ -427,13 +410,13 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I did not call it again.",
+                  "content": "The tool reported an error: **\"the adder is broken\"**\n\nAs instructed, I won't call it again.",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "8d5c878c-0f62-4f72-8cb4-d1bb213563fe",
+            "id": "a4072a1a-f3b6-482f-bd72-dd3f3ef05a4a",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

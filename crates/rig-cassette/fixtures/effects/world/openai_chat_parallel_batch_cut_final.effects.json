@@ -153,7 +153,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_GLoWiRBKAaUweD1tL1pgoDkN"
+                "provider": "call_y5UdkEsgzhsbNs3AQyZLNueS"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -167,16 +167,16 @@
                     "arguments": "{\"slot\": 0}",
                     "name": "checkpoint_batch"
                   },
-                  "id": "call_GLoWiRBKAaUweD1tL1pgoDkN",
+                  "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
                   "type": "function"
                 },
-                "fingerprint": 625198222223967883
+                "fingerprint": 9788276843832975374
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_7f7HMU5uV72JghfV7Iq6ufiu"
+                "provider": "call_CRT0V1NweFVqISOEDQeYDmLN"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -190,16 +190,16 @@
                     "arguments": "{\"slot\": 1}",
                     "name": "checkpoint_batch"
                   },
-                  "id": "call_7f7HMU5uV72JghfV7Iq6ufiu",
+                  "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
                   "type": "function"
                 },
-                "fingerprint": 5972807188488955935
+                "fingerprint": 13361508283144203208
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_B0feiCWhjA9BxK0nR0UiyFAy"
+                "provider": "call_8T4C9t00iaWV19KaOSuklvba"
               },
               "function": {
                 "name": "checkpoint_batch",
@@ -213,10 +213,10 @@
                     "arguments": "{\"slot\": 2}",
                     "name": "checkpoint_batch"
                   },
-                  "id": "call_B0feiCWhjA9BxK0nR0UiyFAy",
+                  "id": "call_8T4C9t00iaWV19KaOSuklvba",
                   "type": "function"
                 },
-                "fingerprint": 15908117747976928236
+                "fingerprint": 1096069136241399780
               }
             }
           ],
@@ -232,7 +232,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPaZD6ukOHu9QGiFss2u4zco2mMZ"
+            "response_id": "chatcmpl-EUeEaSb81350vimi1pxycjqZoSfqD"
           },
           "native": {
             "item": {
@@ -246,7 +246,7 @@
                     "arguments": "{\"slot\": 0}",
                     "name": "checkpoint_batch"
                   },
-                  "id": "call_GLoWiRBKAaUweD1tL1pgoDkN",
+                  "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
                   "type": "function"
                 },
                 {
@@ -254,7 +254,7 @@
                     "arguments": "{\"slot\": 1}",
                     "name": "checkpoint_batch"
                   },
-                  "id": "call_7f7HMU5uV72JghfV7Iq6ufiu",
+                  "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
                   "type": "function"
                 },
                 {
@@ -262,14 +262,14 @@
                     "arguments": "{\"slot\": 2}",
                     "name": "checkpoint_batch"
                   },
-                  "id": "call_B0feiCWhjA9BxK0nR0UiyFAy",
+                  "id": "call_8T4C9t00iaWV19KaOSuklvba",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 8035296730735300976
+            "fingerprint": 14855411307933313874
           },
-          "provider_request_id": "req_8dd1424fb69945a3ba17cab82a74f28a",
+          "provider_request_id": "req_41b253289ac94482867027258d788454",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -288,7 +288,7 @@
                         "arguments": "{\"slot\": 0}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_GLoWiRBKAaUweD1tL1pgoDkN",
+                      "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
                       "type": "function"
                     },
                     {
@@ -296,7 +296,7 @@
                         "arguments": "{\"slot\": 1}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_7f7HMU5uV72JghfV7Iq6ufiu",
+                      "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
                       "type": "function"
                     },
                     {
@@ -304,7 +304,7 @@
                         "arguments": "{\"slot\": 2}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_B0feiCWhjA9BxK0nR0UiyFAy",
+                      "id": "call_8T4C9t00iaWV19KaOSuklvba",
                       "type": "function"
                     }
                   ]
@@ -312,7 +312,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPaZD6ukOHu9QGiFss2u4zco2mMZ",
+            "id": "chatcmpl-EUeEaSb81350vimi1pxycjqZoSfqD",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
@@ -448,7 +448,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_GLoWiRBKAaUweD1tL1pgoDkN"
+                    "provider": "call_y5UdkEsgzhsbNs3AQyZLNueS"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -462,16 +462,16 @@
                         "arguments": "{\"slot\": 0}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_GLoWiRBKAaUweD1tL1pgoDkN",
+                      "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
                       "type": "function"
                     },
-                    "fingerprint": 625198222223967883
+                    "fingerprint": 9788276843832975374
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_7f7HMU5uV72JghfV7Iq6ufiu"
+                    "provider": "call_CRT0V1NweFVqISOEDQeYDmLN"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -485,16 +485,16 @@
                         "arguments": "{\"slot\": 1}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_7f7HMU5uV72JghfV7Iq6ufiu",
+                      "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
                       "type": "function"
                     },
-                    "fingerprint": 5972807188488955935
+                    "fingerprint": 13361508283144203208
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_B0feiCWhjA9BxK0nR0UiyFAy"
+                    "provider": "call_8T4C9t00iaWV19KaOSuklvba"
                   },
                   "function": {
                     "name": "checkpoint_batch",
@@ -508,10 +508,10 @@
                         "arguments": "{\"slot\": 2}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_B0feiCWhjA9BxK0nR0UiyFAy",
+                      "id": "call_8T4C9t00iaWV19KaOSuklvba",
                       "type": "function"
                     },
-                    "fingerprint": 15908117747976928236
+                    "fingerprint": 1096069136241399780
                   }
                 }
               ],
@@ -520,7 +520,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPaZD6ukOHu9QGiFss2u4zco2mMZ"
+                "response_id": "chatcmpl-EUeEaSb81350vimi1pxycjqZoSfqD"
               },
               "stop": "tool_use",
               "native": {
@@ -535,7 +535,7 @@
                         "arguments": "{\"slot\": 0}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_GLoWiRBKAaUweD1tL1pgoDkN",
+                      "id": "call_y5UdkEsgzhsbNs3AQyZLNueS",
                       "type": "function"
                     },
                     {
@@ -543,7 +543,7 @@
                         "arguments": "{\"slot\": 1}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_7f7HMU5uV72JghfV7Iq6ufiu",
+                      "id": "call_CRT0V1NweFVqISOEDQeYDmLN",
                       "type": "function"
                     },
                     {
@@ -551,12 +551,12 @@
                         "arguments": "{\"slot\": 2}",
                         "name": "checkpoint_batch"
                       },
-                      "id": "call_B0feiCWhjA9BxK0nR0UiyFAy",
+                      "id": "call_8T4C9t00iaWV19KaOSuklvba",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8035296730735300976
+                "fingerprint": 14855411307933313874
               }
             },
             {
@@ -565,7 +565,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_GLoWiRBKAaUweD1tL1pgoDkN"
+                    "provider": "call_y5UdkEsgzhsbNs3AQyZLNueS"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -578,7 +578,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_7f7HMU5uV72JghfV7Iq6ufiu"
+                    "provider": "call_CRT0V1NweFVqISOEDQeYDmLN"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -586,12 +586,13 @@
                       "type": "text",
                       "text": "the tool failed"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 },
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_B0feiCWhjA9BxK0nR0UiyFAy"
+                    "provider": "call_8T4C9t00iaWV19KaOSuklvba"
                   },
                   "name": "checkpoint_batch",
                   "content": [
@@ -642,15 +643,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "checkpoint-complete",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "checkpoint-complete",
-                  "refusal": null
-                },
-                "fingerprint": 11231240767045752081
-              }
+              "text": "checkpoint-complete"
             }
           ],
           "usage": {
@@ -665,7 +658,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPaZsvtWzl7jUbuUJj4Dng5kgmNk"
+            "response_id": "chatcmpl-EUeEbVrLOlbMgmaKwNLV3f0RWVioc"
           },
           "native": {
             "item": {
@@ -674,9 +667,9 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 6231790669279808033
+            "fingerprint": 8754285088019305819
           },
-          "provider_request_id": "req_0b851b4445cc44618da6c5f4d2bc5561",
+          "provider_request_id": "req_1d4f3e4dad344bfc82856f531581657a",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -693,7 +686,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPaZsvtWzl7jUbuUJj4Dng5kgmNk",
+            "id": "chatcmpl-EUeEbVrLOlbMgmaKwNLV3f0RWVioc",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",

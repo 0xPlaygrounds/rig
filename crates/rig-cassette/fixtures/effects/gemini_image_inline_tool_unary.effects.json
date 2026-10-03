@@ -145,7 +145,7 @@
                   },
                   "thoughtSignature": "ErgECrUEAWkUfROMNesVktyyXkj6PjQZuRYlSJCi8VzDaFlh5+SFOcuXUwFL/pfInmmv70mXtb7qkh4m2CDmBz/KsbpRRzySI9qIG2i6uYXcXQb86PlGSzWKST51AqvaL3luXZ8ufYsEumyMBzcyh1tA5yCgEEFwvlKR3i9V4XhkYU7Bq4SzfpGSZWyz1y+Y8dzbr81gRkOWXIkVf1Qs9ODBmkxuWyfh34hN7eJOEeE1Btz3uLpJc+iQz5t2aKl5kHoNp5j9hYQ6GZta5UnRNbwg0drBFkxOzhN4ZYyfd6OtHPbuj/XrGXaohwaPjkGyhA//4DmxyjnEqO6UbiJ24zTHMnp2XV9hysZIU61cs7NFI2+wdRV1Slg+kp4EzgpbTzkHBzQQs2D1vhGPNDviXfDF5U3TftHGNcy/BJ/1zFlRF7DyObPqzJMt23he5HFsMkp27H3JPKs3MLgCBwZbueQWEX/BhnEuWN0E+dxGo+Dsj0T4an+5GjPy7I3Hr4ros3nG+rFd+nvocIT1cUCOcsl4VgBRqtLe/woQKVGKQp7fNAwlTILGmM+XTPRkOnSaXIwSzEsMG9Rk8JtDbS2em2c0VRkcgDLJmqWPuy25rNLDYeTUd7BVPePNIxWmTDmhjGFsZQ+qkxL33VH2dapGi/N72ltBdlNlmIkD8SHNjJTY05cWv27NDMe52Mct/Ms+jcqF232FvJknp6sQC3T0/YOcypbkpKW4cRmca5EP7+WsSRu4R3hchH4nfg=="
                 },
-                "fingerprint": 13599984061768564054
+                "fingerprint": 15287516997394127802
               }
             }
           ],
@@ -168,7 +168,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 10874667689867165934
+            "fingerprint": 425047385756564970
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -299,7 +299,7 @@
                       },
                       "thoughtSignature": "ErgECrUEAWkUfROMNesVktyyXkj6PjQZuRYlSJCi8VzDaFlh5+SFOcuXUwFL/pfInmmv70mXtb7qkh4m2CDmBz/KsbpRRzySI9qIG2i6uYXcXQb86PlGSzWKST51AqvaL3luXZ8ufYsEumyMBzcyh1tA5yCgEEFwvlKR3i9V4XhkYU7Bq4SzfpGSZWyz1y+Y8dzbr81gRkOWXIkVf1Qs9ODBmkxuWyfh34hN7eJOEeE1Btz3uLpJc+iQz5t2aKl5kHoNp5j9hYQ6GZta5UnRNbwg0drBFkxOzhN4ZYyfd6OtHPbuj/XrGXaohwaPjkGyhA//4DmxyjnEqO6UbiJ24zTHMnp2XV9hysZIU61cs7NFI2+wdRV1Slg+kp4EzgpbTzkHBzQQs2D1vhGPNDviXfDF5U3TftHGNcy/BJ/1zFlRF7DyObPqzJMt23he5HFsMkp27H3JPKs3MLgCBwZbueQWEX/BhnEuWN0E+dxGo+Dsj0T4an+5GjPy7I3Hr4ros3nG+rFd+nvocIT1cUCOcsl4VgBRqtLe/woQKVGKQp7fNAwlTILGmM+XTPRkOnSaXIwSzEsMG9Rk8JtDbS2em2c0VRkcgDLJmqWPuy25rNLDYeTUd7BVPePNIxWmTDmhjGFsZQ+qkxL33VH2dapGi/N72ltBdlNlmIkD8SHNjJTY05cWv27NDMe52Mct/Ms+jcqF232FvJknp6sQC3T0/YOcypbkpKW4cRmca5EP7+WsSRu4R3hchH4nfg=="
                     },
-                    "fingerprint": 13599984061768564054
+                    "fingerprint": 15287516997394127802
                   }
                 }
               ],
@@ -317,7 +317,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 10874667689867165934
+                "fingerprint": 425047385756564970
               }
             },
             {
@@ -382,7 +382,7 @@
                 "item": {
                   "text": "The image's dominant color is red, and the sum is 42."
                 },
-                "fingerprint": 10790602907104383694
+                "fingerprint": 5051904412321372348
               }
             }
           ],
@@ -403,7 +403,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 2817926300769757848
+            "fingerprint": 15539768399449702674
           },
           "finish_reason": "stop",
           "raw": {

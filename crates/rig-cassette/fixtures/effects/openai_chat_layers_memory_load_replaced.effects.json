@@ -117,15 +117,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Ada",
-                  "refusal": null
-                },
-                "fingerprint": 11689945161834907103
-              }
+              "text": "Ada"
             }
           ],
           "usage": {
@@ -149,7 +141,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 8448737388283586131
+            "fingerprint": 4857962483737284025
           },
           "provider_request_id": "req_19e829228e46458ebf544ef6403affe7",
           "finish_reason": "stop",
@@ -215,15 +207,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Ada",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "Ada",
-                      "refusal": null
-                    },
-                    "fingerprint": 11689945161834907103
-                  }
+                  "text": "Ada"
                 }
               ],
               "origin": {
@@ -241,7 +225,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 8448737388283586131
+                "fingerprint": 4857962483737284025
               }
             }
           ]

@@ -251,18 +251,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll start by listing the repository files.",
-              "native": {
-                "item": {
-                  "content": "I'll start by listing the repository files."
-                },
-                "fingerprint": 8528915275346856014
-              }
+              "text": "I'll start by listing the repository files."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_ihajjb9fEGk4Y44hXMB26823"
+                "provider": "call_00_MFBZXOoxpPJmxF2dWNj63399"
               },
               "function": {
                 "name": "list_files",
@@ -274,10 +268,10 @@
                     "arguments": "{}",
                     "name": "list_files"
                   },
-                  "id": "call_00_ihajjb9fEGk4Y44hXMB26823",
+                  "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                   "type": "function"
                 },
-                "fingerprint": 6590898232115989957
+                "fingerprint": 5259179666328443233
               }
             }
           ],
@@ -292,7 +286,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "9b57090b-30cc-4189-9166-1d080c335213"
+            "response_id": "92c610ca-49ec-4678-99f4-b6ca0ce82fad"
           },
           "native": {
             "item": {
@@ -304,12 +298,12 @@
                     "arguments": "{}",
                     "name": "list_files"
                   },
-                  "id": "call_00_ihajjb9fEGk4Y44hXMB26823",
+                  "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 5139685695029440658
+            "fingerprint": 12521211668297466220
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -327,7 +321,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_ihajjb9fEGk4Y44hXMB26823",
+                      "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                       "index": 0,
                       "type": "function"
                     }
@@ -336,7 +330,7 @@
               }
             ],
             "created": 0,
-            "id": "9b57090b-30cc-4189-9166-1d080c335213",
+            "id": "92c610ca-49ec-4678-99f4-b6ca0ce82fad",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -407,18 +401,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_ihajjb9fEGk4Y44hXMB26823"
+                    "provider": "call_00_MFBZXOoxpPJmxF2dWNj63399"
                   },
                   "function": {
                     "name": "list_files",
@@ -430,10 +418,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_ihajjb9fEGk4Y44hXMB26823",
+                      "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                       "type": "function"
                     },
-                    "fingerprint": 6590898232115989957
+                    "fingerprint": 5259179666328443233
                   }
                 }
               ],
@@ -442,7 +430,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "9b57090b-30cc-4189-9166-1d080c335213"
+                "response_id": "92c610ca-49ec-4678-99f4-b6ca0ce82fad"
               },
               "stop": "tool_use",
               "native": {
@@ -455,12 +443,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_ihajjb9fEGk4Y44hXMB26823",
+                      "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 5139685695029440658
+                "fingerprint": 12521211668297466220
               }
             },
             {
@@ -469,7 +457,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_ihajjb9fEGk4Y44hXMB26823"
+                    "provider": "call_00_MFBZXOoxpPJmxF2dWNj63399"
                   },
                   "name": "list_files",
                   "content": [
@@ -561,7 +549,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_AvrkjDTokvubS3sWtVaH1043"
+                "provider": "call_00_8xEmRxbHTqTdONLAzWaF4369"
               },
               "function": {
                 "name": "read_file",
@@ -575,10 +563,10 @@
                     "arguments": "{\"path\": \"README.md\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_AvrkjDTokvubS3sWtVaH1043",
+                  "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
                   "type": "function"
                 },
-                "fingerprint": 15309347666293166327
+                "fingerprint": 2242893980710913816
               }
             }
           ],
@@ -593,7 +581,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "10207cd0-595a-404a-9212-c70e0b6b6be8"
+            "response_id": "4441d5e7-1bd7-49ae-b306-da8d26122b82"
           },
           "native": {
             "item": {
@@ -605,12 +593,12 @@
                     "arguments": "{\"path\": \"README.md\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_AvrkjDTokvubS3sWtVaH1043",
+                  "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 13722466302806899677
+            "fingerprint": 12210545682805104964
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -628,7 +616,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_AvrkjDTokvubS3sWtVaH1043",
+                      "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
                       "index": 0,
                       "type": "function"
                     }
@@ -637,7 +625,7 @@
               }
             ],
             "created": 0,
-            "id": "10207cd0-595a-404a-9212-c70e0b6b6be8",
+            "id": "4441d5e7-1bd7-49ae-b306-da8d26122b82",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -708,18 +696,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by listing the repository files.",
-                  "native": {
-                    "item": {
-                      "content": "I'll start by listing the repository files."
-                    },
-                    "fingerprint": 8528915275346856014
-                  }
+                  "text": "I'll start by listing the repository files."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_ihajjb9fEGk4Y44hXMB26823"
+                    "provider": "call_00_MFBZXOoxpPJmxF2dWNj63399"
                   },
                   "function": {
                     "name": "list_files",
@@ -731,10 +713,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_ihajjb9fEGk4Y44hXMB26823",
+                      "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                       "type": "function"
                     },
-                    "fingerprint": 6590898232115989957
+                    "fingerprint": 5259179666328443233
                   }
                 }
               ],
@@ -743,7 +725,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "9b57090b-30cc-4189-9166-1d080c335213"
+                "response_id": "92c610ca-49ec-4678-99f4-b6ca0ce82fad"
               },
               "stop": "tool_use",
               "native": {
@@ -756,12 +738,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_ihajjb9fEGk4Y44hXMB26823",
+                      "id": "call_00_MFBZXOoxpPJmxF2dWNj63399",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 5139685695029440658
+                "fingerprint": 12521211668297466220
               }
             },
             {
@@ -770,7 +752,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_ihajjb9fEGk4Y44hXMB26823"
+                    "provider": "call_00_MFBZXOoxpPJmxF2dWNj63399"
                   },
                   "name": "list_files",
                   "content": [
@@ -788,7 +770,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_AvrkjDTokvubS3sWtVaH1043"
+                    "provider": "call_00_8xEmRxbHTqTdONLAzWaF4369"
                   },
                   "function": {
                     "name": "read_file",
@@ -802,10 +784,10 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_AvrkjDTokvubS3sWtVaH1043",
+                      "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
                       "type": "function"
                     },
-                    "fingerprint": 15309347666293166327
+                    "fingerprint": 2242893980710913816
                   }
                 }
               ],
@@ -814,7 +796,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-flash",
                 "response_model": "deepseek-flash",
-                "response_id": "10207cd0-595a-404a-9212-c70e0b6b6be8"
+                "response_id": "4441d5e7-1bd7-49ae-b306-da8d26122b82"
               },
               "stop": "tool_use",
               "native": {
@@ -827,12 +809,12 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_AvrkjDTokvubS3sWtVaH1043",
+                      "id": "call_00_8xEmRxbHTqTdONLAzWaF4369",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13722466302806899677
+                "fingerprint": 12210545682805104964
               }
             },
             {
@@ -841,7 +823,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_AvrkjDTokvubS3sWtVaH1043"
+                    "provider": "call_00_8xEmRxbHTqTdONLAzWaF4369"
                   },
                   "name": "read_file",
                   "content": [
@@ -933,7 +915,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_h1DsXKrOnonPwsN2Ntmx8284"
+                "provider": "call_00_cdjFzYqSbNlEPCx1yPun0587"
               },
               "function": {
                 "name": "read_file",
@@ -947,10 +929,10 @@
                     "arguments": "{\"path\": \"tests/basic.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_h1DsXKrOnonPwsN2Ntmx8284",
+                  "id": "call_00_cdjFzYqSbNlEPCx1yPun0587",
                   "type": "function"
                 },
-                "fingerprint": 8833747414010826145
+                "fingerprint": 16490999425454977010
               }
             }
           ],
@@ -965,7 +947,7 @@
             "provider": "deepseek",
             "model": "deepseek-flash",
             "response_model": "deepseek-flash",
-            "response_id": "22dc8c3e-82f0-4e60-a386-a100040b45c8"
+            "response_id": "c844db06-3bc4-4c52-ac10-5223268720df"
           },
           "native": {
             "item": {
@@ -977,12 +959,12 @@
                     "arguments": "{\"path\": \"tests/basic.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_00_h1DsXKrOnonPwsN2Ntmx8284",
+                  "id": "call_00_cdjFzYqSbNlEPCx1yPun0587",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 17172120071869446241
+            "fingerprint": 12375790345764219216
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -1000,7 +982,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_h1DsXKrOnonPwsN2Ntmx8284",
+                      "id": "call_00_cdjFzYqSbNlEPCx1yPun0587",
                       "index": 0,
                       "type": "function"
                     }
@@ -1009,7 +991,7 @@
               }
             ],
             "created": 0,
-            "id": "22dc8c3e-82f0-4e60-a386-a100040b45c8",
+            "id": "c844db06-3bc4-4c52-ac10-5223268720df",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

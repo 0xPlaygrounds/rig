@@ -10,18 +10,13 @@
             "item": {
               "reasoning_content": "\n\n"
             },
-            "fingerprint": 10558749898389218540
+            "fingerprint": 2659556854901446314
           }
         }
       },
       {
         "text": "\n\nA local OpenAI-compatible server should return token usage to help users manage costs, optimize model performance, and track resource consumption. Knowing token usage allows users to:\n\n- **Monitor expenses**: Track usage to stay within budget or predict future costs.\n- **Optimize prompts**: Adjust prompt length or complexity to reduce token counts.\n- **Improve efficiency**: Fine-tune models or workflows for better performance per token.\n- **Compliance**: Meet usage limits or reporting requirements for internal systems.\n\nReturning token usage also supports better user experience by providing transparency and enabling smarter usage patterns.",
-        "native": {
-          "item": {
-            "content": "\n\nA local OpenAI-compatible server should return token usage to help users manage costs, optimize model performance, and track resource consumption. Knowing token usage allows users to:\n\n- **Monitor expenses**: Track usage to stay within budget or predict future costs.\n- **Optimize prompts**: Adjust prompt length or complexity to reduce token counts.\n- **Improve efficiency**: Fine-tune models or workflows for better performance per token.\n- **Compliance**: Meet usage limits or reporting requirements for internal systems.\n\nReturning token usage also supports better user experience by providing transparency and enabling smarter usage patterns."
-          },
-          "fingerprint": 2739887824020597692
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -76,18 +71,13 @@
             "item": {
               "reasoning_content": "\nOkay, the user is asking why token usage should be reported. They want a concise answer, just one sentence. Let me start by recalling what token usage is. Tokens are the basic units of text in models, used for processing. Reporting them is important for managing costs because each token consumed incurs a cost. If you don't track it, you might exceed budget limits or face unexpected charges. Also, it helps in optimizing model usage by understanding which parts of the input are using more tokens. Maybe mention cost efficiency and resource allocation. Need to make sure it's a single sentence without being too wordy. Let me combine these points: reporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits. That should cover it.\n"
             },
-            "fingerprint": 2602738526954068060
+            "fingerprint": 15941010609189017826
           }
         }
       },
       {
         "text": "\n\nReporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits.",
-        "native": {
-          "item": {
-            "content": "\n\nReporting token usage ensures cost efficiency and optimal resource allocation by tracking consumption against budget limits."
-          },
-          "fingerprint": 17170896325559053090
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -142,18 +132,13 @@
             "item": {
               "reasoning_content": "\nOkay, the user wants three short bullet points about token usage reporting. Let me start by recalling what token usage reporting is. It's about tracking how many tokens (like words or characters) are used in AI interactions. The user specified to be concise and include details for streaming visibility.\n\nFirst, I should mention the key aspects of token usage reporting. Maybe start with monitoring input and output tokens. That's fundamental. Then, the second point could be about optimizing costs, since token usage directly affects pricing. Third, maybe something about real-time insights for performance or efficiency. Let me check if those points are accurate and concise. Yes, each bullet is a short point with a detail. That should meet the user's request.\n"
             },
-            "fingerprint": 8784784825714995762
+            "fingerprint": 3087256257802451192
           }
         }
       },
       {
         "text": "\n\n- Tracks input/output token counts for model interactions.  \n- Highlights cost optimization by aligning usage with budget constraints.  \n- Provides real-time insights for tuning prompts or workflows.",
-        "native": {
-          "item": {
-            "content": "\n\n- Tracks input/output token counts for model interactions.  \n- Highlights cost optimization by aligning usage with budget constraints.  \n- Provides real-time insights for tuning prompts or workflows."
-          },
-          "fingerprint": 15476081788096061436
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -167,15 +152,15 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 41,
-        "completion_tokens": 185,
-        "total_tokens": 226,
         "avg_compl_tok_per_sec": 4.9165516,
         "avg_prompt_tok_per_sec": 56.786705,
         "avg_tok_per_sec": 5.8920145,
+        "completion_tokens": 185,
+        "prompt_tokens": 41,
         "total_completion_time_sec": 37.628,
         "total_prompt_time_sec": 0.722,
-        "total_time_sec": 38.357
+        "total_time_sec": 38.357,
+        "total_tokens": 226
       },
       "finish_reason": "stop",
       "response_id": "6",
@@ -198,18 +183,13 @@
             "item": {
               "reasoning_content": "\n\n"
             },
-            "fingerprint": 10558749898389218540
+            "fingerprint": 2659556854901446314
           }
         }
       },
       {
         "text": "\n\n<tool_call>\n{\"name\": \"report_usage\", \"arguments\": {\"reason\": \"cost_tracking\"}}\n</tool_call>",
-        "native": {
-          "item": {
-            "content": "\n\n<tool_call>\n{\"name\": \"report_usage\", \"arguments\": {\"reason\": \"cost_tracking\"}}\n</tool_call>"
-          },
-          "fingerprint": 11359502088199726730
-        }
+        "native": null
       },
       {
         "tool_call": {
@@ -227,7 +207,7 @@
               "id": "call-a12175c2-8979-4850-8618-8a12f5026dc4",
               "type": "function"
             },
-            "fingerprint": 17029908846713474975
+            "fingerprint": 10259269429459204341
           }
         }
       }
@@ -294,18 +274,13 @@
             "item": {
               "reasoning_content": "\n\n"
             },
-            "fingerprint": 10558749898389218540
+            "fingerprint": 2659556854901446314
           }
         }
       },
       {
         "text": "\n\nUsage accounting is a method of tracking and billing based on actual resource consumption by users or services.",
-        "native": {
-          "item": {
-            "content": "\n\nUsage accounting is a method of tracking and billing based on actual resource consumption by users or services."
-          },
-          "fingerprint": 8996916836382192210
-        }
+        "native": null
       }
     ],
     "usage": {

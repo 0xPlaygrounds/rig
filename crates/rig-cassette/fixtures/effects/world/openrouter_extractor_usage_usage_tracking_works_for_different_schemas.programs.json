@@ -255,7 +255,7 @@
                     "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
                     "type": "function"
                   },
-                  "fingerprint": 16308084619308127241
+                  "fingerprint": 1614758669980730737
                 }
               }
             ],
@@ -285,7 +285,7 @@
                     }
                   ]
                 },
-                "fingerprint": 10131153729073459987
+                "fingerprint": 14548093134548544811
               }
             },
             "done": true,
@@ -328,7 +328,7 @@
                       "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
                       "type": "function"
                     },
-                    "fingerprint": 16308084619308127241
+                    "fingerprint": 1614758669980730737
                   }
                 }
               ],
@@ -364,7 +364,7 @@
                     }
                   ]
                 },
-                "fingerprint": 10131153729073459987
+                "fingerprint": 14548093134548544811
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -460,7 +460,7 @@
                   }
                 ]
               },
-              "fingerprint": 10131153729073459987
+              "fingerprint": 14548093134548544811
             }
           }
         },

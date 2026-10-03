@@ -135,7 +135,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "mn5lz60cQ"
+                "provider": "LH7szQMLf"
               },
               "function": {
                 "name": "add",
@@ -150,10 +150,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "mn5lz60cQ",
+                  "id": "LH7szQMLf",
                   "type": "function"
                 },
-                "fingerprint": 10908827596056944353
+                "fingerprint": 11101362000584368895
               }
             }
           ],
@@ -167,7 +167,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RqREjlv2oi4Nsz70dTg9H8Xu"
+            "response_id": "chatcmpl-RmZP0oVSvwd64p1OGM86Aaz8"
           },
           "native": {
             "item": {
@@ -181,12 +181,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "mn5lz60cQ",
+                  "id": "LH7szQMLf",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 13211085933649064659
+            "fingerprint": 9055013290469703681
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -206,7 +206,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "mn5lz60cQ",
+                      "id": "LH7szQMLf",
                       "type": "function"
                     }
                   ]
@@ -218,7 +218,7 @@
               "usd": 0.0001063125
             },
             "created": 0,
-            "id": "chatcmpl-RqREjlv2oi4Nsz70dTg9H8Xu",
+            "id": "chatcmpl-RmZP0oVSvwd64p1OGM86Aaz8",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -306,7 +306,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "mn5lz60cQ"
+                    "provider": "LH7szQMLf"
                   },
                   "function": {
                     "name": "add",
@@ -321,10 +321,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "mn5lz60cQ",
+                      "id": "LH7szQMLf",
                       "type": "function"
                     },
-                    "fingerprint": 10908827596056944353
+                    "fingerprint": 11101362000584368895
                   }
                 }
               ],
@@ -333,7 +333,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RqREjlv2oi4Nsz70dTg9H8Xu"
+                "response_id": "chatcmpl-RmZP0oVSvwd64p1OGM86Aaz8"
               },
               "stop": "tool_use",
               "native": {
@@ -348,12 +348,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "mn5lz60cQ",
+                      "id": "LH7szQMLf",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13211085933649064659
+                "fingerprint": 9055013290469703681
               }
             },
             {
@@ -362,7 +362,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "mn5lz60cQ"
+                    "provider": "LH7szQMLf"
                   },
                   "name": "add",
                   "content": [
@@ -370,7 +370,8 @@
                       "type": "text",
                       "text": "the adder is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -411,27 +412,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "the adder is broken",
-              "native": {
-                "item": {
-                  "content": "the adder is broken",
-                  "name": null
-                },
-                "fingerprint": 4501334444821699225
-              }
+              "text": "the adder is broken"
             }
           ],
           "usage": {
-            "input_tokens": 1129,
+            "input_tokens": 1127,
             "output_tokens": 6,
-            "total_tokens": 1135
+            "total_tokens": 1133
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-R6ByTIo4ozUxIyDlka1vGBhK"
+            "response_id": "chatcmpl-RtUreIn6PCHaiFKEUEBHv35K"
           },
           "native": {
             "item": {
@@ -440,7 +434,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 5492550412203618301
+            "fingerprint": 14739622908140403659
           },
           "finish_reason": "stop",
           "raw": {
@@ -460,17 +454,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00010734374999999999
+              "usd": 0.00010715624999999999
             },
             "created": 0,
-            "id": "chatcmpl-R6ByTIo4ozUxIyDlka1vGBhK",
+            "id": "chatcmpl-RtUreIn6PCHaiFKEUEBHv35K",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
               "completion_tokens": 6,
-              "prompt_tokens": 1129,
-              "total_tokens": 1135
+              "prompt_tokens": 1127,
+              "total_tokens": 1133
             },
             "venice_parameters": {
               "disable_thinking": false,

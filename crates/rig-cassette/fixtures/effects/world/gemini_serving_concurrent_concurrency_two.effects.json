@@ -209,7 +209,7 @@
                   },
                   "thoughtSignature": "Ev8DCvwDAWkUfRPbksQ1AoB/8f33iLJkMtoa3rFuik7qwEzXbasM8iBokXr2TAbg9ALZAJ17zbw7J/l5i5k6vTJ6JhpzwhcJkRG45LA1KqcZYlai/ViKqijHCHUJLWuAyJfzZx4O8fOgJARkzMUs1P8zR9JbBcL2XQf6e2IbRstRyrc99FZydBFAC4z9aFg7s+WegXM9nsuAQ1d8opSPYn007wXngDTEDjgTF0roQX8uA50jT75ovyzhmfKioKboSkpPdWjpVnCfjML26QgJFNQv/dExJ/7REaShku/RcO2MM/ohPHpnCzqmgnI+q7uQiPt6opu66TYza9ILgnyx1VH6aTTKDsmVhz/PL/ViwrAippqX8fqNnI9iaq/AdnDXcS/cU3yCe9/KCrLgJhWa6hA7ZtX55R4Cdojt+piU4rSW8AWNsCyMWsrRSuoLf8yadc1I371fdExZ427WDVYX+NWpE4yMQYlGFoWNAjexmm2qAditU2UsOk1IPNrgZO7TNTzrlRayyFLiAnLIaIC74p/ygFbJJc1LYlexI3pYukfWltT0ErcnwUnFuKk2CCTwXUbLTQPfA8AY8RcRjCbo9dFdFr6rBaojWxitRyKbRCZ+W1FHWwwdTQHXIZ5TPV6SGEOVqC5XwXaNJqxUZ2QDkf53N7pQtnn3h5FbTaMikJ/sXA=="
                 },
-                "fingerprint": 10805197399864639879
+                "fingerprint": 10038774565326064543
               }
             },
             {
@@ -229,7 +229,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 1783269718642483544
+                "fingerprint": 14641201082644843772
               }
             }
           ],
@@ -251,21 +251,22 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 8331730807085221410
+            "fingerprint": 729296524882952818
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 166,
               "candidatesTokenCount": 26,
-              "totalTokenCount": 285,
-              "thoughtsTokenCount": 93,
+              "promptTokenCount": 166,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 166
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 93,
+              "totalTokenCount": 285
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
@@ -368,7 +369,7 @@
                       },
                       "thoughtSignature": "Ev8DCvwDAWkUfRPbksQ1AoB/8f33iLJkMtoa3rFuik7qwEzXbasM8iBokXr2TAbg9ALZAJ17zbw7J/l5i5k6vTJ6JhpzwhcJkRG45LA1KqcZYlai/ViKqijHCHUJLWuAyJfzZx4O8fOgJARkzMUs1P8zR9JbBcL2XQf6e2IbRstRyrc99FZydBFAC4z9aFg7s+WegXM9nsuAQ1d8opSPYn007wXngDTEDjgTF0roQX8uA50jT75ovyzhmfKioKboSkpPdWjpVnCfjML26QgJFNQv/dExJ/7REaShku/RcO2MM/ohPHpnCzqmgnI+q7uQiPt6opu66TYza9ILgnyx1VH6aTTKDsmVhz/PL/ViwrAippqX8fqNnI9iaq/AdnDXcS/cU3yCe9/KCrLgJhWa6hA7ZtX55R4Cdojt+piU4rSW8AWNsCyMWsrRSuoLf8yadc1I371fdExZ427WDVYX+NWpE4yMQYlGFoWNAjexmm2qAditU2UsOk1IPNrgZO7TNTzrlRayyFLiAnLIaIC74p/ygFbJJc1LYlexI3pYukfWltT0ErcnwUnFuKk2CCTwXUbLTQPfA8AY8RcRjCbo9dFdFr6rBaojWxitRyKbRCZ+W1FHWwwdTQHXIZ5TPV6SGEOVqC5XwXaNJqxUZ2QDkf53N7pQtnn3h5FbTaMikJ/sXA=="
                     },
-                    "fingerprint": 10805197399864639879
+                    "fingerprint": 10038774565326064543
                   }
                 },
                 {
@@ -388,7 +389,7 @@
                         "name": "lookup_orchard_label"
                       }
                     },
-                    "fingerprint": 1783269718642483544
+                    "fingerprint": 14641201082644843772
                   }
                 }
               ],
@@ -405,7 +406,7 @@
                   "index": 0,
                   "finishReason": "STOP"
                 },
-                "fingerprint": 8331730807085221410
+                "fingerprint": 729296524882952818
               }
             },
             {
@@ -481,7 +482,7 @@
                   "text": "The markers found are crimson-harbor and silver-orchard.",
                   "thoughtSignature": "EskCCsYCAWkUfRNkP0xRlcarZTYNyPdSmtn54Ba+JCAxqJspL6h6jueaZ9UdZLXtSfIlvwvMdRXqqgQgC76NtkkaiVHhK5F/R1rP9pClMYF3be0k/HPw9SvHchEL6GwrB2d+I03Ia7BJCDUP5KETzJhijRdgdHJUZb8zjGuquGERRk5rvK/bcG72/TFMV0eol9wgqKAcjHssIXjkpQNosR6BtPeX1JELAl6XBnQZXFK6HRoRam7xKAbgwP0Zlw5hjnk2L5v+uHlMm2YRJMnMk24CoASC+/iFnkSF9Z9CSueXZ23KQXTELaxbGzBfptlebzhZLAlNJfpaSKsd9nynsjBl9ow3DnljORMqVSpQNO3zSVoTo1JiVJBO8c/TzDporJt+sN1v64rzdppPYVnj21brOEXar0vF4VQqNsZ7EQurOX86N8llajij/Hc="
                 },
-                "fingerprint": 6695211595155696585
+                "fingerprint": 4965089592633624741
               }
             }
           ],
@@ -503,21 +504,22 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 24679414476385087
+            "fingerprint": 6654173017621426643
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 324,
               "candidatesTokenCount": 14,
-              "totalTokenCount": 392,
-              "thoughtsTokenCount": 54,
+              "promptTokenCount": 324,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 324
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 54,
+              "totalTokenCount": 392
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",

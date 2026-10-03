@@ -136,16 +136,16 @@
               "native": {
                 "item": {
                   "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
-                  "thoughtSignature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
+                  "thoughtSignature": "CrQCAWkUfRNeNkPnERD6Nm++LKibdYyHrRXBM44ZRiIjW62HBUjyVwmVVLY4RI6nn+3gghwsN0H+7Jsosp71jsOv69mqp1kSYhJ+J4ojPCgm+/x4ilGTwv7+56lPc67c65O7eLiqIYz0m1uepf/pPWm0v+xkRfoqkZgRYtg6PUwY8lZUc1utMsVJ0cnsBFz3bx0eouS+KdPo5ADJEUQzhlK6Rort0+uyAsM8z+FjgTFUZNYpzRDUesRLe6DkVdmQG+Pl+r0MfRT0Pip4tuXLjnZ8HRSJ+qiC2K9ImzVvcfb9yD/v864u2ZijG45W7UGS3uOPyIxuaAxqPShbMh+9uYt9AKI8j53OKGeUj2+9hlOta987Ji2gQYg1oSvqY1j8y5AOinLIVTUPh/Tb0grOTsxGN4eqdGw="
                 },
-                "fingerprint": 5546780442037386832
+                "fingerprint": 2867431395464160518
               }
             }
           ],
           "usage": {
-            "input_tokens": 130,
+            "input_tokens": 129,
             "output_tokens": 78,
-            "total_tokens": 208,
+            "total_tokens": 207,
             "reasoning_tokens": 60
           },
           "origin": {
@@ -153,14 +153,14 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "dq6yaqf5PMqnmtkP7pfe-AE"
+            "response_id": "IRDAasqjPICoqtsP3L2PqQM"
           },
           "native": {
             "item": {
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 3308089162358297082
+            "fingerprint": 17347026209382671252
           },
           "finish_reason": "stop",
           "raw": {
@@ -170,7 +170,7 @@
                   "parts": [
                     {
                       "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
-                      "thoughtSignature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
+                      "thoughtSignature": "CrQCAWkUfRNeNkPnERD6Nm++LKibdYyHrRXBM44ZRiIjW62HBUjyVwmVVLY4RI6nn+3gghwsN0H+7Jsosp71jsOv69mqp1kSYhJ+J4ojPCgm+/x4ilGTwv7+56lPc67c65O7eLiqIYz0m1uepf/pPWm0v+xkRfoqkZgRYtg6PUwY8lZUc1utMsVJ0cnsBFz3bx0eouS+KdPo5ADJEUQzhlK6Rort0+uyAsM8z+FjgTFUZNYpzRDUesRLe6DkVdmQG+Pl+r0MfRT0Pip4tuXLjnZ8HRSJ+qiC2K9ImzVvcfb9yD/v864u2ZijG45W7UGS3uOPyIxuaAxqPShbMh+9uYt9AKI8j53OKGeUj2+9hlOta987Ji2gQYg1oSvqY1j8y5AOinLIVTUPh/Tb0grOTsxGN4eqdGw="
                     }
                   ],
                   "role": "model"
@@ -180,19 +180,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "dq6yaqf5PMqnmtkP7pfe-AE",
+            "responseId": "IRDAasqjPICoqtsP3L2PqQM",
             "usageMetadata": {
               "candidatesTokenCount": 18,
-              "promptTokenCount": 130,
+              "promptTokenCount": 129,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 130
+                  "tokenCount": 129
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 60,
-              "totalTokenCount": 208
+              "totalTokenCount": 207
             }
           }
         }

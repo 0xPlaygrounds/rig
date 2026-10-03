@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -22,11 +22,11 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 11,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -38,36 +38,36 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
         "batch": 14,
         "id": 0,
         "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 15,
-        "id": 1,
+        "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 16,
-        "id": 2,
+        "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 24,
-        "id": 3,
+        "batch": 17,
+        "id": 2,
         "kind": {
-          "delivery": "stream",
-          "items": 2
+          "delivery": "outcome"
         }
       },
       {
@@ -96,6 +96,14 @@
       },
       {
         "batch": 28,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -223,7 +231,7 @@
                   "text": "I'll call both tools simultaneously right now!",
                   "type": "text"
                 },
-                "fingerprint": 12411662880349286792
+                "fingerprint": 9523235931415277704
               }
             },
             {
@@ -245,7 +253,7 @@
                   "name": "lookup_harbor_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 1854676717517602125
+                "fingerprint": 3912181296065001547
               }
             },
             {
@@ -267,7 +275,7 @@
                   "name": "lookup_orchard_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 7022528578905559264
+                "fingerprint": 9870586724246750420
               }
             }
           ],
@@ -358,7 +366,7 @@
                   "text": "I'll call both tools simultaneously right now!",
                   "type": "text"
                 },
-                "fingerprint": 12411662880349286792
+                "fingerprint": 9523235931415277704
               }
             }
           }
@@ -403,7 +411,7 @@
                   "name": "lookup_harbor_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 1854676717517602125
+                "fingerprint": 3912181296065001547
               }
             }
           }
@@ -448,12 +456,17 @@
                   "name": "lookup_orchard_label",
                   "type": "tool_use"
                 },
-                "fingerprint": 7022528578905559264
+                "fingerprint": 9870586724246750420
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -539,7 +552,7 @@
                       "text": "I'll call both tools simultaneously right now!",
                       "type": "text"
                     },
-                    "fingerprint": 12411662880349286792
+                    "fingerprint": 9523235931415277704
                   }
                 },
                 {
@@ -561,7 +574,7 @@
                       "name": "lookup_harbor_label",
                       "type": "tool_use"
                     },
-                    "fingerprint": 1854676717517602125
+                    "fingerprint": 3912181296065001547
                   }
                 },
                 {
@@ -583,7 +596,7 @@
                       "name": "lookup_orchard_label",
                       "type": "tool_use"
                     },
-                    "fingerprint": 7022528578905559264
+                    "fingerprint": 9870586724246750420
                   }
                 }
               ],
@@ -669,7 +682,7 @@
                   "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
                   "type": "text"
                 },
-                "fingerprint": 17472187598475900309
+                "fingerprint": 17962358045931762559
               }
             }
           ],
@@ -776,12 +789,17 @@
                   "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
                   "type": "text"
                 },
-                "fingerprint": 17472187598475900309
+                "fingerprint": 17962358045931762559
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "parity/run#0"
     }
   ]

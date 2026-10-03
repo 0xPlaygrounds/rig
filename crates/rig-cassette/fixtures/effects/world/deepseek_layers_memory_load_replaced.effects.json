@@ -138,13 +138,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada.",
-              "native": {
-                "item": {
-                  "content": "Ada."
-                },
-                "fingerprint": 9227371055595747413
-              }
+              "text": "Ada."
             }
           ],
           "usage": {
@@ -165,7 +159,7 @@
               "content": "Ada.",
               "role": "assistant"
             },
-            "fingerprint": 11568595277695389863
+            "fingerprint": 12427621104539078559
           },
           "finish_reason": "stop",
           "raw": {
@@ -224,13 +218,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "Ada.",
-                  "native": {
-                    "item": {
-                      "content": "Ada."
-                    },
-                    "fingerprint": 9227371055595747413
-                  }
+                  "text": "Ada."
                 }
               ],
               "origin": {
@@ -246,7 +234,7 @@
                   "content": "Ada.",
                   "role": "assistant"
                 },
-                "fingerprint": 11568595277695389863
+                "fingerprint": 12427621104539078559
               }
             }
           ]

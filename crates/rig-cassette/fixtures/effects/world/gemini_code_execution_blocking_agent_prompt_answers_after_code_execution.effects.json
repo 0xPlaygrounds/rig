@@ -106,7 +106,7 @@
                 "item": {
                   "text": "The number 2 to the power of 20 is 1,048,576."
                 },
-                "fingerprint": 1588156661630724766
+                "fingerprint": 13366901440491722584
               }
             }
           ],
@@ -129,7 +129,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 10401143185743423689
+            "fingerprint": 18393314334619927449
           },
           "finish_reason": "stop",
           "raw": {

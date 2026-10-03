@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -102,7 +94,7 @@
                 "item": {
                   "text": "cedar"
                 },
-                "fingerprint": 1019647121729191188
+                "fingerprint": 9699097597918212434
               }
             }
           ],
@@ -123,20 +115,21 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 452362687342519526
+            "fingerprint": 10831170027988163448
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 22,
               "candidatesTokenCount": 2,
-              "totalTokenCount": 24,
+              "promptTokenCount": 22,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 22
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 24
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -173,12 +166,17 @@
                 "item": {
                   "text": "cedar"
                 },
-                "fingerprint": 1019647121729191188
+                "fingerprint": 9699097597918212434
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

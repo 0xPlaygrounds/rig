@@ -130,7 +130,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -154,7 +154,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 15097235804666479156
+                "fingerprint": 6593392776652370852
               }
             }
           ],
@@ -334,7 +334,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -358,7 +358,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 15097235804666479156
+                    "fingerprint": 6593392776652370852
                   }
                 }
               ],
@@ -385,7 +385,8 @@
                       "type": "text",
                       "text": "add is disabled for this run"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -439,7 +440,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -460,7 +461,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],

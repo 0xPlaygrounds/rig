@@ -142,7 +142,7 @@
                   "id": "call_00_7r7vcRrdAytPyTC7LPAd9810",
                   "type": "function"
                 },
-                "fingerprint": 11474548549521347842
+                "fingerprint": 16827877001269771994
               }
             }
           ],
@@ -174,7 +174,7 @@
                 }
               ]
             },
-            "fingerprint": 6976254080984859184
+            "fingerprint": 14811718099499649716
           },
           "finish_reason": "tool_calls",
           "raw": {

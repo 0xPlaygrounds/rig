@@ -4,12 +4,7 @@
     "choice": [
       {
         "text": "Rust is a systems programming language that prevents memory errors through strong ownership and borrowing rules. Memory safety is crucial to prevent bugs like null pointer dereferencing and data corruption, ensuring program reliability and stability.",
-        "native": {
-          "item": {
-            "content": "Rust is a systems programming language that prevents memory errors through strong ownership and borrowing rules. Memory safety is crucial to prevent bugs like null pointer dereferencing and data corruption, ensuring program reliability and stability."
-          },
-          "fingerprint": 4361912287162351576
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -70,18 +65,13 @@
             "item": {
               "reasoning_content": "Okay, the user said \"Hello world!\" which is a common greeting. I need to respond appropriately. Since they're probably testing if I can handle basic greetings, I should acknowledge their message. Maybe say \"Hello!\" back to them. Keep it simple and friendly. No need for any extra information here. Just a straightforward reply.\n"
             },
-            "fingerprint": 1426445389864182897
+            "fingerprint": 3903986013653590985
           }
         }
       },
       {
         "text": "Hello! How can I assist you today? 😊",
-        "native": {
-          "item": {
-            "content": "Hello! How can I assist you today? 😊"
-          },
-          "fingerprint": 13143978511142947878
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -143,18 +133,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with the single word \"ok\". Let me make sure I understand the request correctly. They mentioned \"Reply with the single word: ok\" so they just want me to output \"ok\" as the answer. I need to confirm that there's no additional context or hidden meaning here. The instruction is straightforward, so I'll just return \"ok\" as specified.\n"
             },
-            "fingerprint": 7059728051368524366
+            "fingerprint": 3650226200465710032
           }
         }
       },
       {
         "text": "ok",
-        "native": {
-          "item": {
-            "content": "ok"
-          },
-          "fingerprint": 11676934543130470885
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -216,18 +201,13 @@
             "item": {
               "reasoning_content": "Okay, the user just said \"ok\". I need to respond with the single word \"ok\". Let me make sure I'm following the instructions correctly. The user wants me to say the word \"ok\" as a response. Since they asked for a single word, I should just output \"ok\" without any extra text. Let me check if there's any other requirement, but the instructions say to be concise, so that's all I need. Alright, I'll just return \"ok\".\n"
             },
-            "fingerprint": 2353487082585041761
+            "fingerprint": 12177711687547170741
           }
         }
       },
       {
         "text": "ok",
-        "native": {
-          "item": {
-            "content": "ok"
-          },
-          "fingerprint": 11676934543130470885
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -289,18 +269,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly two short lines, first line \"cedar\" and second line \"maple\". They specified to return the text as plain text with no bullets, quotes, or extra commentary. Let me make sure I don't add anything else. Just the two lines, no spacing or punctuation. Let me check the example they gave. Oh, right, they said \"exactly two short lines and nothing else\". So I need to ensure each line is a separate line, no extra characters. Let me confirm that \"cedar\" and \"maple\" are the only lines. Yep, that's it. No markdown, just the two lines. Got it.\n"
             },
-            "fingerprint": 5431707842315310342
+            "fingerprint": 745630487185204432
           }
         }
       },
       {
         "text": "cedar  \nmaple",
-        "native": {
-          "item": {
-            "content": "cedar  \nmaple"
-          },
-          "fingerprint": 10890714828432160753
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -362,13 +337,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants to calculate 2 minus 5. Let me check the available tools. There's an subtract function that takes x and y. Here, x should be 2 and y should be 5. So the function call would be subtract with x=2 and y=5. That should give the correct result.\n"
             },
-            "fingerprint": 13455777130728846917
+            "fingerprint": 1986170496836974969
           }
         }
       },
       {
         "tool_call": {
-          "id": "qqHGt6O7NSKo5NLjm9ebyR5qxfnKP3Hy",
+          "id": "x7tFUZOAeokmzzWjCaf1c0ztJdPMcOE3",
           "name": "subtract",
           "arguments": {
             "x": 2,
@@ -380,10 +355,10 @@
                 "arguments": "{\"x\": 2, \"y\": 5}",
                 "name": "subtract"
               },
-              "id": "qqHGt6O7NSKo5NLjm9ebyR5qxfnKP3Hy",
+              "id": "x7tFUZOAeokmzzWjCaf1c0ztJdPMcOE3",
               "type": "function"
             },
-            "fingerprint": 10882993778932515286
+            "fingerprint": 13850174981002358566
           }
         }
       }
@@ -394,21 +369,21 @@
       "total_tokens": 388,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-j7dargo24DqOCuJd18ONsWLJpavRw0iZ",
+    "response_id": "chatcmpl-QnPs3MwAwIDYsvJZh6mMJ5qnmDFbt0vB",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 291,
         "completion_tokens": 97,
-        "total_tokens": 388,
+        "prompt_tokens": 291,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 388
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-j7dargo24DqOCuJd18ONsWLJpavRw0iZ",
+      "response_id": "chatcmpl-QnPs3MwAwIDYsvJZh6mMJ5qnmDFbt0vB",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -416,14 +391,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 0,
-          "predicted_ms": 536.299,
+          "predicted_ms": 530.904,
           "predicted_n": 97,
-          "predicted_per_second": 179.00462242144772,
-          "predicted_per_token_ms": 5.586447916666667,
-          "prompt_ms": 319.332,
+          "predicted_per_second": 180.82365173364676,
+          "predicted_per_token_ms": 5.53025,
+          "prompt_ms": 232.467,
           "prompt_n": 291,
-          "prompt_per_second": 911.2772913456841,
-          "prompt_per_token_ms": 1.097360824742268
+          "prompt_per_second": 1251.7905767270192,
+          "prompt_per_token_ms": 0.7988556701030928
         }
       }
     }
@@ -439,18 +414,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked to calculate 2 minus 5. I used the subtract function with x=2 and y=5. The result was -3. Let me check if that's correct. 2 minus 5 is indeed -3. So the answer is correct.\n"
             },
-            "fingerprint": 16423078977664384027
+            "fingerprint": 4198442566508977399
           }
         }
       },
       {
         "text": "The result of $ 2 - 5 $ is $-3$.\n\n$$\n\\boxed{-3}\n$$",
-        "native": {
-          "item": {
-            "content": "The result of $ 2 - 5 $ is $-3$.\n\n$$\n\\boxed{-3}\n$$"
-          },
-          "fingerprint": 3047663549215117146
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -459,21 +429,21 @@
       "total_tokens": 489,
       "cached_input_tokens": 387
     },
-    "response_id": "chatcmpl-83ghQ0HPhFEUJbAVghWNomt6mSKzhQr7",
+    "response_id": "chatcmpl-awoO6Q6W170U9b1AskEv6oEfElk9HpWw",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 403,
         "completion_tokens": 86,
-        "total_tokens": 489,
+        "prompt_tokens": 403,
         "prompt_tokens_details": {
           "cached_tokens": 387
-        }
+        },
+        "total_tokens": 489
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-83ghQ0HPhFEUJbAVghWNomt6mSKzhQr7",
+      "response_id": "chatcmpl-awoO6Q6W170U9b1AskEv6oEfElk9HpWw",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -481,14 +451,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 387,
-          "predicted_ms": 473.542,
+          "predicted_ms": 578.502,
           "predicted_n": 86,
-          "predicted_per_second": 179.498333833113,
-          "predicted_per_token_ms": 5.571082352941176,
-          "prompt_ms": 24.909,
+          "predicted_per_second": 146.93121199235267,
+          "predicted_per_token_ms": 6.805905882352941,
+          "prompt_ms": 26.585,
           "prompt_n": 16,
-          "prompt_per_second": 642.3381107230318,
-          "prompt_per_token_ms": 1.5568125
+          "prompt_per_second": 601.8431446304306,
+          "prompt_per_token_ms": 1.6615625
         }
       }
     }
@@ -497,24 +467,19 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "The second word you said was **\"quicksilver.\"**",
-        "native": {
-          "item": {
-            "content": "The second word you said was **\"quicksilver.\"**"
-          },
-          "fingerprint": 16093115022296301291
-        }
+        "text": "The second word you said was **\"quicksilver\"**.",
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 43,
-      "output_tokens": 18,
-      "total_tokens": 61,
-      "cached_input_tokens": 0
+      "input_tokens": 33,
+      "output_tokens": 19,
+      "total_tokens": 52,
+      "cached_input_tokens": 32
     },
-    "response_id": "chatcmpl-YNb314GWJA7RIXE1wQPBp0DZ6zp6Xqsj",
+    "response_id": "chatcmpl-e2cq0rkL5zEtFzGC9VwBApTWeXUmjspM",
     "finish_reason": "stop",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -522,34 +487,34 @@
           "finish_reason": "stop",
           "index": 0,
           "message": {
-            "content": "The second word you said was **\"quicksilver.\"**",
+            "content": "The second word you said was **\"quicksilver\"**.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-YNb314GWJA7RIXE1wQPBp0DZ6zp6Xqsj",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-e2cq0rkL5zEtFzGC9VwBApTWeXUmjspM",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
-        "cache_n": 0,
-        "predicted_ms": 101.773,
-        "predicted_n": 18,
-        "predicted_per_second": 167.03840900828314,
-        "predicted_per_token_ms": 5.986647058823529,
-        "prompt_ms": 33.708,
-        "prompt_n": 43,
-        "prompt_per_second": 1275.6615640204107,
-        "prompt_per_token_ms": 0.783906976744186
+        "cache_n": 32,
+        "predicted_ms": 97.047,
+        "predicted_n": 19,
+        "predicted_per_second": 185.47713994250208,
+        "predicted_per_token_ms": 5.3915,
+        "prompt_ms": 14.677,
+        "prompt_n": 1,
+        "prompt_per_second": 68.13381481229135,
+        "prompt_per_token_ms": 14.677
       },
       "usage": {
-        "completion_tokens": 18,
-        "prompt_tokens": 43,
+        "completion_tokens": 19,
+        "prompt_tokens": 33,
         "prompt_tokens_details": {
-          "cached_tokens": 0
+          "cached_tokens": 32
         },
-        "total_tokens": 61
+        "total_tokens": 52
       }
     }
   },
@@ -562,12 +527,7 @@
     "choice": [
       {
         "text": "ZANZIBAR-9317",
-        "native": {
-          "item": {
-            "content": "ZANZIBAR-9317"
-          },
-          "fingerprint": 3639038569948143347
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -622,21 +582,16 @@
     "choice": [
       {
         "text": "heliotrope",
-        "native": {
-          "item": {
-            "content": "heliotrope"
-          },
-          "fingerprint": 10533536050978593180
-        }
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 73,
+      "input_tokens": 68,
       "output_tokens": 9,
-      "total_tokens": 82,
-      "cached_input_tokens": 0
+      "total_tokens": 77,
+      "cached_input_tokens": 67
     },
-    "response_id": "chatcmpl-TcRwRI6r1wJnwjuVC0ZFGnQLM4EWUGVk",
+    "response_id": "chatcmpl-PPJrrRpE8hpRTWzZnJscK6wkGamkBNP9",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -652,28 +607,28 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-TcRwRI6r1wJnwjuVC0ZFGnQLM4EWUGVk",
+      "id": "chatcmpl-PPJrrRpE8hpRTWzZnJscK6wkGamkBNP9",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
-        "cache_n": 0,
-        "predicted_ms": 44.472,
+        "cache_n": 67,
+        "predicted_ms": 46.59,
         "predicted_n": 9,
-        "predicted_per_second": 179.88846914912753,
-        "predicted_per_token_ms": 5.559,
-        "prompt_ms": 56.42,
-        "prompt_n": 73,
-        "prompt_per_second": 1293.8674228996808,
-        "prompt_per_token_ms": 0.7728767123287672
+        "predicted_per_second": 171.71066752522,
+        "predicted_per_token_ms": 5.82375,
+        "prompt_ms": 22.909,
+        "prompt_n": 1,
+        "prompt_per_second": 43.65096686891615,
+        "prompt_per_token_ms": 22.909
       },
       "usage": {
         "completion_tokens": 9,
-        "prompt_tokens": 73,
+        "prompt_tokens": 68,
         "prompt_tokens_details": {
-          "cached_tokens": 0
+          "cached_tokens": 67
         },
-        "total_tokens": 82
+        "total_tokens": 77
       }
     }
   },
@@ -682,12 +637,7 @@
     "choice": [
       {
         "text": "🌍こんにちは世界🎉안녕하세요🚀Здравствуйте🌸",
-        "native": {
-          "item": {
-            "content": "🌍こんにちは世界🎉안녕하세요🚀Здравствуйте🌸"
-          },
-          "fingerprint": 2265766844424689313
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -702,12 +652,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 60,
         "completion_tokens": 20,
-        "total_tokens": 80,
+        "prompt_tokens": 60,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 80
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-LVhFWyScRN8Lq2MpFgeh6srbaGN48m9R",
@@ -735,35 +685,30 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Okay, the user is asking what \"glarb-glarb\" means. Let me check the context provided.\n\nLooking at the files, there's a definition for \"glarb-glarb\" in static_doc_1: it's an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land. So the answer should be that it's a tool used for farming. But I need to make sure there's no other context. The user might be interested in the cultural or scientific aspects. Also, the term \"glarb-glarb\" is in the file, so the answer is straightforward based on that definition. I should mention the planet Jiro and the purpose of the tool. No other details are given, so stick to the provided info.\n",
+          "text": "Okay, let's see. The user is asking what \"glarb-glarb\" means. They provided three files with definitions. The first one is about a flurbo, which is a green alien on cold planets. The second is about a glarb-glarb being an ancient tool used by ancestors of Jiro's inhabitants to farm. The third is a term for humans on the far side of the moon.\n\nSo, the question is specifically about \"glarb-glarb\". From the second file, it's defined as an ancient tool used by the ancestors of Jiro's inhabitants for farming. The user might be looking for that definition. But I need to make sure there's no other context. The other files don't mention glarb-glarb again. So the answer should be the definition from file static_doc_1. I should check if there's any other possible meaning, but based on the given info, that's the only definition provided. So the answer is that glarb-glarb is an ancient tool used for farming by the ancestors of Jiro's inhabitants.\n",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "Okay, the user is asking what \"glarb-glarb\" means. Let me check the context provided.\n\nLooking at the files, there's a definition for \"glarb-glarb\" in static_doc_1: it's an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land. So the answer should be that it's a tool used for farming. But I need to make sure there's no other context. The user might be interested in the cultural or scientific aspects. Also, the term \"glarb-glarb\" is in the file, so the answer is straightforward based on that definition. I should mention the planet Jiro and the purpose of the tool. No other details are given, so stick to the provided info.\n"
+              "reasoning_content": "Okay, let's see. The user is asking what \"glarb-glarb\" means. They provided three files with definitions. The first one is about a flurbo, which is a green alien on cold planets. The second is about a glarb-glarb being an ancient tool used by ancestors of Jiro's inhabitants to farm. The third is a term for humans on the far side of the moon.\n\nSo, the question is specifically about \"glarb-glarb\". From the second file, it's defined as an ancient tool used by the ancestors of Jiro's inhabitants for farming. The user might be looking for that definition. But I need to make sure there's no other context. The other files don't mention glarb-glarb again. So the answer should be the definition from file static_doc_1. I should check if there's any other possible meaning, but based on the given info, that's the only definition provided. So the answer is that glarb-glarb is an ancient tool used for farming by the ancestors of Jiro's inhabitants.\n"
             },
-            "fingerprint": 988223892560246807
+            "fingerprint": 1213383515557722541
           }
         }
       },
       {
-        "text": "The term **\"glarb-glarb\"** refers to an **ancient tool** used by the ancestors of the inhabitants of **planet Jiro** to farm the land. It is described as an ancient tool, implying it has been used historically for agricultural purposes on Jiro. No additional cultural or scientific context is provided in the given documents.",
-        "native": {
-          "item": {
-            "content": "The term **\"glarb-glarb\"** refers to an **ancient tool** used by the ancestors of the inhabitants of **planet Jiro** to farm the land. It is described as an ancient tool, implying it has been used historically for agricultural purposes on Jiro. No additional cultural or scientific context is provided in the given documents."
-          },
-          "fingerprint": 1283745202668000286
-        }
+        "text": "The term \"glarb-glarb\" refers to an **ancient tool** used by the ancestors of the inhabitants of planet Jiro to farm the land. This definition is explicitly provided in **static_doc_1**. \n\nNo other meanings or contexts are mentioned in the provided files.",
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 142,
-      "output_tokens": 234,
-      "total_tokens": 376,
+      "input_tokens": 137,
+      "output_tokens": 287,
+      "total_tokens": 424,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-gXIgIT6Attjelsmb9ENnOlP1GUDMg7a5",
+    "response_id": "chatcmpl-or3AxPaZMfkJTG6hmy8pELPEcUTQ8t1e",
     "finish_reason": "stop",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -771,35 +716,35 @@
           "finish_reason": "stop",
           "index": 0,
           "message": {
-            "content": "The term **\"glarb-glarb\"** refers to an **ancient tool** used by the ancestors of the inhabitants of **planet Jiro** to farm the land. It is described as an ancient tool, implying it has been used historically for agricultural purposes on Jiro. No additional cultural or scientific context is provided in the given documents.",
-            "reasoning_content": "Okay, the user is asking what \"glarb-glarb\" means. Let me check the context provided.\n\nLooking at the files, there's a definition for \"glarb-glarb\" in static_doc_1: it's an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land. So the answer should be that it's a tool used for farming. But I need to make sure there's no other context. The user might be interested in the cultural or scientific aspects. Also, the term \"glarb-glarb\" is in the file, so the answer is straightforward based on that definition. I should mention the planet Jiro and the purpose of the tool. No other details are given, so stick to the provided info.\n",
+            "content": "The term \"glarb-glarb\" refers to an **ancient tool** used by the ancestors of the inhabitants of planet Jiro to farm the land. This definition is explicitly provided in **static_doc_1**. \n\nNo other meanings or contexts are mentioned in the provided files.",
+            "reasoning_content": "Okay, let's see. The user is asking what \"glarb-glarb\" means. They provided three files with definitions. The first one is about a flurbo, which is a green alien on cold planets. The second is about a glarb-glarb being an ancient tool used by ancestors of Jiro's inhabitants to farm. The third is a term for humans on the far side of the moon.\n\nSo, the question is specifically about \"glarb-glarb\". From the second file, it's defined as an ancient tool used by the ancestors of Jiro's inhabitants for farming. The user might be looking for that definition. But I need to make sure there's no other context. The other files don't mention glarb-glarb again. So the answer should be the definition from file static_doc_1. I should check if there's any other possible meaning, but based on the given info, that's the only definition provided. So the answer is that glarb-glarb is an ancient tool used for farming by the ancestors of Jiro's inhabitants.\n",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-gXIgIT6Attjelsmb9ENnOlP1GUDMg7a5",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-or3AxPaZMfkJTG6hmy8pELPEcUTQ8t1e",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 1819.012,
-        "predicted_n": 234,
-        "predicted_per_second": 128.0915134149747,
-        "predicted_per_token_ms": 7.806918454935622,
-        "prompt_ms": 68.686,
-        "prompt_n": 142,
-        "prompt_per_second": 2067.3790874414,
-        "prompt_per_token_ms": 0.4837042253521127
+        "predicted_ms": 1674.481,
+        "predicted_n": 287,
+        "predicted_per_second": 170.79919091348305,
+        "predicted_per_token_ms": 5.854828671328671,
+        "prompt_ms": 81.534,
+        "prompt_n": 137,
+        "prompt_per_second": 1680.2806191282164,
+        "prompt_per_token_ms": 0.5951386861313869
       },
       "usage": {
-        "completion_tokens": 234,
-        "prompt_tokens": 142,
+        "completion_tokens": 287,
+        "prompt_tokens": 137,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "total_tokens": 376
+        "total_tokens": 424
       }
     }
   },
@@ -814,18 +759,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with the single word \"ok\". Let me make sure I understand the request correctly. They mentioned \"Reply with the single word: ok\" so they just want me to output \"ok\" as the answer. I need to confirm that there's no additional context or hidden meaning here. The instruction is straightforward, so I'll just return \"ok\" as specified.\n"
             },
-            "fingerprint": 7059728051368524366
+            "fingerprint": 3650226200465710032
           }
         }
       },
       {
         "text": "ok",
-        "native": {
-          "item": {
-            "content": "ok"
-          },
-          "fingerprint": 11676934543130470885
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -887,18 +827,13 @@
             "item": {
               "reasoning_content": "Okay, the user said \"Say ok.\" I need to respond appropriately. Let me think. First, I should acknowledge their message. They might be testing if I can respond or just want a simple reply. Since they used \"ok,\" maybe they're in a hurry or want a quick response.\n\nI should keep it friendly and open. Maybe say something like \"Sure, I'm here to help!\" to show willingness to assist. But I need to make sure it's not too formal. Also, check if there's any specific context they might be referring to, but since they didn't provide more info, keep it general.\n\nAvoid using markdown and keep the response natural. Let me put it all together.\n"
             },
-            "fingerprint": 3809003328906661210
+            "fingerprint": 4110897930835763900
           }
         }
       },
       {
         "text": "Sure, I'm here to help! Let me know how I can assist you. 😊",
-        "native": {
-          "item": {
-            "content": "Sure, I'm here to help! Let me know how I can assist you. 😊"
-          },
-          "fingerprint": 4902719876578897612
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -960,18 +895,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with the single word \"ok\". Let me make sure I understand the request correctly. They mentioned \"Reply with the single word: ok\" so they just want me to output \"ok\" as the answer. I need to confirm that there's no additional context or hidden meaning here. The instruction is straightforward, so I'll just return \"ok\" as specified.\n"
             },
-            "fingerprint": 7059728051368524366
+            "fingerprint": 3650226200465710032
           }
         }
       },
       {
         "text": "ok",
-        "native": {
-          "item": {
-            "content": "ok"
-          },
-          "fingerprint": 11676934543130470885
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1033,7 +963,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided their name and job. They mentioned their name is Ada Lovelace and they work as a mathematician. The task is to extract this information and submit it using the submit function.\n\nFirst, I need to identify the required fields: first_name, last_name, and job. The user's name is Ada Lovelace, so first_name is Ada and last_name is Lovelace. The job is mathematician. \n\nI should check if there's any additional information needed, but the user only provided their name and job. No middle name or other details mentioned. So the submit function requires all three fields, but the user only provided two. Wait, the required fields are first_name, last_name, and job. The user's name is Ada Lovelace, which is two names. So first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nI need to make sure that all required fields are filled. The user didn't mention a middle name, so maybe the last_name is Lovelace. The job is clearly stated as mathematician. So the submission should include all three. Even if the user's name is two names, the first_name is Ada, last_name is Lovelace, and job is mathematician. \n\nSo the JSON should have first_name: \"Ada\", last_name: \"Lovelace\", job: \"mathematician\". Then call the submit function with that data.\n"
             },
-            "fingerprint": 4031943315479935237
+            "fingerprint": 3112317716224216121
           }
         }
       },
@@ -1055,7 +985,7 @@
               "id": "3jMGCwuYjQ0u3LsUWPWvSaiJJJcqzS2i",
               "type": "function"
             },
-            "fingerprint": 7005473645452718922
+            "fingerprint": 17927592623928327748
           }
         }
       }
@@ -1129,7 +1059,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
             },
-            "fingerprint": 12633101148318518426
+            "fingerprint": 11926643748990993028
           }
         }
       },
@@ -1151,7 +1081,7 @@
               "id": "ACsSJZkwrbgXWPomYTjJ2Mc2PJfcyDst",
               "type": "function"
             },
-            "fingerprint": 15812361751013167287
+            "fingerprint": 5047878930746628333
           }
         }
       }
@@ -1225,7 +1155,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Bob Johnson. The age is 55, so that's straightforward. The profession is retired teacher. Wait, the function requires the profession field. The sentence says \"retired teacher,\" so I should use that. The age is an integer, so 55 is valid. The name is a string. \n\nI need to make sure all required fields are present: name, age, profession. The age is 55, which is within the specified range (0-255). The profession is \"retired teacher.\" \n\nSo the structured data would have name: \"Bob Johnson\", age: 55, profession: \"retired teacher.\" \n\nI should call the submit function with these values. Let me double-check that there are no missing keys and that the values are correctly formatted. Yes, all required fields are there. The age is an integer, and the profession is a string. \n\nNo other information is needed here. The task is complete.\n"
             },
-            "fingerprint": 12633101148318518426
+            "fingerprint": 11926643748990993028
           }
         }
       },
@@ -1247,7 +1177,7 @@
               "id": "Op11Vf2j9r8Ad0Jt6T9tFGQvvayQXv2B",
               "type": "function"
             },
-            "fingerprint": 6187520025825754194
+            "fingerprint": 16862677206191285844
           }
         }
       }
@@ -1321,7 +1251,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided a sentence: \"John Doe is a 30 year old software engineer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly John Doe. The age is 30, so that's straightforward. The profession is software engineer. The submit function requires name, age, and profession. All three are present in the text. The age is given as 30, which is an integer. The profession is a string. So I should map these directly. There's no ambiguity here. I need to make sure the age is in uint8 format, which 30 is. The name is a string, and the profession is also a string. So the JSON should have those three fields with the respective values. No other fields are needed. I'll call the submit function with these values.\n"
             },
-            "fingerprint": 15187065203892719666
+            "fingerprint": 11111122433473788552
           }
         }
       },
@@ -1343,7 +1273,7 @@
               "id": "a7umh3wyb9oNBwSs8FLN8EePGVSAECBX",
               "type": "function"
             },
-            "fingerprint": 2093213972994782819
+            "fingerprint": 10510272083569822519
           }
         }
       }
@@ -1411,19 +1341,19 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n",
+          "text": "Okay, let's see. The user provided an address: 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because that's the abbreviation for Illinois. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function requires street, city, state, and zip_code. All of these are here. No need for any additional information. Just make sure the values are correctly formatted as strings. Alright, that's all.\n",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n"
+              "reasoning_content": "Okay, let's see. The user provided an address: 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because that's the abbreviation for Illinois. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function requires street, city, state, and zip_code. All of these are here. No need for any additional information. Just make sure the values are correctly formatted as strings. Alright, that's all.\n"
             },
-            "fingerprint": 12771542982889402391
+            "fingerprint": 10207782365307243634
           }
         }
       },
       {
         "tool_call": {
-          "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
+          "id": "m8H4wCwtxi8fkIjEp0lZtnq6SALWQ0J8",
           "name": "submit",
           "arguments": {
             "street": "123 Main St",
@@ -1437,23 +1367,23 @@
                 "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
                 "name": "submit"
               },
-              "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
+              "id": "m8H4wCwtxi8fkIjEp0lZtnq6SALWQ0J8",
               "type": "function"
             },
-            "fingerprint": 1083081494339068753
+            "fingerprint": 17714338738507212723
           }
         }
       }
     ],
     "usage": {
-      "input_tokens": 366,
-      "output_tokens": 184,
-      "total_tokens": 550,
-      "cached_input_tokens": 197
+      "input_tokens": 361,
+      "output_tokens": 196,
+      "total_tokens": 557,
+      "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
+    "response_id": "chatcmpl-QZUOc0aRv6zcz9mshtvHX3tjEVeEKY9F",
     "finish_reason": "tool_calls",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -1462,7 +1392,7 @@
           "index": 0,
           "message": {
             "content": "",
-            "reasoning_content": "Okay, let's see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it's abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n",
+            "reasoning_content": "Okay, let's see. The user provided an address: 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because that's the abbreviation for Illinois. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function requires street, city, state, and zip_code. All of these are here. No need for any additional information. Just make sure the values are correctly formatted as strings. Alright, that's all.\n",
             "role": "assistant",
             "tool_calls": [
               {
@@ -1470,7 +1400,7 @@
                   "arguments": "{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}",
                   "name": "submit"
                 },
-                "id": "rPufh4x95h7x33dvuABIt51agMEeiVbz",
+                "id": "m8H4wCwtxi8fkIjEp0lZtnq6SALWQ0J8",
                 "type": "function"
               }
             ]
@@ -1478,28 +1408,28 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-h0seZ8K0kUR79yfl4YXKeXvkoLwI8AwC",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-QZUOc0aRv6zcz9mshtvHX3tjEVeEKY9F",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
-        "cache_n": 197,
-        "predicted_ms": 1557.517,
-        "predicted_n": 184,
-        "predicted_per_second": 117.49470471269333,
-        "predicted_per_token_ms": 8.511021857923497,
-        "prompt_ms": 111.114,
-        "prompt_n": 169,
-        "prompt_per_second": 1520.9604550281692,
-        "prompt_per_token_ms": 0.6574792899408284
+        "cache_n": 0,
+        "predicted_ms": 1129.756,
+        "predicted_n": 196,
+        "predicted_per_second": 172.6036418483283,
+        "predicted_per_token_ms": 5.793620512820513,
+        "prompt_ms": 154.326,
+        "prompt_n": 361,
+        "prompt_per_second": 2339.2040226533445,
+        "prompt_per_token_ms": 0.42749584487534625
       },
       "usage": {
-        "completion_tokens": 184,
-        "prompt_tokens": 366,
+        "completion_tokens": 196,
+        "prompt_tokens": 361,
         "prompt_tokens_details": {
-          "cached_tokens": 197
+          "cached_tokens": 0
         },
-        "total_tokens": 550
+        "total_tokens": 557
       }
     }
   },
@@ -1514,7 +1444,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided a sentence: \"Jane Smith is a 45 year old data scientist.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Jane Smith. The age is 45, so that's straightforward. The profession is data scientist. The submit function requires name, age, and profession. All three are present in the text. The age is given as 45, which is an integer. The profession is \"data scientist\" as a string. So I should map those directly. There's no ambiguity here, so the tool call should include all three fields with the values from the text. I need to make sure the age is in uint8 format, which 45 is. The name is a string, and the profession is a string. So the JSON should have those values. No other fields are needed since the user didn't mention anything else. Alright, that's all.\n"
             },
-            "fingerprint": 12481551753619690228
+            "fingerprint": 1810599940683292206
           }
         }
       },
@@ -1536,7 +1466,7 @@
               "id": "eqs7nhCXbzzCYIQxuMbuzLHiYVpebVYE",
               "type": "function"
             },
-            "fingerprint": 18030583523388054771
+            "fingerprint": 55574625656560875
           }
         }
       }
@@ -1610,7 +1540,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided the sentence \"Alice is a 25 year old developer.\" I need to extract the relevant information into the structured data using the submit function.\n\nFirst, the name is clearly Alice. The age is 25, so that's straightforward. The profession is developer. The sentence mentions \"25 year old,\" but the age field is an integer, so I'll use 25. The profession is \"developer\" as stated. \n\nI need to make sure all required fields are included: name, age, profession. The title is \"Person\" as per the schema. The submit function requires these three fields. So the JSON should have name: \"Alice\", age: 25, profession: \"developer\". \n\nI don't see any other information to extract. The sentence is simple, so no need for additional fields. Just fill in the ones mentioned.\n"
             },
-            "fingerprint": 7499259995705441229
+            "fingerprint": 1005054208318757749
           }
         }
       },
@@ -1632,7 +1562,7 @@
               "id": "jQjw1lbjJlpFarjNXYdhdLo36sZD6a4g",
               "type": "function"
             },
-            "fingerprint": 1396011482131496183
+            "fingerprint": 5203003481727742687
           }
         }
       }
@@ -1706,7 +1636,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided an address: \"456 Oak Avenue, Cambridge, MA 02139\". I need to extract the street, city, state, and zip code.\n\nFirst, the street is \"456 Oak Avenue\". Then the city is \"Cambridge\". The state is \"MA\" because that's the two-letter abbreviation for Massachusetts. The zip code is \"02139\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All of these are here. No missing fields. So I can call the submit function with these values.\n"
             },
-            "fingerprint": 11756716228891068047
+            "fingerprint": 1960589653821028931
           }
         }
       },
@@ -1729,7 +1659,7 @@
               "id": "5Epj41G7a3OV6b6ec73vOTNteHO0v0Ns",
               "type": "function"
             },
-            "fingerprint": 6321425784152541077
+            "fingerprint": 1892054524239256403
           }
         }
       }
@@ -1797,12 +1727,7 @@
     "choice": [
       {
         "text": "Pink",
-        "native": {
-          "item": {
-            "content": "Pink"
-          },
-          "fingerprint": 1908794313683800603
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1857,12 +1782,7 @@
     "choice": [
       {
         "text": "Pink",
-        "native": {
-          "item": {
-            "content": "Pink"
-          },
-          "fingerprint": 1908794313683800603
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1917,35 +1837,30 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Okay, let's see. The question is asking which fixture file builds an agent from the loaders test fixtures. The options are agent_with_loaders.rs, streaming.rs, and tools.rs.\n\nLooking at the provided examples, the first file, agent_with_loaders.rs, has a build_agent function that uses FileLoader with a glob pattern. It creates an AgentBuilder and starts the agent. The other files, streaming.rs and tools.rs, have different functions. Streaming.rs has a describe_streaming function, and tools.rs has describe_tools. \n\nThe key here is that the agent_with_loaders.rs is explicitly mentioned in the code as the one that builds the agent. The other files don't involve creating an agent but instead describe streaming output or tool use. So the correct answer should be agent_with_loaders.rs.\n",
+          "text": "Okay, let's see. The question is asking which fixture file builds an agent from the loaders test fixtures. The options are agent_with_loaders.rs, streaming.rs, and tools.rs.\n\nLooking at the first file, agent_with_loaders.rs, there's a build_agent function. It uses FileLoader::with_glob to load loaders from a glob pattern. Then it reads those files and ignores errors. Then it creates an AgentBuilder with the name \"model\". So this file seems to be creating an agent using the loaders.\n\nThe other files, streaming.rs and tools.rs, have functions that describe their purposes. The streaming.rs has a function that returns a string about streaming output, and tools.rs has one about tool use. Neither of these files actually build an agent. The build_agent function is in the agent_with_loaders.rs file, so that's the one that's doing the agent creation from the loaders.\n\nSo the answer should be agent_with_loaders.rs.\n",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "Okay, let's see. The question is asking which fixture file builds an agent from the loaders test fixtures. The options are agent_with_loaders.rs, streaming.rs, and tools.rs.\n\nLooking at the provided examples, the first file, agent_with_loaders.rs, has a build_agent function that uses FileLoader with a glob pattern. It creates an AgentBuilder and starts the agent. The other files, streaming.rs and tools.rs, have different functions. Streaming.rs has a describe_streaming function, and tools.rs has describe_tools. \n\nThe key here is that the agent_with_loaders.rs is explicitly mentioned in the code as the one that builds the agent. The other files don't involve creating an agent but instead describe streaming output or tool use. So the correct answer should be agent_with_loaders.rs.\n"
+              "reasoning_content": "Okay, let's see. The question is asking which fixture file builds an agent from the loaders test fixtures. The options are agent_with_loaders.rs, streaming.rs, and tools.rs.\n\nLooking at the first file, agent_with_loaders.rs, there's a build_agent function. It uses FileLoader::with_glob to load loaders from a glob pattern. Then it reads those files and ignores errors. Then it creates an AgentBuilder with the name \"model\". So this file seems to be creating an agent using the loaders.\n\nThe other files, streaming.rs and tools.rs, have functions that describe their purposes. The streaming.rs has a function that returns a string about streaming output, and tools.rs has one about tool use. Neither of these files actually build an agent. The build_agent function is in the agent_with_loaders.rs file, so that's the one that's doing the agent creation from the loaders.\n\nSo the answer should be agent_with_loaders.rs.\n"
             },
-            "fingerprint": 386881977362487688
+            "fingerprint": 12133774108286639041
           }
         }
       },
       {
         "text": "agent_with_loaders.rs",
-        "native": {
-          "item": {
-            "content": "agent_with_loaders.rs"
-          },
-          "fingerprint": 10570218010015977533
-        }
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 423,
-      "output_tokens": 174,
-      "total_tokens": 597,
+      "input_tokens": 415,
+      "output_tokens": 205,
+      "total_tokens": 620,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-3FtfLMDKtibdYFRdbqxqxeNHCEIBEEWw",
+    "response_id": "chatcmpl-JdBFNV9mZJujm5TZGF1rdVczJJ3hTSzU",
     "finish_reason": "stop",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -1954,34 +1869,34 @@
           "index": 0,
           "message": {
             "content": "agent_with_loaders.rs",
-            "reasoning_content": "Okay, let's see. The question is asking which fixture file builds an agent from the loaders test fixtures. The options are agent_with_loaders.rs, streaming.rs, and tools.rs.\n\nLooking at the provided examples, the first file, agent_with_loaders.rs, has a build_agent function that uses FileLoader with a glob pattern. It creates an AgentBuilder and starts the agent. The other files, streaming.rs and tools.rs, have different functions. Streaming.rs has a describe_streaming function, and tools.rs has describe_tools. \n\nThe key here is that the agent_with_loaders.rs is explicitly mentioned in the code as the one that builds the agent. The other files don't involve creating an agent but instead describe streaming output or tool use. So the correct answer should be agent_with_loaders.rs.\n",
+            "reasoning_content": "Okay, let's see. The question is asking which fixture file builds an agent from the loaders test fixtures. The options are agent_with_loaders.rs, streaming.rs, and tools.rs.\n\nLooking at the first file, agent_with_loaders.rs, there's a build_agent function. It uses FileLoader::with_glob to load loaders from a glob pattern. Then it reads those files and ignores errors. Then it creates an AgentBuilder with the name \"model\". So this file seems to be creating an agent using the loaders.\n\nThe other files, streaming.rs and tools.rs, have functions that describe their purposes. The streaming.rs has a function that returns a string about streaming output, and tools.rs has one about tool use. Neither of these files actually build an agent. The build_agent function is in the agent_with_loaders.rs file, so that's the one that's doing the agent creation from the loaders.\n\nSo the answer should be agent_with_loaders.rs.\n",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-3FtfLMDKtibdYFRdbqxqxeNHCEIBEEWw",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-JdBFNV9mZJujm5TZGF1rdVczJJ3hTSzU",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 1299.291,
-        "predicted_n": 174,
-        "predicted_per_second": 133.14954078801438,
-        "predicted_per_token_ms": 7.510352601156069,
-        "prompt_ms": 171.484,
-        "prompt_n": 423,
-        "prompt_per_second": 2466.7024328800353,
-        "prompt_per_token_ms": 0.40539952718676125
+        "predicted_ms": 1173.106,
+        "predicted_n": 205,
+        "predicted_per_second": 173.89732897112452,
+        "predicted_per_token_ms": 5.750519607843137,
+        "prompt_ms": 162.324,
+        "prompt_n": 415,
+        "prompt_per_second": 2556.6151647322636,
+        "prompt_per_token_ms": 0.3911421686746988
       },
       "usage": {
-        "completion_tokens": 174,
-        "prompt_tokens": 423,
+        "completion_tokens": 205,
+        "prompt_tokens": 415,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "total_tokens": 597
+        "total_tokens": 620
       }
     }
   },
@@ -1990,12 +1905,7 @@
     "choice": [
       {
         "text": "```tool_code\nprint(2 - 5)\n```",
-        "native": {
-          "item": {
-            "content": "```tool_code\nprint(2 - 5)\n```"
-          },
-          "fingerprint": 9744656792361297949
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2065,7 +1975,7 @@
               "id": "Ak3p8eDKCL6eKttzUExBpjobwvcIAP4b",
               "type": "function"
             },
-            "fingerprint": 3358666789391137593
+            "fingerprint": 1564537320452075421
           }
         }
       }
@@ -2147,7 +2057,7 @@
               "id": "oFPaX5bl5diuhyB4chYOzeU6ViylpGaZ",
               "type": "function"
             },
-            "fingerprint": 7767415131500606304
+            "fingerprint": 8908431858650996074
           }
         }
       }
@@ -2164,12 +2074,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 227,
         "completion_tokens": 22,
-        "total_tokens": 249,
+        "prompt_tokens": 227,
         "prompt_tokens_details": {
           "cached_tokens": 226
-        }
+        },
+        "total_tokens": 249
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-BMXL5RbVjLVl9oFNcT9AcmlKFuF7yzR1",
@@ -2212,7 +2122,7 @@
               "id": "C4DTCnikCjyl2AzDmz8SZSqpkUErPDd4",
               "type": "function"
             },
-            "fingerprint": 17675118607985556184
+            "fingerprint": 1340393617329442758
           }
         }
       }
@@ -2294,7 +2204,7 @@
               "id": "tw64QOdSPFK7MyfkhGffcD48rw7WIvjS",
               "type": "function"
             },
-            "fingerprint": 402363148645883686
+            "fingerprint": 5428857467322437488
           }
         }
       }
@@ -2311,12 +2221,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 613,
         "completion_tokens": 25,
-        "total_tokens": 638,
+        "prompt_tokens": 613,
         "prompt_tokens_details": {
           "cached_tokens": 612
-        }
+        },
+        "total_tokens": 638
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-K2dTdfWPbG6ShhTDMV8VUbdSB55odFlS",
@@ -2350,7 +2260,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user said, \"I'm going to the store to buy some milk.\" I need to extract names from this text. Hmm, the sentence mentions \"the store,\" but there's no name mentioned. The user is going to the store, but there's no personal name like \"John\" or \"Alice\" here. The only possible name could be \"the store\" itself, but that's a place name, not a person. Wait, maybe the user is referring to themselves, but the sentence doesn't use a name. So, there are no names in the text. The submit function requires an array of names, so I should return an empty array. Let me make sure I didn't miss any possible names. No, the sentence is straightforward. The answer is that there are no names.\n"
             },
-            "fingerprint": 15730700291784089665
+            "fingerprint": 9382543126722258341
           }
         }
       },
@@ -2370,7 +2280,7 @@
               "id": "BHBAt3kML6lpQYR6VkKK6uekqNOC0Hrv",
               "type": "function"
             },
-            "fingerprint": 10929456355001284099
+            "fingerprint": 2976683855265936215
           }
         }
       }
@@ -2444,7 +2354,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user said, \"I'm going to the store to buy some milk.\" I need to extract sentiment and confidence from this text. But wait, the text is a simple statement about going to the store to buy milk. There's no obvious sentiment here. It's neutral. The sentiment might be 0.0 or something, and confidence could be 0.5 since it's a straightforward statement with no positive or negative words. But the function requires both sentiment and confidence as numbers. I should call the submit function with those values. Let me check the parameters again. The function requires sentiment and confidence as numbers in double format. So I'll set sentiment to 0.0 and confidence to 0.5. That should be it.\n"
             },
-            "fingerprint": 8458734798245505720
+            "fingerprint": 14443438602125969650
           }
         }
       },
@@ -2465,7 +2375,7 @@
               "id": "DcLn3AEacugT3Cq3DFNYd0abrzEJVCXd",
               "type": "function"
             },
-            "fingerprint": 3383703543689384454
+            "fingerprint": 4965475249084883252
           }
         }
       }
@@ -2539,7 +2449,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided the text \"Screw you Putin!\" and wants me to extract sentiment and confidence. First, I need to determine the sentiment of this statement. The phrase \"Screw you Putin!\" is a strong expression of dislike. It's likely negative. \n\nNow, confidence. Since it's a direct expression of anger or frustration, the confidence might be high. But I need to assign numbers. The sentiment should be a negative value, maybe -1.0 or something. Confidence could be 0.95 as it's a clear expression.\n\nWait, the function requires sentiment and confidence as numbers. So I'll map the sentiment to a negative value, and confidence to a high number. Let me check the schema again. The sentiment is a double, so -1.0 is acceptable. Confidence is also a double, so 0.95 would work. \n\nI need to make sure both fields are filled. The submit function requires both, so I'll call it with those values.\n"
             },
-            "fingerprint": 8609372503585495374
+            "fingerprint": 10965669415145813844
           }
         }
       },
@@ -2560,7 +2470,7 @@
               "id": "JUmnSCmQQ2GU0aSLW1CiGWj37vkKh4vE",
               "type": "function"
             },
-            "fingerprint": 6988639466180929261
+            "fingerprint": 16887313973873163199
           }
         }
       }
@@ -2634,7 +2544,7 @@
             "item": {
               "reasoning_content": "Okay, the user wrote \"Screw you Putin!\", which is a strong statement. I need to extract topics from this text. The task is to identify the main themes or subjects discussed. The phrase is a protest or a statement of dissent. The relevant topics here would be \"protest\" and \"dissent\". I should make sure to use the submit function with these topics in an array. Let me check the parameters again. The topics array is required, and each item is a string. So the final submission should have those two topics.\n"
             },
-            "fingerprint": 1486271510611199896
+            "fingerprint": 3400683765363909602
           }
         }
       },
@@ -2657,7 +2567,7 @@
               "id": "idzeOn9VkpmTVG5IETvoaSbsn2hjqeYx",
               "type": "function"
             },
-            "fingerprint": 3538371275281003516
+            "fingerprint": 5678034551347049394
           }
         }
       }
@@ -2731,7 +2641,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided the text \"Screw you Putin!\" and wants me to extract names. Hmm, the task is to find names in the text. But the sentence is just a short phrase. There's no name mentioned here. The words are \"Screw\" and \"you\" and \"Putin\". \"Putin\" is a name, but \"Screw\" and \"you\" are not names. So the only possible name here is \"Putin\". But I need to check if the function requires all fields. The submit function has a 'names' array, which is required. So even if there's only one name, I should include it. Let me make sure there's no other names. No, \"Screw\" and \"you\" aren't names. So the array should have [\"Putin\"]. That's all. I'll call the submit function with that.\n"
             },
-            "fingerprint": 17125942725824138511
+            "fingerprint": 13141209871126441663
           }
         }
       },
@@ -2753,7 +2663,7 @@
               "id": "CWCEjdvOcnVeFpdOjh65GGEgh3iTVPL5",
               "type": "function"
             },
-            "fingerprint": 6727453298227703420
+            "fingerprint": 877085123643196674
           }
         }
       }
@@ -2827,7 +2737,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided a sentence: \"I love my dog, but I hate my cat.\" The task is to extract names from this text. \n\nFirst, I need to identify any names in the sentence. The sentence mentions \"my dog\" and \"my cat\". The word \"dog\" is a common noun, but is it a name? Similarly, \"cat\" is a common noun. However, sometimes people use common nouns as names, especially if they're referring to a specific animal. But in this context, the user is talking about their own pets. \n\nWait, the user is saying they love their dog but hate their cat. So the names here would be \"dog\" and \"cat\". But are these names or common nouns? The instruction says to extract names, which are typically proper nouns. But in this case, \"dog\" and \"cat\" are common nouns. However, maybe the user is using them as names. \n\nBut according to the tools provided, the submit function expects an array of strings for names. The user's sentence doesn't have any proper nouns. So maybe the answer is that there are no names, but the user might expect \"dog\" and \"cat\" as names. But I need to follow the instructions. \n\nWait, the function's description says to extract names from the text. If the text doesn't contain any proper nouns, then the names array would be empty. But maybe the user expects \"dog\" and \"cat\" as names. However, in standard practice, names are proper nouns. So perhaps the correct answer is that there are no names, but the user might have intended them as names. \n\nBut the user's sentence is straightforward. The only nouns are \"dog\" and \"cat\". If the task is to extract names, and the user is referring to their pets, then \"dog\" and \"cat\" are names. So the submit function would have an array with [\"dog\", \"cat\"]. \n\nBut I need to check if the function allows that. The function's parameters are an array of strings, which can be any words. So even if they are common nouns, they can be included. Therefore, the correct answer is to submit [\"dog\", \"cat\"] as the names.\n"
             },
-            "fingerprint": 7581418852961130953
+            "fingerprint": 10227369867150882301
           }
         }
       },
@@ -2850,7 +2760,7 @@
               "id": "etEBgGbatYXZFgoUW65K21qmPIN0xyON",
               "type": "function"
             },
-            "fingerprint": 9984273154958999078
+            "fingerprint": 15392824053814667624
           }
         }
       }
@@ -2924,7 +2834,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user wrote, \"I love my dog, but I hate my cat.\" They want me to extract topics from this text. The task is to identify the main topics here.\n\nFirst, I need to understand the content. The sentence talks about two animals: a dog and a cat. The user has positive feelings towards the dog and negative towards the cat. So the topics would be the animals mentioned. \n\nBut wait, the user might be looking for more than just the animals. Maybe the emotions involved? But the instructions say to extract topics from the given text. The text is straightforward, mentioning the animals and their respective feelings. \n\nSo the topics should be the animals mentioned. The dog and the cat. The emotions are part of the sentiment, but the topics are the subjects. The user might not want the emotions as topics, just the subjects. \n\nTherefore, the structured data would have an array of topics: [\"dog\", \"cat\"]. That's it. No other topics are present in the text. I need to make sure to call the submit function with those topics.\n"
             },
-            "fingerprint": 18429630586695448183
+            "fingerprint": 12206338156040548351
           }
         }
       },
@@ -2947,7 +2857,7 @@
               "id": "UiyubGvjTXAvDcECZvllxcVZSoIXange",
               "type": "function"
             },
-            "fingerprint": 9225342608854699622
+            "fingerprint": 17976462821250642922
           }
         }
       }
@@ -3021,7 +2931,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user is going to the store to buy milk. I need to extract topics from this text. The main topic here is the purpose of the trip, which is buying milk. So the topic would be \"Buying Milk\". Are there any other topics? Maybe the location (store) or the item (milk), but the primary topic is the action of buying. Since the submit function requires an array of topics, I should include \"Buying Milk\" as the only topic. Let me make sure there are no other elements. The user isn't mentioning any other items or reasons, so yeah, that's the main topic.\n"
             },
-            "fingerprint": 3883661766393311217
+            "fingerprint": 2197016639637895097
           }
         }
       },
@@ -3043,7 +2953,7 @@
               "id": "ZVXNmhllsrgNk7vu69SV60aYbhKbaD1o",
               "type": "function"
             },
-            "fingerprint": 6535066955700288371
+            "fingerprint": 9914325102414833585
           }
         }
       }
@@ -3117,7 +3027,7 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user provided a sentence: \"I love my dog, but I hate my cat.\" They want me to extract sentiment and confidence. \n\nFirst, I need to determine the sentiment. The sentence has two parts. \"I love my dog\" is positive, and \"I hate my cat\" is negative. But since the user is asking for the overall sentiment, maybe I should consider the overall tone. However, the sentence is a bit mixed. But maybe the sentiment is neutral because there's both love and hate. Wait, but the user might expect the overall sentiment to be negative because there's a hate part. Or maybe the sentiment is mixed. But the function requires sentiment and confidence. \n\nWait, the function's parameters are sentiment (number) and confidence (number). The user hasn't provided any specific confidence levels, so I need to infer them. But how? Maybe the sentiment is negative, and confidence is 0.5? Or maybe the sentiment is neutral. But the sentence has both positive and negative aspects. \n\nHmm, but the user might expect the overall sentiment to be negative because of the \"hate my cat\" part. But I'm not sure. Alternatively, maybe the sentiment is mixed, but the function requires a single value. \n\nAlternatively, maybe the sentiment is positive because the user loves their dog, but the hate part is a contrast. But that's not clear. \n\nWait, the function's parameters are sentiment and confidence. The user hasn't provided any specific confidence values, so I need to make an educated guess. Maybe the sentiment is negative, and confidence is 0.5. Or maybe the sentiment is neutral. \n\nBut the sentence is a bit conflicting. However, the user might expect the sentiment to be negative because of the \"hate my cat\" part. So I'll go with sentiment as -1.0 (negative) and confidence as 0.5. \n\nSo the final answer would be sentiment: -1.0, confidence: 0.5.\n"
             },
-            "fingerprint": 3850246060812746227
+            "fingerprint": 15625638523474984307
           }
         }
       },
@@ -3138,7 +3048,7 @@
               "id": "shLS0KwqhjtjGThyzvJE0CRGjZgVYEL1",
               "type": "function"
             },
-            "fingerprint": 14547106972054855696
+            "fingerprint": 11662484390709917646
           }
         }
       }
@@ -3220,7 +3130,7 @@
               "id": "Sj3cIDRfgmf7jJsJstIu8PfIh2ufRmkT",
               "type": "function"
             },
-            "fingerprint": 12456465297351342992
+            "fingerprint": 6682383287961872374
           }
         }
       }
@@ -3287,12 +3197,7 @@
     "choice": [
       {
         "text": "FIRST",
-        "native": {
-          "item": {
-            "content": "FIRST"
-          },
-          "fingerprint": 1755102417257775569
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3347,12 +3252,7 @@
     "choice": [
       {
         "text": "SECOND",
-        "native": {
-          "item": {
-            "content": "SECOND"
-          },
-          "fingerprint": 10588613436800913459
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3407,7 +3307,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "uBvUTRStzQUQXnTzU0AaOBL45O6Cgg2f",
+          "id": "BFfk7DHiWwQvYMTwfIoPvsZN7xMCgyHf",
           "name": "read_file_head",
           "arguments": {},
           "native": {
@@ -3416,16 +3316,16 @@
                 "arguments": "{}",
                 "name": "read_file_head"
               },
-              "id": "uBvUTRStzQUQXnTzU0AaOBL45O6Cgg2f",
+              "id": "BFfk7DHiWwQvYMTwfIoPvsZN7xMCgyHf",
               "type": "function"
             },
-            "fingerprint": 345492383984310427
+            "fingerprint": 5727663703423299061
           }
         }
       },
       {
         "tool_call": {
-          "id": "puvztodmoDJUcisStUqxbRtPUkes1kte",
+          "id": "Kw1ZNmKiUJAGYs3YHVZwBGEFDt6AXyLr",
           "name": "read_file_tail",
           "arguments": {},
           "native": {
@@ -3434,10 +3334,10 @@
                 "arguments": "{}",
                 "name": "read_file_tail"
               },
-              "id": "puvztodmoDJUcisStUqxbRtPUkes1kte",
+              "id": "Kw1ZNmKiUJAGYs3YHVZwBGEFDt6AXyLr",
               "type": "function"
             },
-            "fingerprint": 2341405564386552842
+            "fingerprint": 14000590732701324744
           }
         }
       }
@@ -3448,9 +3348,9 @@
       "total_tokens": 264,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-x0jEQwFaShfnhkt3Qxxp2A5PTMYQw9NQ",
+    "response_id": "chatcmpl-X44WQAUbog17Bis0Z20gLGCpsiz3HPm9",
     "finish_reason": "tool_calls",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -3466,7 +3366,7 @@
                   "arguments": "{}",
                   "name": "read_file_head"
                 },
-                "id": "uBvUTRStzQUQXnTzU0AaOBL45O6Cgg2f",
+                "id": "BFfk7DHiWwQvYMTwfIoPvsZN7xMCgyHf",
                 "type": "function"
               },
               {
@@ -3474,7 +3374,7 @@
                   "arguments": "{}",
                   "name": "read_file_tail"
                 },
-                "id": "puvztodmoDJUcisStUqxbRtPUkes1kte",
+                "id": "Kw1ZNmKiUJAGYs3YHVZwBGEFDt6AXyLr",
                 "type": "function"
               }
             ]
@@ -3482,20 +3382,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-x0jEQwFaShfnhkt3Qxxp2A5PTMYQw9NQ",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-X44WQAUbog17Bis0Z20gLGCpsiz3HPm9",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 251.795,
+        "predicted_ms": 207.944,
         "predicted_n": 38,
-        "predicted_per_second": 146.94493536408586,
-        "predicted_per_token_ms": 6.80527027027027,
-        "prompt_ms": 149.173,
+        "predicted_per_second": 177.9325202939253,
+        "predicted_per_token_ms": 5.6201081081081075,
+        "prompt_ms": 114.337,
         "prompt_n": 226,
-        "prompt_per_second": 1515.0194740335048,
-        "prompt_per_token_ms": 0.6600575221238938
+        "prompt_per_second": 1976.6129949185304,
+        "prompt_per_token_ms": 0.5059159292035398
       },
       "usage": {
         "completion_tokens": 38,
@@ -3518,18 +3418,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked to read test.txt using the available tools. I tried calling both read_file_head and read_file_tail, but the first one was unavailable. Then I used the second one, and got \"hello world\" as the response. So the content of the file is just that line. I need to report that the file's content is \"hello world\".\n"
             },
-            "fingerprint": 5008539369694502905
+            "fingerprint": 16772728118007245765
           }
         }
       },
       {
         "text": "The content of test.txt is:  \nhello world",
-        "native": {
-          "item": {
-            "content": "The content of test.txt is:  \nhello world"
-          },
-          "fingerprint": 12707507046555454738
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3538,9 +3433,9 @@
       "total_tokens": 392,
       "cached_input_tokens": 226
     },
-    "response_id": "chatcmpl-w4Jd1bNKQnJ4Jxc6OgCzSNCTIMEB5YSP",
+    "response_id": "chatcmpl-c30V0KY4DuEZo6KxT3q4xmf1lAS3u59S",
     "finish_reason": "stop",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -3555,20 +3450,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-w4Jd1bNKQnJ4Jxc6OgCzSNCTIMEB5YSP",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-c30V0KY4DuEZo6KxT3q4xmf1lAS3u59S",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 226,
-        "predicted_ms": 840.468,
+        "predicted_ms": 494.105,
         "predicted_n": 90,
-        "predicted_per_second": 105.89338321030664,
-        "predicted_per_token_ms": 9.443460674157302,
-        "prompt_ms": 48.031,
+        "predicted_per_second": 180.12365792695883,
+        "predicted_per_token_ms": 5.551741573033708,
+        "prompt_ms": 43.802,
         "prompt_n": 76,
-        "prompt_per_second": 1582.3114238720827,
-        "prompt_per_token_ms": 0.6319868421052631
+        "prompt_per_second": 1735.0805899274008,
+        "prompt_per_token_ms": 0.5763421052631579
       },
       "usage": {
         "completion_tokens": 90,
@@ -3585,7 +3480,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "QaqJHLdmgsyUJ69CDHhvwoeRlyt25fvV",
+          "id": "2ggDMHXfHSruPyn8cjNoHXjVw1CM1he8",
           "name": "read_file_head",
           "arguments": {},
           "native": {
@@ -3594,16 +3489,16 @@
                 "arguments": "{}",
                 "name": "read_file_head"
               },
-              "id": "QaqJHLdmgsyUJ69CDHhvwoeRlyt25fvV",
+              "id": "2ggDMHXfHSruPyn8cjNoHXjVw1CM1he8",
               "type": "function"
             },
-            "fingerprint": 12562794805256916655
+            "fingerprint": 4082009058442747726
           }
         }
       },
       {
         "tool_call": {
-          "id": "SJ0xjfNq5VU0nryzM3bRypPye9R0NwxJ",
+          "id": "p2clI7161z42e6cQ6Qei2fZuacJCM2z3",
           "name": "read_file_tail",
           "arguments": {},
           "native": {
@@ -3612,10 +3507,10 @@
                 "arguments": "{}",
                 "name": "read_file_tail"
               },
-              "id": "SJ0xjfNq5VU0nryzM3bRypPye9R0NwxJ",
+              "id": "p2clI7161z42e6cQ6Qei2fZuacJCM2z3",
               "type": "function"
             },
-            "fingerprint": 9679683417863065940
+            "fingerprint": 11288268066203909701
           }
         }
       }
@@ -3626,36 +3521,36 @@
       "total_tokens": 264,
       "cached_input_tokens": 225
     },
-    "response_id": "chatcmpl-eNH07IFqRJjdow5nDs6FMgRqUdlOHOAX",
+    "response_id": "chatcmpl-Sphp3GxxvuVzNPE5miNdOUJ0LPNX6U7G",
     "finish_reason": "tool_calls",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 226,
         "completion_tokens": 38,
-        "total_tokens": 264,
+        "prompt_tokens": 226,
         "prompt_tokens_details": {
           "cached_tokens": 225
-        }
+        },
+        "total_tokens": 264
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-eNH07IFqRJjdow5nDs6FMgRqUdlOHOAX",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "response_id": "chatcmpl-Sphp3GxxvuVzNPE5miNdOUJ0LPNX6U7G",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 225,
-          "predicted_ms": 250.056,
+          "predicted_ms": 213.818,
           "predicted_n": 38,
-          "predicted_per_second": 147.96685542438493,
-          "predicted_per_token_ms": 6.758270270270271,
-          "prompt_ms": 19.226,
+          "predicted_per_second": 173.04436483364356,
+          "predicted_per_token_ms": 5.7788648648648655,
+          "prompt_ms": 27.861,
           "prompt_n": 1,
-          "prompt_per_second": 52.01289919900135,
-          "prompt_per_token_ms": 19.226
+          "prompt_per_second": 35.892466171350634,
+          "prompt_per_token_ms": 27.861
         }
       }
     }
@@ -3671,18 +3566,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked to read test.txt using the available tools. I tried calling both read_file_head and read_file_tail, but the first one was unavailable. Then I used the second one, and got \"hello world\" as the response. So the content of the file is just that line. I need to report that the file's content is \"hello world\".\n"
             },
-            "fingerprint": 5008539369694502905
+            "fingerprint": 16772728118007245765
           }
         }
       },
       {
         "text": "The content of test.txt is:  \nhello world",
-        "native": {
-          "item": {
-            "content": "The content of test.txt is:  \nhello world"
-          },
-          "fingerprint": 12707507046555454738
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3691,36 +3581,36 @@
       "total_tokens": 392,
       "cached_input_tokens": 226
     },
-    "response_id": "chatcmpl-GhbDZXxVw6WhD9SiKecQ6wLulehtG64D",
+    "response_id": "chatcmpl-nmY7le00t4l2PEGbWvmsaFCaDOSiBcQu",
     "finish_reason": "stop",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 302,
         "completion_tokens": 90,
-        "total_tokens": 392,
+        "prompt_tokens": 302,
         "prompt_tokens_details": {
           "cached_tokens": 226
-        }
+        },
+        "total_tokens": 392
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-GhbDZXxVw6WhD9SiKecQ6wLulehtG64D",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "response_id": "chatcmpl-nmY7le00t4l2PEGbWvmsaFCaDOSiBcQu",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 226,
-          "predicted_ms": 1000.208,
+          "predicted_ms": 515.097,
           "predicted_n": 90,
-          "predicted_per_second": 88.98149184969527,
-          "predicted_per_token_ms": 11.238292134831461,
-          "prompt_ms": 52.388,
+          "predicted_per_second": 172.78299038821814,
+          "predicted_per_token_ms": 5.7876067415730335,
+          "prompt_ms": 43.898,
           "prompt_n": 76,
-          "prompt_per_second": 1450.7139039474691,
-          "prompt_per_token_ms": 0.6893157894736842
+          "prompt_per_second": 1731.2861633787415,
+          "prompt_per_token_ms": 0.5776052631578947
         }
       }
     }
@@ -3730,7 +3620,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "o6mtxVeZBXHZmk5N1qNUp2TcCT9gBNJw",
+          "id": "SwudHFihiBhAYzMgB7injwMPb3T0QkGp",
           "name": "lookup_cache_policy",
           "arguments": {
             "topic": "prefix"
@@ -3741,16 +3631,16 @@
                 "arguments": "{\"topic\": \"prefix\"}",
                 "name": "lookup_cache_policy"
               },
-              "id": "o6mtxVeZBXHZmk5N1qNUp2TcCT9gBNJw",
+              "id": "SwudHFihiBhAYzMgB7injwMPb3T0QkGp",
               "type": "function"
             },
-            "fingerprint": 7003721321794146327
+            "fingerprint": 11188313338216030630
           }
         }
       },
       {
         "tool_call": {
-          "id": "XW53utS8SXFzqOTtqK9v8MnjvmxIxRNf",
+          "id": "WfhdfDYmnlLk8NBQkJh3UIEXaQndYDgw",
           "name": "lookup_cache_policy",
           "arguments": {
             "topic": "breakpoint"
@@ -3761,16 +3651,16 @@
                 "arguments": "{\"topic\": \"breakpoint\"}",
                 "name": "lookup_cache_policy"
               },
-              "id": "XW53utS8SXFzqOTtqK9v8MnjvmxIxRNf",
+              "id": "WfhdfDYmnlLk8NBQkJh3UIEXaQndYDgw",
               "type": "function"
             },
-            "fingerprint": 4701831503239374882
+            "fingerprint": 13756328879051583073
           }
         }
       },
       {
         "tool_call": {
-          "id": "FhJUWxUSb8SztqLqXLytGfU7nSNvfQ7Z",
+          "id": "4IrtvilC9ZwXv3CFWytJT7rvfTL54RjV",
           "name": "lookup_cache_policy",
           "arguments": {
             "topic": "prefix"
@@ -3781,10 +3671,10 @@
                 "arguments": "{\"topic\": \"prefix\"}",
                 "name": "lookup_cache_policy"
               },
-              "id": "FhJUWxUSb8SztqLqXLytGfU7nSNvfQ7Z",
+              "id": "4IrtvilC9ZwXv3CFWytJT7rvfTL54RjV",
               "type": "function"
             },
-            "fingerprint": 1948747001357642961
+            "fingerprint": 1618984912081516176
           }
         }
       }
@@ -3795,7 +3685,7 @@
       "total_tokens": 2721,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-EmKHw2qNht8EheVUsWUMbU8QX1eVEZqS",
+    "response_id": "chatcmpl-VLQxjZtzATLPpNnJokyc5LYC1pd4Y2ec",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -3813,7 +3703,7 @@
                   "arguments": "{\"topic\": \"prefix\"}",
                   "name": "lookup_cache_policy"
                 },
-                "id": "o6mtxVeZBXHZmk5N1qNUp2TcCT9gBNJw",
+                "id": "SwudHFihiBhAYzMgB7injwMPb3T0QkGp",
                 "type": "function"
               },
               {
@@ -3821,7 +3711,7 @@
                   "arguments": "{\"topic\": \"breakpoint\"}",
                   "name": "lookup_cache_policy"
                 },
-                "id": "XW53utS8SXFzqOTtqK9v8MnjvmxIxRNf",
+                "id": "WfhdfDYmnlLk8NBQkJh3UIEXaQndYDgw",
                 "type": "function"
               },
               {
@@ -3829,7 +3719,7 @@
                   "arguments": "{\"topic\": \"prefix\"}",
                   "name": "lookup_cache_policy"
                 },
-                "id": "FhJUWxUSb8SztqLqXLytGfU7nSNvfQ7Z",
+                "id": "4IrtvilC9ZwXv3CFWytJT7rvfTL54RjV",
                 "type": "function"
               }
             ]
@@ -3837,20 +3727,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-EmKHw2qNht8EheVUsWUMbU8QX1eVEZqS",
+      "id": "chatcmpl-VLQxjZtzATLPpNnJokyc5LYC1pd4Y2ec",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 499.469,
+        "predicted_ms": 500.468,
         "predicted_n": 68,
-        "predicted_per_second": 134.14245929176784,
-        "predicted_per_token_ms": 7.45476119402985,
-        "prompt_ms": 1217.653,
+        "predicted_per_second": 133.8746932870833,
+        "predicted_per_token_ms": 7.469671641791045,
+        "prompt_ms": 1326.735,
         "prompt_n": 2653,
-        "prompt_per_second": 2178.7816397610814,
-        "prompt_per_token_ms": 0.45897210704862423
+        "prompt_per_second": 1999.6457468899216,
+        "prompt_per_token_ms": 0.5000885789672069
       },
       "usage": {
         "completion_tokens": 68,
@@ -3873,18 +3763,13 @@
             "item": {
               "reasoning_content": "Okay, let's see. The user asked to look up the cache policy for 'prefix' and 'breakpoint' separately. I called the lookup_cache_policy function twice, once for each topic. The first call for 'prefix' returned a policy note, and the second call for 'breakpoint' also returned one. But then the user's response shows that the tool was called three times, with the first and third calls returning the same policy note for 'prefix'. Wait, that's odd. Maybe there was a mistake in the tool calls?\n\nWait, the user's message shows that after the first two tool calls, the third tool call was made again for 'prefix', but the response only shows the first and second policy notes. The user then says \"cache probe ready\" after that. But the problem is that the user's instruction was to call the tool once per topic, so two calls, but the assistant made three calls. That might be an error. However, the user's final response is to just say \"cache probe ready\" after the three tool calls. So even though there was an extra call, the assistant proceeded with that. The user's final answer is to just output the three words, so I need to make sure that the assistant's response is exactly that. The assistant's previous response was the three tool calls, and then the user's reply is the three words. So the correct answer is to output \"cache probe ready\" after the three tool calls.\n"
             },
-            "fingerprint": 11937746258278161121
+            "fingerprint": 9198494728151098281
           }
         }
       },
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3893,7 +3778,7 @@
       "total_tokens": 3091,
       "cached_input_tokens": 2653
     },
-    "response_id": "chatcmpl-zvxKgmRvMkreskbchfuzPQNdgLotq7Ug",
+    "response_id": "chatcmpl-UARkMhzLNYd2Qfok3yi5jHbTZHvEDrb9",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -3910,20 +3795,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-zvxKgmRvMkreskbchfuzPQNdgLotq7Ug",
+      "id": "chatcmpl-UARkMhzLNYd2Qfok3yi5jHbTZHvEDrb9",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 2653,
-        "predicted_ms": 2382.661,
+        "predicted_ms": 2615.533,
         "predicted_n": 309,
-        "predicted_per_second": 129.2672352466423,
-        "predicted_per_token_ms": 7.735912337662338,
-        "prompt_ms": 79.577,
+        "predicted_per_second": 117.75802484617859,
+        "predicted_per_token_ms": 8.491990259740259,
+        "prompt_ms": 80.425,
         "prompt_n": 129,
-        "prompt_per_second": 1621.0714151073803,
-        "prompt_per_token_ms": 0.6168759689922481
+        "prompt_per_second": 1603.9788622940628,
+        "prompt_per_token_ms": 0.6234496124031007
       },
       "usage": {
         "completion_tokens": 309,
@@ -3940,12 +3825,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4000,12 +3880,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4066,7 +3941,7 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with \"probe still ready\""
             },
-            "fingerprint": 9585010936254942931
+            "fingerprint": 15712283406375559239
           }
         }
       }
@@ -4124,12 +3999,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4184,12 +4054,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4244,12 +4109,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4304,12 +4164,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4364,12 +4219,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4384,12 +4234,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 2825,
         "completion_tokens": 8,
-        "total_tokens": 2833,
+        "prompt_tokens": 2825,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 2833
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-r0sbavnZtCkKc94qeYUlKuJMgiI5uRFD",
@@ -4417,12 +4267,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4437,12 +4282,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 2825,
         "completion_tokens": 8,
-        "total_tokens": 2833,
+        "prompt_tokens": 2825,
         "prompt_tokens_details": {
           "cached_tokens": 2824
-        }
+        },
+        "total_tokens": 2833
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-rHft0iMmnqsVLvgp1yLzwrGfCSgEbZw9",
@@ -4476,7 +4321,7 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with \"probe still ready\""
             },
-            "fingerprint": 9585010936254942931
+            "fingerprint": 15712283406375559239
           }
         }
       }
@@ -4493,12 +4338,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 2854,
         "completion_tokens": 16,
-        "total_tokens": 2870,
+        "prompt_tokens": 2854,
         "prompt_tokens_details": {
           "cached_tokens": 2825
-        }
+        },
+        "total_tokens": 2870
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-Re9gUrqq8OES0XQyd2cskl5mO7CnJjOw",
@@ -4532,18 +4377,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they're probably testing if I can just output that word without any extra text. I need to confirm that I'm not adding anything else. Let me check my response again. Yep, it's just \"pong\". No explanations or extra words. Got it. Alright, that's straightforward.\n"
             },
-            "fingerprint": 5919930395366131765
+            "fingerprint": 8242527793772335613
           }
         }
       },
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4605,18 +4445,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they're probably testing if I can just output that word without any extra text. I need to confirm that I'm not adding anything else. Let me check my response again. Yep, it's just \"pong\". No explanations or extra words. Got it. Alright, that's straightforward.\n"
             },
-            "fingerprint": 5919930395366131765
+            "fingerprint": 8242527793772335613
           }
         }
       },
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4678,18 +4513,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they're probably testing if I can just output that word without any extra text. I need to confirm that I'm not adding anything else. Let me check my response again. Yep, it's just \"pong\". No explanations or extra words. Got it. Alright, that's straightforward.\n"
             },
-            "fingerprint": 5919930395366131765
+            "fingerprint": 8242527793772335613
           }
         }
       },
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4751,18 +4581,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they're probably testing if I can just output that word without any extra text. I need to confirm that I'm not adding anything else. Let me check my response again. Yep, it's just \"pong\". No explanations or extra words. Got it. Alright, that's straightforward.\n"
             },
-            "fingerprint": 5919930395366131765
+            "fingerprint": 8242527793772335613
           }
         }
       },
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4824,18 +4649,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they're probably testing if I can just output that word without any extra text. I need to confirm that I'm not adding anything else. Let me check my response again. Yep, it's just \"pong\". No explanations or extra words. Got it. Alright, that's straightforward.\n"
             },
-            "fingerprint": 5919930395366131765
+            "fingerprint": 8242527793772335613
           }
         }
       },
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4850,12 +4670,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 16,
         "completion_tokens": 102,
-        "total_tokens": 118,
+        "prompt_tokens": 16,
         "prompt_tokens_details": {
           "cached_tokens": 15
-        }
+        },
+        "total_tokens": 118
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-C7DIe1syCVDzrsQJUACunKiNvQCn4WVK",
@@ -4889,18 +4709,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they're probably testing if I can just output that word without any extra text. I need to confirm that I'm not adding anything else. Let me check my response again. Yep, it's just \"pong\". No explanations or extra words. Got it. Alright, that's straightforward.\n"
             },
-            "fingerprint": 5919930395366131765
+            "fingerprint": 8242527793772335613
           }
         }
       },
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4915,12 +4730,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 16,
         "completion_tokens": 102,
-        "total_tokens": 118,
+        "prompt_tokens": 16,
         "prompt_tokens_details": {
           "cached_tokens": 15
-        }
+        },
+        "total_tokens": 118
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-dUZNaMkQWRVKmxbt1G1xpfJtc4e71kr0",
@@ -4954,18 +4769,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they're probably testing if I can just output that word without any extra text. I need to confirm that I'm not adding anything else. Let me check my response again. Yep, it's just \"pong\". No explanations or extra words. Got it. Alright, that's straightforward.\n"
             },
-            "fingerprint": 5919930395366131765
+            "fingerprint": 8242527793772335613
           }
         }
       },
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4980,12 +4790,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 16,
         "completion_tokens": 102,
-        "total_tokens": 118,
+        "prompt_tokens": 16,
         "prompt_tokens_details": {
           "cached_tokens": 15
-        }
+        },
+        "total_tokens": 118
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-P8NG709amsJSUinrqLps3V2xCBE53WRR",
@@ -5019,18 +4829,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to entertain them. Let me think of some funny ideas. Maybe start with a joke about something relatable. Like the common experience of being stuck in traffic. Oh, and maybe add some humor about the pandemic. People are always talking about the pandemic, so that's a good angle.\n\nI should make sure the jokes are light and not too offensive. Maybe play with the idea of masks and masks. Like, \"I'm wearing a mask, but I'm not a mask.\" That's a classic joke. Also, the \"I'm not a mask\" joke is a good one. \n\nAnother idea: the pandemic and the internet. People are always on their phones, so maybe a joke about the internet being a \"digital prison.\" That's a funny way to talk about the pandemic. \n\nI should also include some playful exaggeration. Like, \"I'm a ghost, but I'm not a ghost.\" That's a classic joke. Maybe add some more jokes about the pandemic, like the \"I'm not a virus\" joke. \n\nI need to keep the tone light and fun. Avoid anything too serious. Maybe end with a joke about the user's own situation, like being stuck in a room. That's a common scenario and can be funny. \n\nLet me put it all together in a friendly, conversational way. Make sure each joke is clear and the flow is smooth. Check for any possible offensive content and ensure the humor is appropriate. Alright, time to put it all together.\n"
             },
-            "fingerprint": 14375045708215691271
+            "fingerprint": 8796123601324437435
           }
         }
       },
       {
         "text": "Ah, the *art* of entertaining! Let’s dive into some laughs, shall we? 🎉  \n\n1. **Traffic Joke**: *“I’m stuck in traffic, but I’m not a traffic jam. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n2. **Mask Joke**: *“I’m wearing a mask, but I’m not a mask. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n3. **Internet Joke**: *“I’m on the internet, but I’m not a *digital* prison. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n4. **Pandemic Joke**: *“I’m not a virus. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n5. **Self-Deprecating Joke**: *“I’m stuck in a room, but I’m not a *digital* prison. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\nAnd if you’re feeling particularly *digital*, here’s a final joke:  \n*“I’m not a *digital* prison. I’m a *ghost* in a *digital* prison.”*  \n(And if you’re still not getting it, just say *“I’m not a *digital* prison.”* 🤣)  \n\nSo, what’s your *digital* prison? 🎉",
-        "native": {
-          "item": {
-            "content": "Ah, the *art* of entertaining! Let’s dive into some laughs, shall we? 🎉  \n\n1. **Traffic Joke**: *“I’m stuck in traffic, but I’m not a traffic jam. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n2. **Mask Joke**: *“I’m wearing a mask, but I’m not a mask. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n3. **Internet Joke**: *“I’m on the internet, but I’m not a *digital* prison. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n4. **Pandemic Joke**: *“I’m not a virus. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\n5. **Self-Deprecating Joke**: *“I’m stuck in a room, but I’m not a *digital* prison. I’m a *ghost* in a *digital* prison.”*  \n   (Because the pandemic made everyone’s life a *digital* prison, and now we’re all just *ghosts* in it.)  \n\nAnd if you’re feeling particularly *digital*, here’s a final joke:  \n*“I’m not a *digital* prison. I’m a *ghost* in a *digital* prison.”*  \n(And if you’re still not getting it, just say *“I’m not a *digital* prison.”* 🤣)  \n\nSo, what’s your *digital* prison? 🎉"
-          },
-          "fingerprint": 6852067106397748322
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5086,12 +4891,7 @@
     "choice": [
       {
         "text": "cedar",
-        "native": {
-          "item": {
-            "content": "cedar"
-          },
-          "fingerprint": 1019647121729191188
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5146,12 +4946,7 @@
     "choice": [
       {
         "text": "cedar",
-        "native": {
-          "item": {
-            "content": "cedar"
-          },
-          "fingerprint": 1019647121729191188
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5206,12 +5001,7 @@
     "choice": [
       {
         "text": "cedar",
-        "native": {
-          "item": {
-            "content": "cedar"
-          },
-          "fingerprint": 1019647121729191188
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5226,12 +5016,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 19,
         "completion_tokens": 7,
-        "total_tokens": 26,
+        "prompt_tokens": 19,
         "prompt_tokens_details": {
           "cached_tokens": 18
-        }
+        },
+        "total_tokens": 26
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-au5BE1NNmfhWBilxm7RrtS8Mo5avlCUj",
@@ -5259,12 +5049,7 @@
     "choice": [
       {
         "text": "cedar",
-        "native": {
-          "item": {
-            "content": "cedar"
-          },
-          "fingerprint": 1019647121729191188
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5279,12 +5064,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 19,
         "completion_tokens": 7,
-        "total_tokens": 26,
+        "prompt_tokens": 19,
         "prompt_tokens_details": {
           "cached_tokens": 18
-        }
+        },
+        "total_tokens": 26
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-xgI0X8BwfnH6auFu8F2fGEStdebInN9A",
@@ -5312,12 +5097,7 @@
     "choice": [
       {
         "text": "cedar",
-        "native": {
-          "item": {
-            "content": "cedar"
-          },
-          "fingerprint": 1019647121729191188
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5372,12 +5152,7 @@
     "choice": [
       {
         "text": "cedar",
-        "native": {
-          "item": {
-            "content": "cedar"
-          },
-          "fingerprint": 1019647121729191188
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5432,12 +5207,7 @@
     "choice": [
       {
         "text": "Okay, I'm ready. What would you like me to",
-        "native": {
-          "item": {
-            "content": "Okay, I'm ready. What would you like me to"
-          },
-          "fingerprint": 11821448093978010309
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6051,18 +5821,13 @@
             "item": {
               "reasoning_content": "Okay, the user is asking \"What is 2+2? Answer briefly.\" Let me think. The question is straightforward. 2 plus 2 is 4. But I need to make sure I'm not missing anything. Sometimes people might think of different operations, but addition is pretty basic. There's no trick here. The answer is simple. I should just state the result clearly. No need for extra details. Let me confirm once more. 2 + 2 equals 4. Yep, that's right. Alright, the answer is 4.\n"
             },
-            "fingerprint": 7605127582880961618
+            "fingerprint": 5759686664627773408
           }
         }
       },
       {
         "text": "2 + 2 = 4.",
-        "native": {
-          "item": {
-            "content": "2 + 2 = 4."
-          },
-          "fingerprint": 17081451116785950055
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6124,18 +5889,13 @@
             "item": {
               "reasoning_content": "Okay, the user is asking \"What is 2+2? Answer briefly.\" Let me think. The question is straightforward. 2 plus 2 is 4. But I need to make sure I'm not missing anything. Sometimes people might think of different operations, but addition is pretty basic. There's no trick here. The answer is simple. I should just state the result clearly. No need for extra details. Let me confirm once more. 2 + 2 equals 4. Yep, that's right. Alright, the answer is 4.\n"
             },
-            "fingerprint": 7605127582880961618
+            "fingerprint": 5759686664627773408
           }
         }
       },
       {
         "text": "2 + 2 = 4.",
-        "native": {
-          "item": {
-            "content": "2 + 2 = 4."
-          },
-          "fingerprint": 17081451116785950055
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6150,12 +5910,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 18,
         "completion_tokens": 128,
-        "total_tokens": 146,
+        "prompt_tokens": 18,
         "prompt_tokens_details": {
           "cached_tokens": 17
-        }
+        },
+        "total_tokens": 146
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-zhgZM0MABwYRoNTyZzpsmogzCjwCXpJo",
@@ -6183,12 +5943,7 @@
     "choice": [
       {
         "text": "Tidefall",
-        "native": {
-          "item": {
-            "content": "Tidefall"
-          },
-          "fingerprint": 10335774513809271242
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6251,12 +6006,7 @@
     "choice": [
       {
         "text": "Tidehaven",
-        "native": {
-          "item": {
-            "content": "Tidehaven"
-          },
-          "fingerprint": 730155363124975343
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6271,12 +6021,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 28,
         "completion_tokens": 8,
-        "total_tokens": 36,
+        "prompt_tokens": 28,
         "prompt_tokens_details": {
           "cached_tokens": 27
-        }
+        },
+        "total_tokens": 36
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-ZBeORa8QIyZKNMcNn0bFo0IxqvvFaJRv",
@@ -6304,12 +6054,7 @@
     "choice": [
       {
         "text": "ok",
-        "native": {
-          "item": {
-            "content": "ok"
-          },
-          "fingerprint": 11676934543130470885
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6364,12 +6109,7 @@
     "choice": [
       {
         "text": "<think>",
-        "native": {
-          "item": {
-            "content": "<think>"
-          },
-          "fingerprint": 5413477857497987617
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6424,12 +6164,7 @@
     "choice": [
       {
         "text": "Okay, I'm ready. What would you like me to do?",
-        "native": {
-          "item": {
-            "content": "Okay, I'm ready. What would you like me to do?"
-          },
-          "fingerprint": 13704937971470453459
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6484,12 +6219,7 @@
     "choice": [
       {
         "text": "Okay, I'm ready. What would you like me to do?",
-        "native": {
-          "item": {
-            "content": "Okay, I'm ready. What would you like me to do?"
-          },
-          "fingerprint": 13704937971470453459
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6544,12 +6274,7 @@
     "choice": [
       {
         "text": "Alpha Bravo Charlie Delta",
-        "native": {
-          "item": {
-            "content": "Alpha Bravo Charlie Delta"
-          },
-          "fingerprint": 1826045950961275067
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6604,12 +6329,7 @@
     "choice": [
       {
         "text": "Alpha ",
-        "native": {
-          "item": {
-            "content": "Alpha "
-          },
-          "fingerprint": 7384294951076162899
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6664,12 +6384,7 @@
     "choice": [
       {
         "text": "Alpha Bravo Charlie Delta",
-        "native": {
-          "item": {
-            "content": "Alpha Bravo Charlie Delta"
-          },
-          "fingerprint": 1826045950961275067
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6724,12 +6439,7 @@
     "choice": [
       {
         "text": "Alpha Bravo ",
-        "native": {
-          "item": {
-            "content": "Alpha Bravo "
-          },
-          "fingerprint": 11117104626934470319
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6784,12 +6494,7 @@
     "choice": [
       {
         "text": "Okay, I'm ready. What would you like me to do?",
-        "native": {
-          "item": {
-            "content": "Okay, I'm ready. What would you like me to do?"
-          },
-          "fingerprint": 13704937971470453459
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6844,12 +6549,7 @@
     "choice": [
       {
         "text": "Okay, I'm ready. What would you like me to do?",
-        "native": {
-          "item": {
-            "content": "Okay, I'm ready. What would you like me to do?"
-          },
-          "fingerprint": 13704937971470453459
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6910,18 +6610,13 @@
             "item": {
               "reasoning_content": "Okay, the user is asking about the next solar eclipse. They want to know when, where, and what type it will be. Let me think about how to approach this.\n\nFirst, I need to figure out the date of the next solar eclipse. I remember that solar eclipses occur when the Moon aligns with the Sun and Earth. The next one might be in a specific year, but I need to check the current date. Wait, the user might be asking for the next one after a certain date, but since they didn't specify, I should probably mention the general timing.\n\nThen, the location. Solar eclipses can be observed from different regions depending on the alignment. The next one might be in a particular country or region. For example, maybe in India or somewhere else. I need to check the latest information to be accurate.\n\nThe type of eclipse—there are total, partial, and annular. The type depends on the Moon's position relative to the Sun and Earth. If the Moon is closest to Earth, it can cause a total eclipse. If it's farther, it's annular. I should mention the type based on the current alignment.\n\nI should also note that the exact date and location might vary, so it's best to check a reliable source like NASA or an astronomy website. But since I can't access real-time data, I'll have to rely on my knowledge up to 2023. Wait, but the user might be expecting the next one after a certain date. Let me think—recently, the next solar eclipse was in 2023, but I need to confirm.\n\nWait, the user might be asking for the next one after the 2023 event. But without specific dates, it's hard to tell. Maybe I should mention that the next solar eclipse is on [date], in [location], and it's a [type]. But I need to be precise.\n\nAlternatively, maybe the user is asking for the next occurrence after the current one. Since I don't have the exact date, I'll have to state that the next solar eclipse is scheduled for [date], in [location], and it will be a [type]. But I need to make sure the information is up-to-date.\n\nWait, the user might be referring to the next one after the 2023 event. Let me recall. The next solar eclipse after 2023 was in 2024, but that's not correct. Wait, no, the next one after 2023 would be in 2024, but I need to check. Actually, the next solar eclipse after 2023 was in 2024, but that's not accurate. Wait, no, the 2023 eclipse was in March 2023, and the next one would be in 2024. But I need to be precise.\n\nAlternatively, maybe the user is asking for the next one in the near future. Since I can't access real-time data, I should mention that the next solar eclipse is scheduled for [date], in [location], and it's a [type]. But I need to make sure the information is accurate.\n\nIn summary, the answer should include the date, location, and type of the next solar eclipse, with the caveat that the exact details depend on the current calendar. I should also mention that the type can vary based on the alignment.\n"
             },
-            "fingerprint": 5425091456232917248
+            "fingerprint": 3800551734717813954
           }
         }
       },
       {
         "text": "The next solar eclipse will occur on **[specific date]** in **[specific location]**, and it will be a **[type of eclipse]** (e.g., total, partial, or annular). For the most accurate and up-to-date details, check reliable astronomy sources like NASA or local eclipse calendars.",
-        "native": {
-          "item": {
-            "content": "The next solar eclipse will occur on **[specific date]** in **[specific location]**, and it will be a **[type of eclipse]** (e.g., total, partial, or annular). For the most accurate and up-to-date details, check reliable astronomy sources like NASA or local eclipse calendars."
-          },
-          "fingerprint": 6078334292789951760
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6936,12 +6631,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 30,
         "completion_tokens": 780,
-        "total_tokens": 810,
+        "prompt_tokens": 30,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 810
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-pmoIGU9Rcx6qW6wVs6MBqvt1xgKkz4KX",
@@ -6969,12 +6664,7 @@
     "choice": [
       {
         "text": "A solar eclipse occurs when the Moon passes between the Sun and Earth, blocking sunlight and casting a shadow on Earth. This can only happen during a new moon, and it results in a total, partial, or annular eclipse depending on the alignment and the Moon's position relative to Earth.",
-        "native": {
-          "item": {
-            "content": "A solar eclipse occurs when the Moon passes between the Sun and Earth, blocking sunlight and casting a shadow on Earth. This can only happen during a new moon, and it results in a total, partial, or annular eclipse depending on the alignment and the Moon's position relative to Earth."
-          },
-          "fingerprint": 16575557737442490158
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6989,12 +6679,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 37,
         "completion_tokens": 63,
-        "total_tokens": 100,
+        "prompt_tokens": 37,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 100
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-ctzWokqZzLLL6G2uNycT8iMvHN00nsh2",
@@ -7028,13 +6718,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants to calculate 2 minus 5. Let me check the available tools. There's a subtract function that takes x and y. Here, x should be 2 and y should be 5. So the function call would be subtract with x=2 and y=5. That should give the correct result.\n"
             },
-            "fingerprint": 13690114861930351705
+            "fingerprint": 13543644072788897565
           }
         }
       },
       {
         "tool_call": {
-          "id": "mCwH41tSJWWVcoFR51Yl0ELQUAQ7jMgl",
+          "id": "Xak4BdT2BzzP0Ym0Xgvd8mCm6Pl7jcsc",
           "name": "subtract",
           "arguments": {
             "x": 2,
@@ -7046,10 +6736,10 @@
                 "arguments": "{\"x\": 2, \"y\": 5}",
                 "name": "subtract"
               },
-              "id": "mCwH41tSJWWVcoFR51Yl0ELQUAQ7jMgl",
+              "id": "Xak4BdT2BzzP0Ym0Xgvd8mCm6Pl7jcsc",
               "type": "function"
             },
-            "fingerprint": 8056242396525786416
+            "fingerprint": 3329806680466602826
           }
         }
       }
@@ -7060,21 +6750,21 @@
       "total_tokens": 403,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-x0KGGm3bfiJ958NH0dNzleeFW86Fbgpj",
+    "response_id": "chatcmpl-4LOJAjQP8ZNin8PMKl7pfCrpUqIMxOe3",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 306,
         "completion_tokens": 97,
-        "total_tokens": 403,
+        "prompt_tokens": 306,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 403
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-x0KGGm3bfiJ958NH0dNzleeFW86Fbgpj",
+      "response_id": "chatcmpl-4LOJAjQP8ZNin8PMKl7pfCrpUqIMxOe3",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7082,14 +6772,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 0,
-          "predicted_ms": 582.337,
+          "predicted_ms": 571.209,
           "predicted_n": 97,
-          "predicted_per_second": 164.85299749114347,
-          "predicted_per_token_ms": 6.066010416666667,
-          "prompt_ms": 126.793,
+          "predicted_per_second": 168.06457881440946,
+          "predicted_per_token_ms": 5.95009375,
+          "prompt_ms": 131.388,
           "prompt_n": 306,
-          "prompt_per_second": 2413.382442248389,
-          "prompt_per_token_ms": 0.41435620915032684
+          "prompt_per_second": 2328.9798155082653,
+          "prompt_per_token_ms": 0.42937254901960786
         }
       }
     }
@@ -7105,18 +6795,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked to calculate 2 minus 5. I used the subtract function with x=2 and y=5. The result was -3. I need to present the answer clearly. Let me check if there's any further action needed. The user didn't ask for anything else, so I'll just state the result.\n"
             },
-            "fingerprint": 15011081365842932576
+            "fingerprint": 9579576172532341194
           }
         }
       },
       {
         "text": "The result of 2 minus 5 is -3.",
-        "native": {
-          "item": {
-            "content": "The result of 2 minus 5 is -3."
-          },
-          "fingerprint": 11157612557077399821
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7125,21 +6810,21 @@
       "total_tokens": 504,
       "cached_input_tokens": 402
     },
-    "response_id": "chatcmpl-Rc5IOjX13kldtuxI9fPUVzCM6VAk9RK8",
+    "response_id": "chatcmpl-lu0sOBxcVx9e5BsgqaePkqABDZvIgcjf",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 418,
         "completion_tokens": 86,
-        "total_tokens": 504,
+        "prompt_tokens": 418,
         "prompt_tokens_details": {
           "cached_tokens": 402
-        }
+        },
+        "total_tokens": 504
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-Rc5IOjX13kldtuxI9fPUVzCM6VAk9RK8",
+      "response_id": "chatcmpl-lu0sOBxcVx9e5BsgqaePkqABDZvIgcjf",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7147,14 +6832,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 402,
-          "predicted_ms": 588.296,
+          "predicted_ms": 655.928,
           "predicted_n": 86,
-          "predicted_per_second": 144.48508913880084,
-          "predicted_per_token_ms": 6.921129411764706,
-          "prompt_ms": 29.624,
+          "predicted_per_second": 129.58739373833714,
+          "predicted_per_token_ms": 7.7168,
+          "prompt_ms": 25.672,
           "prompt_n": 16,
-          "prompt_per_second": 540.1026194977046,
-          "prompt_per_token_ms": 1.8515
+          "prompt_per_second": 623.2471174820816,
+          "prompt_per_token_ms": 1.6045
         }
       }
     }
@@ -7176,7 +6861,7 @@
               "id": "qKb6hFN4kkGGMCXJdz4RwgVyYtltPmSx",
               "type": "function"
             },
-            "fingerprint": 4030734847827524128
+            "fingerprint": 14628294481132994684
           }
         }
       }
@@ -7193,12 +6878,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 208,
         "completion_tokens": 23,
-        "total_tokens": 231,
+        "prompt_tokens": 208,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 231
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-enw2CVy8wFh55WB0iuHyobUhInxLHTbn",
@@ -7232,18 +6917,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to reply in one short sentence using the provided tool result. The tool result was \"crimson-harbor\". So I need to mention that. Let me make sure it's just one sentence and doesn't mention any other details. Alright, \"The provided tool result is crimson-harbor.\" That should do it.\n"
             },
-            "fingerprint": 4690820181482731810
+            "fingerprint": 10611558842505297860
           }
         }
       },
       {
         "text": "The provided tool result is crimson-harbor.",
-        "native": {
-          "item": {
-            "content": "The provided tool result is crimson-harbor."
-          },
-          "fingerprint": 10720995467332311388
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7258,12 +6938,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 77,
         "completion_tokens": 86,
-        "total_tokens": 163,
+        "prompt_tokens": 77,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 163
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-Mnk8tSH4XtqaNLAZbvd0mxkztgXQ9n40",
@@ -7303,7 +6983,7 @@
               "id": "wwCvKT6CSQv8LJUKmnxcetREMpnE6ZzX",
               "type": "function"
             },
-            "fingerprint": 10715980162470178701
+            "fingerprint": 4261249376442215385
           }
         }
       }
@@ -7320,12 +7000,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 155,
         "completion_tokens": 19,
-        "total_tokens": 174,
+        "prompt_tokens": 155,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 174
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-eZcO7kmlDg8H9ltUynMRHOPU7FrN8Xqq",
@@ -7365,7 +7045,7 @@
               "id": "sUcfnq9b7nQd5fkqD9yGRViCmqWmnaSL",
               "type": "function"
             },
-            "fingerprint": 3682856376902998415
+            "fingerprint": 1582983854565924181
           }
         }
       },
@@ -7383,7 +7063,7 @@
               "id": "sWUwKNrBTxkJMn6uk1qB10vEu8ueT4RU",
               "type": "function"
             },
-            "fingerprint": 5578480079986593812
+            "fingerprint": 15281161870379169776
           }
         }
       }
@@ -7400,12 +7080,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 286,
         "completion_tokens": 42,
-        "total_tokens": 328,
+        "prompt_tokens": 286,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 328
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-hC36t0PzaBytuMum4PkJbmHgfWaiAADt",
@@ -7433,7 +7113,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "WFzSqL68ta8G1Sd1TQQN6TuKtG4sNC9m",
+          "id": "UklOvaEd1OV18e5xD2ztB8MnegDaQOfN",
           "name": "lookup_harbor_label",
           "arguments": {},
           "native": {
@@ -7442,10 +7122,10 @@
                 "arguments": "{}",
                 "name": "lookup_harbor_label"
               },
-              "id": "WFzSqL68ta8G1Sd1TQQN6TuKtG4sNC9m",
+              "id": "UklOvaEd1OV18e5xD2ztB8MnegDaQOfN",
               "type": "function"
             },
-            "fingerprint": 16342288250412401099
+            "fingerprint": 12286738787959558468
           }
         }
       }
@@ -7456,21 +7136,21 @@
       "total_tokens": 231,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-MFBcvUVwebesbC75LlUda93RaQ7mOZ2T",
+    "response_id": "chatcmpl-qZAWe8M4ERGrPcMwZWfrCxyOZx5qkNc9",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 208,
         "completion_tokens": 23,
-        "total_tokens": 231,
+        "prompt_tokens": 208,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 231
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-MFBcvUVwebesbC75LlUda93RaQ7mOZ2T",
+      "response_id": "chatcmpl-qZAWe8M4ERGrPcMwZWfrCxyOZx5qkNc9",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7478,14 +7158,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 0,
-          "predicted_ms": 120.231,
+          "predicted_ms": 132.583,
           "predicted_n": 23,
-          "predicted_per_second": 182.98109472598583,
-          "predicted_per_token_ms": 5.4650454545454545,
-          "prompt_ms": 102.038,
+          "predicted_per_second": 165.93379241682567,
+          "predicted_per_token_ms": 6.0264999999999995,
+          "prompt_ms": 105.362,
           "prompt_n": 208,
-          "prompt_per_second": 2038.4562613928144,
-          "prompt_per_token_ms": 0.49056730769230766
+          "prompt_per_second": 1974.1462766462294,
+          "prompt_per_token_ms": 0.5065480769230769
         }
       }
     }
@@ -7501,18 +7181,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked me to call the lookup_harbor_label function exactly once. I did that, and the tool returned \"crimson-harbor\". Now I need to answer with a short sentence including the exact output. So, the answer should be something like \"The alpha signal marker for crimson-harbor is...\" or similar. Let me make sure to include the exact result from the tool.\n"
             },
-            "fingerprint": 9728612558327371738
+            "fingerprint": 15032405989008255252
           }
         }
       },
       {
         "text": "The alpha signal marker for crimson-harbor is returned.",
-        "native": {
-          "item": {
-            "content": "The alpha signal marker for crimson-harbor is returned."
-          },
-          "fingerprint": 15781483842740447032
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7521,21 +7196,21 @@
       "total_tokens": 345,
       "cached_input_tokens": 208
     },
-    "response_id": "chatcmpl-hK0mPlGH1uvu4EvmxBDPuXligEt4D7if",
+    "response_id": "chatcmpl-UIXH6e6mM8lIwXgcEMM2yvlT82FDTNrJ",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 245,
         "completion_tokens": 100,
-        "total_tokens": 345,
+        "prompt_tokens": 245,
         "prompt_tokens_details": {
           "cached_tokens": 208
-        }
+        },
+        "total_tokens": 345
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-hK0mPlGH1uvu4EvmxBDPuXligEt4D7if",
+      "response_id": "chatcmpl-UIXH6e6mM8lIwXgcEMM2yvlT82FDTNrJ",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7543,14 +7218,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 208,
-          "predicted_ms": 549.629,
+          "predicted_ms": 595.17,
           "predicted_n": 100,
-          "predicted_per_second": 180.1215001391848,
-          "predicted_per_token_ms": 5.551808080808081,
-          "prompt_ms": 32.792,
+          "predicted_per_second": 166.33902918493877,
+          "predicted_per_token_ms": 6.011818181818182,
+          "prompt_ms": 33.207,
           "prompt_n": 37,
-          "prompt_per_second": 1128.3239814588924,
-          "prompt_per_token_ms": 0.8862702702702703
+          "prompt_per_second": 1114.222904809227,
+          "prompt_per_token_ms": 0.8974864864864865
         }
       }
     }
@@ -7566,13 +7241,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants to calculate 2 minus 5. Let me check the available tools. There's an subtract function that takes x and y. Here, x should be 2 and y should be 5. So the function call would be subtract with x=2 and y=5. That should give the correct result.\n"
             },
-            "fingerprint": 13455777130728846917
+            "fingerprint": 1986170496836974969
           }
         }
       },
       {
         "tool_call": {
-          "id": "p5XVA3klUKcCrYAv7WBtV9n99T3LHsuj",
+          "id": "if6gfsMkcaGmOIzCS5o04c4VAWO5UTqp",
           "name": "subtract",
           "arguments": {
             "x": 2,
@@ -7584,10 +7259,10 @@
                 "arguments": "{\"x\": 2, \"y\": 5}",
                 "name": "subtract"
               },
-              "id": "p5XVA3klUKcCrYAv7WBtV9n99T3LHsuj",
+              "id": "if6gfsMkcaGmOIzCS5o04c4VAWO5UTqp",
               "type": "function"
             },
-            "fingerprint": 18026950150323624428
+            "fingerprint": 1446638313121770460
           }
         }
       }
@@ -7598,21 +7273,21 @@
       "total_tokens": 388,
       "cached_input_tokens": 290
     },
-    "response_id": "chatcmpl-R0WDFBoZiZB9tw0ITGdTz9ACziw43pPY",
+    "response_id": "chatcmpl-0NAsg1z1qgGWgA8D9e6ieKrU6bRAyEG6",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 291,
         "completion_tokens": 97,
-        "total_tokens": 388,
+        "prompt_tokens": 291,
         "prompt_tokens_details": {
           "cached_tokens": 290
-        }
+        },
+        "total_tokens": 388
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-R0WDFBoZiZB9tw0ITGdTz9ACziw43pPY",
+      "response_id": "chatcmpl-0NAsg1z1qgGWgA8D9e6ieKrU6bRAyEG6",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7620,14 +7295,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 290,
-          "predicted_ms": 564.885,
+          "predicted_ms": 577.33,
           "predicted_n": 97,
-          "predicted_per_second": 169.94609522292149,
-          "predicted_per_token_ms": 5.88421875,
-          "prompt_ms": 20.828,
+          "predicted_per_second": 166.28271525817124,
+          "predicted_per_token_ms": 6.013854166666667,
+          "prompt_ms": 18.964,
           "prompt_n": 1,
-          "prompt_per_second": 48.012291146533514,
-          "prompt_per_token_ms": 20.828
+          "prompt_per_second": 52.73149124657246,
+          "prompt_per_token_ms": 18.964
         }
       }
     }
@@ -7643,18 +7318,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked to calculate 2 minus 5. I used the subtract function with x=2 and y=5. The result was -3. Let me check if that's correct. 2 minus 5 is indeed -3. So the answer is correct.\n"
             },
-            "fingerprint": 16423078977664384027
+            "fingerprint": 4198442566508977399
           }
         }
       },
       {
         "text": "The result of $ 2 - 5 $ is $-3$.\n\n$$\n\\boxed{-3}\n$$",
-        "native": {
-          "item": {
-            "content": "The result of $ 2 - 5 $ is $-3$.\n\n$$\n\\boxed{-3}\n$$"
-          },
-          "fingerprint": 3047663549215117146
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7663,21 +7333,21 @@
       "total_tokens": 489,
       "cached_input_tokens": 387
     },
-    "response_id": "chatcmpl-QIFlQu2glh6u2VkJf25LxyyljTn975sB",
+    "response_id": "chatcmpl-0Z5kIrpA64UTixdoOqDmFsUguMGpoRxP",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 403,
         "completion_tokens": 86,
-        "total_tokens": 489,
+        "prompt_tokens": 403,
         "prompt_tokens_details": {
           "cached_tokens": 387
-        }
+        },
+        "total_tokens": 489
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-QIFlQu2glh6u2VkJf25LxyyljTn975sB",
+      "response_id": "chatcmpl-0Z5kIrpA64UTixdoOqDmFsUguMGpoRxP",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7685,14 +7355,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 387,
-          "predicted_ms": 511.152,
+          "predicted_ms": 514.377,
           "predicted_n": 86,
-          "predicted_per_second": 166.29104454252354,
-          "predicted_per_token_ms": 6.013552941176471,
-          "prompt_ms": 25.107,
+          "predicted_per_second": 165.2484461785811,
+          "predicted_per_token_ms": 6.051494117647058,
+          "prompt_ms": 25.56,
           "prompt_n": 16,
-          "prompt_per_second": 637.2724738120843,
-          "prompt_per_token_ms": 1.5691875
+          "prompt_per_second": 625.9780907668232,
+          "prompt_per_token_ms": 1.5975
         }
       }
     }
@@ -7702,7 +7372,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "71VkGQwpAACCNfbpCLufAP76ES6nitc9",
+          "id": "AgSkhRO6NHN3OFr4rUC5Kjo4SVpKFTlv",
           "name": "lookup_harbor_label",
           "arguments": {},
           "native": {
@@ -7711,16 +7381,16 @@
                 "arguments": "{}",
                 "name": "lookup_harbor_label"
               },
-              "id": "71VkGQwpAACCNfbpCLufAP76ES6nitc9",
+              "id": "AgSkhRO6NHN3OFr4rUC5Kjo4SVpKFTlv",
               "type": "function"
             },
-            "fingerprint": 9095777403548744359
+            "fingerprint": 6023497884923739296
           }
         }
       },
       {
         "tool_call": {
-          "id": "Kl7ElxZE845NYQ24XNYFSrYSJ9bV3hRJ",
+          "id": "UFaZ5luJOdTd2LuWubjsfIowjrMKA33Q",
           "name": "lookup_orchard_label",
           "arguments": {},
           "native": {
@@ -7729,10 +7399,10 @@
                 "arguments": "{}",
                 "name": "lookup_orchard_label"
               },
-              "id": "Kl7ElxZE845NYQ24XNYFSrYSJ9bV3hRJ",
+              "id": "UFaZ5luJOdTd2LuWubjsfIowjrMKA33Q",
               "type": "function"
             },
-            "fingerprint": 9415767265493072354
+            "fingerprint": 1958173710208843571
           }
         }
       }
@@ -7743,21 +7413,21 @@
       "total_tokens": 328,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-jOA5KzxhJezwdZKYGJ1FYU80mjMUcPyT",
+    "response_id": "chatcmpl-HFAwgTkHhFOfhAZr5nmEJ23NUFXyFld4",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 286,
         "completion_tokens": 42,
-        "total_tokens": 328,
+        "prompt_tokens": 286,
         "prompt_tokens_details": {
           "cached_tokens": 0
-        }
+        },
+        "total_tokens": 328
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-jOA5KzxhJezwdZKYGJ1FYU80mjMUcPyT",
+      "response_id": "chatcmpl-HFAwgTkHhFOfhAZr5nmEJ23NUFXyFld4",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7765,14 +7435,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 0,
-          "predicted_ms": 242.347,
+          "predicted_ms": 241.1,
           "predicted_n": 42,
-          "predicted_per_second": 169.17890462848726,
-          "predicted_per_token_ms": 5.91090243902439,
-          "prompt_ms": 120.114,
+          "predicted_per_second": 170.05391953546248,
+          "predicted_per_token_ms": 5.880487804878048,
+          "prompt_ms": 119.251,
           "prompt_n": 286,
-          "prompt_per_second": 2381.0713155835288,
-          "prompt_per_token_ms": 0.419979020979021
+          "prompt_per_second": 2398.302739599668,
+          "prompt_per_token_ms": 0.4169615384615385
         }
       }
     }
@@ -7788,18 +7458,13 @@
             "item": {
               "reasoning_content": "Okay, so the user wants me to call both lookup_harbor_label and lookup_orchard_label exactly once each before answering. I need to make sure I use those tools first. Let me check the tools again. Both functions don't require any parameters, so I can just call them separately. Once I get the results, which are \"crimson-harbor\" and \"silver-orchard\", I need to combine them into a single sentence. The answer should include both exact outputs. Let me make sure I don't call any tools again once the results are available. Alright, the final response will be a sentence with both labels.\n"
             },
-            "fingerprint": 6410208154505166418
+            "fingerprint": 17812451151200326832
           }
         }
       },
       {
         "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard.",
-        "native": {
-          "item": {
-            "content": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
-          },
-          "fingerprint": 12501307913330788256
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7808,21 +7473,21 @@
       "total_tokens": 506,
       "cached_input_tokens": 286
     },
-    "response_id": "chatcmpl-vDo1nu6OwKJSG22MHRHFofgjQEQZVNlL",
+    "response_id": "chatcmpl-WbwoBmOwM1Ugq4rXah0cZOBgbNQKix2N",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 351,
         "completion_tokens": 155,
-        "total_tokens": 506,
+        "prompt_tokens": 351,
         "prompt_tokens_details": {
           "cached_tokens": 286
-        }
+        },
+        "total_tokens": 506
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-vDo1nu6OwKJSG22MHRHFofgjQEQZVNlL",
+      "response_id": "chatcmpl-WbwoBmOwM1Ugq4rXah0cZOBgbNQKix2N",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "additional_params": {
         "created": 0,
@@ -7830,14 +7495,14 @@
         "system_fingerprint": "b10964-b29c606e2",
         "timings": {
           "cache_n": 286,
-          "predicted_ms": 943.171,
+          "predicted_ms": 910.879,
           "predicted_n": 155,
-          "predicted_per_second": 163.2789812239774,
-          "predicted_per_token_ms": 6.1244870129870135,
-          "prompt_ms": 43.495,
+          "predicted_per_second": 169.067461210545,
+          "predicted_per_token_ms": 5.914798701298701,
+          "prompt_ms": 43.741,
           "prompt_n": 65,
-          "prompt_per_second": 1494.4246465110932,
-          "prompt_per_token_ms": 0.6691538461538461
+          "prompt_per_second": 1486.0199812532865,
+          "prompt_per_token_ms": 0.6729384615384615
         }
       }
     }
@@ -7853,18 +7518,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to return JSON weather data for Chicago with specific fields. Let me check the required fields: city, current.temperature_f, current.humidity_pct, and current.description. All must be present.\n\nFirst, the city is Chicago. The temperature needs to be in Fahrenheit. I should look up the current weather data for Chicago. Let me think, today's temperature in Chicago is probably around 68°F. Wait, but I need to make sure. Maybe it's 72°F? Hmm, I'll go with 72 for now. \n\nHumidity percentage. Let's say it's 65% right now. The description should be something like \"Partly cloudy.\" I need to make sure the description is accurate. \n\nWait, the user didn't specify the time, so I'll use the current condition. Let me confirm the description. If it's partly cloudy, that's a common description. \n\nPutting it all together: city is \"Chicago\", temperature_f is 72, humidity_pct is 65, description is \"Partly cloudy.\" \n\nI need to make sure the JSON is correctly formatted with the required keys and proper data types. Temperature is a number, humidity is an integer, and description is a string. No markdown, just the JSON. Alright, that should do it.\n"
             },
-            "fingerprint": 18095632969575596725
+            "fingerprint": 3052644827124127885
           }
         }
       },
       {
         "text": "{\"city\": \"Chicago\", \"current\": {\"temperature_f\": 72, \"humidity_pct\": 65, \"description\": \"Partly cloudy\"}}",
-        "native": {
-          "item": {
-            "content": "{\"city\": \"Chicago\", \"current\": {\"temperature_f\": 72, \"humidity_pct\": 65, \"description\": \"Partly cloudy\"}}"
-          },
-          "fingerprint": 2155957219427611821
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7926,18 +7586,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to return JSON weather data for Los Angeles with specific fields. Let me check the required fields: city, current.temperature_f, current.humidity_pct, and current.description. All must be present.\n\nFirst, the city is clearly Los Angeles. Now, the current temperature in Fahrenheit. I need to make sure it's a number. I'll use a placeholder value, maybe 75.5. Then humidity percentage, something like 65. Description should be a string, maybe \"Partly cloudy\". \n\nWait, I need to ensure that all keys are present and in the correct order. The schema specifies the order as city, then current with temperature, humidity, and description. So the JSON should have \"city\": \"Los Angeles\", \"current\": { \"temperature_f\": 75.5, \"humidity_pct\": 65, \"description\": \"Partly cloudy\" }.\n\nI should double-check that there are no extra keys and that the temperature is a number, humidity an integer, and description a string. Also, make sure not to include any markdown. Alright, that should cover it.\n"
             },
-            "fingerprint": 666304555612743220
+            "fingerprint": 2480366506729494822
           }
         }
       },
       {
         "text": "{\"city\": \"Los Angeles\", \"current\": {\"temperature_f\": 75.5, \"humidity_pct\": 65, \"description\": \"Partly cloudy\"}}",
-        "native": {
-          "item": {
-            "content": "{\"city\": \"Los Angeles\", \"current\": {\"temperature_f\": 75.5, \"humidity_pct\": 65, \"description\": \"Partly cloudy\"}}"
-          },
-          "fingerprint": 10143490553301284992
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7999,18 +7654,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants me to return JSON weather data for New York City today with specific fields. Let me check the required fields: city, current.temperature_f, current.humidity_pct, and current.description. All must be present.\n\nFirst, the city is New York City. The temperature needs to be in Fahrenheit. I should look up the current temperature. Let me think, today in New York, the temperature is around 58°F. Wait, but I should make sure it's accurate. Maybe 59°F? Hmm, I'll go with 58 for now. \n\nHumidity percentage. Let's say it's 65%. That's a common value. The description should be the current weather condition. If it's a typical day, maybe \"Partly Cloudy\". But I need to make sure the description is accurate. Let me check... Oh, maybe \"Clear Sky\" or \"Sunny\". Wait, the user didn't specify the description, so I need to pick a standard one. Let's go with \"Clear Sky\".\n\nPutting it all together: city is \"New York City\", temperature_f is 58, humidity_pct is 65, description is \"Clear Sky\". I need to make sure the JSON is correctly formatted with all keys and no markdown. Let me double-check the structure. Yes, all required fields are there. No extra keys. Alright, that should do it.\n"
             },
-            "fingerprint": 13867648027158143196
+            "fingerprint": 8032630113448496162
           }
         }
       },
       {
         "text": "{\"city\": \"New York City\", \"current\": {\"temperature_f\": 58, \"humidity_pct\": 65, \"description\": \"Clear Sky\"}}",
-        "native": {
-          "item": {
-            "content": "{\"city\": \"New York City\", \"current\": {\"temperature_f\": 58, \"humidity_pct\": 65, \"description\": \"Clear Sky\"}}"
-          },
-          "fingerprint": 11792250099405338067
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8072,18 +7722,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants a concise event object for a local Rust meetup in Seattle. Let me think about what information is needed for such an object.\n\nFirst, the event name. It should be something catchy and relevant. Maybe \"Seattle Rust Meetup\" or \"Rust in the Pacific Northwest\". But maybe a bit more specific. Let me check the example they gave. Oh, the example they provided was \"Seattle Rust Meetup\" with details like date, time, location, description, and maybe some tags.\n\nSo the event object should have a name, date, time, location, description, and maybe tags. The user wants it concise, so maybe not too many fields. Let me make sure all necessary details are included. The date should be in a specific format, like YYYY-MM-DD. Time in HH:MM. Location should be a string, maybe including the address. Description is a brief summary. Tags could be relevant keywords like #Rust, #Seattle, #Meetup.\n\nWait, the user said \"concise,\" so maybe not too many fields. Let me structure it with the essential elements. The example they gave had the name, date, time, location, description, and tags. So I need to make sure all those are included. Let me check if the date is in the right format. Maybe use a placeholder like \"2023-10-15\" for the example. Time as \"19:00\". Location as \"Seattle, WA, USA\". Description as a brief message. Tags as a list.\n\nI should also make sure that the fields are properly named. Like \"name\", \"date\", \"time\", \"location\", \"description\", \"tags\". Maybe use a simple structure. Let me put it all together in a JSON-like format, but the user just wants the object. So the final answer would be a Rust struct or a JSON object with those fields. But the user says \"event object,\" so maybe a struct with those fields. But the example they gave was in a specific format. Let me make sure to include all necessary details without overcomplicating.\n"
             },
-            "fingerprint": 9088333690345297609
+            "fingerprint": 6615746796266640841
           }
         }
       },
       {
         "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Rust\",\n  \"summary\": \"Join the community for a discussion on Rust, workshops, and networking opportunities in Seattle, WA.\"\n}",
-        "native": {
-          "item": {
-            "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Rust\",\n  \"summary\": \"Join the community for a discussion on Rust, workshops, and networking opportunities in Seattle, WA.\"\n}"
-          },
-          "fingerprint": 16919649294832956927
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8139,12 +7784,7 @@
     "choice": [
       {
         "text": "yes",
-        "native": {
-          "item": {
-            "content": "yes"
-          },
-          "fingerprint": 8970270334420397624
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8199,12 +7839,7 @@
     "choice": [
       {
         "text": "{\"response\": \"hello\"}",
-        "native": {
-          "item": {
-            "content": "{\"response\": \"hello\"}"
-          },
-          "fingerprint": 3261962209925059900
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8259,12 +7894,7 @@
     "choice": [
       {
         "text": "{\"city\": \"Paris\", \"country\": \"France\", \"population_millions\": 2.14}",
-        "native": {
-          "item": {
-            "content": "{\"city\": \"Paris\", \"country\": \"France\", \"population_millions\": 2.14}"
-          },
-          "fingerprint": 12837666848063271352
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8319,12 +7949,7 @@
     "choice": [
       {
         "text": "{\"city\": \"Paris\", \"country\": \"France\", \"population_millions\": 2.14}",
-        "native": {
-          "item": {
-            "content": "{\"city\": \"Paris\", \"country\": \"France\", \"population_millions\": 2.14}"
-          },
-          "fingerprint": 12837666848063271352
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8393,7 +8018,7 @@
               "id": "lTEi8ExySzY6IKkvqIzx1M8rCDrtzO3U",
               "type": "function"
             },
-            "fingerprint": 8973875290763615613
+            "fingerprint": 4122553325668838733
           }
         }
       }
@@ -8460,12 +8085,7 @@
     "choice": [
       {
         "text": "{\n  \"city\": \"Paris\",\n  \"country\": \"France\",\n  \"population_millions\": 2.14\n}",
-        "native": {
-          "item": {
-            "content": "{\n  \"city\": \"Paris\",\n  \"country\": \"France\",\n  \"population_millions\": 2.14\n}"
-          },
-          "fingerprint": 2775506936529571170
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8520,7 +8140,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "NNQb2nuzZgIsLLVEp3B4zQ54Rl5d5INP",
+          "id": "ciyeeJrpZ7IFukvVUTUO4yrYtWIobZ3p",
           "name": "population",
           "arguments": {
             "city": "New York City"
@@ -8531,10 +8151,10 @@
                 "arguments": "{\"city\": \"New York City\"}",
                 "name": "population"
               },
-              "id": "NNQb2nuzZgIsLLVEp3B4zQ54Rl5d5INP",
+              "id": "ciyeeJrpZ7IFukvVUTUO4yrYtWIobZ3p",
               "type": "function"
             },
-            "fingerprint": 6567332310310279212
+            "fingerprint": 8744855670622798230
           }
         }
       }
@@ -8545,7 +8165,7 @@
       "total_tokens": 199,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-qQY6Y2OgE0uZV2h2szqm8ezI1wP9lMSv",
+    "response_id": "chatcmpl-ZocEMSIKSD1iftZJsbApt9MOjRIVF6QP",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -8563,7 +8183,7 @@
                   "arguments": "{\"city\": \"New York City\"}",
                   "name": "population"
                 },
-                "id": "NNQb2nuzZgIsLLVEp3B4zQ54Rl5d5INP",
+                "id": "ciyeeJrpZ7IFukvVUTUO4yrYtWIobZ3p",
                 "type": "function"
               }
             ]
@@ -8571,20 +8191,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-qQY6Y2OgE0uZV2h2szqm8ezI1wP9lMSv",
+      "id": "chatcmpl-ZocEMSIKSD1iftZJsbApt9MOjRIVF6QP",
       "model": "models/Qwen3-8B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 429.244,
+        "predicted_ms": 430.031,
         "predicted_n": 25,
-        "predicted_per_second": 55.912255034432626,
-        "predicted_per_token_ms": 17.885166666666667,
-        "prompt_ms": 503.027,
+        "predicted_per_second": 55.80992998179201,
+        "predicted_per_token_ms": 17.917958333333335,
+        "prompt_ms": 488.35,
         "prompt_n": 174,
-        "prompt_per_second": 345.9058857675632,
-        "prompt_per_token_ms": 2.8909597701149425
+        "prompt_per_second": 356.3018327019555,
+        "prompt_per_token_ms": 2.806609195402299
       },
       "usage": {
         "completion_tokens": 25,
@@ -8601,12 +8221,7 @@
     "choice": [
       {
         "text": "The population of New York City is 8,336,817.",
-        "native": {
-          "item": {
-            "content": "The population of New York City is 8,336,817."
-          },
-          "fingerprint": 6618810374063508342
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8615,7 +8230,7 @@
       "total_tokens": 246,
       "cached_input_tokens": 174
     },
-    "response_id": "chatcmpl-YnFGya4qe79mNXxVBGBlKr3XO3Hq6rpQ",
+    "response_id": "chatcmpl-nqVgz9qZxY8CIFiZPSjiFJF4LhZ6UrJu",
     "finish_reason": "stop",
     "model": "models/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -8631,20 +8246,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-YnFGya4qe79mNXxVBGBlKr3XO3Hq6rpQ",
+      "id": "chatcmpl-nqVgz9qZxY8CIFiZPSjiFJF4LhZ6UrJu",
       "model": "models/Qwen3-8B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 174,
-        "predicted_ms": 605.167,
+        "predicted_ms": 382.743,
         "predicted_n": 23,
-        "predicted_per_second": 36.35360156783169,
-        "predicted_per_token_ms": 27.50759090909091,
-        "prompt_ms": 156.417,
+        "predicted_per_second": 57.47982327567062,
+        "predicted_per_token_ms": 17.39740909090909,
+        "prompt_ms": 124.791,
         "prompt_n": 49,
-        "prompt_per_second": 313.26518217329317,
-        "prompt_per_token_ms": 3.192183673469388
+        "prompt_per_second": 392.6565217042896,
+        "prompt_per_token_ms": 2.5467551020408163
       },
       "usage": {
         "completion_tokens": 23,
@@ -8676,7 +8291,7 @@
               "id": "7tVwWHjLOvMNiotVNcRQqYrDNAYgrYQi",
               "type": "function"
             },
-            "fingerprint": 12483877073971497618
+            "fingerprint": 517558202736556090
           }
         }
       },
@@ -8697,7 +8312,7 @@
               "id": "ivie6jhkB9VBAM8BnF95fsmqw90TbqDy",
               "type": "function"
             },
-            "fingerprint": 13808750056464910828
+            "fingerprint": 11234088373934940000
           }
         }
       }
@@ -8787,7 +8402,7 @@
               "id": "3bQJvhA3MQpAYk0t76OcjNylr2PaBmxG",
               "type": "function"
             },
-            "fingerprint": 16466324762122810186
+            "fingerprint": 7391707976333161320
           }
         }
       }
@@ -8869,7 +8484,7 @@
               "id": "IV2iycBMmgSphRJplZh4ZjY7uLV1L6Nr",
               "type": "function"
             },
-            "fingerprint": 2216288928857837586
+            "fingerprint": 8030288719641248768
           }
         }
       }
@@ -8936,12 +8551,7 @@
     "choice": [
       {
         "text": "<tool_call>\n{\"name\": \"subtract\", \"arguments\": {\"x\": 2, \"y\": 5}}\n</tool_call>",
-        "native": {
-          "item": {
-            "content": "<tool_call>\n{\"name\": \"subtract\", \"arguments\": {\"x\": 2, \"y\": 5}}\n</tool_call>"
-          },
-          "fingerprint": 11778251348851199433
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -8996,12 +8606,7 @@
     "choice": [
       {
         "text": "Hello! How can I assist you today? 😊</think>\n\n",
-        "native": {
-          "item": {
-            "content": "Hello! How can I assist you today? 😊</think>\n\n"
-          },
-          "fingerprint": 15428246624527669249
-        }
+        "native": null
       },
       {
         "tool_call": {
@@ -9017,7 +8622,7 @@
               "id": "kAIV1wa1XZ9aX7nCNymwkTR1hbdrkB3p",
               "type": "function"
             },
-            "fingerprint": 5916744679348174
+            "fingerprint": 417632473158416822
           }
         }
       }
@@ -9090,18 +8695,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked for the codeword. I need to check the JSON tool result provided. The response from the tool is {\"codeword\":\"heliotrope\",\"confidence\":0.99}. So the codeword is \"heliotrope\". The confidence is high at 0.99, which means it's very likely correct. I should just report the codeword verbatim as instructed. No need for extra explanations, just the codeword.\n"
             },
-            "fingerprint": 2575952791956085217
+            "fingerprint": 6624726493951397841
           }
         }
       },
       {
         "text": "heliotrope",
-        "native": {
-          "item": {
-            "content": "heliotrope"
-          },
-          "fingerprint": 10533536050978593180
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -9163,18 +8763,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked, \"What is the codeword?\" and I used the lookup tool. The response from the tool was that the codeword is \"heliotrope\". I need to make sure I answer using only the tool's result and repeat the codeword verbatim.\n\nFirst, I'll confirm that the tool's answer is correct. The codeword provided by the tool is \"heliotrope\". Since there's no conflicting information, I should just present that. The user might be testing if I follow the instructions to use only the tool's result. I should avoid adding any extra explanations or information. Just state the codeword as given. Let me check again: the tool's response was {\"name\": \"lookup\", \"arguments\": {}} and the answer was \"the codeword is heliotrope\". So the correct answer is to repeat \"heliotrope\" exactly. I need to make sure there are no typos. Alright, that's straightforward.\n"
             },
-            "fingerprint": 8156635957259017047
+            "fingerprint": 10899068932431953599
           }
         }
       },
       {
         "text": "the codeword is heliotrope",
-        "native": {
-          "item": {
-            "content": "the codeword is heliotrope"
-          },
-          "fingerprint": 16633272723449914100
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -9230,7 +8825,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "uni2kSJSTApBghHyPVmk6fGqGAr2kOKx",
+          "id": "CUAua3qaUERei5egSEFyxSKKmb9hAp6e",
           "name": "open_vault",
           "arguments": {},
           "native": {
@@ -9239,10 +8834,10 @@
                 "arguments": "{}",
                 "name": "open_vault"
               },
-              "id": "uni2kSJSTApBghHyPVmk6fGqGAr2kOKx",
+              "id": "CUAua3qaUERei5egSEFyxSKKmb9hAp6e",
               "type": "function"
             },
-            "fingerprint": 18403878689712261914
+            "fingerprint": 10492106483591297100
           }
         }
       }
@@ -9253,7 +8848,7 @@
       "total_tokens": 188,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-D3izVu4V0U6A0kh12MVHPT6BYTLRe1JF",
+    "response_id": "chatcmpl-hproZFko3tsdIDYMM99vEAskN50Z6gw1",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -9271,7 +8866,7 @@
                   "arguments": "{}",
                   "name": "open_vault"
                 },
-                "id": "uni2kSJSTApBghHyPVmk6fGqGAr2kOKx",
+                "id": "CUAua3qaUERei5egSEFyxSKKmb9hAp6e",
                 "type": "function"
               }
             ]
@@ -9279,20 +8874,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-D3izVu4V0U6A0kh12MVHPT6BYTLRe1JF",
+      "id": "chatcmpl-hproZFko3tsdIDYMM99vEAskN50Z6gw1",
       "model": "models/Qwen3-8B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 365.401,
+        "predicted_ms": 346.841,
         "predicted_n": 21,
-        "predicted_per_second": 54.7343877000884,
-        "predicted_per_token_ms": 18.27005,
-        "prompt_ms": 331.875,
+        "predicted_per_second": 57.6633097009869,
+        "predicted_per_token_ms": 17.34205,
+        "prompt_ms": 330.896,
         "prompt_n": 167,
-        "prompt_per_second": 503.2015065913371,
-        "prompt_per_token_ms": 1.9872754491017963
+        "prompt_per_second": 504.69029544025915,
+        "prompt_per_token_ms": 1.9814131736526948
       },
       "usage": {
         "completion_tokens": 21,
@@ -9309,12 +8904,7 @@
     "choice": [
       {
         "text": "Failed to open the vault. The reason for the failure is not specified. Please check the vault's status or try again later.",
-        "native": {
-          "item": {
-            "content": "Failed to open the vault. The reason for the failure is not specified. Please check the vault's status or try again later."
-          },
-          "fingerprint": 309888905939230119
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -9323,7 +8913,7 @@
       "total_tokens": 231,
       "cached_input_tokens": 167
     },
-    "response_id": "chatcmpl-MUGhg6YXOZbZHr8z3121tURce6TxKHL3",
+    "response_id": "chatcmpl-XjrrHmBuCogxRGHt7EoirbvJroEa7IkP",
     "finish_reason": "stop",
     "model": "models/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -9339,20 +8929,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-MUGhg6YXOZbZHr8z3121tURce6TxKHL3",
+      "id": "chatcmpl-XjrrHmBuCogxRGHt7EoirbvJroEa7IkP",
       "model": "models/Qwen3-8B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 167,
-        "predicted_ms": 881.533,
+        "predicted_ms": 519.598,
         "predicted_n": 31,
-        "predicted_per_second": 34.03162445421783,
-        "predicted_per_token_ms": 29.384433333333334,
-        "prompt_ms": 164.989,
+        "predicted_per_second": 57.736942790387964,
+        "predicted_per_token_ms": 17.31993333333333,
+        "prompt_ms": 123.595,
         "prompt_n": 33,
-        "prompt_per_second": 200.0133342222815,
-        "prompt_per_token_ms": 4.999666666666667
+        "prompt_per_second": 267.0010922771957,
+        "prompt_per_token_ms": 3.74530303030303
       },
       "usage": {
         "completion_tokens": 31,
@@ -9381,7 +8971,7 @@
               "id": "swuxdRttenGuaj3h5BOE7lBGCmXBOt3C",
               "type": "function"
             },
-            "fingerprint": 3975627228340930874
+            "fingerprint": 3719810459506701722
           }
         }
       }
@@ -9454,13 +9044,13 @@
             "item": {
               "reasoning_content": "Okay, the user wants to calculate 2 minus 5. Let me check the available tools. There's an subtract function that takes x and y. Here, x should be 2 and y should be 5. So the function call would be subtract with x=2 and y=5. That should give the correct result.\n"
             },
-            "fingerprint": 13455777130728846917
+            "fingerprint": 1986170496836974969
           }
         }
       },
       {
         "tool_call": {
-          "id": "Lvn7JcpZftj0xcGOcp6fsxHMfk7SpK5L",
+          "id": "f1A6bsqab2yn2AGqDo1nJONdI70CpJtM",
           "name": "subtract",
           "arguments": {
             "x": 2,
@@ -9472,10 +9062,10 @@
                 "arguments": "{\"x\": 2, \"y\": 5}",
                 "name": "subtract"
               },
-              "id": "Lvn7JcpZftj0xcGOcp6fsxHMfk7SpK5L",
+              "id": "f1A6bsqab2yn2AGqDo1nJONdI70CpJtM",
               "type": "function"
             },
-            "fingerprint": 3426246815539491723
+            "fingerprint": 12929976562400126082
           }
         }
       }
@@ -9486,7 +9076,7 @@
       "total_tokens": 388,
       "cached_input_tokens": 290
     },
-    "response_id": "chatcmpl-v7tqbb0HC0PaYAIfHLwnCurdJtWG0MaV",
+    "response_id": "chatcmpl-nxGKEkTU4QFk1NiHbMUjk3PEcwJARM7X",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -9505,7 +9095,7 @@
                   "arguments": "{\"x\": 2, \"y\": 5}",
                   "name": "subtract"
                 },
-                "id": "Lvn7JcpZftj0xcGOcp6fsxHMfk7SpK5L",
+                "id": "f1A6bsqab2yn2AGqDo1nJONdI70CpJtM",
                 "type": "function"
               }
             ]
@@ -9513,20 +9103,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-v7tqbb0HC0PaYAIfHLwnCurdJtWG0MaV",
+      "id": "chatcmpl-nxGKEkTU4QFk1NiHbMUjk3PEcwJARM7X",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 290,
-        "predicted_ms": 562.502,
+        "predicted_ms": 562.433,
         "predicted_n": 97,
-        "predicted_per_second": 170.66605985400943,
-        "predicted_per_token_ms": 5.859395833333333,
-        "prompt_ms": 24.933,
+        "predicted_per_second": 170.68699738457735,
+        "predicted_per_token_ms": 5.858677083333333,
+        "prompt_ms": 20.952,
         "prompt_n": 1,
-        "prompt_per_second": 40.1074880680223,
-        "prompt_per_token_ms": 24.933
+        "prompt_per_second": 47.72814051164566,
+        "prompt_per_token_ms": 20.952
       },
       "usage": {
         "completion_tokens": 97,
@@ -9549,18 +9139,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked to calculate 2 minus 5. I used the subtract function with x=2 and y=5. The result was -3. Let me check if that's correct. 2 minus 5 is indeed -3. So the answer is correct.\n"
             },
-            "fingerprint": 16423078977664384027
+            "fingerprint": 4198442566508977399
           }
         }
       },
       {
         "text": "The result of $ 2 - 5 $ is $-3$.\n\n$$\n\\boxed{-3}\n$$",
-        "native": {
-          "item": {
-            "content": "The result of $ 2 - 5 $ is $-3$.\n\n$$\n\\boxed{-3}\n$$"
-          },
-          "fingerprint": 3047663549215117146
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -9569,7 +9154,7 @@
       "total_tokens": 489,
       "cached_input_tokens": 387
     },
-    "response_id": "chatcmpl-8OyqvNbP47yjrHyZPl4oWKAUho0cJsI3",
+    "response_id": "chatcmpl-MFLpMn4I3q2Kkp6PIHDyc7uar2PUpFox",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -9586,20 +9171,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-8OyqvNbP47yjrHyZPl4oWKAUho0cJsI3",
+      "id": "chatcmpl-MFLpMn4I3q2Kkp6PIHDyc7uar2PUpFox",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 387,
-        "predicted_ms": 536.274,
+        "predicted_ms": 522.91,
         "predicted_n": 86,
-        "predicted_per_second": 158.50106475421148,
-        "predicted_per_token_ms": 6.309105882352942,
-        "prompt_ms": 25.471,
+        "predicted_per_second": 162.55187317129142,
+        "predicted_per_token_ms": 6.151882352941176,
+        "prompt_ms": 25.477,
         "prompt_n": 16,
-        "prompt_per_second": 628.1653645322131,
-        "prompt_per_token_ms": 1.5919375
+        "prompt_per_second": 628.0174274836127,
+        "prompt_per_token_ms": 1.5923125
       },
       "usage": {
         "completion_tokens": 86,
@@ -9616,7 +9201,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "UiawqRKhGSPb3Figi0ZrebU8z89Gsn39",
+          "id": "pAi6w54CgEXjABtjKqpxHBkrbyTZSiEz",
           "name": "subtract",
           "arguments": {
             "x": 2,
@@ -9628,10 +9213,10 @@
                 "arguments": "{\"x\": 2, \"y\": 5}",
                 "name": "subtract"
               },
-              "id": "UiawqRKhGSPb3Figi0ZrebU8z89Gsn39",
+              "id": "pAi6w54CgEXjABtjKqpxHBkrbyTZSiEz",
               "type": "function"
             },
-            "fingerprint": 10840589822875381121
+            "fingerprint": 6442907629736985147
           }
         }
       }
@@ -9642,7 +9227,7 @@
       "total_tokens": 358,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-DLacwQw0MuF4zSZxFqsFLR48mHGqAZOr",
+    "response_id": "chatcmpl-0ELKseazlgC1OrYiz28TG5p31QjlUOhi",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -9660,7 +9245,7 @@
                   "arguments": "{\"x\": 2, \"y\": 5}",
                   "name": "subtract"
                 },
-                "id": "UiawqRKhGSPb3Figi0ZrebU8z89Gsn39",
+                "id": "pAi6w54CgEXjABtjKqpxHBkrbyTZSiEz",
                 "type": "function"
               }
             ]
@@ -9668,20 +9253,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-DLacwQw0MuF4zSZxFqsFLR48mHGqAZOr",
+      "id": "chatcmpl-0ELKseazlgC1OrYiz28TG5p31QjlUOhi",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 166.467,
+        "predicted_ms": 161.131,
         "predicted_n": 29,
-        "predicted_per_second": 168.20150540347333,
-        "predicted_per_token_ms": 5.945250000000001,
-        "prompt_ms": 146.152,
+        "predicted_per_second": 173.7716516374875,
+        "predicted_per_token_ms": 5.754678571428571,
+        "prompt_ms": 139.44,
         "prompt_n": 329,
-        "prompt_per_second": 2251.081066287153,
-        "prompt_per_token_ms": 0.44423100303951363
+        "prompt_per_second": 2359.437751004016,
+        "prompt_per_token_ms": 0.4238297872340425
       },
       "usage": {
         "completion_tokens": 29,
@@ -9704,18 +9289,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked to calculate 2 minus 5 and then answer with just the result. I need to use the subtract function here. The function subtract takes x and y, where x is the number to subtract from. So, x is 2 and y is 5. Let me call the function with those values. The result should be 2 - 5, which is -3. I'll return that as the final answer.\n"
             },
-            "fingerprint": 7202604242232088348
+            "fingerprint": 6116914488210105914
           }
         }
       },
       {
         "text": "-3",
-        "native": {
-          "item": {
-            "content": "-3"
-          },
-          "fingerprint": 12354834015270353383
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -9724,7 +9304,7 @@
       "total_tokens": 467,
       "cached_input_tokens": 329
     },
-    "response_id": "chatcmpl-2z54ZYwFabEF1Z5i1ELul8IIs8v6X8yw",
+    "response_id": "chatcmpl-nGEwVLoiVqTMM1N2wCByun03UvH8nCgh",
     "finish_reason": "stop",
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -9741,20 +9321,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-2z54ZYwFabEF1Z5i1ELul8IIs8v6X8yw",
+      "id": "chatcmpl-nGEwVLoiVqTMM1N2wCByun03UvH8nCgh",
       "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 329,
-        "predicted_ms": 570.781,
+        "predicted_ms": 558.847,
         "predicted_n": 98,
-        "predicted_per_second": 169.94258743721323,
-        "predicted_per_token_ms": 5.884340206185566,
-        "prompt_ms": 34.31,
+        "predicted_per_second": 173.571657358812,
+        "predicted_per_token_ms": 5.761309278350515,
+        "prompt_ms": 33.955,
         "prompt_n": 40,
-        "prompt_per_second": 1165.8408627222384,
-        "prompt_per_token_ms": 0.85775
+        "prompt_per_second": 1178.0297452510677,
+        "prompt_per_token_ms": 0.8488749999999999
       },
       "usage": {
         "completion_tokens": 98,
@@ -9785,7 +9365,7 @@
               "id": "VtU2hXxp3MF4DiaMgTAvuhaf67SPRuQz",
               "type": "function"
             },
-            "fingerprint": 16443736413610404516
+            "fingerprint": 4320867023728520558
           }
         }
       }
@@ -9849,7 +9429,18 @@
   },
   "truncation_matrix/streaming_tool_call_cut_mid_arguments.yaml#0": {
     "mode": "streaming",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "V4qB8yCqUhYSSntX6H2qqe5Ak1rfrQgE",
+          "name": "record",
+          "arguments": {
+            "note": "The"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 165,
       "output_tokens": 20,
@@ -9862,12 +9453,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 165,
         "completion_tokens": 20,
-        "total_tokens": 185,
+        "prompt_tokens": 165,
         "prompt_tokens_details": {
           "cached_tokens": 164
-        }
+        },
+        "total_tokens": 185
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-16YXiKe3zNgt7YOsOvGsZIRTiYqd1fAZ",
@@ -9892,7 +9483,18 @@
   },
   "truncation_matrix/tool_call_cut_mid_arguments.yaml#0": {
     "mode": "unary",
-    "choice": [],
+    "choice": [
+      {
+        "tool_call": {
+          "id": "P8cAuvqvhak0DtJC6YtnuIc1ZqLNx0fe",
+          "name": "record",
+          "arguments": {
+            "note": "The"
+          },
+          "native": null
+        }
+      }
+    ],
     "usage": {
       "input_tokens": 165,
       "output_tokens": 20,
@@ -9955,12 +9557,7 @@
     "choice": [
       {
         "text": "cedar",
-        "native": {
-          "item": {
-            "content": "cedar"
-          },
-          "fingerprint": 1019647121729191188
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10015,7 +9612,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "SDpwLSyVl3MLivZYIAC0SQOGH2PFNyBQ",
+          "id": "uhB2XXEdkCkPlHMStq5rolPigmKTwelN",
           "name": "add",
           "arguments": {
             "x": 2,
@@ -10027,10 +9624,10 @@
                 "arguments": "{\"x\": 2, \"y\": 3}",
                 "name": "add"
               },
-              "id": "SDpwLSyVl3MLivZYIAC0SQOGH2PFNyBQ",
+              "id": "uhB2XXEdkCkPlHMStq5rolPigmKTwelN",
               "type": "function"
             },
-            "fingerprint": 8543767306804376130
+            "fingerprint": 6955545396135861573
           }
         }
       }
@@ -10041,7 +9638,7 @@
       "total_tokens": 225,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-3BbwRGnLigex74EW4LJIHQ8fvLwL6mje",
+    "response_id": "chatcmpl-7hDS6YB7kh5nmE8AYA12HkqDEMiFHz9P",
     "finish_reason": "tool_calls",
     "model": "models/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -10059,7 +9656,7 @@
                   "arguments": "{\"x\": 2, \"y\": 3}",
                   "name": "add"
                 },
-                "id": "SDpwLSyVl3MLivZYIAC0SQOGH2PFNyBQ",
+                "id": "uhB2XXEdkCkPlHMStq5rolPigmKTwelN",
                 "type": "function"
               }
             ]
@@ -10067,20 +9664,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-3BbwRGnLigex74EW4LJIHQ8fvLwL6mje",
+      "id": "chatcmpl-7hDS6YB7kh5nmE8AYA12HkqDEMiFHz9P",
       "model": "models/Qwen3-8B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 673.493,
+        "predicted_ms": 483.408,
         "predicted_n": 29,
-        "predicted_per_second": 41.57429995560459,
-        "predicted_per_token_ms": 24.05332142857143,
-        "prompt_ms": 429.747,
+        "predicted_per_second": 57.92208651904809,
+        "predicted_per_token_ms": 17.26457142857143,
+        "prompt_ms": 378.968,
         "prompt_n": 196,
-        "prompt_per_second": 456.08229958557007,
-        "prompt_per_token_ms": 2.1925867346938777
+        "prompt_per_second": 517.1940638787444,
+        "prompt_per_token_ms": 1.9335102040816328
       },
       "usage": {
         "completion_tokens": 29,
@@ -10097,12 +9694,7 @@
     "choice": [
       {
         "text": "The result of 2 + 3 is 5.",
-        "native": {
-          "item": {
-            "content": "The result of 2 + 3 is 5."
-          },
-          "fingerprint": 16793872065321574507
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10111,7 +9703,7 @@
       "total_tokens": 252,
       "cached_input_tokens": 196
     },
-    "response_id": "chatcmpl-5rgS5J5r7sI5a6DaHGKaZT963GertAg6",
+    "response_id": "chatcmpl-31iHTNmLV93QFZXZJrDV8Ib54tBZNlkm",
     "finish_reason": "stop",
     "model": "models/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
@@ -10127,20 +9719,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-5rgS5J5r7sI5a6DaHGKaZT963GertAg6",
+      "id": "chatcmpl-31iHTNmLV93QFZXZJrDV8Ib54tBZNlkm",
       "model": "models/Qwen3-8B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 196,
-        "predicted_ms": 368.84,
+        "predicted_ms": 284.808,
         "predicted_n": 17,
-        "predicted_per_second": 43.37924303220909,
-        "predicted_per_token_ms": 23.0525,
-        "prompt_ms": 235.27,
+        "predicted_per_second": 56.178197241650516,
+        "predicted_per_token_ms": 17.8005,
+        "prompt_ms": 123.831,
         "prompt_n": 39,
-        "prompt_per_second": 165.76699111658945,
-        "prompt_per_token_ms": 6.032564102564103
+        "prompt_per_second": 314.94536909174604,
+        "prompt_per_token_ms": 3.1751538461538464
       },
       "usage": {
         "completion_tokens": 17,
@@ -10157,12 +9749,7 @@
     "choice": [
       {
         "text": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow",
-        "native": {
-          "item": {
-            "content": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow"
-          },
-          "fingerprint": 7808406829671266402
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10217,12 +9804,7 @@
     "choice": [
       {
         "text": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow",
-        "native": {
-          "item": {
-            "content": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow"
-          },
-          "fingerprint": 7808406829671266402
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10277,12 +9859,7 @@
     "choice": [
       {
         "text": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow. They are also valued for their sap, which is used to make maple syrup.",
-        "native": {
-          "item": {
-            "content": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow. They are also valued for their sap, which is used to make maple syrup."
-          },
-          "fingerprint": 15683716177557860970
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10337,12 +9914,7 @@
     "choice": [
       {
         "text": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow",
-        "native": {
-          "item": {
-            "content": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow"
-          },
-          "fingerprint": 7808406829671266402
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10357,12 +9929,12 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 35,
         "completion_tokens": 24,
-        "total_tokens": 59,
+        "prompt_tokens": 35,
         "prompt_tokens_details": {
           "cached_tokens": 34
-        }
+        },
+        "total_tokens": 59
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-MwP38YZD42vYV8XzTwqGVnPtig0ansNs",
@@ -10396,13 +9968,13 @@
             "item": {
               "reasoning_content": "<tool_call>\n{\"name\": \"weather\", \"arguments\": {\"city\": \"London\"}}\n</tool_call>\n"
             },
-            "fingerprint": 13680235922580900923
+            "fingerprint": 10866370059032245391
           }
         }
       },
       {
         "tool_call": {
-          "id": "jCQa1AV80fU4E4giiSihYu9lVIDV6wdC",
+          "id": "ehb5yLHZx8th9vddPLuuIjPOZjQRGrlR",
           "name": "weather",
           "arguments": {
             "city": "London"
@@ -10413,10 +9985,10 @@
                 "arguments": "{\"city\": \"London\"}",
                 "name": "weather"
               },
-              "id": "jCQa1AV80fU4E4giiSihYu9lVIDV6wdC",
+              "id": "ehb5yLHZx8th9vddPLuuIjPOZjQRGrlR",
               "type": "function"
             },
-            "fingerprint": 11707414331363540899
+            "fingerprint": 1302969988409598605
           }
         }
       }
@@ -10427,9 +9999,9 @@
       "total_tokens": 351,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-IT18FzJwuLeZ3eBNCHipOyXLEBG86ixS",
+    "response_id": "chatcmpl-g7CbcHAdfcFBhOcIOBGC0PiLZ3rd8qIw",
     "finish_reason": "tool_calls",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -10446,7 +10018,7 @@
                   "arguments": "{\"city\": \"London\"}",
                   "name": "weather"
                 },
-                "id": "jCQa1AV80fU4E4giiSihYu9lVIDV6wdC",
+                "id": "ehb5yLHZx8th9vddPLuuIjPOZjQRGrlR",
                 "type": "function"
               }
             ]
@@ -10454,20 +10026,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-IT18FzJwuLeZ3eBNCHipOyXLEBG86ixS",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-g7CbcHAdfcFBhOcIOBGC0PiLZ3rd8qIw",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 231.746,
+        "predicted_ms": 265.722,
         "predicted_n": 42,
-        "predicted_per_second": 176.91783245449759,
-        "predicted_per_token_ms": 5.6523414634146345,
-        "prompt_ms": 129.639,
+        "predicted_per_second": 154.29659569023266,
+        "predicted_per_token_ms": 6.481024390243902,
+        "prompt_ms": 135.571,
         "prompt_n": 309,
-        "prompt_per_second": 2383.5419896790318,
-        "prompt_per_token_ms": 0.4195436893203884
+        "prompt_per_second": 2279.2485118498794,
+        "prompt_per_token_ms": 0.43874110032362457
       },
       "usage": {
         "completion_tokens": 42,
@@ -10484,12 +10056,7 @@
     "choice": [
       {
         "text": "{\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}",
-        "native": {
-          "item": {
-            "content": "{\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}"
-          },
-          "fingerprint": 14015887382696223825
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10498,9 +10065,9 @@
       "total_tokens": 399,
       "cached_input_tokens": 350
     },
-    "response_id": "chatcmpl-DvkHbrgMhqad3x2Kgn1f869eJZ7YPsT1",
+    "response_id": "chatcmpl-u50l2FXj0BAkqqnb4upLhLwd1X8kj0ws",
     "finish_reason": "stop",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -10514,20 +10081,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-DvkHbrgMhqad3x2Kgn1f869eJZ7YPsT1",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-u50l2FXj0BAkqqnb4upLhLwd1X8kj0ws",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 350,
-        "predicted_ms": 137.473,
+        "predicted_ms": 137.717,
         "predicted_n": 24,
-        "predicted_per_second": 167.30558000480093,
-        "predicted_per_token_ms": 5.97708695652174,
-        "prompt_ms": 25.287,
+        "predicted_per_second": 167.0091564585345,
+        "predicted_per_token_ms": 5.9876956521739135,
+        "prompt_ms": 27.178,
         "prompt_n": 25,
-        "prompt_per_second": 988.6502946177877,
-        "prompt_per_token_ms": 1.01148
+        "prompt_per_second": 919.8616528074177,
+        "prompt_per_token_ms": 1.08712
       },
       "usage": {
         "completion_tokens": 24,
@@ -10550,13 +10117,13 @@
             "item": {
               "reasoning_content": "Okay, the user is asking for the weather in London. I need to use the weather function to get the current conditions. The function requires the city parameter, which in this case is London. I'll call the weather function with the city set to London. Then, I'll return the JSON response with the city name and the weather description from the tool's result. Make sure not to modify the description provided by the tool.\n"
             },
-            "fingerprint": 16609069983781559010
+            "fingerprint": 1154273096308767288
           }
         }
       },
       {
         "tool_call": {
-          "id": "Afuvv8ZAzL6fN4Yb9MuX6lS01qT7fjuq",
+          "id": "SP7UIZXDt41Ou5yClyEtgcm7Gy38vSM4",
           "name": "weather",
           "arguments": {
             "city": "London"
@@ -10567,10 +10134,10 @@
                 "arguments": "{\"city\": \"London\"}",
                 "name": "weather"
               },
-              "id": "Afuvv8ZAzL6fN4Yb9MuX6lS01qT7fjuq",
+              "id": "SP7UIZXDt41Ou5yClyEtgcm7Gy38vSM4",
               "type": "function"
             },
-            "fingerprint": 7144027336265844078
+            "fingerprint": 3061775680400516456
           }
         }
       }
@@ -10581,9 +10148,9 @@
       "total_tokens": 313,
       "cached_input_tokens": 0
     },
-    "response_id": "chatcmpl-76pXbKcmvawq9MKW6ui9mAA5ElKKdWBm",
+    "response_id": "chatcmpl-eXuJ9oPARQuePpQOQ0CJqGuURJ1Abpbj",
     "finish_reason": "tool_calls",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -10600,7 +10167,7 @@
                   "arguments": "{\"city\": \"London\"}",
                   "name": "weather"
                 },
-                "id": "Afuvv8ZAzL6fN4Yb9MuX6lS01qT7fjuq",
+                "id": "SP7UIZXDt41Ou5yClyEtgcm7Gy38vSM4",
                 "type": "function"
               }
             ]
@@ -10608,20 +10175,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-76pXbKcmvawq9MKW6ui9mAA5ElKKdWBm",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-eXuJ9oPARQuePpQOQ0CJqGuURJ1Abpbj",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 0,
-        "predicted_ms": 1000.04,
+        "predicted_ms": 638.311,
         "predicted_n": 109,
-        "predicted_per_second": 107.99568017279309,
-        "predicted_per_token_ms": 9.259629629629629,
-        "prompt_ms": 122.595,
+        "predicted_per_second": 169.19652019156806,
+        "predicted_per_token_ms": 5.910287037037038,
+        "prompt_ms": 101.031,
         "prompt_n": 204,
-        "prompt_per_second": 1664.0156613238714,
-        "prompt_per_token_ms": 0.6009558823529412
+        "prompt_per_second": 2019.1822311963651,
+        "prompt_per_token_ms": 0.49525
       },
       "usage": {
         "completion_tokens": 109,
@@ -10644,18 +10211,13 @@
             "item": {
               "reasoning_content": "Okay, the user asked for the weather in London, so I called the weather function. The response from the tool was \"The weather in London is all fire and brimstone.\" I need to return this as a JSON object with the city and description. I'll make sure not to add any extra text or modify the description. Let me structure the JSON correctly.\n"
             },
-            "fingerprint": 11528437685867142355
+            "fingerprint": 11793150409851680815
           }
         }
       },
       {
         "text": "{\n  \"city\": \"London\",\n  \"weather\": \"all fire and brimstone\"\n}",
-        "native": {
-          "item": {
-            "content": "{\n  \"city\": \"London\",\n  \"weather\": \"all fire and brimstone\"\n}"
-          },
-          "fingerprint": 15532843217325064799
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -10664,9 +10226,9 @@
       "total_tokens": 437,
       "cached_input_tokens": 312
     },
-    "response_id": "chatcmpl-bEqMrflDfo89kEp4uBERMcIfhA3vtM3Q",
+    "response_id": "chatcmpl-N9V0RZjfXsEI3ID4cOtewUwiao1KFmpW",
     "finish_reason": "stop",
-    "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+    "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
       "choices": [
@@ -10681,20 +10243,20 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-bEqMrflDfo89kEp4uBERMcIfhA3vtM3Q",
-      "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+      "id": "chatcmpl-N9V0RZjfXsEI3ID4cOtewUwiao1KFmpW",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
       "object": "chat.completion",
       "system_fingerprint": "b10964-b29c606e2",
       "timings": {
         "cache_n": 312,
-        "predicted_ms": 1188.964,
+        "predicted_ms": 575.808,
         "predicted_n": 100,
-        "predicted_per_second": 83.26576750852003,
-        "predicted_per_token_ms": 12.009737373737373,
-        "prompt_ms": 37.84,
+        "predicted_per_second": 171.93231077025675,
+        "predicted_per_token_ms": 5.816242424242424,
+        "prompt_ms": 25.341,
         "prompt_n": 25,
-        "prompt_per_second": 660.6765327695559,
-        "prompt_per_token_ms": 1.5136
+        "prompt_per_second": 986.5435460321218,
+        "prompt_per_token_ms": 1.01364
       },
       "usage": {
         "completion_tokens": 100,

@@ -90,15 +90,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color is bright red.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null
-                },
-                "fingerprint": 17672256777754227434
-              }
+              "text": "The dominant non-background color is bright red."
             }
           ],
           "usage": {
@@ -122,7 +114,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 11073571618283544370
+            "fingerprint": 14585632120862735230
           },
           "provider_request_id": "req_42d38ddfc7514d6384dbfbec5d996311",
           "finish_reason": "stop",

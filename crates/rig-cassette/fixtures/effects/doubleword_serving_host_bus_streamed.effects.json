@@ -113,7 +113,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_39f06b629fd048a39956da64"
+                "provider": "call_6da8872940b34aeea12e509c"
               },
               "function": {
                 "name": "add",
@@ -128,17 +128,17 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_39f06b629fd048a39956da64",
+                  "id": "call_6da8872940b34aeea12e509c",
                   "type": "function"
                 },
-                "fingerprint": 16273149954588483863
+                "fingerprint": 15602865777454278093
               }
             }
           ],
           "usage": {
-            "input_tokens": 356,
+            "input_tokens": 346,
             "output_tokens": 37,
-            "total_tokens": 393,
+            "total_tokens": 383,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -147,7 +147,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "gen-1790914856-vCWKvjevYwjq4gHliccJ"
+            "response_id": "gen-1790976523-kEByDqseyfUQ5SiSgETx"
           },
           "native": {
             "item": {
@@ -159,40 +159,45 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_39f06b629fd048a39956da64",
+                  "id": "call_6da8872940b34aeea12e509c",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 13585784793832120521
+            "fingerprint": 13932032918739994887
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 356,
-              "completion_tokens": 37,
-              "total_tokens": 393,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 37,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 346,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 383
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790914856-vCWKvjevYwjq4gHliccJ",
+            "response_id": "gen-1790976523-kEByDqseyfUQ5SiSgETx",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "service_tier": "default"
             }
           }
         }
@@ -222,7 +227,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_39f06b629fd048a39956da64"
+                "provider": "call_6da8872940b34aeea12e509c"
               },
               "function": {
                 "name": "add",
@@ -237,15 +242,20 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_39f06b629fd048a39956da64",
+                  "id": "call_6da8872940b34aeea12e509c",
                   "type": "function"
                 },
-                "fingerprint": 16273149954588483863
+                "fingerprint": 15602865777454278093
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     },
     {
       "tool_output": {},
@@ -299,7 +309,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_39f06b629fd048a39956da64"
+                    "provider": "call_6da8872940b34aeea12e509c"
                   },
                   "function": {
                     "name": "add",
@@ -314,10 +324,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_39f06b629fd048a39956da64",
+                      "id": "call_6da8872940b34aeea12e509c",
                       "type": "function"
                     },
-                    "fingerprint": 16273149954588483863
+                    "fingerprint": 15602865777454278093
                   }
                 }
               ],
@@ -326,7 +336,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "gen-1790914856-vCWKvjevYwjq4gHliccJ"
+                "response_id": "gen-1790976523-kEByDqseyfUQ5SiSgETx"
               },
               "stop": "tool_use",
               "native": {
@@ -339,12 +349,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_39f06b629fd048a39956da64",
+                      "id": "call_6da8872940b34aeea12e509c",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13585784793832120521
+                "fingerprint": 13932032918739994887
               }
             },
             {
@@ -353,7 +363,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_39f06b629fd048a39956da64"
+                    "provider": "call_6da8872940b34aeea12e509c"
                   },
                   "name": "add",
                   "content": [
@@ -406,19 +416,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42"
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           ],
           "usage": {
             "input_tokens": 402,
-            "output_tokens": 2,
-            "total_tokens": 404,
+            "output_tokens": 3,
+            "total_tokens": 405,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -427,42 +431,47 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "gen-1790914859-RhPWLaCka7M0m86KzyCu"
+            "response_id": "gen-1790976526-wrfX9SbI9KFjOVyacGKd"
           },
           "native": {
             "item": {
               "content": "42",
               "role": "assistant"
             },
-            "fingerprint": 5372475738331673531
+            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 402,
-              "completion_tokens": 2,
-              "total_tokens": 404,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 3,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 402,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 405
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790914859-RhPWLaCka7M0m86KzyCu",
+            "response_id": "gen-1790976526-wrfX9SbI9KFjOVyacGKd",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "service_tier": "default"
             }
           }
         }
@@ -499,17 +508,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42"
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     }
   ]
 }

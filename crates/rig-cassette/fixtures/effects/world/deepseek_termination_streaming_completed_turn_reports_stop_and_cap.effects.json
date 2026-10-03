@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -99,13 +99,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar",
-              "native": {
-                "item": {
-                  "content": "cedar"
-                },
-                "fingerprint": 1019647121729191188
-              }
+              "text": "cedar"
             }
           ],
           "usage": {
@@ -126,19 +120,19 @@
               "content": "cedar",
               "role": "assistant"
             },
-            "fingerprint": 452362687342519526
+            "fingerprint": 10831170027988163448
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 25,
               "completion_tokens": 2,
-              "total_tokens": 27,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 25,
+              "prompt_tokens": 25,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 25
+              "total_tokens": 27
             },
             "finish_reason": "stop",
             "response_id": "38f7edaf-b6a7-479c-ab12-9856a8cb9c3a",
@@ -183,17 +177,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "cedar",
-              "native": {
-                "item": {
-                  "content": "cedar"
-                },
-                "fingerprint": 1019647121729191188
-              }
+              "text": "cedar"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     }
   ]

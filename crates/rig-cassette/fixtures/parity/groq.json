@@ -4,12 +4,7 @@
     "choice": [
       {
         "text": "{\n  \"release_lane\": \"canary\",\n  \"risk\": \"low\",\n  \"checks\": {\n    \"compile\": true,\n    \"replay\": true\n  }\n}",
-        "native": {
-          "item": {
-            "content": "{\n  \"release_lane\": \"canary\",\n  \"risk\": \"low\",\n  \"checks\": {\n    \"compile\": true,\n    \"replay\": true\n  }\n}"
-          },
-          "fingerprint": 5450856098806700525
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -66,18 +61,13 @@
             "item": {
               "reasoning": "We need to output the JSON object as per schema. Must include fields: lane, risk, checks with compile and replay booleans. Must be compact JSON, no additional properties.\n\nThus: {\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}"
             },
-            "fingerprint": 15942637273650665348
+            "fingerprint": 5043091900563268022
           }
         }
       },
       {
         "text": "{\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}",
-        "native": {
-          "item": {
-            "content": "{\"lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}"
-          },
-          "fingerprint": 16310690023803400911
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -133,12 +123,7 @@
     "choice": [
       {
         "text": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary.",
-        "native": {
-          "item": {
-            "content": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary."
-          },
-          "fingerprint": 14063974276520564551
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -189,12 +174,7 @@
     "choice": [
       {
         "text": "alpha,beta,gamma,delta,epsilon,zeta,eta,theta",
-        "native": {
-          "item": {
-            "content": "alpha,beta,gamma,delta,epsilon,zeta,eta,theta"
-          },
-          "fingerprint": 15259312420463418408
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -208,13 +188,13 @@
     "provider_request_id": "req_01m36hnsxxej1b3dnab3p9z9hc",
     "raw": {
       "usage": {
-        "prompt_tokens": 51,
-        "completion_tokens": 16,
-        "total_tokens": 67,
-        "queue_time": 0.004035914,
-        "prompt_time": 0.00400693,
         "completion_time": 0.031519729,
-        "total_time": 0.035526659
+        "completion_tokens": 16,
+        "prompt_time": 0.00400693,
+        "prompt_tokens": 51,
+        "queue_time": 0.004035914,
+        "total_time": 0.035526659,
+        "total_tokens": 67
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-ef12fcaf-398b-47b9-9da8-02447c010364",
@@ -257,7 +237,7 @@
               "id": "znjyej3xe",
               "type": "function"
             },
-            "fingerprint": 7121087028891354798
+            "fingerprint": 2607539483438289120
           }
         }
       },
@@ -275,7 +255,7 @@
               "id": "b9tm540rw",
               "type": "function"
             },
-            "fingerprint": 6981906546836252475
+            "fingerprint": 3723365074511432487
           }
         }
       }
@@ -345,12 +325,7 @@
     "choice": [
       {
         "text": "The two tool outputs are \"crimson-harbor\" and \"silver-orchard\".",
-        "native": {
-          "item": {
-            "content": "The two tool outputs are \"crimson-harbor\" and \"silver-orchard\"."
-          },
-          "fingerprint": 10940969825873180036
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -401,7 +376,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "cdeacd933",
+          "id": "n8wnr03ej",
           "name": "lookup_harbor_label",
           "arguments": {},
           "native": {
@@ -410,16 +385,16 @@
                 "arguments": "{}",
                 "name": "lookup_harbor_label"
               },
-              "id": "cdeacd933",
+              "id": "n8wnr03ej",
               "type": "function"
             },
-            "fingerprint": 6414515193027282477
+            "fingerprint": 14624064538263747311
           }
         }
       },
       {
         "tool_call": {
-          "id": "khtswp4qd",
+          "id": "vacjvv2b0",
           "name": "lookup_orchard_label",
           "arguments": {},
           "native": {
@@ -428,10 +403,10 @@
                 "arguments": "{}",
                 "name": "lookup_orchard_label"
               },
-              "id": "khtswp4qd",
+              "id": "vacjvv2b0",
               "type": "function"
             },
-            "fingerprint": 4514108805793572495
+            "fingerprint": 14781990258612689533
           }
         }
       }
@@ -441,37 +416,37 @@
       "output_tokens": 36,
       "total_tokens": 446
     },
-    "response_id": "chatcmpl-687172c8-2aef-495f-8b82-0ca9d4bb50dc",
+    "response_id": "chatcmpl-7584f495-a879-4815-bffe-cbe515644d8e",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xcjsvmegnsbgbh679sr8nx",
+    "provider_request_id": "req_01m3z3nay2ec69ns8chxjhene2",
     "raw": {
       "usage": {
-        "prompt_tokens": 410,
+        "completion_time": 0.072206314,
         "completion_tokens": 36,
-        "total_tokens": 446,
-        "queue_time": 0.009578558,
-        "prompt_time": 0.028942931,
-        "completion_time": 0.070302492,
-        "total_time": 0.099245423
+        "prompt_time": 0.03516092,
+        "prompt_tokens": 410,
+        "queue_time": 0.008503382,
+        "total_time": 0.107367234,
+        "total_tokens": 446
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-687172c8-2aef-495f-8b82-0ca9d4bb50dc",
+      "response_id": "chatcmpl-7584f495-a879-4815-bffe-cbe515644d8e",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_fea14bdc83",
+        "system_fingerprint": "fp_57c7e760a9",
         "x_groq": {
-          "id": "req_01m3xcjsvmegnsbgbh679sr8nx",
-          "seed": 495878634,
+          "id": "req_01m3z3nay2ec69ns8chxjhene2",
+          "seed": 610715604,
           "usage": {
-            "completion_time": 0.070302492,
+            "completion_time": 0.072206314,
             "completion_tokens": 36,
-            "prompt_time": 0.028942931,
+            "prompt_time": 0.03516092,
             "prompt_tokens": 410,
-            "queue_time": 0.009578558,
-            "total_time": 0.099245423,
+            "queue_time": 0.008503382,
+            "total_time": 0.107367234,
             "total_tokens": 446
           }
         },
@@ -484,12 +459,7 @@
     "choice": [
       {
         "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
-        "native": {
-          "item": {
-            "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\"."
-          },
-          "fingerprint": 3447351829490124892
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -497,37 +467,37 @@
       "output_tokens": 24,
       "total_tokens": 501
     },
-    "response_id": "chatcmpl-fde66d97-3d95-4c6b-8b1c-eb385e8ad3fd",
+    "response_id": "chatcmpl-7803dad1-1232-43ac-ac33-8822930127c8",
     "finish_reason": "stop",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xcjt2weeqbnsvnxg5gzrt9",
+    "provider_request_id": "req_01m3z3nb3jee2vfm5hqfzajx7r",
     "raw": {
       "usage": {
-        "prompt_tokens": 477,
+        "completion_time": 0.053118543,
         "completion_tokens": 24,
-        "total_tokens": 501,
-        "queue_time": 0.010568991,
-        "prompt_time": 0.03814272,
-        "completion_time": 0.047466935,
-        "total_time": 0.085609655
+        "prompt_time": 0.03647647,
+        "prompt_tokens": 477,
+        "queue_time": 0.95689466,
+        "total_time": 0.089595013,
+        "total_tokens": 501
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-fde66d97-3d95-4c6b-8b1c-eb385e8ad3fd",
+      "response_id": "chatcmpl-7803dad1-1232-43ac-ac33-8822930127c8",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_57c7e760a9",
+        "system_fingerprint": "fp_fea14bdc83",
         "x_groq": {
-          "id": "req_01m3xcjt2weeqbnsvnxg5gzrt9",
-          "seed": 1121763539,
+          "id": "req_01m3z3nb3jee2vfm5hqfzajx7r",
+          "seed": 1610526424,
           "usage": {
-            "completion_time": 0.047466935,
+            "completion_time": 0.053118543,
             "completion_tokens": 24,
-            "prompt_time": 0.03814272,
+            "prompt_time": 0.03647647,
             "prompt_tokens": 477,
-            "queue_time": 0.010568991,
-            "total_time": 0.085609655,
+            "queue_time": 0.95689466,
+            "total_time": 0.089595013,
             "total_tokens": 501
           }
         },
@@ -569,7 +539,7 @@
               "id": "w2acbw4dw",
               "type": "function"
             },
-            "fingerprint": 10890710014652773684
+            "fingerprint": 10632108957426391274
           }
         }
       }
@@ -585,13 +555,13 @@
     "provider_request_id": "req_01m36jmtkmeef95b66xzrfvhe2",
     "raw": {
       "usage": {
-        "prompt_tokens": 448,
-        "completion_tokens": 104,
-        "total_tokens": 552,
-        "queue_time": 0.071996749,
-        "prompt_time": 0.03729024,
         "completion_time": 0.256833784,
-        "total_time": 0.294124024
+        "completion_tokens": 104,
+        "prompt_time": 0.03729024,
+        "prompt_tokens": 448,
+        "queue_time": 0.071996749,
+        "total_time": 0.294124024,
+        "total_tokens": 552
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-d70b46a9-7be5-49e1-8652-4ec3239a930f",
@@ -634,7 +604,7 @@
               "id": "5dettfrmf",
               "type": "function"
             },
-            "fingerprint": 996865232262852757
+            "fingerprint": 6171397046664165983
           }
         }
       }
@@ -725,7 +695,7 @@
               "id": "yp19xp3yd",
               "type": "function"
             },
-            "fingerprint": 3023286871198677683
+            "fingerprint": 17547983947895170185
           }
         }
       }
@@ -807,7 +777,7 @@
               "id": "exd1a5pqa",
               "type": "function"
             },
-            "fingerprint": 14653504917643480590
+            "fingerprint": 10223487362187909342
           }
         }
       }
@@ -884,7 +854,7 @@
               "id": "a9md5g42r",
               "type": "function"
             },
-            "fingerprint": 180838201338165559
+            "fingerprint": 15309550896387512495
           }
         }
       }
@@ -960,7 +930,7 @@
               "id": "zh6t2s3ak",
               "type": "function"
             },
-            "fingerprint": 11701885999172213672
+            "fingerprint": 12501573829821783950
           }
         }
       }
@@ -1022,12 +992,7 @@
     "choice": [
       {
         "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
-        "native": {
-          "item": {
-            "content": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK."
-          },
-          "fingerprint": 12626281395971937337
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1078,7 +1043,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "g2kt0jsh4",
+          "id": "2g9gqs22f",
           "name": "ping_empty",
           "arguments": {},
           "native": {
@@ -1087,10 +1052,10 @@
                 "arguments": "{}",
                 "name": "ping_empty"
               },
-              "id": "g2kt0jsh4",
+              "id": "2g9gqs22f",
               "type": "function"
             },
-            "fingerprint": 13078668078359292951
+            "fingerprint": 13878528504571506291
           }
         }
       }
@@ -1100,37 +1065,37 @@
       "output_tokens": 15,
       "total_tokens": 911
     },
-    "response_id": "chatcmpl-85e2a940-558a-42e0-a7f3-c938d7495e4a",
+    "response_id": "chatcmpl-b712b12f-7a38-4152-8c49-9e052adea1f9",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xpz3ttefcrm0kszwe9f3jh",
+    "provider_request_id": "req_01m3za0zyxetx8gxngf1bkgxqa",
     "raw": {
       "usage": {
-        "prompt_tokens": 896,
+        "completion_time": 0.030332849,
         "completion_tokens": 15,
-        "total_tokens": 911,
-        "queue_time": 0.018612682,
-        "prompt_time": 0.065464429,
-        "completion_time": 0.029734004,
-        "total_time": 0.095198433
+        "prompt_time": 0.074612713,
+        "prompt_tokens": 896,
+        "queue_time": 0.026346553,
+        "total_time": 0.104945562,
+        "total_tokens": 911
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-85e2a940-558a-42e0-a7f3-c938d7495e4a",
+      "response_id": "chatcmpl-b712b12f-7a38-4152-8c49-9e052adea1f9",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_c14f15bfae",
+        "system_fingerprint": "fp_57c7e760a9",
         "x_groq": {
-          "id": "req_01m3xpz3ttefcrm0kszwe9f3jh",
-          "seed": 1277902507,
+          "id": "req_01m3za0zyxetx8gxngf1bkgxqa",
+          "seed": 1832911160,
           "usage": {
-            "completion_time": 0.029734004,
+            "completion_time": 0.030332849,
             "completion_tokens": 15,
-            "prompt_time": 0.065464429,
+            "prompt_time": 0.074612713,
             "prompt_tokens": 896,
-            "queue_time": 0.018612682,
-            "total_time": 0.095198433,
+            "queue_time": 0.026346553,
+            "total_time": 0.104945562,
             "total_tokens": 911
           }
         },
@@ -1143,7 +1108,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "79s6hyh3k",
+          "id": "s4n9ph04b",
           "name": "inspect_manifest",
           "arguments": {
             "flags": {
@@ -1169,10 +1134,10 @@
                 "arguments": "{\"flags\":{\"critical\":true,\"retries\":2},\"note\":\"line one; line two says \\\"hello\\\" and path C:/rig/groq\",\"project\":\"rig-groq\",\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}]}",
                 "name": "inspect_manifest"
               },
-              "id": "79s6hyh3k",
+              "id": "s4n9ph04b",
               "type": "function"
             },
-            "fingerprint": 5793221978979935032
+            "fingerprint": 10091342310896956874
           }
         }
       }
@@ -1182,37 +1147,37 @@
       "output_tokens": 117,
       "total_tokens": 1048
     },
-    "response_id": "chatcmpl-20698c51-f44a-4ba1-bcdd-88ca7063d97c",
+    "response_id": "chatcmpl-4d4b97df-9ed4-4b99-872c-ef0939e1c0ff",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xpz405edrvpt9mgkf6rhd8",
+    "provider_request_id": "req_01m3za105ce84ac1e7g35ntz1a",
     "raw": {
       "usage": {
-        "prompt_tokens": 931,
+        "completion_time": 0.317241424,
         "completion_tokens": 117,
-        "total_tokens": 1048,
-        "queue_time": 0.005092458,
-        "prompt_time": 0.068847415,
-        "completion_time": 0.324734012,
-        "total_time": 0.393581427
+        "prompt_time": 0.077611625,
+        "prompt_tokens": 931,
+        "queue_time": 0.019896652,
+        "total_time": 0.394853049,
+        "total_tokens": 1048
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-20698c51-f44a-4ba1-bcdd-88ca7063d97c",
+      "response_id": "chatcmpl-4d4b97df-9ed4-4b99-872c-ef0939e1c0ff",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_c14f15bfae",
+        "system_fingerprint": "fp_57c7e760a9",
         "x_groq": {
-          "id": "req_01m3xpz405edrvpt9mgkf6rhd8",
-          "seed": 1910425101,
+          "id": "req_01m3za105ce84ac1e7g35ntz1a",
+          "seed": 2135786977,
           "usage": {
-            "completion_time": 0.324734012,
+            "completion_time": 0.317241424,
             "completion_tokens": 117,
-            "prompt_time": 0.068847415,
+            "prompt_time": 0.077611625,
             "prompt_tokens": 931,
-            "queue_time": 0.005092458,
-            "total_time": 0.393581427,
+            "queue_time": 0.019896652,
+            "total_time": 0.394853049,
             "total_tokens": 1048
           }
         },
@@ -1225,7 +1190,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "7kwyzekzt",
+          "id": "fcvrhvnzk",
           "name": "join_labels",
           "arguments": {
             "labels": [
@@ -1242,10 +1207,10 @@
                 "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                 "name": "join_labels"
               },
-              "id": "7kwyzekzt",
+              "id": "fcvrhvnzk",
               "type": "function"
             },
-            "fingerprint": 10445042809985292314
+            "fingerprint": 2765592344315452178
           }
         }
       }
@@ -1255,37 +1220,37 @@
       "output_tokens": 55,
       "total_tokens": 1142
     },
-    "response_id": "chatcmpl-452da7db-ac02-42c6-91ff-3a188fe521a9",
+    "response_id": "chatcmpl-b2103779-071e-4e63-a9a6-7fa38d7c8237",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xpz4ekeh7rv1p3rgyc7pzm",
+    "provider_request_id": "req_01m3za10mdeh9bbeq8vdw3tmj5",
     "raw": {
       "usage": {
-        "prompt_tokens": 1087,
+        "completion_time": 0.125323864,
         "completion_tokens": 55,
-        "total_tokens": 1142,
-        "queue_time": 0.017703681,
-        "prompt_time": 0.096602367,
-        "completion_time": 0.128948654,
-        "total_time": 0.225551021
+        "prompt_time": 0.077272392,
+        "prompt_tokens": 1087,
+        "queue_time": 0.034562995,
+        "total_time": 0.202596256,
+        "total_tokens": 1142
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-452da7db-ac02-42c6-91ff-3a188fe521a9",
+      "response_id": "chatcmpl-b2103779-071e-4e63-a9a6-7fa38d7c8237",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_5e14805ce3",
+        "system_fingerprint": "fp_c14f15bfae",
         "x_groq": {
-          "id": "req_01m3xpz4ekeh7rv1p3rgyc7pzm",
-          "seed": 859060968,
+          "id": "req_01m3za10mdeh9bbeq8vdw3tmj5",
+          "seed": 22923400,
           "usage": {
-            "completion_time": 0.128948654,
+            "completion_time": 0.125323864,
             "completion_tokens": 55,
-            "prompt_time": 0.096602367,
+            "prompt_time": 0.077272392,
             "prompt_tokens": 1087,
-            "queue_time": 0.017703681,
-            "total_time": 0.225551021,
+            "queue_time": 0.034562995,
+            "total_time": 0.202596256,
             "total_tokens": 1142
           }
         },
@@ -1298,7 +1263,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "4v369nxe7",
+          "id": "6xw6mzz14",
           "name": "optional_nullable_probe",
           "arguments": {
             "name": "sentinel",
@@ -1310,10 +1275,10 @@
                 "arguments": "{\"name\":\"sentinel\",\"nullable_code\":null}",
                 "name": "optional_nullable_probe"
               },
-              "id": "4v369nxe7",
+              "id": "6xw6mzz14",
               "type": "function"
             },
-            "fingerprint": 1019743510327147306
+            "fingerprint": 6047589165699830881
           }
         }
       }
@@ -1323,37 +1288,37 @@
       "output_tokens": 41,
       "total_tokens": 1216
     },
-    "response_id": "chatcmpl-95ce9d55-eef0-45f5-b920-70accb0639e7",
+    "response_id": "chatcmpl-636b97ac-c739-4754-a688-6542a840f49f",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xpz4r2ekgrnxqqa2e4q9gp",
+    "provider_request_id": "req_01m3za10xne27bza04fhjwwcbc",
     "raw": {
       "usage": {
-        "prompt_tokens": 1175,
+        "completion_time": 0.108510351,
         "completion_tokens": 41,
-        "total_tokens": 1216,
-        "queue_time": 0.006044054,
-        "prompt_time": 0.086244505,
-        "completion_time": 0.099730922,
-        "total_time": 0.185975427
+        "prompt_time": 0.083658959,
+        "prompt_tokens": 1175,
+        "queue_time": 0.02385817,
+        "total_time": 0.19216931,
+        "total_tokens": 1216
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-95ce9d55-eef0-45f5-b920-70accb0639e7",
+      "response_id": "chatcmpl-636b97ac-c739-4754-a688-6542a840f49f",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
         "system_fingerprint": "fp_c14f15bfae",
         "x_groq": {
-          "id": "req_01m3xpz4r2ekgrnxqqa2e4q9gp",
-          "seed": 437195435,
+          "id": "req_01m3za10xne27bza04fhjwwcbc",
+          "seed": 143594221,
           "usage": {
-            "completion_time": 0.099730922,
+            "completion_time": 0.108510351,
             "completion_tokens": 41,
-            "prompt_time": 0.086244505,
+            "prompt_time": 0.083658959,
             "prompt_tokens": 1175,
-            "queue_time": 0.006044054,
-            "total_time": 0.185975427,
+            "queue_time": 0.02385817,
+            "total_time": 0.19216931,
             "total_tokens": 1216
           }
         },
@@ -1366,7 +1331,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "a97vpt53k",
+          "id": "36jharv3r",
           "name": "escape_echo",
           "arguments": {
             "text": "Line 1\nLine \"2\" with colon: ok and unicode snowman ☃"
@@ -1377,10 +1342,10 @@
                 "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with colon: ok and unicode snowman ☃\"}",
                 "name": "escape_echo"
               },
-              "id": "a97vpt53k",
+              "id": "36jharv3r",
               "type": "function"
             },
-            "fingerprint": 14852438972980927968
+            "fingerprint": 12882692779098668115
           }
         }
       }
@@ -1390,37 +1355,37 @@
       "output_tokens": 43,
       "total_tokens": 1289
     },
-    "response_id": "chatcmpl-040cddad-b9fa-4398-aae1-983c5a0d9129",
+    "response_id": "chatcmpl-6a10846b-403a-418e-b6bd-c4725a4e4f83",
     "finish_reason": "tool_calls",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xpz51zed9v64s14qx2fx9v",
+    "provider_request_id": "req_01m3za116reyebmnzcmemz03x7",
     "raw": {
       "usage": {
-        "prompt_tokens": 1246,
+        "completion_time": 0.149099176,
         "completion_tokens": 43,
-        "total_tokens": 1289,
-        "queue_time": 0.057968056,
-        "prompt_time": 0.093485267,
-        "completion_time": 0.14590573,
-        "total_time": 0.239390997
+        "prompt_time": 0.130022303,
+        "prompt_tokens": 1246,
+        "queue_time": 0.006688643,
+        "total_time": 0.279121479,
+        "total_tokens": 1289
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-040cddad-b9fa-4398-aae1-983c5a0d9129",
+      "response_id": "chatcmpl-6a10846b-403a-418e-b6bd-c4725a4e4f83",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_fea14bdc83",
+        "system_fingerprint": "fp_5e14805ce3",
         "x_groq": {
-          "id": "req_01m3xpz51zed9v64s14qx2fx9v",
-          "seed": 1382778215,
+          "id": "req_01m3za116reyebmnzcmemz03x7",
+          "seed": 1887051094,
           "usage": {
-            "completion_time": 0.14590573,
+            "completion_time": 0.149099176,
             "completion_tokens": 43,
-            "prompt_time": 0.093485267,
+            "prompt_time": 0.130022303,
             "prompt_tokens": 1246,
-            "queue_time": 0.057968056,
-            "total_time": 0.239390997,
+            "queue_time": 0.006688643,
+            "total_time": 0.279121479,
             "total_tokens": 1289
           }
         },
@@ -1432,52 +1397,47 @@
     "mode": "streaming",
     "choice": [
       {
-        "text": "All five checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
-        "native": {
-          "item": {
-            "content": "All five checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK."
-          },
-          "fingerprint": 10073005224191248143
-        }
+        "text": "All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, ESCAPE-OK.",
+        "native": null
       }
     ],
     "usage": {
       "input_tokens": 1328,
-      "output_tokens": 30,
-      "total_tokens": 1358
+      "output_tokens": 28,
+      "total_tokens": 1356
     },
-    "response_id": "chatcmpl-183ceeab-4386-4d2c-80db-30889858cad7",
+    "response_id": "chatcmpl-c2e59b76-5a68-43ed-be34-62ce0e4dfa70",
     "finish_reason": "stop",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m3xpz5d2e2w941bwx6p3zbq4",
+    "provider_request_id": "req_01m3za11hrebcv2q2npa0z3fxb",
     "raw": {
       "usage": {
+        "completion_time": 0.053480534,
+        "completion_tokens": 28,
+        "prompt_time": 0.097378218,
         "prompt_tokens": 1328,
-        "completion_tokens": 30,
-        "total_tokens": 1358,
-        "queue_time": 0.005864311,
-        "prompt_time": 0.110313252,
-        "completion_time": 0.059089073,
-        "total_time": 0.169402325
+        "queue_time": 0.005447879,
+        "total_time": 0.150858752,
+        "total_tokens": 1356
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-183ceeab-4386-4d2c-80db-30889858cad7",
+      "response_id": "chatcmpl-c2e59b76-5a68-43ed-be34-62ce0e4dfa70",
       "model": "qwen/qwen3.8-27b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_5e14805ce3",
+        "system_fingerprint": "fp_c14f15bfae",
         "x_groq": {
-          "id": "req_01m3xpz5d2e2w941bwx6p3zbq4",
-          "seed": 1364304915,
+          "id": "req_01m3za11hrebcv2q2npa0z3fxb",
+          "seed": 15259605,
           "usage": {
-            "completion_time": 0.059089073,
-            "completion_tokens": 30,
-            "prompt_time": 0.110313252,
+            "completion_time": 0.053480534,
+            "completion_tokens": 28,
+            "prompt_time": 0.097378218,
             "prompt_tokens": 1328,
-            "queue_time": 0.005864311,
-            "total_time": 0.169402325,
-            "total_tokens": 1358
+            "queue_time": 0.005447879,
+            "total_time": 0.150858752,
+            "total_tokens": 1356
           }
         },
         "service_tier": "on_demand"
@@ -1501,7 +1461,7 @@
               "id": "x3zhgr0dm",
               "type": "function"
             },
-            "fingerprint": 15165617595853157527
+            "fingerprint": 3109879746244948731
           }
         }
       }
@@ -1575,7 +1535,7 @@
               "id": "yb0yeahxt",
               "type": "function"
             },
-            "fingerprint": 3113233268380978648
+            "fingerprint": 6648891469514492122
           }
         }
       }
@@ -1649,7 +1609,7 @@
               "id": "p0hsmxdcq",
               "type": "function"
             },
-            "fingerprint": 8348950016615982993
+            "fingerprint": 17405819827129449497
           }
         }
       }
@@ -1717,18 +1677,13 @@
             "item": {
               "reasoning": "The user says: \"Do not call tools. Reply with exactly this phrase: no-tool-answer\". So we must output exactly that phrase, no extra text. Ensure not to call any tools. Just output \"no-tool-answer\"."
             },
-            "fingerprint": 6375908662223482246
+            "fingerprint": 770299744530509244
           }
         }
       },
       {
         "text": "no-tool-answer",
-        "native": {
-          "item": {
-            "content": "no-tool-answer"
-          },
-          "fingerprint": 6033012156835078666
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1790,18 +1745,13 @@
             "item": {
               "reasoning": "We have a user request: \"Reply with the single word OK.\" There's no disallowed content. The user wants a single word response: OK. According to policy, we comply."
             },
-            "fingerprint": 2613539465791236828
+            "fingerprint": 11206645919297842122
           }
         }
       },
       {
         "text": "OK",
-        "native": {
-          "item": {
-            "content": "OK"
-          },
-          "fingerprint": 13155488559848690021
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1863,18 +1813,13 @@
             "item": {
               "reasoning": "The user wants a single word \"OK\". Just output OK."
             },
-            "fingerprint": 14832522325720055941
+            "fingerprint": 797315307747757961
           }
         }
       },
       {
         "text": "OK",
-        "native": {
-          "item": {
-            "content": "OK"
-          },
-          "fingerprint": 13155488559848690021
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1930,12 +1875,7 @@
     "choice": [
       {
         "text": "OK",
-        "native": {
-          "item": {
-            "content": "OK"
-          },
-          "fingerprint": 13155488559848690021
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1986,19 +1926,19 @@
     "choice": [
       {
         "reasoning": {
-          "text": "We need to use tools. First call lookup_record for alpha. Then verify_code. Then lookup_record for beta. Then verify_code. Use tools.",
+          "text": "We need to use lookup_record twice: once with record:\"alpha\" and once with record:\"beta\". Then verify each returned code using verify_code, which may fail transiently. If transient failure occurs, retry once.\n\nWe must not guess a code; must use tool. So first call lookup_record for alpha. Then verify_code on that result. Then lookup_record for beta, then verify_code.\n\nWe need to output both codes with verification status. Format? \"Alpha: code X, verified\" etc.\n\nWe'll do the calls.\n\nWe need to call tools. We'll do sequentially: lookup_record alpha, verify_code, lookup_record beta, verify_code.\n\nLet's call first.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "We need to use tools. First call lookup_record for alpha. Then verify_code. Then lookup_record for beta. Then verify_code. Use tools."
+              "reasoning": "We need to use lookup_record twice: once with record:\"alpha\" and once with record:\"beta\". Then verify each returned code using verify_code, which may fail transiently. If transient failure occurs, retry once.\n\nWe must not guess a code; must use tool. So first call lookup_record for alpha. Then verify_code on that result. Then lookup_record for beta, then verify_code.\n\nWe need to output both codes with verification status. Format? \"Alpha: code X, verified\" etc.\n\nWe'll do the calls.\n\nWe need to call tools. We'll do sequentially: lookup_record alpha, verify_code, lookup_record beta, verify_code.\n\nLet's call first."
             },
-            "fingerprint": 16435605953068393320
+            "fingerprint": 6523081732936618949
           }
         }
       },
       {
         "tool_call": {
-          "id": "fc_f43baffd-0198-44c7-a0b1-f00cabda0e15",
+          "id": "fc_45f9d237-1235-46e0-b25e-e9846bb74d73",
           "name": "lookup_record",
           "arguments": {
             "record": "alpha"
@@ -2009,58 +1949,58 @@
                 "arguments": "{\"record\":\"alpha\"}",
                 "name": "lookup_record"
               },
-              "id": "fc_f43baffd-0198-44c7-a0b1-f00cabda0e15",
+              "id": "fc_45f9d237-1235-46e0-b25e-e9846bb74d73",
               "type": "function"
             },
-            "fingerprint": 5914929477409163315
+            "fingerprint": 3621812481976435332
           }
         }
       }
     ],
     "usage": {
       "input_tokens": 227,
-      "output_tokens": 54,
-      "total_tokens": 281,
-      "reasoning_tokens": 31
+      "output_tokens": 160,
+      "total_tokens": 387,
+      "reasoning_tokens": 137
     },
-    "response_id": "chatcmpl-c79961ff-06d9-4346-bee1-a91faab2e66e",
+    "response_id": "chatcmpl-19b992a4-0ccd-43da-b715-6c5ff652a6db",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgytamez6s9cry34hjjvm0",
+    "provider_request_id": "req_01m3z3nq32evfrz5n8rbf76jve",
     "raw": {
       "usage": {
-        "prompt_tokens": 227,
-        "completion_tokens": 54,
-        "total_tokens": 281,
+        "completion_time": 0.169485066,
+        "completion_tokens": 160,
         "completion_tokens_details": {
-          "reasoning_tokens": 31
+          "reasoning_tokens": 137
         },
-        "queue_time": 0.068585646,
-        "prompt_time": 0.012739326,
-        "completion_time": 0.054621115,
-        "total_time": 0.067360441
+        "prompt_time": 0.013072703,
+        "prompt_tokens": 227,
+        "queue_time": 0.208646242,
+        "total_time": 0.182557769,
+        "total_tokens": 387
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-c79961ff-06d9-4346-bee1-a91faab2e66e",
+      "response_id": "chatcmpl-19b992a4-0ccd-43da-b715-6c5ff652a6db",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_228717f27c",
+        "system_fingerprint": "fp_9b8528b477",
         "x_groq": {
-          "id": "req_01m3xgytamez6s9cry34hjjvm0",
-          "seed": 1366128699,
+          "id": "req_01m3z3nq32evfrz5n8rbf76jve",
+          "seed": 259835873,
           "usage": {
-            "completion_time": 0.054621115,
-            "completion_tokens": 54,
+            "completion_time": 0.169485066,
+            "completion_tokens": 160,
             "completion_tokens_details": {
-              "reasoning_tokens": 31
+              "reasoning_tokens": 137
             },
-            "prompt_time": 0.012739326,
+            "prompt_time": 0.013072703,
             "prompt_tokens": 227,
-            "queue_time": 0.068585646,
-            "total_time": 0.067360441,
-            "total_tokens": 281
+            "queue_time": 0.208646242,
+            "total_time": 0.182557769,
+            "total_tokens": 387
           }
         },
         "service_tier": "on_demand"
@@ -2078,13 +2018,13 @@
             "item": {
               "reasoning": "Now verify."
             },
-            "fingerprint": 639648371385407279
+            "fingerprint": 582394443811972051
           }
         }
       },
       {
         "tool_call": {
-          "id": "fc_8a27bd38-770f-43fc-a4f3-bed02038edaa",
+          "id": "fc_9878c954-654d-4a9c-b49a-b50103878a6d",
           "name": "verify_code",
           "arguments": {
             "code": "alpha-code-7431"
@@ -2095,58 +2035,58 @@
                 "arguments": "{\"code\":\"alpha-code-7431\"}",
                 "name": "verify_code"
               },
-              "id": "fc_8a27bd38-770f-43fc-a4f3-bed02038edaa",
+              "id": "fc_9878c954-654d-4a9c-b49a-b50103878a6d",
               "type": "function"
             },
-            "fingerprint": 9941834847633449418
+            "fingerprint": 7867367053652699070
           }
         }
       }
     ],
     "usage": {
-      "input_tokens": 297,
-      "output_tokens": 28,
-      "total_tokens": 325,
+      "input_tokens": 403,
+      "output_tokens": 27,
+      "total_tokens": 430,
       "reasoning_tokens": 4
     },
-    "response_id": "chatcmpl-b929e699-39f9-4158-b313-098528439be8",
+    "response_id": "chatcmpl-14227716-9f82-4b8e-9221-b0e0e6533b2a",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgytgvebhrxn09a0sbtvy2",
+    "provider_request_id": "req_01m3z3nqh3er5s83n3h0mzk5hy",
     "raw": {
       "usage": {
-        "prompt_tokens": 297,
-        "completion_tokens": 28,
-        "total_tokens": 325,
+        "completion_time": 0.027559214,
+        "completion_tokens": 27,
         "completion_tokens_details": {
           "reasoning_tokens": 4
         },
-        "queue_time": 0.238225043,
-        "prompt_time": 0.015801046,
-        "completion_time": 0.028887692,
-        "total_time": 0.044688738
+        "prompt_time": 0.020965541,
+        "prompt_tokens": 403,
+        "queue_time": 0.17302683,
+        "total_time": 0.048524755,
+        "total_tokens": 430
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-b929e699-39f9-4158-b313-098528439be8",
+      "response_id": "chatcmpl-14227716-9f82-4b8e-9221-b0e0e6533b2a",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_c5a89987dc",
+        "system_fingerprint": "fp_a12402de73",
         "x_groq": {
-          "id": "req_01m3xgytgvebhrxn09a0sbtvy2",
-          "seed": 25507969,
+          "id": "req_01m3z3nqh3er5s83n3h0mzk5hy",
+          "seed": 146161037,
           "usage": {
-            "completion_time": 0.028887692,
-            "completion_tokens": 28,
+            "completion_time": 0.027559214,
+            "completion_tokens": 27,
             "completion_tokens_details": {
               "reasoning_tokens": 4
             },
-            "prompt_time": 0.015801046,
-            "prompt_tokens": 297,
-            "queue_time": 0.238225043,
-            "total_time": 0.044688738,
-            "total_tokens": 325
+            "prompt_time": 0.020965541,
+            "prompt_tokens": 403,
+            "queue_time": 0.17302683,
+            "total_time": 0.048524755,
+            "total_tokens": 430
           }
         },
         "service_tier": "on_demand"
@@ -2158,19 +2098,19 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Now beta.",
+          "text": "Now lookup beta.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "Now beta."
+              "reasoning": "Now lookup beta."
             },
-            "fingerprint": 8582756223908066238
+            "fingerprint": 13660983406251953184
           }
         }
       },
       {
         "tool_call": {
-          "id": "fc_b1800496-f60b-4003-a63d-e245977f08a5",
+          "id": "fc_4b34f161-6344-451c-b0ae-2f5db70db6f0",
           "name": "lookup_record",
           "arguments": {
             "record": "beta"
@@ -2181,58 +2121,58 @@
                 "arguments": "{\"record\":\"beta\"}",
                 "name": "lookup_record"
               },
-              "id": "fc_b1800496-f60b-4003-a63d-e245977f08a5",
+              "id": "fc_4b34f161-6344-451c-b0ae-2f5db70db6f0",
               "type": "function"
             },
-            "fingerprint": 17550625992442394547
+            "fingerprint": 12531418196235198002
           }
         }
       }
     ],
     "usage": {
-      "input_tokens": 341,
-      "output_tokens": 23,
-      "total_tokens": 364,
-      "reasoning_tokens": 4
+      "input_tokens": 447,
+      "output_tokens": 24,
+      "total_tokens": 471,
+      "reasoning_tokens": 5
     },
-    "response_id": "chatcmpl-ac0c228a-f73f-423e-83f3-28b0d69ecec7",
+    "response_id": "chatcmpl-6023e9db-6f00-427a-8f13-15882df84ff2",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgytvqeh09n4w14zn7edwr",
+    "provider_request_id": "req_01m3z3nqspenwvnncry5awnymy",
     "raw": {
       "usage": {
-        "prompt_tokens": 341,
-        "completion_tokens": 23,
-        "total_tokens": 364,
+        "completion_time": 0.025786761,
+        "completion_tokens": 24,
         "completion_tokens_details": {
-          "reasoning_tokens": 4
+          "reasoning_tokens": 5
         },
-        "queue_time": 0.17628638,
-        "prompt_time": 0.02193011,
-        "completion_time": 0.024926617,
-        "total_time": 0.046856727
+        "prompt_time": 0.037133784,
+        "prompt_tokens": 447,
+        "queue_time": 0.129865156,
+        "total_time": 0.062920545,
+        "total_tokens": 471
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-ac0c228a-f73f-423e-83f3-28b0d69ecec7",
+      "response_id": "chatcmpl-6023e9db-6f00-427a-8f13-15882df84ff2",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_feb9b278f1",
+        "system_fingerprint": "fp_5979a0e1b7",
         "x_groq": {
-          "id": "req_01m3xgytvqeh09n4w14zn7edwr",
-          "seed": 1165316794,
+          "id": "req_01m3z3nqspenwvnncry5awnymy",
+          "seed": 1315998080,
           "usage": {
-            "completion_time": 0.024926617,
-            "completion_tokens": 23,
+            "completion_time": 0.025786761,
+            "completion_tokens": 24,
             "completion_tokens_details": {
-              "reasoning_tokens": 4
+              "reasoning_tokens": 5
             },
-            "prompt_time": 0.02193011,
-            "prompt_tokens": 341,
-            "queue_time": 0.17628638,
-            "total_time": 0.046856727,
-            "total_tokens": 364
+            "prompt_time": 0.037133784,
+            "prompt_tokens": 447,
+            "queue_time": 0.129865156,
+            "total_time": 0.062920545,
+            "total_tokens": 471
           }
         },
         "service_tier": "on_demand"
@@ -2244,19 +2184,19 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Now verify.",
+          "text": "Verify.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "Now verify."
+              "reasoning": "Verify."
             },
-            "fingerprint": 639648371385407279
+            "fingerprint": 12081336450579152319
           }
         }
       },
       {
         "tool_call": {
-          "id": "fc_f87661c3-6ab3-4275-97a6-509449aa2f5a",
+          "id": "fc_74e11b2a-b57b-4897-bb9a-ae82c2ef1d2c",
           "name": "verify_code",
           "arguments": {
             "code": "beta-code-2286"
@@ -2267,58 +2207,58 @@
                 "arguments": "{\"code\":\"beta-code-2286\"}",
                 "name": "verify_code"
               },
-              "id": "fc_f87661c3-6ab3-4275-97a6-509449aa2f5a",
+              "id": "fc_74e11b2a-b57b-4897-bb9a-ae82c2ef1d2c",
               "type": "function"
             },
-            "fingerprint": 6118034646137964487
+            "fingerprint": 8286327664397312238
           }
         }
       }
     ],
     "usage": {
-      "input_tokens": 384,
-      "output_tokens": 27,
-      "total_tokens": 411,
-      "reasoning_tokens": 4
+      "input_tokens": 491,
+      "output_tokens": 26,
+      "total_tokens": 517,
+      "reasoning_tokens": 3
     },
-    "response_id": "chatcmpl-a31880ad-026c-4b57-b3d2-90997f669a95",
+    "response_id": "chatcmpl-7cdfa0b9-5a33-4135-ab29-873a87cf32a3",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgyv4pehpvhx431n275bmp",
+    "provider_request_id": "req_01m3z3nr1dees8e21jj3xjv07z",
     "raw": {
       "usage": {
-        "prompt_tokens": 384,
-        "completion_tokens": 27,
-        "total_tokens": 411,
+        "completion_time": 0.027594265,
+        "completion_tokens": 26,
         "completion_tokens_details": {
-          "reasoning_tokens": 4
+          "reasoning_tokens": 3
         },
-        "queue_time": 0.069113495,
-        "prompt_time": 0.022939679,
-        "completion_time": 0.030460388,
-        "total_time": 0.053400067
+        "prompt_time": 0.026522783,
+        "prompt_tokens": 491,
+        "queue_time": 0.003134991,
+        "total_time": 0.054117048,
+        "total_tokens": 517
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-a31880ad-026c-4b57-b3d2-90997f669a95",
+      "response_id": "chatcmpl-7cdfa0b9-5a33-4135-ab29-873a87cf32a3",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_587d0d67cc",
+        "system_fingerprint": "fp_3cdd24b83b",
         "x_groq": {
-          "id": "req_01m3xgyv4pehpvhx431n275bmp",
-          "seed": 450338427,
+          "id": "req_01m3z3nr1dees8e21jj3xjv07z",
+          "seed": 1967988878,
           "usage": {
-            "completion_time": 0.030460388,
-            "completion_tokens": 27,
+            "completion_time": 0.027594265,
+            "completion_tokens": 26,
             "completion_tokens_details": {
-              "reasoning_tokens": 4
+              "reasoning_tokens": 3
             },
-            "prompt_time": 0.022939679,
-            "prompt_tokens": 384,
-            "queue_time": 0.069113495,
-            "total_time": 0.053400067,
-            "total_tokens": 411
+            "prompt_time": 0.026522783,
+            "prompt_tokens": 491,
+            "queue_time": 0.003134991,
+            "total_time": 0.054117048,
+            "total_tokens": 517
           }
         },
         "service_tier": "on_demand"
@@ -2330,19 +2270,19 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Transient failure; need to retry once.",
+          "text": "The verification failed transiently. Per instruction, retry once.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "Transient failure; need to retry once."
+              "reasoning": "The verification failed transiently. Per instruction, retry once."
             },
-            "fingerprint": 17546443571974534195
+            "fingerprint": 4053044116270996826
           }
         }
       },
       {
         "tool_call": {
-          "id": "fc_086fc378-c00c-4a56-a6bd-715ee893bb72",
+          "id": "fc_aaaf8163-1125-4c20-9336-cfed0a6c3662",
           "name": "verify_code",
           "arguments": {
             "code": "beta-code-2286"
@@ -2353,58 +2293,58 @@
                 "arguments": "{\"code\":\"beta-code-2286\"}",
                 "name": "verify_code"
               },
-              "id": "fc_086fc378-c00c-4a56-a6bd-715ee893bb72",
+              "id": "fc_aaaf8163-1125-4c20-9336-cfed0a6c3662",
               "type": "function"
             },
-            "fingerprint": 9406131622876526723
+            "fingerprint": 14647512671748896366
           }
         }
       }
     ],
     "usage": {
-      "input_tokens": 425,
-      "output_tokens": 33,
-      "total_tokens": 458,
-      "reasoning_tokens": 9
+      "input_tokens": 531,
+      "output_tokens": 36,
+      "total_tokens": 567,
+      "reasoning_tokens": 13
     },
-    "response_id": "chatcmpl-86abcc54-ea7d-4683-9c88-98d7b2c164ab",
+    "response_id": "chatcmpl-2cea59e6-a2b2-4699-8cd1-2f1574862510",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgyvaje7d8mb8bs2acfm47",
+    "provider_request_id": "req_01m3z3nr50ej2verjdp4hajvrr",
     "raw": {
       "usage": {
-        "prompt_tokens": 425,
-        "completion_tokens": 33,
-        "total_tokens": 458,
+        "completion_time": 0.038791148,
+        "completion_tokens": 36,
         "completion_tokens_details": {
-          "reasoning_tokens": 9
+          "reasoning_tokens": 13
         },
-        "queue_time": 0.086506341,
-        "prompt_time": 0.021974719,
-        "completion_time": 0.033524287,
-        "total_time": 0.055499006
+        "prompt_time": 0.13498456,
+        "prompt_tokens": 531,
+        "queue_time": 0.133486524,
+        "total_time": 0.173775708,
+        "total_tokens": 567
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-86abcc54-ea7d-4683-9c88-98d7b2c164ab",
+      "response_id": "chatcmpl-2cea59e6-a2b2-4699-8cd1-2f1574862510",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_f8aab374e8",
+        "system_fingerprint": "fp_d23c14756c",
         "x_groq": {
-          "id": "req_01m3xgyvaje7d8mb8bs2acfm47",
-          "seed": 1228516577,
+          "id": "req_01m3z3nr50ej2verjdp4hajvrr",
+          "seed": 262496400,
           "usage": {
-            "completion_time": 0.033524287,
-            "completion_tokens": 33,
+            "completion_time": 0.038791148,
+            "completion_tokens": 36,
             "completion_tokens_details": {
-              "reasoning_tokens": 9
+              "reasoning_tokens": 13
             },
-            "prompt_time": 0.021974719,
-            "prompt_tokens": 425,
-            "queue_time": 0.086506341,
-            "total_time": 0.055499006,
-            "total_tokens": 458
+            "prompt_time": 0.13498456,
+            "prompt_tokens": 531,
+            "queue_time": 0.133486524,
+            "total_time": 0.173775708,
+            "total_tokens": 567
           }
         },
         "service_tier": "on_demand"
@@ -2415,52 +2355,47 @@
     "mode": "streaming",
     "choice": [
       {
-        "text": "**Alpha record** – Code: **alpha-code-7431** – Verification: **success**  \n**Beta record** – Code: **beta-code-2286** – Verification: **success**",
-        "native": {
-          "item": {
-            "content": "**Alpha record** – Code: **alpha-code-7431** – Verification: **success**  \n**Beta record** – Code: **beta-code-2286** – Verification: **success**"
-          },
-          "fingerprint": 348368805653984610
-        }
+        "text": "Alpha record: code **alpha-code-7431** – verified.  \nBeta record: code **beta-code-2286** – verified.",
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 474,
-      "output_tokens": 45,
-      "total_tokens": 519
+      "input_tokens": 584,
+      "output_tokens": 33,
+      "total_tokens": 617
     },
-    "response_id": "chatcmpl-a462cfe4-c219-44a2-b7ba-a977519dfbea",
+    "response_id": "chatcmpl-6d3ab35b-8a9f-4433-9fcb-5ae4c7bb7589",
     "finish_reason": "stop",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgyvh1e388ha20g65t6qhb",
+    "provider_request_id": "req_01m3z3nrgfebt93mp3qckgr7d0",
     "raw": {
       "usage": {
-        "prompt_tokens": 474,
-        "completion_tokens": 45,
-        "total_tokens": 519,
-        "queue_time": 0.236608459,
-        "prompt_time": 0.12386177,
-        "completion_time": 0.046080284,
-        "total_time": 0.169942054
+        "completion_time": 0.035493267,
+        "completion_tokens": 33,
+        "prompt_time": 0.039149867,
+        "prompt_tokens": 584,
+        "queue_time": 0.124744607,
+        "total_time": 0.074643134,
+        "total_tokens": 617
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-a462cfe4-c219-44a2-b7ba-a977519dfbea",
+      "response_id": "chatcmpl-6d3ab35b-8a9f-4433-9fcb-5ae4c7bb7589",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_9340e7d14d",
+        "system_fingerprint": "fp_8b41efc9a3",
         "x_groq": {
-          "id": "req_01m3xgyvh1e388ha20g65t6qhb",
-          "seed": 625164956,
+          "id": "req_01m3z3nrgfebt93mp3qckgr7d0",
+          "seed": 895460745,
           "usage": {
-            "completion_time": 0.046080284,
-            "completion_tokens": 45,
-            "prompt_time": 0.12386177,
-            "prompt_tokens": 474,
-            "queue_time": 0.236608459,
-            "total_time": 0.169942054,
-            "total_tokens": 519
+            "completion_time": 0.035493267,
+            "completion_tokens": 33,
+            "prompt_time": 0.039149867,
+            "prompt_tokens": 584,
+            "queue_time": 0.124744607,
+            "total_time": 0.074643134,
+            "total_tokens": 617
           }
         },
         "service_tier": "on_demand"
@@ -2472,19 +2407,19 @@
     "choice": [
       {
         "reasoning": {
-          "text": "We must call verify_code again on alpha-code-7431.",
+          "text": "We need to verify the alpha code again. We have alpha code \"alpha-code-7431\". We'll call verify_code with that code. It may fail transiently but we only retry once. Let's do that.",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "We must call verify_code again on alpha-code-7431."
+              "reasoning": "We need to verify the alpha code again. We have alpha code \"alpha-code-7431\". We'll call verify_code with that code. It may fail transiently but we only retry once. Let's do that."
             },
-            "fingerprint": 6620958669282373847
+            "fingerprint": 40043947046805223
           }
         }
       },
       {
         "tool_call": {
-          "id": "fc_4be37659-b832-4bca-9bbe-d6cd45e08c6b",
+          "id": "fc_5277e74e-8638-45e9-aa94-2582867a0b35",
           "name": "verify_code",
           "arguments": {
             "code": "alpha-code-7431"
@@ -2495,58 +2430,58 @@
                 "arguments": "{\"code\":\"alpha-code-7431\"}",
                 "name": "verify_code"
               },
-              "id": "fc_4be37659-b832-4bca-9bbe-d6cd45e08c6b",
+              "id": "fc_5277e74e-8638-45e9-aa94-2582867a0b35",
               "type": "function"
             },
-            "fingerprint": 2710007796377774658
+            "fingerprint": 13511590315833864196
           }
         }
       }
     ],
     "usage": {
-      "input_tokens": 538,
-      "output_tokens": 38,
-      "total_tokens": 576,
-      "reasoning_tokens": 14
+      "input_tokens": 636,
+      "output_tokens": 68,
+      "total_tokens": 704,
+      "reasoning_tokens": 44
     },
-    "response_id": "chatcmpl-93d3fe9f-91b1-4df1-8108-95273d93491e",
+    "response_id": "chatcmpl-c1cc4759-eb58-4c5a-aa30-67df96d09645",
     "finish_reason": "tool_calls",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgyvzye2yszc4kx8g078jv",
+    "provider_request_id": "req_01m3z3nrrrer1re2m0rpzwdwdr",
     "raw": {
       "usage": {
-        "prompt_tokens": 538,
-        "completion_tokens": 38,
-        "total_tokens": 576,
+        "completion_time": 0.108643323,
+        "completion_tokens": 68,
         "completion_tokens_details": {
-          "reasoning_tokens": 14
+          "reasoning_tokens": 44
         },
-        "queue_time": 0.231006398,
-        "prompt_time": 0.027156325,
-        "completion_time": 0.047405829,
-        "total_time": 0.074562154
+        "prompt_time": 0.038188222,
+        "prompt_tokens": 636,
+        "queue_time": 0.339577837,
+        "total_time": 0.146831545,
+        "total_tokens": 704
       },
       "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-93d3fe9f-91b1-4df1-8108-95273d93491e",
+      "response_id": "chatcmpl-c1cc4759-eb58-4c5a-aa30-67df96d09645",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_565badff47",
+        "system_fingerprint": "fp_9b8528b477",
         "x_groq": {
-          "id": "req_01m3xgyvzye2yszc4kx8g078jv",
-          "seed": 529610364,
+          "id": "req_01m3z3nrrrer1re2m0rpzwdwdr",
+          "seed": 1459945749,
           "usage": {
-            "completion_time": 0.047405829,
-            "completion_tokens": 38,
+            "completion_time": 0.108643323,
+            "completion_tokens": 68,
             "completion_tokens_details": {
-              "reasoning_tokens": 14
+              "reasoning_tokens": 44
             },
-            "prompt_time": 0.027156325,
-            "prompt_tokens": 538,
-            "queue_time": 0.231006398,
-            "total_time": 0.074562154,
-            "total_tokens": 576
+            "prompt_time": 0.038188222,
+            "prompt_tokens": 636,
+            "queue_time": 0.339577837,
+            "total_time": 0.146831545,
+            "total_tokens": 704
           }
         },
         "service_tier": "on_demand"
@@ -2557,52 +2492,47 @@
     "mode": "streaming",
     "choice": [
       {
-        "text": "Alpha code **alpha-code-7431** remains unchanged and verified successfully.",
-        "native": {
-          "item": {
-            "content": "Alpha code **alpha-code-7431** remains unchanged and verified successfully."
-          },
-          "fingerprint": 18365504387576926024
-        }
+        "text": "Alpha code **alpha-code-7431** remains unchanged – verification successful.",
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 592,
+      "input_tokens": 720,
       "output_tokens": 19,
-      "total_tokens": 611
+      "total_tokens": 739
     },
-    "response_id": "chatcmpl-356abd1d-e3d1-43b5-b2ae-25dfcd48ab97",
+    "response_id": "chatcmpl-a490f136-4f3e-472a-b996-dad8864e54d2",
     "finish_reason": "stop",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgywbneyxan7qqdad2ehnf",
+    "provider_request_id": "req_01m3z3nsa5e7d995xyc19q0yzm",
     "raw": {
       "usage": {
-        "prompt_tokens": 592,
+        "completion_time": 0.019544361,
         "completion_tokens": 19,
-        "total_tokens": 611,
-        "queue_time": 0.073172499,
-        "prompt_time": 0.029891511,
-        "completion_time": 0.019970796,
-        "total_time": 0.049862307
+        "prompt_time": 0.037912994,
+        "prompt_tokens": 720,
+        "queue_time": 0.003877374,
+        "total_time": 0.057457355,
+        "total_tokens": 739
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-356abd1d-e3d1-43b5-b2ae-25dfcd48ab97",
+      "response_id": "chatcmpl-a490f136-4f3e-472a-b996-dad8864e54d2",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_1074f9ce08",
+        "system_fingerprint": "fp_e594c51153",
         "x_groq": {
-          "id": "req_01m3xgywbneyxan7qqdad2ehnf",
-          "seed": 594640805,
+          "id": "req_01m3z3nsa5e7d995xyc19q0yzm",
+          "seed": 1325141453,
           "usage": {
-            "completion_time": 0.019970796,
+            "completion_time": 0.019544361,
             "completion_tokens": 19,
-            "prompt_time": 0.029891511,
-            "prompt_tokens": 592,
-            "queue_time": 0.073172499,
-            "total_time": 0.049862307,
-            "total_tokens": 611
+            "prompt_time": 0.037912994,
+            "prompt_tokens": 720,
+            "queue_time": 0.003877374,
+            "total_time": 0.057457355,
+            "total_tokens": 739
           }
         },
         "service_tier": "on_demand"
@@ -2614,78 +2544,65 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Return \"alpha-code-7431,beta-code-2286\" only.",
+          "text": "We just need to output both codes separated by a comma, nothing else. The codes: \"alpha-code-7431\" and \"beta-code-2286\". Ensure no extra spaces? Probably just \"alpha-code-7431,beta-code-2286\".",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning": "Return \"alpha-code-7431,beta-code-2286\" only."
+              "reasoning": "We just need to output both codes separated by a comma, nothing else. The codes: \"alpha-code-7431\" and \"beta-code-2286\". Ensure no extra spaces? Probably just \"alpha-code-7431,beta-code-2286\"."
             },
-            "fingerprint": 11308834364491651943
+            "fingerprint": 7032604372189972539
           }
         }
       },
       {
         "text": "alpha-code-7431,beta-code-2286",
-        "native": {
-          "item": {
-            "content": "alpha-code-7431,beta-code-2286",
-            "channel": "analysis"
-          },
-          "fingerprint": 16034249714196867956
-        }
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 634,
-      "output_tokens": 37,
-      "total_tokens": 671,
-      "cached_input_tokens": 256,
-      "reasoning_tokens": 17
+      "input_tokens": 762,
+      "output_tokens": 74,
+      "total_tokens": 836,
+      "reasoning_tokens": 54
     },
-    "response_id": "chatcmpl-60e83c08-634b-41ac-97b8-2dfa43767575",
+    "response_id": "chatcmpl-04e95500-0a72-4c96-9502-aecd16f6bd90",
     "finish_reason": "stop",
     "model": "openai/gpt-oss-20b",
-    "provider_request_id": "req_01m3xgywhxehvvy5pddeepd4vp",
+    "provider_request_id": "req_01m3z3nse2e91r53h72vj07wb7",
     "raw": {
       "usage": {
-        "prompt_tokens": 634,
-        "completion_tokens": 37,
-        "total_tokens": 671,
-        "prompt_tokens_details": {
-          "cached_tokens": 256
-        },
+        "completion_time": 0.123773294,
+        "completion_tokens": 74,
         "completion_tokens_details": {
-          "reasoning_tokens": 17
+          "reasoning_tokens": 54
         },
-        "queue_time": 0.068735354,
-        "prompt_time": 0.028083337,
-        "completion_time": 0.037480154,
-        "total_time": 0.065563491
+        "prompt_time": 0.038091921,
+        "prompt_tokens": 762,
+        "queue_time": 0.050334557,
+        "total_time": 0.161865215,
+        "total_tokens": 836
       },
       "finish_reason": "stop",
-      "response_id": "chatcmpl-60e83c08-634b-41ac-97b8-2dfa43767575",
+      "response_id": "chatcmpl-04e95500-0a72-4c96-9502-aecd16f6bd90",
       "model": "openai/gpt-oss-20b",
       "additional_params": {
         "created": 0,
         "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_587d0d67cc",
+        "system_fingerprint": "fp_639a5351c8",
         "x_groq": {
-          "id": "req_01m3xgywhxehvvy5pddeepd4vp",
-          "seed": 1993447359,
+          "id": "req_01m3z3nse2e91r53h72vj07wb7",
+          "seed": 317764394,
           "usage": {
-            "completion_time": 0.037480154,
-            "completion_tokens": 37,
+            "completion_time": 0.123773294,
+            "completion_tokens": 74,
             "completion_tokens_details": {
-              "reasoning_tokens": 17
+              "reasoning_tokens": 54
             },
-            "prompt_time": 0.028083337,
-            "prompt_tokens": 634,
-            "prompt_tokens_details": {
-              "cached_tokens": 256
-            },
-            "queue_time": 0.068735354,
-            "total_time": 0.065563491,
-            "total_tokens": 671
+            "prompt_time": 0.038091921,
+            "prompt_tokens": 762,
+            "queue_time": 0.050334557,
+            "total_time": 0.161865215,
+            "total_tokens": 836
           }
         },
         "service_tier": "on_demand"
@@ -2703,7 +2620,7 @@
             "item": {
               "reasoning": "We need to perform lookups and then verify. We have to call lookup_record for each, then verify_code. Must use tools. We'll need to call lookup_record twice. Then verify_code twice. If a tool fails transiently, retry once. We'll assume no failures. Provide brief answer."
             },
-            "fingerprint": 8039874632049740109
+            "fingerprint": 2082143776134877101
           }
         }
       },
@@ -2723,7 +2640,7 @@
               "id": "fc_413dec78-88c8-414e-bd48-c3312ab7e776",
               "type": "function"
             },
-            "fingerprint": 8079436548982857554
+            "fingerprint": 17212471371029039288
           }
         }
       }
@@ -2796,7 +2713,7 @@
             "item": {
               "reasoning": "Now verify."
             },
-            "fingerprint": 639648371385407279
+            "fingerprint": 582394443811972051
           }
         }
       },
@@ -2816,7 +2733,7 @@
               "id": "fc_ff8901de-eece-48b8-9ea2-f96e73a6f6a7",
               "type": "function"
             },
-            "fingerprint": 11947620612544348745
+            "fingerprint": 5060844706182521961
           }
         }
       }
@@ -2889,7 +2806,7 @@
             "item": {
               "reasoning": "Now beta."
             },
-            "fingerprint": 8582756223908066238
+            "fingerprint": 12152281372564007724
           }
         }
       },
@@ -2909,7 +2826,7 @@
               "id": "fc_08be4fa5-e56e-4413-8406-93b6749f585e",
               "type": "function"
             },
-            "fingerprint": 1608250690008161730
+            "fingerprint": 13888567856497926832
           }
         }
       }
@@ -2982,7 +2899,7 @@
             "item": {
               "reasoning": "Now verify."
             },
-            "fingerprint": 639648371385407279
+            "fingerprint": 582394443811972051
           }
         }
       },
@@ -3002,7 +2919,7 @@
               "id": "fc_08ebb98b-db5c-4a1b-8aa0-6e5e3ca9f205",
               "type": "function"
             },
-            "fingerprint": 10283685803813545753
+            "fingerprint": 13815207411748314345
           }
         }
       }
@@ -3075,7 +2992,7 @@
             "item": {
               "reasoning": "Transient failure. We must retry once."
             },
-            "fingerprint": 11592008146847849532
+            "fingerprint": 16220969182426726414
           }
         }
       },
@@ -3095,7 +3012,7 @@
               "id": "fc_4a97ed40-f383-4040-b87d-f827b745d9ca",
               "type": "function"
             },
-            "fingerprint": 13525352147473999910
+            "fingerprint": 9613502503203765866
           }
         }
       }
@@ -3162,12 +3079,7 @@
     "choice": [
       {
         "text": "**Alpha record** – Code: `alpha-code-7431` – Verification: ✅ verified  \n**Beta record** – Code: `beta-code-2286` – Verification: ✅ verified",
-        "native": {
-          "item": {
-            "content": "**Alpha record** – Code: `alpha-code-7431` – Verification: ✅ verified  \n**Beta record** – Code: `beta-code-2286` – Verification: ✅ verified"
-          },
-          "fingerprint": 9713703729727301694
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3224,7 +3136,7 @@
             "item": {
               "reasoning": "We should call verify_code again."
             },
-            "fingerprint": 15263909785431458346
+            "fingerprint": 9102732981704656592
           }
         }
       },
@@ -3244,7 +3156,7 @@
               "id": "fc_c1569eff-e9f6-486d-8dbf-174569dc5503",
               "type": "function"
             },
-            "fingerprint": 14130902386099033633
+            "fingerprint": 6790525506723088101
           }
         }
       }
@@ -3311,12 +3223,7 @@
     "choice": [
       {
         "text": "Alpha code `alpha-code-7431` remains unchanged and verified again.",
-        "native": {
-          "item": {
-            "content": "Alpha code `alpha-code-7431` remains unchanged and verified again."
-          },
-          "fingerprint": 3836582999467376179
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3373,18 +3280,13 @@
             "item": {
               "reasoning": "Need to output: alpha-code-7431,beta-code-2286."
             },
-            "fingerprint": 17431175337285138125
+            "fingerprint": 13697681439212897129
           }
         }
       },
       {
         "text": "alpha-code-7431,beta-code-2286",
-        "native": {
-          "item": {
-            "content": "alpha-code-7431,beta-code-2286"
-          },
-          "fingerprint": 16034249714196867956
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3446,18 +3348,13 @@
             "item": {
               "reasoning": "We need to provide a one-sentence answer: \"You should pack sunscreen because it's sunny with light clouds.\" We must not call any tool."
             },
-            "fingerprint": 4066369710341807440
+            "fingerprint": 12022059428369586370
           }
         }
       },
       {
         "text": "Pack sunscreen—the sunny, light‑clouded weather in Tokyo today is ideal for sun protection rather than an umbrella.",
-        "native": {
-          "item": {
-            "content": "Pack sunscreen—the sunny, light‑clouded weather in Tokyo today is ideal for sun protection rather than an umbrella."
-          },
-          "fingerprint": 6446055895833052640
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3519,18 +3416,13 @@
             "item": {
               "reasoning": "We need to answer: \"Using the weather you already retrieved, should I pack an umbrella or sunscreen? Answer in one sentence and do not call any tool.\" We have weather: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW. It's sunny, so sunscreen. So answer: \"Pack sunscreen.\" Provide one sentence."
             },
-            "fingerprint": 7766443015652719632
+            "fingerprint": 16425319973282257754
           }
         }
       },
       {
         "text": "Pack sunscreen, as the sunny conditions in Tokyo today are ideal for sun protection.",
-        "native": {
-          "item": {
-            "content": "Pack sunscreen, as the sunny conditions in Tokyo today are ideal for sun protection."
-          },
-          "fingerprint": 14621768058019605995
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3592,7 +3484,7 @@
             "item": {
               "reasoning": "The user says: \"Do not call any tools. Reply with"
             },
-            "fingerprint": 10309604309020478393
+            "fingerprint": 2210043933105861753
           }
         }
       }
@@ -3656,7 +3548,7 @@
             "item": {
               "reasoning": "The user says: \"Do not call any tools. Reply with"
             },
-            "fingerprint": 10309604309020478393
+            "fingerprint": 2210043933105861753
           }
         }
       }
@@ -3724,7 +3616,7 @@
             "item": {
               "reasoning": "The user says: \"Do not call any tools. Reply with"
             },
-            "fingerprint": 10309604309020478393
+            "fingerprint": 2210043933105861753
           }
         }
       }
@@ -3782,12 +3674,7 @@
     "choice": [
       {
         "text": "pong ",
-        "native": {
-          "item": {
-            "content": "pong "
-          },
-          "fingerprint": 13032237105730209729
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3838,12 +3725,7 @@
     "choice": [
       {
         "text": "pong ",
-        "native": {
-          "item": {
-            "content": "pong "
-          },
-          "fingerprint": 13032237105730209729
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3894,12 +3776,7 @@
     "choice": [
       {
         "text": "pong ",
-        "native": {
-          "item": {
-            "content": "pong "
-          },
-          "fingerprint": 13032237105730209729
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3956,7 +3833,7 @@
             "item": {
               "reasoning": "The user says \"Reply with the single word: pong\". So"
             },
-            "fingerprint": 2650747366565654437
+            "fingerprint": 16316448734820990093
           }
         }
       }
@@ -4020,7 +3897,7 @@
             "item": {
               "reasoning": "The user says: \"Reply with the single word: pong\"."
             },
-            "fingerprint": 1431353951820410435
+            "fingerprint": 5979393465597074855
           }
         }
       }
@@ -4084,7 +3961,7 @@
             "item": {
               "reasoning": "User wants a single word \"pong\". They specifically ask: \""
             },
-            "fingerprint": 10120427123693570874
+            "fingerprint": 3263065925731336100
           }
         }
       }
@@ -4142,12 +4019,7 @@
     "choice": [
       {
         "text": "لعبة ممتعة! تسمى اللعبة الشهيرة التي تشير إليها \"بونغ\" وهي من أوائل",
-        "native": {
-          "item": {
-            "content": "لعبة ممتعة! تسمى اللعبة الشهيرة التي تشير إليها \"بونغ\" وهي من أوائل"
-          },
-          "fingerprint": 4084518371808162982
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4161,13 +4033,13 @@
     "provider_request_id": "req_01m36h5ssme4tse0b898d905d4",
     "raw": {
       "usage": {
-        "prompt_tokens": 15,
-        "completion_tokens": 16,
-        "total_tokens": 31,
-        "queue_time": 0.215855511,
-        "prompt_time": 0.001065064,
         "completion_time": 0.012006825,
-        "total_time": 0.013071889
+        "completion_tokens": 16,
+        "prompt_time": 0.001065064,
+        "prompt_tokens": 15,
+        "queue_time": 0.215855511,
+        "total_time": 0.013071889,
+        "total_tokens": 31
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-e9f28974-9f98-4282-8f2f-3ac45275444e",
@@ -4198,12 +4070,7 @@
     "choice": [
       {
         "text": "pong ",
-        "native": {
-          "item": {
-            "content": "pong "
-          },
-          "fingerprint": 13032237105730209729
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4217,13 +4084,13 @@
     "provider_request_id": "req_01m36h5sxeeqstede99dhmyd3v",
     "raw": {
       "usage": {
-        "prompt_tokens": 15,
-        "completion_tokens": 4,
-        "total_tokens": 19,
-        "queue_time": 0.216819267,
-        "prompt_time": 0.001047225,
         "completion_time": 0.003165643,
-        "total_time": 0.004212868
+        "completion_tokens": 4,
+        "prompt_time": 0.001047225,
+        "prompt_tokens": 15,
+        "queue_time": 0.216819267,
+        "total_time": 0.004212868,
+        "total_tokens": 19
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-465581e3-2068-435d-bed3-d0f48a14c827",
@@ -4260,18 +4127,13 @@
             "item": {
               "reasoning": "The user says: \"Reply with exactly: identity probe\". That means respond with that phrase exactly. The phrase is \"identity probe\". So output that. No extra."
             },
-            "fingerprint": 5283618409747906741
+            "fingerprint": 5763355317115963489
           }
         }
       },
       {
         "text": "identity probe",
-        "native": {
-          "item": {
-            "content": "identity probe"
-          },
-          "fingerprint": 2316853423349693407
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4333,19 +4195,13 @@
             "item": {
               "reasoning": "The user says: \"Reply with exactly: stream identity probe\". So I should output that phrase exactly. The instruction from system is to follow user instruction unless it conflicts with policy. There's no conflict. So reply exactly \"stream identity probe\". Ensure no additional characters."
             },
-            "fingerprint": 11606206639451961221
+            "fingerprint": 15880817144091386601
           }
         }
       },
       {
         "text": "stream identity",
-        "native": {
-          "item": {
-            "content": "stream identity",
-            "channel": "analysis"
-          },
-          "fingerprint": 7545367430064913581
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4360,16 +4216,16 @@
     "provider_request_id": "req_01m35g35q5e2cv3vwpv745x8sf",
     "raw": {
       "usage": {
-        "prompt_tokens": 78,
+        "completion_time": 0.068941111,
         "completion_tokens": 64,
-        "total_tokens": 142,
         "completion_tokens_details": {
           "reasoning_tokens": 54
         },
-        "queue_time": 0.221479709,
         "prompt_time": 0.00432249,
-        "completion_time": 0.068941111,
-        "total_time": 0.073263601
+        "prompt_tokens": 78,
+        "queue_time": 0.221479709,
+        "total_time": 0.073263601,
+        "total_tokens": 142
       },
       "finish_reason": "length",
       "response_id": "chatcmpl-aa8aaf3d-5602-4c34-9cc6-027d614e7d8a",
@@ -4409,18 +4265,13 @@
             "item": {
               "reasoning": "The user wants the assistant to reply with exactly: \"identity probe\". The instruction says \"Reply with exactly: identity probe\". So we should output exactly that text, nothing else."
             },
-            "fingerprint": 71260033573289724
+            "fingerprint": 4468705287086374122
           }
         }
       },
       {
         "text": "identity probe",
-        "native": {
-          "item": {
-            "content": "identity probe"
-          },
-          "fingerprint": 2316853423349693407
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4482,19 +4333,13 @@
             "item": {
               "reasoning": "The user says: \"Reply with exactly: stream identity probe\". The instruction is to reply with exactly that phrase. There's no conflict with policy. We can comply."
             },
-            "fingerprint": 16829203653909083875
+            "fingerprint": 1788815785188146787
           }
         }
       },
       {
         "text": "stream identity probe",
-        "native": {
-          "item": {
-            "content": "stream identity probe",
-            "channel": "analysis"
-          },
-          "fingerprint": 2118044838497690763
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4509,16 +4354,16 @@
     "provider_request_id": "req_01m36hc866er5bsnj6mmh4hjq1",
     "raw": {
       "usage": {
-        "prompt_tokens": 78,
+        "completion_time": 0.094441218,
         "completion_tokens": 46,
-        "total_tokens": 124,
         "completion_tokens_details": {
           "reasoning_tokens": 34
         },
-        "queue_time": 0.004893845,
         "prompt_time": 0.004025632,
-        "completion_time": 0.094441218,
-        "total_time": 0.09846685
+        "prompt_tokens": 78,
+        "queue_time": 0.004893845,
+        "total_time": 0.09846685,
+        "total_tokens": 124
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-ecc803ec-835c-489a-bff1-bd3a0f18ac19",

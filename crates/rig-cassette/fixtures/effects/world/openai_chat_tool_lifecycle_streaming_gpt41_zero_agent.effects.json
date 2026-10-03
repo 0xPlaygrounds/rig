@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -134,7 +134,7 @@
                   "id": "call_cmyrP3ueVTbLcseTCE6Ig3T3",
                   "type": "function"
                 },
-                "fingerprint": 5709420051649697618
+                "fingerprint": 2275015147811395540
               }
             }
           ],
@@ -168,21 +168,25 @@
                 }
               ]
             },
-            "fingerprint": 8124463810104150238
+            "fingerprint": 11427684294307160432
           },
           "provider_request_id": "req_0f2e9021319d467f9aa1872146863a9f",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 56,
               "completion_tokens": 10,
-              "total_tokens": 66,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 56,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 66
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-ERDAzYikk7CUcJfdHAUAhk5tNXUzO",
@@ -237,12 +241,17 @@
                   "id": "call_cmyrP3ueVTbLcseTCE6Ig3T3",
                   "type": "function"
                 },
-                "fingerprint": 5709420051649697618
+                "fingerprint": 2275015147811395540
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "parity/run#0"
     },
     {

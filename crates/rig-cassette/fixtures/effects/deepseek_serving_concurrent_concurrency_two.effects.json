@@ -115,18 +115,12 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll call both tools now.",
-              "native": {
-                "item": {
-                  "content": "I'll call both tools now."
-                },
-                "fingerprint": 11349844003468952749
-              }
+              "text": "I'll call both tools now."
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_aaSOXx37SBQsgGoHGI5E0607"
+                "provider": "call_00_muyX9xiXBVqcG3KgUXpC7628"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -138,16 +132,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_00_aaSOXx37SBQsgGoHGI5E0607",
+                  "id": "call_00_muyX9xiXBVqcG3KgUXpC7628",
                   "type": "function"
                 },
-                "fingerprint": 731441684990855769
+                "fingerprint": 1210092020720728006
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_01_E37l51n7fjzPmVfeJCYG0964"
+                "provider": "call_01_USX3yXoc8bLULKY9dlbg8905"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -159,10 +153,10 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_01_E37l51n7fjzPmVfeJCYG0964",
+                  "id": "call_01_USX3yXoc8bLULKY9dlbg8905",
                   "type": "function"
                 },
-                "fingerprint": 5660368158746139070
+                "fingerprint": 5257249648658461031
               }
             }
           ],
@@ -177,7 +171,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "27b12a99-cb11-406f-8a69-caa2f05608d7"
+            "response_id": "782271be-2b98-403c-bfc9-4e6f4e22e50b"
           },
           "native": {
             "item": {
@@ -189,7 +183,7 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_00_aaSOXx37SBQsgGoHGI5E0607",
+                  "id": "call_00_muyX9xiXBVqcG3KgUXpC7628",
                   "type": "function"
                 },
                 {
@@ -197,27 +191,27 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_01_E37l51n7fjzPmVfeJCYG0964",
+                  "id": "call_01_USX3yXoc8bLULKY9dlbg8905",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 1210633480245716126
+            "fingerprint": 448958016847746988
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 395,
               "completion_tokens": 46,
-              "total_tokens": 441,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 139,
+              "prompt_tokens": 395,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 139
+              "total_tokens": 441
             },
             "finish_reason": "tool_calls",
-            "response_id": "27b12a99-cb11-406f-8a69-caa2f05608d7",
+            "response_id": "782271be-2b98-403c-bfc9-4e6f4e22e50b",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -303,18 +297,12 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll call both tools now.",
-                  "native": {
-                    "item": {
-                      "content": "I'll call both tools now."
-                    },
-                    "fingerprint": 11349844003468952749
-                  }
+                  "text": "I'll call both tools now."
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_aaSOXx37SBQsgGoHGI5E0607"
+                    "provider": "call_00_muyX9xiXBVqcG3KgUXpC7628"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -326,16 +314,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_00_aaSOXx37SBQsgGoHGI5E0607",
+                      "id": "call_00_muyX9xiXBVqcG3KgUXpC7628",
                       "type": "function"
                     },
-                    "fingerprint": 731441684990855769
+                    "fingerprint": 1210092020720728006
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_01_E37l51n7fjzPmVfeJCYG0964"
+                    "provider": "call_01_USX3yXoc8bLULKY9dlbg8905"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -347,10 +335,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_01_E37l51n7fjzPmVfeJCYG0964",
+                      "id": "call_01_USX3yXoc8bLULKY9dlbg8905",
                       "type": "function"
                     },
-                    "fingerprint": 5660368158746139070
+                    "fingerprint": 5257249648658461031
                   }
                 }
               ],
@@ -359,7 +347,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "27b12a99-cb11-406f-8a69-caa2f05608d7"
+                "response_id": "782271be-2b98-403c-bfc9-4e6f4e22e50b"
               },
               "stop": "tool_use",
               "native": {
@@ -372,7 +360,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_00_aaSOXx37SBQsgGoHGI5E0607",
+                      "id": "call_00_muyX9xiXBVqcG3KgUXpC7628",
                       "type": "function"
                     },
                     {
@@ -380,12 +368,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_01_E37l51n7fjzPmVfeJCYG0964",
+                      "id": "call_01_USX3yXoc8bLULKY9dlbg8905",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 1210633480245716126
+                "fingerprint": 448958016847746988
               }
             },
             {
@@ -394,7 +382,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_aaSOXx37SBQsgGoHGI5E0607"
+                    "provider": "call_00_muyX9xiXBVqcG3KgUXpC7628"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -407,7 +395,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_01_E37l51n7fjzPmVfeJCYG0964"
+                    "provider": "call_01_USX3yXoc8bLULKY9dlbg8905"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -455,13 +443,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\".",
-              "native": {
-                "item": {
-                  "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\"."
-                },
-                "fingerprint": 460422248606876224
-              }
+              "text": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\"."
             }
           ],
           "usage": {
@@ -475,29 +457,29 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "a3586ad1-5918-4628-98cb-0bbdfc470eeb"
+            "response_id": "4b68bf97-2ba1-4ee8-8611-3c2e7a768fdc"
           },
           "native": {
             "item": {
-              "content": "The harbor label returned \"crimson-harbor\" and the orchard label returned \"silver-orchard\".",
+              "content": "The harbor label is \"crimson-harbor\" and the orchard label is \"silver-orchard\".",
               "role": "assistant"
             },
-            "fingerprint": 1501945166964546498
+            "fingerprint": 13121870336098923208
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 471,
               "completion_tokens": 23,
-              "total_tokens": 494,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 215,
+              "prompt_tokens": 471,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 215
+              "total_tokens": 494
             },
             "finish_reason": "stop",
-            "response_id": "a3586ad1-5918-4628-98cb-0bbdfc470eeb",
+            "response_id": "4b68bf97-2ba1-4ee8-8611-3c2e7a768fdc",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,

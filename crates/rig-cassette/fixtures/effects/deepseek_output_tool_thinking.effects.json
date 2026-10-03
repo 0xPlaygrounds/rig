@@ -99,7 +99,7 @@
                 "item": {
                   "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. I should call final_result with title, category, summary.\n\nCategories: \"meetup\" maybe. Let's produce."
                 },
-                "fingerprint": 6705365897175899896
+                "fingerprint": 17961302505746318098
               }
             },
             {
@@ -124,7 +124,7 @@
                   "id": "call_00_2g1OMQFZ41XFC1VlfRAA2168",
                   "type": "function"
                 },
-                "fingerprint": 13707394247067660778
+                "fingerprint": 5792537595325342080
               }
             }
           ],
@@ -158,7 +158,7 @@
                 }
               ]
             },
-            "fingerprint": 1096553043685639963
+            "fingerprint": 9438777352771791763
           },
           "finish_reason": "tool_calls",
           "raw": {

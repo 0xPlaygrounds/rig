@@ -251,7 +251,7 @@
                     "status": "completed",
                     "type": "function_call"
                   },
-                  "fingerprint": 2552971096238891128
+                  "fingerprint": 1504500526460771010
                 }
               }
             ],
@@ -306,7 +306,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2552971096238891128
+                    "fingerprint": 1504500526460771010
                   }
                 }
               ],

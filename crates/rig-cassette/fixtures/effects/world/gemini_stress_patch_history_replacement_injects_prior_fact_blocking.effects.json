@@ -84,34 +84,34 @@
           "choice": [
             {
               "type": "text",
-              "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it.",
+              "text": "The passphrase is OMEGA-7.",
               "native": {
                 "item": {
-                  "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
+                  "text": "The passphrase is OMEGA-7."
                 },
-                "fingerprint": 3764943379696188280
+                "fingerprint": 12940681761221212969
               }
             }
           ],
           "usage": {
-            "input_tokens": 41,
-            "output_tokens": 41,
-            "total_tokens": 82,
-            "reasoning_tokens": 24
+            "input_tokens": 40,
+            "output_tokens": 38,
+            "total_tokens": 78,
+            "reasoning_tokens": 30
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "pnizavmDAtqgz7IPzKaO-QE"
+            "response_id": "MBDAauXVCeGO6dkPuv-DsAE"
           },
           "native": {
             "item": {
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 8845216623608752644
+            "fingerprint": 3387169230693765915
           },
           "finish_reason": "stop",
           "raw": {
@@ -120,7 +120,7 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The passphrase for this session is OMEGA-7. I acknowledge and remember it."
+                      "text": "The passphrase is OMEGA-7."
                     }
                   ],
                   "role": "model"
@@ -130,19 +130,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "pnizavmDAtqgz7IPzKaO-QE",
+            "responseId": "MBDAauXVCeGO6dkPuv-DsAE",
             "usageMetadata": {
-              "candidatesTokenCount": 17,
-              "promptTokenCount": 41,
+              "candidatesTokenCount": 8,
+              "promptTokenCount": 40,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 41
+                  "tokenCount": 40
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 24,
-              "totalTokenCount": 82
+              "thoughtsTokenCount": 30,
+              "totalTokenCount": 78
             }
           }
         }

@@ -128,7 +128,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -149,7 +149,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 815434921069355996
+                "fingerprint": 12598636203455125710
               }
             }
           ],
@@ -308,7 +308,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -329,7 +329,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 815434921069355996
+                    "fingerprint": 12598636203455125710
                   }
                 }
               ],

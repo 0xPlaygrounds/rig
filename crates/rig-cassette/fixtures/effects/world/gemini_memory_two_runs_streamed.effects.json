@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 12,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -54,7 +54,7 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 31,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -62,7 +62,7 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 31,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -183,7 +183,7 @@
                   "text": "ready.",
                   "thoughtSignature": "Ep4CCpsCAWkUfRMxjaIqkICVkYpu3VJkAjbiRgvOnlBY1C8BG5EKLjcpxtIgwmiSEtWsMf79cfGOuv61+AkEKSroO2F7RaDdqeQ6/ajmiNhyXfO0nv82tSbOTM2u/AJ364LT2BboQlSLgk+AuDThOS1ozhuj7F9EWBDgrf96tP5nPVAetqzoIM5Om3neG8k8AnW0SMBQcshIHoGjO9i/a+so7LuuK0OFYmna9ReMG/JgbNW2TKij+SKwg1gjXFJ5liOOn2QbssnUlVu3ZTZGDqn6LCbuTKYvqCZa5ZYWaCaWVgt+ptcnvRuPMKI7CQvj9ELulbOttC6z62/L90NizOVha4cFAipMth2IeTv+PI+47YgviwbwsSA6pMkAAref5g=="
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           ],
@@ -205,21 +205,22 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 546811913261009092
+            "fingerprint": 3928977403987171332
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 19,
               "candidatesTokenCount": 2,
-              "totalTokenCount": 58,
-              "thoughtsTokenCount": 37,
+              "promptTokenCount": 19,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 19
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 37,
+              "totalTokenCount": 58
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
@@ -257,12 +258,17 @@
                   "text": "ready.",
                   "thoughtSignature": "Ep4CCpsCAWkUfRMxjaIqkICVkYpu3VJkAjbiRgvOnlBY1C8BG5EKLjcpxtIgwmiSEtWsMf79cfGOuv61+AkEKSroO2F7RaDdqeQ6/ajmiNhyXfO0nv82tSbOTM2u/AJ364LT2BboQlSLgk+AuDThOS1ozhuj7F9EWBDgrf96tP5nPVAetqzoIM5Om3neG8k8AnW0SMBQcshIHoGjO9i/a+so7LuuK0OFYmna9ReMG/JgbNW2TKij+SKwg1gjXFJ5liOOn2QbssnUlVu3ZTZGDqn6LCbuTKYvqCZa5ZYWaCaWVgt+ptcnvRuPMKI7CQvj9ELulbOttC6z62/L90NizOVha4cFAipMth2IeTv+PI+47YgviwbwsSA6pMkAAref5g=="
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -295,7 +301,7 @@
                       "text": "ready.",
                       "thoughtSignature": "Ep4CCpsCAWkUfRMxjaIqkICVkYpu3VJkAjbiRgvOnlBY1C8BG5EKLjcpxtIgwmiSEtWsMf79cfGOuv61+AkEKSroO2F7RaDdqeQ6/ajmiNhyXfO0nv82tSbOTM2u/AJ364LT2BboQlSLgk+AuDThOS1ozhuj7F9EWBDgrf96tP5nPVAetqzoIM5Om3neG8k8AnW0SMBQcshIHoGjO9i/a+so7LuuK0OFYmna9ReMG/JgbNW2TKij+SKwg1gjXFJ5liOOn2QbssnUlVu3ZTZGDqn6LCbuTKYvqCZa5ZYWaCaWVgt+ptcnvRuPMKI7CQvj9ELulbOttC6z62/L90NizOVha4cFAipMth2IeTv+PI+47YgviwbwsSA6pMkAAref5g=="
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -312,7 +318,7 @@
                   "index": 0,
                   "finishReason": "STOP"
                 },
-                "fingerprint": 546811913261009092
+                "fingerprint": 3928977403987171332
               }
             }
           ]
@@ -362,7 +368,7 @@
                       "text": "ready.",
                       "thoughtSignature": "Ep4CCpsCAWkUfRMxjaIqkICVkYpu3VJkAjbiRgvOnlBY1C8BG5EKLjcpxtIgwmiSEtWsMf79cfGOuv61+AkEKSroO2F7RaDdqeQ6/ajmiNhyXfO0nv82tSbOTM2u/AJ364LT2BboQlSLgk+AuDThOS1ozhuj7F9EWBDgrf96tP5nPVAetqzoIM5Om3neG8k8AnW0SMBQcshIHoGjO9i/a+so7LuuK0OFYmna9ReMG/JgbNW2TKij+SKwg1gjXFJ5liOOn2QbssnUlVu3ZTZGDqn6LCbuTKYvqCZa5ZYWaCaWVgt+ptcnvRuPMKI7CQvj9ELulbOttC6z62/L90NizOVha4cFAipMth2IeTv+PI+47YgviwbwsSA6pMkAAref5g=="
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -379,7 +385,7 @@
                   "index": 0,
                   "finishReason": "STOP"
                 },
-                "fingerprint": 546811913261009092
+                "fingerprint": 3928977403987171332
               }
             }
           ]
@@ -420,7 +426,7 @@
                       "text": "ready.",
                       "thoughtSignature": "Ep4CCpsCAWkUfRMxjaIqkICVkYpu3VJkAjbiRgvOnlBY1C8BG5EKLjcpxtIgwmiSEtWsMf79cfGOuv61+AkEKSroO2F7RaDdqeQ6/ajmiNhyXfO0nv82tSbOTM2u/AJ364LT2BboQlSLgk+AuDThOS1ozhuj7F9EWBDgrf96tP5nPVAetqzoIM5Om3neG8k8AnW0SMBQcshIHoGjO9i/a+so7LuuK0OFYmna9ReMG/JgbNW2TKij+SKwg1gjXFJ5liOOn2QbssnUlVu3ZTZGDqn6LCbuTKYvqCZa5ZYWaCaWVgt+ptcnvRuPMKI7CQvj9ELulbOttC6z62/L90NizOVha4cFAipMth2IeTv+PI+47YgviwbwsSA6pMkAAref5g=="
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -437,7 +443,7 @@
                   "index": 0,
                   "finishReason": "STOP"
                 },
-                "fingerprint": 546811913261009092
+                "fingerprint": 3928977403987171332
               }
             },
             {
@@ -472,7 +478,7 @@
                   "text": "again.",
                   "thoughtSignature": "EuoECucEAWkUfRPlkXIr/r95MF23CAputtJPBvm7rHcMGCWLzKAs6uSq1wzcmPr9g2zhooAaRtfREEyUvE07GQwRsxDZARQ65Y+9aCOHlylev8bBR7gG3WpPQP4f0AF19976BvLgxH+oNzFO+wDuRfgsTwirE2BVSBCdlC3PJ0FG+VZE96CHbjcV0RvXsLHfAgX9NIasOCAVuZJdq0Ww7L8dVmlGK6CATOQwzUl0Q1VshID2MzMNyInW+N9Ee2n3PS4ttbOs7MMY+USLUjOMVZPu1mGEvaem24eMNRMHtiGT80iJVNVHFShBa1s9XSTp/6xP7i42xZ2la+C+x+O3QpgiqX+ZWW2E7BpdMxuO+c4+Xtf5YPqg6hgn4d4CRhgBCzXhCphjpaHfXVaKf176NlT+igk2TTPQ6GSh+VoGVvHxwAzm7vsa2yedgfqJdtw/yMjg9naZ+3T6B+rqjjRwWnVPZw8bQwze8F0vQ3Kn6cfy8x8fZReq9sxh3XmQf0N+AA/OBI9hW33zRyOc6cY3YWbseowEsaa92uc2f69mTSj45dpL62oiTy+tC/BFltDXewWimg5kkIMC88f9xHuk8IC5iTvas6FevbFVX4IvRVuEQbBu0W0YfEufo34xBrMygXkLwhmf7zeZTVibUXCpFkyjUWdoDKXWkOiJpJ2gqMuKNq7uOgeG0AQsaE69JjSfoCEmC1WmtwT+KChNen6XCisSo87tZCaRPdaz6LF13iTLTkNht2lvIM0N+0Khl1q5pcGhKGFTyIPX3HEOmXlSEUXxMuHoM/wnJ+UHzHuAmTpIgW8TIvVIU11xU4+E"
                 },
-                "fingerprint": 7821551913352360261
+                "fingerprint": 1157459995538190673
               }
             }
           ],
@@ -494,21 +500,22 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 278375202526821547
+            "fingerprint": 16120577509441408791
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 32,
               "candidatesTokenCount": 2,
-              "totalTokenCount": 143,
-              "thoughtsTokenCount": 109,
+              "promptTokenCount": 32,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 32
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 109,
+              "totalTokenCount": 143
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
@@ -546,12 +553,17 @@
                   "text": "again.",
                   "thoughtSignature": "EuoECucEAWkUfRPlkXIr/r95MF23CAputtJPBvm7rHcMGCWLzKAs6uSq1wzcmPr9g2zhooAaRtfREEyUvE07GQwRsxDZARQ65Y+9aCOHlylev8bBR7gG3WpPQP4f0AF19976BvLgxH+oNzFO+wDuRfgsTwirE2BVSBCdlC3PJ0FG+VZE96CHbjcV0RvXsLHfAgX9NIasOCAVuZJdq0Ww7L8dVmlGK6CATOQwzUl0Q1VshID2MzMNyInW+N9Ee2n3PS4ttbOs7MMY+USLUjOMVZPu1mGEvaem24eMNRMHtiGT80iJVNVHFShBa1s9XSTp/6xP7i42xZ2la+C+x+O3QpgiqX+ZWW2E7BpdMxuO+c4+Xtf5YPqg6hgn4d4CRhgBCzXhCphjpaHfXVaKf176NlT+igk2TTPQ6GSh+VoGVvHxwAzm7vsa2yedgfqJdtw/yMjg9naZ+3T6B+rqjjRwWnVPZw8bQwze8F0vQ3Kn6cfy8x8fZReq9sxh3XmQf0N+AA/OBI9hW33zRyOc6cY3YWbseowEsaa92uc2f69mTSj45dpL62oiTy+tC/BFltDXewWimg5kkIMC88f9xHuk8IC5iTvas6FevbFVX4IvRVuEQbBu0W0YfEufo34xBrMygXkLwhmf7zeZTVibUXCpFkyjUWdoDKXWkOiJpJ2gqMuKNq7uOgeG0AQsaE69JjSfoCEmC1WmtwT+KChNen6XCisSo87tZCaRPdaz6LF13iTLTkNht2lvIM0N+0Khl1q5pcGhKGFTyIPX3HEOmXlSEUXxMuHoM/wnJ+UHzHuAmTpIgW8TIvVIU11xU4+E"
                 },
-                "fingerprint": 7821551913352360261
+                "fingerprint": 1157459995538190673
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      },
       "scope": "golden/run#1"
     },
     {
@@ -584,7 +596,7 @@
                       "text": "again.",
                       "thoughtSignature": "EuoECucEAWkUfRPlkXIr/r95MF23CAputtJPBvm7rHcMGCWLzKAs6uSq1wzcmPr9g2zhooAaRtfREEyUvE07GQwRsxDZARQ65Y+9aCOHlylev8bBR7gG3WpPQP4f0AF19976BvLgxH+oNzFO+wDuRfgsTwirE2BVSBCdlC3PJ0FG+VZE96CHbjcV0RvXsLHfAgX9NIasOCAVuZJdq0Ww7L8dVmlGK6CATOQwzUl0Q1VshID2MzMNyInW+N9Ee2n3PS4ttbOs7MMY+USLUjOMVZPu1mGEvaem24eMNRMHtiGT80iJVNVHFShBa1s9XSTp/6xP7i42xZ2la+C+x+O3QpgiqX+ZWW2E7BpdMxuO+c4+Xtf5YPqg6hgn4d4CRhgBCzXhCphjpaHfXVaKf176NlT+igk2TTPQ6GSh+VoGVvHxwAzm7vsa2yedgfqJdtw/yMjg9naZ+3T6B+rqjjRwWnVPZw8bQwze8F0vQ3Kn6cfy8x8fZReq9sxh3XmQf0N+AA/OBI9hW33zRyOc6cY3YWbseowEsaa92uc2f69mTSj45dpL62oiTy+tC/BFltDXewWimg5kkIMC88f9xHuk8IC5iTvas6FevbFVX4IvRVuEQbBu0W0YfEufo34xBrMygXkLwhmf7zeZTVibUXCpFkyjUWdoDKXWkOiJpJ2gqMuKNq7uOgeG0AQsaE69JjSfoCEmC1WmtwT+KChNen6XCisSo87tZCaRPdaz6LF13iTLTkNht2lvIM0N+0Khl1q5pcGhKGFTyIPX3HEOmXlSEUXxMuHoM/wnJ+UHzHuAmTpIgW8TIvVIU11xU4+E"
                     },
-                    "fingerprint": 7821551913352360261
+                    "fingerprint": 1157459995538190673
                   }
                 }
               ],
@@ -601,7 +613,7 @@
                   "index": 0,
                   "finishReason": "STOP"
                 },
-                "fingerprint": 278375202526821547
+                "fingerprint": 16120577509441408791
               }
             }
           ]

@@ -143,7 +143,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12087459688596924811
+                "fingerprint": 16396864856540745803
               }
             }
           ],
@@ -227,12 +227,17 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12087459688596924811
+                "fingerprint": 16396864856540745803
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     },
     {
       "tool_output": {},
@@ -329,7 +334,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 12087459688596924811
+                    "fingerprint": 16396864856540745803
                   }
                 }
               ],
@@ -405,7 +410,7 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],
@@ -472,12 +477,17 @@
                   "text": "42",
                   "type": "text"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     }
   ]
 }

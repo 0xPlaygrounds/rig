@@ -34,6 +34,14 @@
         }
       },
       {
+        "batch": 11,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 12,
         "id": 0,
         "kind": {
@@ -46,11 +54,19 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
         "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -98,7 +114,7 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -117,31 +133,39 @@
         "batch": 24,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 29,
-        "id": 0,
-        "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 30,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 31,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -153,6 +177,14 @@
         }
       },
       {
+        "batch": 35,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 36,
         "id": 1,
         "kind": {
@@ -161,7 +193,7 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 38,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -193,6 +225,14 @@
         }
       },
       {
+        "batch": 42,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 43,
         "id": 1,
         "kind": {
@@ -209,7 +249,7 @@
         }
       },
       {
-        "batch": 46,
+        "batch": 45,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -241,7 +281,7 @@
         }
       },
       {
-        "batch": 51,
+        "batch": 50,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -249,7 +289,7 @@
         }
       },
       {
-        "batch": 52,
+        "batch": 51,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -273,6 +313,14 @@
         }
       },
       {
+        "batch": 55,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 56,
         "id": 1,
         "kind": {
@@ -289,7 +337,7 @@
         }
       },
       {
-        "batch": 58,
+        "batch": 59,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -314,6 +362,14 @@
       },
       {
         "batch": 62,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 63,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -353,31 +409,7 @@
         }
       },
       {
-        "batch": 69,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 70,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 72,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 73,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -393,14 +425,6 @@
         }
       },
       {
-        "batch": 76,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 77,
         "id": 1,
         "kind": {
@@ -409,7 +433,7 @@
         }
       },
       {
-        "batch": 79,
+        "batch": 85,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -417,47 +441,7 @@
         }
       },
       {
-        "batch": 80,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 81,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 82,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 84,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 87,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 87,
+        "batch": 85,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -530,14 +514,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
-                  "refusal": null
-                },
-                "fingerprint": 16171626019599134392
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red"
             }
           ],
           "usage": {
@@ -560,21 +537,25 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 9902477179914569264
+            "fingerprint": 6577276633744109340
           },
           "provider_request_id": "req_657f280864444acab2ddf9574d4220ec",
           "finish_reason": "length",
           "raw": {
             "usage": {
-              "prompt_tokens": 30,
               "completion_tokens": 16,
-              "total_tokens": 46,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 30,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 46
             },
             "finish_reason": "length",
             "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
@@ -733,18 +714,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red",
-                  "refusal": null
-                },
-                "fingerprint": 16171626019599134392
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4o-mini"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -786,14 +765,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup.",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup.",
-                  "refusal": null
-                },
-                "fingerprint": 739081525465207394
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup."
             }
           ],
           "usage": {
@@ -816,21 +788,25 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 12195917227053765318
+            "fingerprint": 13039688276527760310
           },
           "provider_request_id": "req_7fd0e6f8118342719947fd6475c3733b",
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 30,
               "completion_tokens": 38,
-              "total_tokens": 68,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 30,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 68
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
@@ -1165,18 +1141,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup.",
-              "native": {
-                "item": {
-                  "content": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup.",
-                  "refusal": null
-                },
-                "fingerprint": 739081525465207394
-              }
+              "text": "Maple trees are known for their vibrant fall foliage, displaying brilliant shades of red, orange, and yellow. They are also valued for their sap, which is harvested to produce maple syrup."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4o-mini"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -123,7 +123,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 11772777517712070112
+                "fingerprint": 5972617269481463190
               }
             }
           ],
@@ -145,20 +145,21 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 7881641562479983032
+            "fingerprint": 2216673640338135294
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 141,
               "candidatesTokenCount": 15,
-              "totalTokenCount": 156,
+              "promptTokenCount": 141,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 141
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 156
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -209,12 +210,17 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 11772777517712070112
+                "fingerprint": 5972617269481463190
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      }
     },
     {
       "tool_output": {},
@@ -289,7 +295,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 11772777517712070112
+                    "fingerprint": 5972617269481463190
                   }
                 }
               ],
@@ -307,7 +313,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 7881641562479983032
+                "fingerprint": 2216673640338135294
               }
             },
             {
@@ -384,7 +390,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 16014442144962211214
+                "fingerprint": 52097195662351320
               }
             }
           ],
@@ -406,20 +412,21 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 16098967198441797526
+            "fingerprint": 8544397056296617904
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 191,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 210,
+              "promptTokenCount": 191,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 191
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 210
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -470,12 +477,17 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 16014442144962211214
+                "fingerprint": 52097195662351320
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      }
     },
     {
       "tool_output": {},
@@ -550,7 +562,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 11772777517712070112
+                    "fingerprint": 5972617269481463190
                   }
                 }
               ],
@@ -568,7 +580,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 7881641562479983032
+                "fingerprint": 2216673640338135294
               }
             },
             {
@@ -616,7 +628,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 16014442144962211214
+                    "fingerprint": 52097195662351320
                   }
                 }
               ],
@@ -634,7 +646,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 16098967198441797526
+                "fingerprint": 8544397056296617904
               }
             },
             {
@@ -711,7 +723,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 164872387406711921
+                "fingerprint": 17871321734042546753
               }
             }
           ],
@@ -733,20 +745,21 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 5773939526375000273
+            "fingerprint": 17554210450391269389
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 245,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 264,
+              "promptTokenCount": 245,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 245
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 264
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -797,12 +810,17 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 164872387406711921
+                "fingerprint": 17871321734042546753
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      }
     },
     {
       "tool_output": {},
@@ -877,7 +895,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 11772777517712070112
+                    "fingerprint": 5972617269481463190
                   }
                 }
               ],
@@ -895,7 +913,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 7881641562479983032
+                "fingerprint": 2216673640338135294
               }
             },
             {
@@ -943,7 +961,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 16014442144962211214
+                    "fingerprint": 52097195662351320
                   }
                 }
               ],
@@ -961,7 +979,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 16098967198441797526
+                "fingerprint": 8544397056296617904
               }
             },
             {
@@ -1009,7 +1027,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 164872387406711921
+                    "fingerprint": 17871321734042546753
                   }
                 }
               ],
@@ -1027,7 +1045,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 5773939526375000273
+                "fingerprint": 17554210450391269389
               }
             },
             {
@@ -1104,7 +1122,7 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 2930198417959924772
+                "fingerprint": 11771969717567849654
               }
             }
           ],
@@ -1126,20 +1144,21 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 102847372996847864
+            "fingerprint": 5920312885323051270
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 299,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 318,
+              "promptTokenCount": 299,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 299
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 318
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -1190,12 +1209,17 @@
                     "name": "checkpoint_step"
                   }
                 },
-                "fingerprint": 2930198417959924772
+                "fingerprint": 11771969717567849654
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      }
     },
     {
       "tool_output": {},
@@ -1270,7 +1294,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 11772777517712070112
+                    "fingerprint": 5972617269481463190
                   }
                 }
               ],
@@ -1288,7 +1312,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 7881641562479983032
+                "fingerprint": 2216673640338135294
               }
             },
             {
@@ -1336,7 +1360,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 16014442144962211214
+                    "fingerprint": 52097195662351320
                   }
                 }
               ],
@@ -1354,7 +1378,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 16098967198441797526
+                "fingerprint": 8544397056296617904
               }
             },
             {
@@ -1402,7 +1426,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 164872387406711921
+                    "fingerprint": 17871321734042546753
                   }
                 }
               ],
@@ -1420,7 +1444,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 5773939526375000273
+                "fingerprint": 17554210450391269389
               }
             },
             {
@@ -1468,7 +1492,7 @@
                         "name": "checkpoint_step"
                       }
                     },
-                    "fingerprint": 2930198417959924772
+                    "fingerprint": 11771969717567849654
                   }
                 }
               ],
@@ -1486,7 +1510,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 102847372996847864
+                "fingerprint": 5920312885323051270
               }
             },
             {
@@ -1550,7 +1574,7 @@
                 "item": {
                   "text": "checkpoint-complete"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           ],
@@ -1571,20 +1595,21 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 6231790669279808033
+            "fingerprint": 8754285088019305819
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 348,
               "candidatesTokenCount": 3,
-              "totalTokenCount": 351,
+              "promptTokenCount": 348,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 348
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 351
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash-lite",
@@ -1621,12 +1646,17 @@
                 "item": {
                   "text": "checkpoint-complete"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      }
     }
   ]
 }

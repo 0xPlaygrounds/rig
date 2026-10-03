@@ -75,13 +75,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that prevents memory errors through strong ownership and borrowing rules. Memory safety is crucial to prevent bugs like null pointer dereferencing and data corruption, ensuring program reliability and stability.",
-              "native": {
-                "item": {
-                  "content": "Rust is a systems programming language that prevents memory errors through strong ownership and borrowing rules. Memory safety is crucial to prevent bugs like null pointer dereferencing and data corruption, ensuring program reliability and stability."
-                },
-                "fingerprint": 4361912287162351576
-              }
+              "text": "Rust is a systems programming language that prevents memory errors through strong ownership and borrowing rules. Memory safety is crucial to prevent bugs like null pointer dereferencing and data corruption, ensuring program reliability and stability."
             }
           ],
           "usage": {
@@ -102,7 +96,7 @@
               "content": "Rust is a systems programming language that prevents memory errors through strong ownership and borrowing rules. Memory safety is crucial to prevent bugs like null pointer dereferencing and data corruption, ensuring program reliability and stability.",
               "role": "assistant"
             },
-            "fingerprint": 16761720649069079880
+            "fingerprint": 4590933319994988852
           },
           "finish_reason": "stop",
           "raw": {

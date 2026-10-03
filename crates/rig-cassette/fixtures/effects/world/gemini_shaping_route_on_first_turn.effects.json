@@ -172,7 +172,7 @@
                   },
                   "thoughtSignature": "EnMKcQFpFH0TvBUKVq2siF0VJ+K7XNUUwi4e2/sBC15Oi3mQ0E842+74WeXUdyA0C3HF5iYJQYim4CuUo18LlGm+ZHjGawp5CXPnlqeN3iYwutpUl18hSSC0hyAacoeGWXoowvuObbaWTqPvfn0uLdekea+Q"
                 },
-                "fingerprint": 17048614804471732173
+                "fingerprint": 10990170798397138473
               }
             }
           ],
@@ -194,7 +194,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 77240722876992891
+            "fingerprint": 3342061353648594831
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -314,7 +314,7 @@
                       },
                       "thoughtSignature": "EnMKcQFpFH0TvBUKVq2siF0VJ+K7XNUUwi4e2/sBC15Oi3mQ0E842+74WeXUdyA0C3HF5iYJQYim4CuUo18LlGm+ZHjGawp5CXPnlqeN3iYwutpUl18hSSC0hyAacoeGWXoowvuObbaWTqPvfn0uLdekea+Q"
                     },
-                    "fingerprint": 17048614804471732173
+                    "fingerprint": 10990170798397138473
                   }
                 }
               ],
@@ -332,7 +332,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 77240722876992891
+                "fingerprint": 3342061353648594831
               }
             },
             {
@@ -397,7 +397,7 @@
                 "item": {
                   "text": "42"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],
@@ -418,7 +418,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 5372475738331673531
+            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {

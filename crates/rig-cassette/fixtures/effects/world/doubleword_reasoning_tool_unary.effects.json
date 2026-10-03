@@ -140,26 +140,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+              "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
               "native": {
                 "item": {
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                       "type": "reasoning.text"
                     }
-                  ],
-                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25."
+                  ]
                 },
-                "fingerprint": 2465379221955689510
+                "fingerprint": 18139074956839541234
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_91a3f95114104af0b43649b2"
+                "provider": "chatcmpl-tool-a0dbd8b5899b0be3"
               },
               "function": {
                 "name": "add",
@@ -174,17 +174,17 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_91a3f95114104af0b43649b2",
+                  "id": "chatcmpl-tool-a0dbd8b5899b0be3",
                   "type": "function"
                 },
-                "fingerprint": 9534290270606459640
+                "fingerprint": 15106341687920853279
               }
             }
           ],
           "usage": {
             "input_tokens": 344,
-            "output_tokens": 85,
-            "total_tokens": 429,
+            "output_tokens": 84,
+            "total_tokens": 428,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -193,7 +193,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_2eeb4e89-4ec4-4bb0-a33d-18931b1ec60f"
+            "response_id": "resp_62fe0dd6-a944-42de-92bf-191d29356111"
           },
           "native": {
             "item": {
@@ -201,11 +201,11 @@
                 {
                   "format": "unknown",
                   "index": 0,
-                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                   "type": "reasoning.text"
                 }
               ],
-              "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+              "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
               "refusal": null,
               "role": "assistant",
               "tool_calls": [
@@ -214,12 +214,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_91a3f95114104af0b43649b2",
+                  "id": "chatcmpl-tool-a0dbd8b5899b0be3",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 3420763940309262911
+            "fingerprint": 1715102634518453210
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -228,12 +228,12 @@
                 "finish_reason": "tool_calls",
                 "index": 0,
                 "message": {
-                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                       "type": "reasoning.text"
                     }
                   ],
@@ -245,7 +245,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_91a3f95114104af0b43649b2",
+                      "id": "chatcmpl-tool-a0dbd8b5899b0be3",
                       "type": "function"
                     }
                   ]
@@ -253,7 +253,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_2eeb4e89-4ec4-4bb0-a33d-18931b1ec60f",
+            "id": "resp_62fe0dd6-a944-42de-92bf-191d29356111",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -264,11 +264,11 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 85,
+              "completion_tokens": 84,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 44
+                "reasoning_tokens": 45
               },
               "prompt_tokens": 344,
               "prompt_tokens_details": {
@@ -277,7 +277,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 429
+              "total_tokens": 428
             }
           }
         }
@@ -336,26 +336,26 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                   "native": {
                     "item": {
+                      "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                       "reasoning_details": [
                         {
                           "format": "unknown",
                           "index": 0,
-                          "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                          "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                           "type": "reasoning.text"
                         }
-                      ],
-                      "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25."
+                      ]
                     },
-                    "fingerprint": 2465379221955689510
+                    "fingerprint": 18139074956839541234
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_91a3f95114104af0b43649b2"
+                    "provider": "chatcmpl-tool-a0dbd8b5899b0be3"
                   },
                   "function": {
                     "name": "add",
@@ -370,10 +370,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_91a3f95114104af0b43649b2",
+                      "id": "chatcmpl-tool-a0dbd8b5899b0be3",
                       "type": "function"
                     },
-                    "fingerprint": 9534290270606459640
+                    "fingerprint": 15106341687920853279
                   }
                 }
               ],
@@ -382,7 +382,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_2eeb4e89-4ec4-4bb0-a33d-18931b1ec60f"
+                "response_id": "resp_62fe0dd6-a944-42de-92bf-191d29356111"
               },
               "stop": "tool_use",
               "native": {
@@ -391,11 +391,11 @@
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                       "type": "reasoning.text"
                     }
                   ],
-                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.",
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
                   "refusal": null,
                   "role": "assistant",
                   "tool_calls": [
@@ -404,12 +404,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_91a3f95114104af0b43649b2",
+                      "id": "chatcmpl-tool-a0dbd8b5899b0be3",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 3420763940309262911
+                "fingerprint": 1715102634518453210
               }
             },
             {
@@ -418,7 +418,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_91a3f95114104af0b43649b2"
+                    "provider": "chatcmpl-tool-a0dbd8b5899b0be3"
                   },
                   "name": "add",
                   "content": [
@@ -474,6 +474,7 @@
               "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
               "native": {
                 "item": {
+                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
@@ -481,28 +482,20 @@
                       "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
                       "type": "reasoning.text"
                     }
-                  ],
-                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
+                  ]
                 },
-                "fingerprint": 15472650326617940839
+                "fingerprint": 11060846584961465695
               }
             },
             {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42",
-                  "refusal": null
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           ],
           "usage": {
-            "input_tokens": 445,
-            "output_tokens": 49,
-            "total_tokens": 494,
+            "input_tokens": 455,
+            "output_tokens": 48,
+            "total_tokens": 503,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -511,7 +504,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_db162514-992b-4b5a-ad35-5abd725f6158"
+            "response_id": "resp_ba506ad6-169b-40e5-a65c-17b6de4ab066"
           },
           "native": {
             "item": {
@@ -528,7 +521,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 3309961771285299657
+            "fingerprint": 3511963494685293777
           },
           "finish_reason": "stop",
           "raw": {
@@ -553,7 +546,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_db162514-992b-4b5a-ad35-5abd725f6158",
+            "id": "resp_ba506ad6-169b-40e5-a65c-17b6de4ab066",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -564,20 +557,20 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 49,
+              "completion_tokens": 48,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 42
+                "reasoning_tokens": 44
               },
-              "prompt_tokens": 445,
+              "prompt_tokens": 455,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
                 "cache_write_tokens": 0,
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 494
+              "total_tokens": 503
             }
           }
         }

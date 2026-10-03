@@ -252,7 +252,7 @@
                     "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
                     "type": "function"
                   },
-                  "fingerprint": 12616152138573737615
+                  "fingerprint": 9653243133601246653
                 }
               }
             ],
@@ -282,7 +282,7 @@
                     }
                   ]
                 },
-                "fingerprint": 11334373814632815869
+                "fingerprint": 10319644444452082719
               }
             },
             "done": true,
@@ -325,7 +325,7 @@
                       "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
                       "type": "function"
                     },
-                    "fingerprint": 12616152138573737615
+                    "fingerprint": 9653243133601246653
                   }
                 }
               ],
@@ -361,7 +361,7 @@
                     }
                   ]
                 },
-                "fingerprint": 11334373814632815869
+                "fingerprint": 10319644444452082719
               },
               "finish_reason": "tool_calls",
               "raw": {
@@ -457,7 +457,7 @@
                   }
                 ]
               },
-              "fingerprint": 11334373814632815869
+              "fingerprint": 10319644444452082719
             }
           }
         },

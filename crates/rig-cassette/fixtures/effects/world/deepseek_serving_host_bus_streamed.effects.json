@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 22,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 23,
+        "batch": 17,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 29,
+        "batch": 23,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 31,
+        "batch": 25,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 31,
+        "batch": 25,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -163,7 +163,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_xE1IExxd4FGT4JpiEaNZ8835"
+                "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
               },
               "function": {
                 "name": "add",
@@ -178,10 +178,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_xE1IExxd4FGT4JpiEaNZ8835",
+                  "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
                   "type": "function"
                 },
-                "fingerprint": 15309239665040987913
+                "fingerprint": 8543011290180666426
               }
             }
           ],
@@ -196,7 +196,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "571c65fe-a2a5-44a1-9362-afb6ef4e8cb0"
+            "response_id": "cdce42e1-b250-4ad4-8419-c79de0039b76"
           },
           "native": {
             "item": {
@@ -208,27 +208,27 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_xE1IExxd4FGT4JpiEaNZ8835",
+                  "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 17490456419949905873
+            "fingerprint": 4967848763162042808
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 336,
               "completion_tokens": 52,
-              "total_tokens": 388,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 208,
+              "prompt_tokens": 336,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 208
+              "total_tokens": 388
             },
             "finish_reason": "tool_calls",
-            "response_id": "571c65fe-a2a5-44a1-9362-afb6ef4e8cb0",
+            "response_id": "cdce42e1-b250-4ad4-8419-c79de0039b76",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -263,7 +263,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_00_xE1IExxd4FGT4JpiEaNZ8835"
+                "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
               },
               "function": {
                 "name": "add",
@@ -278,15 +278,20 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_00_xE1IExxd4FGT4JpiEaNZ8835",
+                  "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
                   "type": "function"
                 },
-                "fingerprint": 15309239665040987913
+                "fingerprint": 8543011290180666426
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -342,7 +347,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_00_xE1IExxd4FGT4JpiEaNZ8835"
+                    "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
                   },
                   "function": {
                     "name": "add",
@@ -357,10 +362,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_xE1IExxd4FGT4JpiEaNZ8835",
+                      "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
                       "type": "function"
                     },
-                    "fingerprint": 15309239665040987913
+                    "fingerprint": 8543011290180666426
                   }
                 }
               ],
@@ -369,7 +374,7 @@
                 "provider": "deepseek",
                 "model": "deepseek-chat",
                 "response_model": "deepseek-flash",
-                "response_id": "571c65fe-a2a5-44a1-9362-afb6ef4e8cb0"
+                "response_id": "cdce42e1-b250-4ad4-8419-c79de0039b76"
               },
               "stop": "tool_use",
               "native": {
@@ -382,12 +387,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_xE1IExxd4FGT4JpiEaNZ8835",
+                      "id": "call_00_rRex1gxsRvVzR7flB4QL0915",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 17490456419949905873
+                "fingerprint": 4967848763162042808
               }
             },
             {
@@ -396,7 +401,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_00_xE1IExxd4FGT4JpiEaNZ8835"
+                    "provider": "call_00_rRex1gxsRvVzR7flB4QL0915"
                   },
                   "name": "add",
                   "content": [
@@ -447,13 +452,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42"
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           ],
           "usage": {
@@ -467,29 +466,29 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "6462f7c7-1ec3-4505-ad32-177d45015579"
+            "response_id": "89b595f1-0346-47d7-8f49-579ad1841df3"
           },
           "native": {
             "item": {
               "content": "42",
               "role": "assistant"
             },
-            "fingerprint": 5372475738331673531
+            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 401,
               "completion_tokens": 1,
-              "total_tokens": 402,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 145,
+              "prompt_tokens": 401,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 145
+              "total_tokens": 402
             },
             "finish_reason": "stop",
-            "response_id": "6462f7c7-1ec3-4505-ad32-177d45015579",
+            "response_id": "89b595f1-0346-47d7-8f49-579ad1841df3",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -523,17 +522,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42"
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     }
   ]

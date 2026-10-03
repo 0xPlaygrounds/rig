@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +34,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,7 +42,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 24,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -146,7 +146,7 @@
                 "item": {
                   "text": "The number 2 to the power of 20 is 1,048,576."
                 },
-                "fingerprint": 1588156661630724766
+                "fingerprint": 13366901440491722584
               }
             }
           ],
@@ -169,28 +169,29 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 10401143185743423689
+            "fingerprint": 18393314334619927449
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 25,
               "candidatesTokenCount": 30,
-              "totalTokenCount": 164,
-              "thoughtsTokenCount": 34,
+              "promptTokenCount": 25,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 25
                 }
               ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 34,
               "toolUsePromptTokenCount": 75,
               "toolUsePromptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 75
                 }
-              ]
+              ],
+              "totalTokenCount": 164
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -293,12 +294,17 @@
                 "item": {
                   "text": "The number 2 to the power of 20 is 1,048,576."
                 },
-                "fingerprint": 1588156661630724766
+                "fingerprint": 13366901440491722584
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -355,7 +355,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
               },
               "function": {
                 "name": "list_files",
@@ -367,10 +367,10 @@
                     "arguments": "{}",
                     "name": "list_files"
                   },
-                  "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                  "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                   "type": "function"
                 },
-                "fingerprint": 8582422826711371036
+                "fingerprint": 10956273415021490814
               }
             }
           ],
@@ -386,7 +386,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+            "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
           },
           "native": {
             "item": {
@@ -400,14 +400,14 @@
                     "arguments": "{}",
                     "name": "list_files"
                   },
-                  "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                  "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 13699797370913763604
+            "fingerprint": 13383634280348110758
           },
-          "provider_request_id": "req_e33bc7ed32ab4f5fb49e24e91307c8ab",
+          "provider_request_id": "req_f0cee24e707549ceb7321aeec68e10f4",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -426,7 +426,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
@@ -434,11 +434,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq",
+            "id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -512,7 +512,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -524,10 +524,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -536,7 +536,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -551,12 +551,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -565,7 +565,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -653,7 +653,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
               },
               "function": {
                 "name": "read_file",
@@ -667,16 +667,16 @@
                     "arguments": "{\"path\": \"README.md\"}",
                     "name": "read_file"
                   },
-                  "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                  "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                   "type": "function"
                 },
-                "fingerprint": 2164527169465120887
+                "fingerprint": 2328471497226299166
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
               },
               "function": {
                 "name": "read_file",
@@ -690,16 +690,16 @@
                     "arguments": "{\"path\": \"tests/basic.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                  "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                   "type": "function"
                 },
-                "fingerprint": 5536654966376887401
+                "fingerprint": 12451124499735274602
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
               },
               "function": {
                 "name": "read_file",
@@ -713,10 +713,10 @@
                     "arguments": "{\"path\": \"src/lib.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                  "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                   "type": "function"
                 },
-                "fingerprint": 4528937759041838888
+                "fingerprint": 15600792370524901738
               }
             }
           ],
@@ -732,7 +732,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+            "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
           },
           "native": {
             "item": {
@@ -746,7 +746,7 @@
                     "arguments": "{\"path\": \"README.md\"}",
                     "name": "read_file"
                   },
-                  "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                  "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                   "type": "function"
                 },
                 {
@@ -754,7 +754,7 @@
                     "arguments": "{\"path\": \"tests/basic.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                  "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                   "type": "function"
                 },
                 {
@@ -762,14 +762,14 @@
                     "arguments": "{\"path\": \"src/lib.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                  "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 12445413842299263684
+            "fingerprint": 1653913193247971704
           },
-          "provider_request_id": "req_4fdf0281986b4c22a40ec8290aad6622",
+          "provider_request_id": "req_d543bf2751af4712af9c8ec5dc3bd3f7",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -788,7 +788,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -796,7 +796,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -804,7 +804,7 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
@@ -812,11 +812,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a",
+            "id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 63,
               "completion_tokens_details": {
@@ -940,7 +940,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -952,10 +952,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -964,7 +964,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -979,12 +979,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -993,7 +993,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -1011,7 +1011,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -1025,16 +1025,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -1048,16 +1048,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -1071,10 +1071,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -1083,7 +1083,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -1098,7 +1098,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -1106,7 +1106,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -1114,12 +1114,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -1128,7 +1128,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -1141,7 +1141,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -1154,7 +1154,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -1242,7 +1242,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
               },
               "function": {
                 "name": "run_tests",
@@ -1254,10 +1254,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                  "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                   "type": "function"
                 },
-                "fingerprint": 12771778325534080172
+                "fingerprint": 940568487349175851
               }
             }
           ],
@@ -1273,7 +1273,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+            "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
           },
           "native": {
             "item": {
@@ -1287,14 +1287,14 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                  "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 9993948987822800570
+            "fingerprint": 2496920773116259959
           },
-          "provider_request_id": "req_20c78bb25bde459891b7f352cd2888b8",
+          "provider_request_id": "req_282ce9b10d0f4aa6a7299bd5fd33d844",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -1313,7 +1313,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
@@ -1321,11 +1321,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o",
+            "id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -1407,7 +1407,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -1419,10 +1419,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -1431,7 +1431,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -1446,12 +1446,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -1460,7 +1460,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -1478,7 +1478,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -1492,16 +1492,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -1515,16 +1515,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -1538,10 +1538,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -1550,7 +1550,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -1565,7 +1565,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -1573,7 +1573,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -1581,12 +1581,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -1595,7 +1595,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -1608,7 +1608,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -1621,7 +1621,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -1639,7 +1639,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "function": {
                     "name": "run_tests",
@@ -1651,10 +1651,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     },
-                    "fingerprint": 12771778325534080172
+                    "fingerprint": 940568487349175851
                   }
                 }
               ],
@@ -1663,7 +1663,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+                "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
               },
               "stop": "tool_use",
               "native": {
@@ -1678,12 +1678,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9993948987822800570
+                "fingerprint": 2496920773116259959
               }
             },
             {
@@ -1692,7 +1692,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "name": "run_tests",
                   "content": [
@@ -1700,7 +1700,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -1780,7 +1781,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
               },
               "function": {
                 "name": "run_tests",
@@ -1792,10 +1793,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                  "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                   "type": "function"
                 },
-                "fingerprint": 8986078264974313814
+                "fingerprint": 12584511801029945307
               }
             }
           ],
@@ -1811,7 +1812,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe"
+            "response_id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC"
           },
           "native": {
             "item": {
@@ -1825,14 +1826,14 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                  "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 7459575948245496620
+            "fingerprint": 15972197532563152019
           },
-          "provider_request_id": "req_fcb8e32afd4c4679bd889ce1bb7dfb7c",
+          "provider_request_id": "req_79a6d7bb4d1a4d438babc5a406aac054",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -1851,7 +1852,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     }
                   ]
@@ -1859,11 +1860,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe",
+            "id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -1937,7 +1938,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -1949,10 +1950,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -1961,7 +1962,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -1976,12 +1977,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -1990,7 +1991,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -2008,7 +2009,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -2022,16 +2023,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -2045,16 +2046,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -2068,10 +2069,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -2080,7 +2081,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -2095,7 +2096,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -2103,7 +2104,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -2111,12 +2112,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -2125,7 +2126,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -2138,7 +2139,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -2151,7 +2152,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -2169,7 +2170,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2181,10 +2182,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     },
-                    "fingerprint": 12771778325534080172
+                    "fingerprint": 940568487349175851
                   }
                 }
               ],
@@ -2193,7 +2194,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+                "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
               },
               "stop": "tool_use",
               "native": {
@@ -2208,12 +2209,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9993948987822800570
+                "fingerprint": 2496920773116259959
               }
             },
             {
@@ -2222,7 +2223,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2230,7 +2231,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -2240,7 +2242,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2252,10 +2254,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     },
-                    "fingerprint": 8986078264974313814
+                    "fingerprint": 12584511801029945307
                   }
                 }
               ],
@@ -2264,7 +2266,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe"
+                "response_id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC"
               },
               "stop": "tool_use",
               "native": {
@@ -2279,12 +2281,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7459575948245496620
+                "fingerprint": 15972197532563152019
               }
             },
             {
@@ -2293,7 +2295,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2381,7 +2383,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
               },
               "function": {
                 "name": "write_file",
@@ -2396,10 +2398,10 @@
                     "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                  "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                   "type": "function"
                 },
-                "fingerprint": 16147229642835260422
+                "fingerprint": 13400828552867538990
               }
             }
           ],
@@ -2415,7 +2417,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbbWsO7qxiOVecqXXzs7NR4cJCB"
+            "response_id": "chatcmpl-EUeHYeilO5cfztD1my5v8ejeI0IdX"
           },
           "native": {
             "item": {
@@ -2429,14 +2431,14 @@
                     "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                  "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 17815636753643929442
+            "fingerprint": 14800582014445142990
           },
-          "provider_request_id": "req_1ea0b92cbbd54f52a286a254ffcc260d",
+          "provider_request_id": "req_597d3fd8cb7841e0b96aaca72571d5b0",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -2455,7 +2457,7 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     }
                   ]
@@ -2463,11 +2465,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbbWsO7qxiOVecqXXzs7NR4cJCB",
+            "id": "chatcmpl-EUeHYeilO5cfztD1my5v8ejeI0IdX",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_29e7db5410",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 58,
               "completion_tokens_details": {
@@ -2541,7 +2543,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -2553,10 +2555,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -2565,7 +2567,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -2580,12 +2582,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -2594,7 +2596,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -2612,7 +2614,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -2626,16 +2628,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -2649,16 +2651,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -2672,10 +2674,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -2684,7 +2686,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -2699,7 +2701,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -2707,7 +2709,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -2715,12 +2717,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -2729,7 +2731,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -2742,7 +2744,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -2755,7 +2757,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -2773,7 +2775,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2785,10 +2787,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     },
-                    "fingerprint": 12771778325534080172
+                    "fingerprint": 940568487349175851
                   }
                 }
               ],
@@ -2797,7 +2799,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+                "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
               },
               "stop": "tool_use",
               "native": {
@@ -2812,12 +2814,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9993948987822800570
+                "fingerprint": 2496920773116259959
               }
             },
             {
@@ -2826,7 +2828,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2834,7 +2836,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -2844,7 +2847,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "function": {
                     "name": "run_tests",
@@ -2856,10 +2859,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     },
-                    "fingerprint": 8986078264974313814
+                    "fingerprint": 12584511801029945307
                   }
                 }
               ],
@@ -2868,7 +2871,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe"
+                "response_id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC"
               },
               "stop": "tool_use",
               "native": {
@@ -2883,12 +2886,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7459575948245496620
+                "fingerprint": 15972197532563152019
               }
             },
             {
@@ -2897,7 +2900,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2915,7 +2918,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "function": {
                     "name": "write_file",
@@ -2930,10 +2933,10 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     },
-                    "fingerprint": 16147229642835260422
+                    "fingerprint": 13400828552867538990
                   }
                 }
               ],
@@ -2942,7 +2945,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbWsO7qxiOVecqXXzs7NR4cJCB"
+                "response_id": "chatcmpl-EUeHYeilO5cfztD1my5v8ejeI0IdX"
               },
               "stop": "tool_use",
               "native": {
@@ -2957,12 +2960,12 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 17815636753643929442
+                "fingerprint": 14800582014445142990
               }
             },
             {
@@ -2971,7 +2974,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "name": "write_file",
                   "content": [
@@ -3059,7 +3062,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                "provider": "call_raO8MErQ00FSnC8c06U74rcp"
               },
               "function": {
                 "name": "run_tests",
@@ -3071,10 +3074,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                  "id": "call_raO8MErQ00FSnC8c06U74rcp",
                   "type": "function"
                 },
-                "fingerprint": 4325944500760755808
+                "fingerprint": 6763544380705781391
               }
             }
           ],
@@ -3090,7 +3093,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbbP9UYDGvy1uV4p00py6dtxtYY"
+            "response_id": "chatcmpl-EUeHZ9w9O9TKx254JG4AGOUROPO6R"
           },
           "native": {
             "item": {
@@ -3104,14 +3107,14 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                  "id": "call_raO8MErQ00FSnC8c06U74rcp",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 6280571974074626994
+            "fingerprint": 17884590708459281279
           },
-          "provider_request_id": "req_3d3404aa9c394118b81aa0ba169c1c1a",
+          "provider_request_id": "req_372c810184294493910ccc5c8fcbe3f8",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -3130,7 +3133,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     }
                   ]
@@ -3138,11 +3141,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbbP9UYDGvy1uV4p00py6dtxtYY",
+            "id": "chatcmpl-EUeHZ9w9O9TKx254JG4AGOUROPO6R",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -3216,7 +3219,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -3228,10 +3231,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -3240,7 +3243,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -3255,12 +3258,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -3269,7 +3272,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -3287,7 +3290,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -3301,16 +3304,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -3324,16 +3327,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -3347,10 +3350,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -3359,7 +3362,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -3374,7 +3377,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -3382,7 +3385,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -3390,12 +3393,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -3404,7 +3407,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -3417,7 +3420,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -3430,7 +3433,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -3448,7 +3451,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3460,10 +3463,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     },
-                    "fingerprint": 12771778325534080172
+                    "fingerprint": 940568487349175851
                   }
                 }
               ],
@@ -3472,7 +3475,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+                "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
               },
               "stop": "tool_use",
               "native": {
@@ -3487,12 +3490,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9993948987822800570
+                "fingerprint": 2496920773116259959
               }
             },
             {
@@ -3501,7 +3504,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3509,7 +3512,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -3519,7 +3523,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3531,10 +3535,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     },
-                    "fingerprint": 8986078264974313814
+                    "fingerprint": 12584511801029945307
                   }
                 }
               ],
@@ -3543,7 +3547,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe"
+                "response_id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC"
               },
               "stop": "tool_use",
               "native": {
@@ -3558,12 +3562,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7459575948245496620
+                "fingerprint": 15972197532563152019
               }
             },
             {
@@ -3572,7 +3576,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3590,7 +3594,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "function": {
                     "name": "write_file",
@@ -3605,10 +3609,10 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     },
-                    "fingerprint": 16147229642835260422
+                    "fingerprint": 13400828552867538990
                   }
                 }
               ],
@@ -3617,7 +3621,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbWsO7qxiOVecqXXzs7NR4cJCB"
+                "response_id": "chatcmpl-EUeHYeilO5cfztD1my5v8ejeI0IdX"
               },
               "stop": "tool_use",
               "native": {
@@ -3632,12 +3636,12 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 17815636753643929442
+                "fingerprint": 14800582014445142990
               }
             },
             {
@@ -3646,7 +3650,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "name": "write_file",
                   "content": [
@@ -3664,7 +3668,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "function": {
                     "name": "run_tests",
@@ -3676,10 +3680,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     },
-                    "fingerprint": 4325944500760755808
+                    "fingerprint": 6763544380705781391
                   }
                 }
               ],
@@ -3688,7 +3692,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbP9UYDGvy1uV4p00py6dtxtYY"
+                "response_id": "chatcmpl-EUeHZ9w9O9TKx254JG4AGOUROPO6R"
               },
               "stop": "tool_use",
               "native": {
@@ -3703,12 +3707,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 6280571974074626994
+                "fingerprint": 17884590708459281279
               }
             },
             {
@@ -3717,7 +3721,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3805,7 +3809,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_nk2GOsciiMhU35bUAbpgMvDd"
+                "provider": "call_gixH12K4SlbsyWp51OJ0RqPZ"
               },
               "function": {
                 "name": "read_file",
@@ -3819,10 +3823,10 @@
                     "arguments": "{\"path\":\"src/calendar.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                  "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                   "type": "function"
                 },
-                "fingerprint": 8779476445706096224
+                "fingerprint": 10380878243679681285
               }
             }
           ],
@@ -3838,7 +3842,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbcMuDzL0izUQ3NRGwfJMoc6X0R"
+            "response_id": "chatcmpl-EUeHaSdugpSRjefy0BeHPSxa3yfUm"
           },
           "native": {
             "item": {
@@ -3852,14 +3856,14 @@
                     "arguments": "{\"path\":\"src/calendar.rs\"}",
                     "name": "read_file"
                   },
-                  "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                  "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 18184352813379197022
+            "fingerprint": 2739254360943620073
           },
-          "provider_request_id": "req_e0536a79fc474323a69d9fa07e07042d",
+          "provider_request_id": "req_23ff18edc4ef44db90f9742ee2a0ed5b",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -3878,7 +3882,7 @@
                         "arguments": "{\"path\":\"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                      "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                       "type": "function"
                     }
                   ]
@@ -3886,11 +3890,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbcMuDzL0izUQ3NRGwfJMoc6X0R",
+            "id": "chatcmpl-EUeHaSdugpSRjefy0BeHPSxa3yfUm",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 16,
               "completion_tokens_details": {
@@ -3964,7 +3968,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -3976,10 +3980,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -3988,7 +3992,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -4003,12 +4007,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -4017,7 +4021,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -4035,7 +4039,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -4049,16 +4053,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -4072,16 +4076,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -4095,10 +4099,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -4107,7 +4111,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -4122,7 +4126,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -4130,7 +4134,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -4138,12 +4142,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -4152,7 +4156,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -4165,7 +4169,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -4178,7 +4182,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -4196,7 +4200,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4208,10 +4212,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     },
-                    "fingerprint": 12771778325534080172
+                    "fingerprint": 940568487349175851
                   }
                 }
               ],
@@ -4220,7 +4224,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+                "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
               },
               "stop": "tool_use",
               "native": {
@@ -4235,12 +4239,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9993948987822800570
+                "fingerprint": 2496920773116259959
               }
             },
             {
@@ -4249,7 +4253,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4257,7 +4261,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -4267,7 +4272,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4279,10 +4284,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     },
-                    "fingerprint": 8986078264974313814
+                    "fingerprint": 12584511801029945307
                   }
                 }
               ],
@@ -4291,7 +4296,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe"
+                "response_id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC"
               },
               "stop": "tool_use",
               "native": {
@@ -4306,12 +4311,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7459575948245496620
+                "fingerprint": 15972197532563152019
               }
             },
             {
@@ -4320,7 +4325,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4338,7 +4343,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "function": {
                     "name": "write_file",
@@ -4353,10 +4358,10 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     },
-                    "fingerprint": 16147229642835260422
+                    "fingerprint": 13400828552867538990
                   }
                 }
               ],
@@ -4365,7 +4370,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbWsO7qxiOVecqXXzs7NR4cJCB"
+                "response_id": "chatcmpl-EUeHYeilO5cfztD1my5v8ejeI0IdX"
               },
               "stop": "tool_use",
               "native": {
@@ -4380,12 +4385,12 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 17815636753643929442
+                "fingerprint": 14800582014445142990
               }
             },
             {
@@ -4394,7 +4399,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "name": "write_file",
                   "content": [
@@ -4412,7 +4417,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "function": {
                     "name": "run_tests",
@@ -4424,10 +4429,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     },
-                    "fingerprint": 4325944500760755808
+                    "fingerprint": 6763544380705781391
                   }
                 }
               ],
@@ -4436,7 +4441,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbP9UYDGvy1uV4p00py6dtxtYY"
+                "response_id": "chatcmpl-EUeHZ9w9O9TKx254JG4AGOUROPO6R"
               },
               "stop": "tool_use",
               "native": {
@@ -4451,12 +4456,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 6280571974074626994
+                "fingerprint": 17884590708459281279
               }
             },
             {
@@ -4465,7 +4470,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4483,7 +4488,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_nk2GOsciiMhU35bUAbpgMvDd"
+                    "provider": "call_gixH12K4SlbsyWp51OJ0RqPZ"
                   },
                   "function": {
                     "name": "read_file",
@@ -4497,10 +4502,10 @@
                         "arguments": "{\"path\":\"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                      "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                       "type": "function"
                     },
-                    "fingerprint": 8779476445706096224
+                    "fingerprint": 10380878243679681285
                   }
                 }
               ],
@@ -4509,7 +4514,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbcMuDzL0izUQ3NRGwfJMoc6X0R"
+                "response_id": "chatcmpl-EUeHaSdugpSRjefy0BeHPSxa3yfUm"
               },
               "stop": "tool_use",
               "native": {
@@ -4524,12 +4529,12 @@
                         "arguments": "{\"path\":\"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                      "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18184352813379197022
+                "fingerprint": 2739254360943620073
               }
             },
             {
@@ -4538,7 +4543,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_nk2GOsciiMhU35bUAbpgMvDd"
+                    "provider": "call_gixH12K4SlbsyWp51OJ0RqPZ"
                   },
                   "name": "read_file",
                   "content": [
@@ -4626,7 +4631,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_1m7hTkkqvIPtqyqxBAgkldrc"
+                "provider": "call_HkKuzV5xlNybM4qxX6mGcLHE"
               },
               "function": {
                 "name": "write_file",
@@ -4641,10 +4646,10 @@
                     "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_1m7hTkkqvIPtqyqxBAgkldrc",
+                  "id": "call_HkKuzV5xlNybM4qxX6mGcLHE",
                   "type": "function"
                 },
-                "fingerprint": 18385956781770834984
+                "fingerprint": 17497647744025455521
               }
             }
           ],
@@ -4660,7 +4665,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbdV5M2wdiw3KfCdI34qOmCkckc"
+            "response_id": "chatcmpl-EUeHaG2BdDNOX4VzE3c2Dzk5NhYh5"
           },
           "native": {
             "item": {
@@ -4674,14 +4679,14 @@
                     "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                     "name": "write_file"
                   },
-                  "id": "call_1m7hTkkqvIPtqyqxBAgkldrc",
+                  "id": "call_HkKuzV5xlNybM4qxX6mGcLHE",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 1805784611066962724
+            "fingerprint": 12791168726528078915
           },
-          "provider_request_id": "req_68ae842843e6444288e6c8f9c6b1c8b0",
+          "provider_request_id": "req_f8d075d78bb14bcaa710d6d49d05d6dc",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -4700,7 +4705,7 @@
                         "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_1m7hTkkqvIPtqyqxBAgkldrc",
+                      "id": "call_HkKuzV5xlNybM4qxX6mGcLHE",
                       "type": "function"
                     }
                   ]
@@ -4708,11 +4713,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbdV5M2wdiw3KfCdI34qOmCkckc",
+            "id": "chatcmpl-EUeHaG2BdDNOX4VzE3c2Dzk5NhYh5",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 46,
               "completion_tokens_details": {
@@ -4786,7 +4791,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -4798,10 +4803,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -4810,7 +4815,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -4825,12 +4830,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -4839,7 +4844,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -4857,7 +4862,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -4871,16 +4876,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -4894,16 +4899,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -4917,10 +4922,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -4929,7 +4934,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -4944,7 +4949,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -4952,7 +4957,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -4960,12 +4965,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -4974,7 +4979,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -4987,7 +4992,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -5000,7 +5005,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -5018,7 +5023,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5030,10 +5035,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     },
-                    "fingerprint": 12771778325534080172
+                    "fingerprint": 940568487349175851
                   }
                 }
               ],
@@ -5042,7 +5047,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+                "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
               },
               "stop": "tool_use",
               "native": {
@@ -5057,12 +5062,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9993948987822800570
+                "fingerprint": 2496920773116259959
               }
             },
             {
@@ -5071,7 +5076,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5079,7 +5084,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -5089,7 +5095,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5101,10 +5107,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     },
-                    "fingerprint": 8986078264974313814
+                    "fingerprint": 12584511801029945307
                   }
                 }
               ],
@@ -5113,7 +5119,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe"
+                "response_id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC"
               },
               "stop": "tool_use",
               "native": {
@@ -5128,12 +5134,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7459575948245496620
+                "fingerprint": 15972197532563152019
               }
             },
             {
@@ -5142,7 +5148,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5160,7 +5166,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "function": {
                     "name": "write_file",
@@ -5175,10 +5181,10 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     },
-                    "fingerprint": 16147229642835260422
+                    "fingerprint": 13400828552867538990
                   }
                 }
               ],
@@ -5187,7 +5193,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbWsO7qxiOVecqXXzs7NR4cJCB"
+                "response_id": "chatcmpl-EUeHYeilO5cfztD1my5v8ejeI0IdX"
               },
               "stop": "tool_use",
               "native": {
@@ -5202,12 +5208,12 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 17815636753643929442
+                "fingerprint": 14800582014445142990
               }
             },
             {
@@ -5216,7 +5222,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "name": "write_file",
                   "content": [
@@ -5234,7 +5240,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5246,10 +5252,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     },
-                    "fingerprint": 4325944500760755808
+                    "fingerprint": 6763544380705781391
                   }
                 }
               ],
@@ -5258,7 +5264,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbP9UYDGvy1uV4p00py6dtxtYY"
+                "response_id": "chatcmpl-EUeHZ9w9O9TKx254JG4AGOUROPO6R"
               },
               "stop": "tool_use",
               "native": {
@@ -5273,12 +5279,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 6280571974074626994
+                "fingerprint": 17884590708459281279
               }
             },
             {
@@ -5287,7 +5293,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5305,7 +5311,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_nk2GOsciiMhU35bUAbpgMvDd"
+                    "provider": "call_gixH12K4SlbsyWp51OJ0RqPZ"
                   },
                   "function": {
                     "name": "read_file",
@@ -5319,10 +5325,10 @@
                         "arguments": "{\"path\":\"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                      "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                       "type": "function"
                     },
-                    "fingerprint": 8779476445706096224
+                    "fingerprint": 10380878243679681285
                   }
                 }
               ],
@@ -5331,7 +5337,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbcMuDzL0izUQ3NRGwfJMoc6X0R"
+                "response_id": "chatcmpl-EUeHaSdugpSRjefy0BeHPSxa3yfUm"
               },
               "stop": "tool_use",
               "native": {
@@ -5346,12 +5352,12 @@
                         "arguments": "{\"path\":\"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                      "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18184352813379197022
+                "fingerprint": 2739254360943620073
               }
             },
             {
@@ -5360,7 +5366,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_nk2GOsciiMhU35bUAbpgMvDd"
+                    "provider": "call_gixH12K4SlbsyWp51OJ0RqPZ"
                   },
                   "name": "read_file",
                   "content": [
@@ -5378,7 +5384,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_1m7hTkkqvIPtqyqxBAgkldrc"
+                    "provider": "call_HkKuzV5xlNybM4qxX6mGcLHE"
                   },
                   "function": {
                     "name": "write_file",
@@ -5393,10 +5399,10 @@
                         "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_1m7hTkkqvIPtqyqxBAgkldrc",
+                      "id": "call_HkKuzV5xlNybM4qxX6mGcLHE",
                       "type": "function"
                     },
-                    "fingerprint": 18385956781770834984
+                    "fingerprint": 17497647744025455521
                   }
                 }
               ],
@@ -5405,7 +5411,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbdV5M2wdiw3KfCdI34qOmCkckc"
+                "response_id": "chatcmpl-EUeHaG2BdDNOX4VzE3c2Dzk5NhYh5"
               },
               "stop": "tool_use",
               "native": {
@@ -5420,12 +5426,12 @@
                         "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_1m7hTkkqvIPtqyqxBAgkldrc",
+                      "id": "call_HkKuzV5xlNybM4qxX6mGcLHE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 1805784611066962724
+                "fingerprint": 12791168726528078915
               }
             },
             {
@@ -5434,7 +5440,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_1m7hTkkqvIPtqyqxBAgkldrc"
+                    "provider": "call_HkKuzV5xlNybM4qxX6mGcLHE"
                   },
                   "name": "write_file",
                   "content": [
@@ -5522,7 +5528,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_sCKSh2TOpk6RuvtdIkUQ30Bx"
+                "provider": "call_LPq5ML081U9Y5anvaPcnn3B2"
               },
               "function": {
                 "name": "run_tests",
@@ -5534,10 +5540,10 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_sCKSh2TOpk6RuvtdIkUQ30Bx",
+                  "id": "call_LPq5ML081U9Y5anvaPcnn3B2",
                   "type": "function"
                 },
-                "fingerprint": 3525875932883819398
+                "fingerprint": 5360734521309941700
               }
             }
           ],
@@ -5545,7 +5551,7 @@
             "input_tokens": 1238,
             "output_tokens": 10,
             "total_tokens": 1248,
-            "cached_input_tokens": 1152,
+            "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "origin": {
@@ -5553,7 +5559,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbe9g2jGL1mOFbUS7IdmFzwbFJj"
+            "response_id": "chatcmpl-EUeHbB6l5Bv6Y6tMj57XSXC1m4LeC"
           },
           "native": {
             "item": {
@@ -5567,14 +5573,14 @@
                     "arguments": "{}",
                     "name": "run_tests"
                   },
-                  "id": "call_sCKSh2TOpk6RuvtdIkUQ30Bx",
+                  "id": "call_LPq5ML081U9Y5anvaPcnn3B2",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 1709686189930299220
+            "fingerprint": 8876012565815782050
           },
-          "provider_request_id": "req_70e7d7466e9c43b68c7e541a5da39e4c",
+          "provider_request_id": "req_c632fa6c05bf4d66af3353e4c8797008",
           "finish_reason": "tool_calls",
           "raw": {
             "choices": [
@@ -5593,7 +5599,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_sCKSh2TOpk6RuvtdIkUQ30Bx",
+                      "id": "call_LPq5ML081U9Y5anvaPcnn3B2",
                       "type": "function"
                     }
                   ]
@@ -5601,11 +5607,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbe9g2jGL1mOFbUS7IdmFzwbFJj",
+            "id": "chatcmpl-EUeHbB6l5Bv6Y6tMj57XSXC1m4LeC",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_bf4b98f619",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -5617,7 +5623,7 @@
               "prompt_tokens": 1238,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
-                "cached_tokens": 1152
+                "cached_tokens": 0
               },
               "total_tokens": 1248
             }
@@ -5679,7 +5685,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "function": {
                     "name": "list_files",
@@ -5691,10 +5697,10 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     },
-                    "fingerprint": 8582422826711371036
+                    "fingerprint": 10956273415021490814
                   }
                 }
               ],
@@ -5703,7 +5709,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYkIAPbeYR2Q3xcqItH51dlOEq"
+                "response_id": "chatcmpl-EUeHVzVcMVdQkXkYZiNkgPhAidzS3"
               },
               "stop": "tool_use",
               "native": {
@@ -5718,12 +5724,12 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_V4XTg6IJ9pBLH1pKTe9OgSO0",
+                      "id": "call_8V3GHL8x92DjDcxtmyu8BtAQ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 13699797370913763604
+                "fingerprint": 13383634280348110758
               }
             },
             {
@@ -5732,7 +5738,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_V4XTg6IJ9pBLH1pKTe9OgSO0"
+                    "provider": "call_8V3GHL8x92DjDcxtmyu8BtAQ"
                   },
                   "name": "list_files",
                   "content": [
@@ -5750,7 +5756,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "function": {
                     "name": "read_file",
@@ -5764,16 +5770,16 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
-                    "fingerprint": 2164527169465120887
+                    "fingerprint": 2328471497226299166
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "function": {
                     "name": "read_file",
@@ -5787,16 +5793,16 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
-                    "fingerprint": 5536654966376887401
+                    "fingerprint": 12451124499735274602
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "function": {
                     "name": "read_file",
@@ -5810,10 +5816,10 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     },
-                    "fingerprint": 4528937759041838888
+                    "fingerprint": 15600792370524901738
                   }
                 }
               ],
@@ -5822,7 +5828,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbYMgusJeUYp87UIVSsS0H1In0a"
+                "response_id": "chatcmpl-EUeHWbZFhDeTamGUGXJxjLwyVzcSv"
               },
               "stop": "tool_use",
               "native": {
@@ -5837,7 +5843,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_BqntKcpXnQCWoChs2EplzZhy",
+                      "id": "call_lHYUqNhfc3J7S2PgeTm7zNwt",
                       "type": "function"
                     },
                     {
@@ -5845,7 +5851,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_soi4tH4fxR7qt9G4597bN30t",
+                      "id": "call_smwtMFd6U7Q2g7Gm9kh18nqK",
                       "type": "function"
                     },
                     {
@@ -5853,12 +5859,12 @@
                         "arguments": "{\"path\": \"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_FI7RI3wNHubZ9ke6zsb4jQH9",
+                      "id": "call_zJwAoEuoScihVDaeiVgm15iU",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12445413842299263684
+                "fingerprint": 1653913193247971704
               }
             },
             {
@@ -5867,7 +5873,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_BqntKcpXnQCWoChs2EplzZhy"
+                    "provider": "call_lHYUqNhfc3J7S2PgeTm7zNwt"
                   },
                   "name": "read_file",
                   "content": [
@@ -5880,7 +5886,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_soi4tH4fxR7qt9G4597bN30t"
+                    "provider": "call_smwtMFd6U7Q2g7Gm9kh18nqK"
                   },
                   "name": "read_file",
                   "content": [
@@ -5893,7 +5899,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_FI7RI3wNHubZ9ke6zsb4jQH9"
+                    "provider": "call_zJwAoEuoScihVDaeiVgm15iU"
                   },
                   "name": "read_file",
                   "content": [
@@ -5911,7 +5917,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5923,10 +5929,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     },
-                    "fingerprint": 12771778325534080172
+                    "fingerprint": 940568487349175851
                   }
                 }
               ],
@@ -5935,7 +5941,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbZmJP9a2WgHlig9PmBuCXB2D2o"
+                "response_id": "chatcmpl-EUeHXNrqmfHuilrKwd0nQv4DBgszz"
               },
               "stop": "tool_use",
               "native": {
@@ -5950,12 +5956,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_x8uIOUsI7pc8XWaW65F8heSP",
+                      "id": "call_Lp9WN6dPlaLlXfB5ydfHqWuw",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 9993948987822800570
+                "fingerprint": 2496920773116259959
               }
             },
             {
@@ -5964,7 +5970,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_x8uIOUsI7pc8XWaW65F8heSP"
+                    "provider": "call_Lp9WN6dPlaLlXfB5ydfHqWuw"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5972,7 +5978,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -5982,7 +5989,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "function": {
                     "name": "run_tests",
@@ -5994,10 +6001,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     },
-                    "fingerprint": 8986078264974313814
+                    "fingerprint": 12584511801029945307
                   }
                 }
               ],
@@ -6006,7 +6013,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbasmCFctz5QjCpXn7pWhoNqjpe"
+                "response_id": "chatcmpl-EUeHY4NXCqb0HnIxvD4tt2Q7H2IGC"
               },
               "stop": "tool_use",
               "native": {
@@ -6021,12 +6028,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_HyKL66mTBApRuD9vjnd9sWUR",
+                      "id": "call_6tyq3JmaFCSpEBXkzA8dDJVE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7459575948245496620
+                "fingerprint": 15972197532563152019
               }
             },
             {
@@ -6035,7 +6042,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_HyKL66mTBApRuD9vjnd9sWUR"
+                    "provider": "call_6tyq3JmaFCSpEBXkzA8dDJVE"
                   },
                   "name": "run_tests",
                   "content": [
@@ -6053,7 +6060,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "function": {
                     "name": "write_file",
@@ -6068,10 +6075,10 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     },
-                    "fingerprint": 16147229642835260422
+                    "fingerprint": 13400828552867538990
                   }
                 }
               ],
@@ -6080,7 +6087,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbWsO7qxiOVecqXXzs7NR4cJCB"
+                "response_id": "chatcmpl-EUeHYeilO5cfztD1my5v8ejeI0IdX"
               },
               "stop": "tool_use",
               "native": {
@@ -6095,12 +6102,12 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_o6Yo3GTytJQqfyuito3S8Dp6",
+                      "id": "call_ebRercM04J4d1IoUmLSYtIqI",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 17815636753643929442
+                "fingerprint": 14800582014445142990
               }
             },
             {
@@ -6109,7 +6116,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_o6Yo3GTytJQqfyuito3S8Dp6"
+                    "provider": "call_ebRercM04J4d1IoUmLSYtIqI"
                   },
                   "name": "write_file",
                   "content": [
@@ -6127,7 +6134,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "function": {
                     "name": "run_tests",
@@ -6139,10 +6146,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     },
-                    "fingerprint": 4325944500760755808
+                    "fingerprint": 6763544380705781391
                   }
                 }
               ],
@@ -6151,7 +6158,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbbP9UYDGvy1uV4p00py6dtxtYY"
+                "response_id": "chatcmpl-EUeHZ9w9O9TKx254JG4AGOUROPO6R"
               },
               "stop": "tool_use",
               "native": {
@@ -6166,12 +6173,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_MpuBEuCKDf3jySrwzc60mD5U",
+                      "id": "call_raO8MErQ00FSnC8c06U74rcp",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 6280571974074626994
+                "fingerprint": 17884590708459281279
               }
             },
             {
@@ -6180,7 +6187,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_MpuBEuCKDf3jySrwzc60mD5U"
+                    "provider": "call_raO8MErQ00FSnC8c06U74rcp"
                   },
                   "name": "run_tests",
                   "content": [
@@ -6198,7 +6205,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_nk2GOsciiMhU35bUAbpgMvDd"
+                    "provider": "call_gixH12K4SlbsyWp51OJ0RqPZ"
                   },
                   "function": {
                     "name": "read_file",
@@ -6212,10 +6219,10 @@
                         "arguments": "{\"path\":\"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                      "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                       "type": "function"
                     },
-                    "fingerprint": 8779476445706096224
+                    "fingerprint": 10380878243679681285
                   }
                 }
               ],
@@ -6224,7 +6231,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbcMuDzL0izUQ3NRGwfJMoc6X0R"
+                "response_id": "chatcmpl-EUeHaSdugpSRjefy0BeHPSxa3yfUm"
               },
               "stop": "tool_use",
               "native": {
@@ -6239,12 +6246,12 @@
                         "arguments": "{\"path\":\"src/calendar.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_nk2GOsciiMhU35bUAbpgMvDd",
+                      "id": "call_gixH12K4SlbsyWp51OJ0RqPZ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18184352813379197022
+                "fingerprint": 2739254360943620073
               }
             },
             {
@@ -6253,7 +6260,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_nk2GOsciiMhU35bUAbpgMvDd"
+                    "provider": "call_gixH12K4SlbsyWp51OJ0RqPZ"
                   },
                   "name": "read_file",
                   "content": [
@@ -6271,7 +6278,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_1m7hTkkqvIPtqyqxBAgkldrc"
+                    "provider": "call_HkKuzV5xlNybM4qxX6mGcLHE"
                   },
                   "function": {
                     "name": "write_file",
@@ -6286,10 +6293,10 @@
                         "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_1m7hTkkqvIPtqyqxBAgkldrc",
+                      "id": "call_HkKuzV5xlNybM4qxX6mGcLHE",
                       "type": "function"
                     },
-                    "fingerprint": 18385956781770834984
+                    "fingerprint": 17497647744025455521
                   }
                 }
               ],
@@ -6298,7 +6305,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbdV5M2wdiw3KfCdI34qOmCkckc"
+                "response_id": "chatcmpl-EUeHaG2BdDNOX4VzE3c2Dzk5NhYh5"
               },
               "stop": "tool_use",
               "native": {
@@ -6313,12 +6320,12 @@
                         "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                         "name": "write_file"
                       },
-                      "id": "call_1m7hTkkqvIPtqyqxBAgkldrc",
+                      "id": "call_HkKuzV5xlNybM4qxX6mGcLHE",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 1805784611066962724
+                "fingerprint": 12791168726528078915
               }
             },
             {
@@ -6327,7 +6334,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_1m7hTkkqvIPtqyqxBAgkldrc"
+                    "provider": "call_HkKuzV5xlNybM4qxX6mGcLHE"
                   },
                   "name": "write_file",
                   "content": [
@@ -6345,7 +6352,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_sCKSh2TOpk6RuvtdIkUQ30Bx"
+                    "provider": "call_LPq5ML081U9Y5anvaPcnn3B2"
                   },
                   "function": {
                     "name": "run_tests",
@@ -6357,10 +6364,10 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_sCKSh2TOpk6RuvtdIkUQ30Bx",
+                      "id": "call_LPq5ML081U9Y5anvaPcnn3B2",
                       "type": "function"
                     },
-                    "fingerprint": 3525875932883819398
+                    "fingerprint": 5360734521309941700
                   }
                 }
               ],
@@ -6369,7 +6376,7 @@
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
                 "response_model": "gpt-4.1-mini-2025-04-14",
-                "response_id": "chatcmpl-EUPbe9g2jGL1mOFbUS7IdmFzwbFJj"
+                "response_id": "chatcmpl-EUeHbB6l5Bv6Y6tMj57XSXC1m4LeC"
               },
               "stop": "tool_use",
               "native": {
@@ -6384,12 +6391,12 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_sCKSh2TOpk6RuvtdIkUQ30Bx",
+                      "id": "call_LPq5ML081U9Y5anvaPcnn3B2",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 1709686189930299220
+                "fingerprint": 8876012565815782050
               }
             },
             {
@@ -6398,7 +6405,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_sCKSh2TOpk6RuvtdIkUQ30Bx"
+                    "provider": "call_LPq5ML081U9Y5anvaPcnn3B2"
                   },
                   "name": "run_tests",
                   "content": [
@@ -6485,22 +6492,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "done",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "done",
-                  "refusal": null
-                },
-                "fingerprint": 16950038988497426807
-              }
+              "text": "done"
             }
           ],
           "usage": {
             "input_tokens": 1304,
             "output_tokens": 2,
             "total_tokens": 1306,
-            "cached_input_tokens": 1152,
+            "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "origin": {
@@ -6508,7 +6507,7 @@
             "provider": "openai",
             "model": "gpt-4.1-mini",
             "response_model": "gpt-4.1-mini-2025-04-14",
-            "response_id": "chatcmpl-EUPbe0w9sNzAAbcsXM96OEVUqS1aG"
+            "response_id": "chatcmpl-EUeHcOVualk5kNCfvIt1xbYwkyTo8"
           },
           "native": {
             "item": {
@@ -6517,9 +6516,9 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 18014957589545053405
+            "fingerprint": 13317791222948023665
           },
-          "provider_request_id": "req_39650480a1b54afeb1553e82b65c2cc1",
+          "provider_request_id": "req_5d9a546b724c496291c792ccaff72a73",
           "finish_reason": "stop",
           "raw": {
             "choices": [
@@ -6536,11 +6535,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-EUPbe0w9sNzAAbcsXM96OEVUqS1aG",
+            "id": "chatcmpl-EUeHcOVualk5kNCfvIt1xbYwkyTo8",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_557a6d3485",
+            "system_fingerprint": "fp_972c397bd9",
             "usage": {
               "completion_tokens": 2,
               "completion_tokens_details": {
@@ -6552,7 +6551,7 @@
               "prompt_tokens": 1304,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
-                "cached_tokens": 1152
+                "cached_tokens": 0
               },
               "total_tokens": 1306
             }

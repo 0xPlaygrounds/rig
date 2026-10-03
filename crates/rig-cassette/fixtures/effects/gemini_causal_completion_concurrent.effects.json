@@ -128,7 +128,7 @@
                   },
                   "thoughtSignature": "EukCCuYCAWkUfRN22mnR55+o6HV6XGlfr8D+sdTVUj1wFZRWanBTN2bMV6MQCKnp4YB4NoZqsN5lukxiG86Q/fBRLPrrZN6WfycP2K1PNJPV6PHwh4xTwcnIlpDn64pPGteKVGLek6XgXK9GpURzOsF5S1YWZXvbIr1sPuQgdmowkd3LF6O9qj9nmR5ZYpr6N4fE4NLPtls2pvz3uW1ucC9GVeINT+PG7Z74MsFF8+aXHr2xtVVkX9wHhGKS6JdNWv0PFodslpY06jlTQXk5KTBbpJ60wgDbRD7C15RFgRqChxDh6XyJOuQgamOWpHggvHWfrQavXRBgGlP/yOxieaMh1mG5LLVzJAyhbGpv7WXQla/BJlatvZiOic8DO04KadSgtA2GlACzfeqaqRlmKJHRtnOb/j/fRcS8Ra58fdKLr6/OAWvjmtks0R6yaxqdN3RzKtsX1K1YPjZBym5hgQJRyCEXMuM0+25+xA=="
                 },
-                "fingerprint": 7710457417074015683
+                "fingerprint": 16654064126807673049
               }
             }
           ],
@@ -151,7 +151,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 10661116766301848833
+            "fingerprint": 15998697093541005539
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -265,7 +265,7 @@
                   "text": "Paris",
                   "thoughtSignature": "EvABCu0BAWkUfRMIpfk8hTjbi1JJqdRaw6nlm7iKkB3x3ekDxygOv0AKQxzt9vy346EDPnYcD0AO8TQshT/TTpcaf56yb6CT/1uyJjLTFyoTBt8W6Ibbw1afg+M/pWhhy7h92VFL73l7EUJ5TNu+UmpiQy6vwPsMfxcuGO55H4uE6lOHft6sDoZMsBKX/icMGVWcmMJwEsYTjD7cw6TuE0jpWlr9wxDJ9sP4Mkc0KWjSAlZwTZNPZ+bFBQ86dGsiSG04AV01hnjhFh44U4dqbd7YwrJfyNfmssWT7f3F96Dpvgg1gLG7IJEojf9XlYmKfqf+"
                 },
-                "fingerprint": 10014039168603989904
+                "fingerprint": 7677433660722303974
               }
             }
           ],
@@ -287,7 +287,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 5839064992978596122
+            "fingerprint": 10907891467078341492
           },
           "finish_reason": "stop",
           "raw": {
@@ -373,7 +373,7 @@
                       },
                       "thoughtSignature": "EukCCuYCAWkUfRN22mnR55+o6HV6XGlfr8D+sdTVUj1wFZRWanBTN2bMV6MQCKnp4YB4NoZqsN5lukxiG86Q/fBRLPrrZN6WfycP2K1PNJPV6PHwh4xTwcnIlpDn64pPGteKVGLek6XgXK9GpURzOsF5S1YWZXvbIr1sPuQgdmowkd3LF6O9qj9nmR5ZYpr6N4fE4NLPtls2pvz3uW1ucC9GVeINT+PG7Z74MsFF8+aXHr2xtVVkX9wHhGKS6JdNWv0PFodslpY06jlTQXk5KTBbpJ60wgDbRD7C15RFgRqChxDh6XyJOuQgamOWpHggvHWfrQavXRBgGlP/yOxieaMh1mG5LLVzJAyhbGpv7WXQla/BJlatvZiOic8DO04KadSgtA2GlACzfeqaqRlmKJHRtnOb/j/fRcS8Ra58fdKLr6/OAWvjmtks0R6yaxqdN3RzKtsX1K1YPjZBym5hgQJRyCEXMuM0+25+xA=="
                     },
-                    "fingerprint": 7710457417074015683
+                    "fingerprint": 16654064126807673049
                   }
                 }
               ],
@@ -391,7 +391,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 10661116766301848833
+                "fingerprint": 15998697093541005539
               }
             },
             {
@@ -455,7 +455,7 @@
                 "item": {
                   "text": "Paris"
                 },
-                "fingerprint": 10014039168603989904
+                "fingerprint": 7677433660722303974
               }
             }
           ],
@@ -476,7 +476,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 5839064992978596122
+            "fingerprint": 10907891467078341492
           },
           "finish_reason": "stop",
           "raw": {

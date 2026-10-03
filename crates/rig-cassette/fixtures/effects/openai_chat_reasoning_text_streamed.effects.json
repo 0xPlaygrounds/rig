@@ -68,14 +68,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities.",
-              "native": {
-                "item": {
-                  "content": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities.",
-                  "refusal": null
-                },
-                "fingerprint": 5928001701868165550
-              }
+              "text": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities."
             }
           ],
           "usage": {
@@ -98,21 +91,25 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 15408375843478478058
+            "fingerprint": 13521024665608440642
           },
           "provider_request_id": "req_ad55f153d1b242a19a98f97bf4a05ca2",
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 37,
               "completion_tokens": 136,
-              "total_tokens": 173,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 64,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 37,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 64
-              }
+              "total_tokens": 173
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-ERDIi9CwPHXrqfDt2Dw9FgzmE5DHy",
@@ -647,18 +644,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities.",
-              "native": {
-                "item": {
-                  "content": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities.",
-                  "refusal": null
-                },
-                "fingerprint": 5928001701868165550
-              }
+              "text": "Rust is a systems programming language that combines C/C++-level performance with a strong static type system and an ownership/borrow checker to guarantee memory safety without a garbage collector. Memory safety prevents bugs like use-after-free, null/dangling pointer dereferences, and data races, which reduces crashes and security vulnerabilities."
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     }
   ]
 }

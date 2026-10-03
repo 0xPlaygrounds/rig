@@ -332,15 +332,7 @@
             "content": [
               {
                 "type": "text",
-                "text": "The dominant non-background color is bright red.",
-                "native": {
-                  "item": {
-                    "annotations": [],
-                    "content": "The dominant non-background color is bright red.",
-                    "refusal": null
-                  },
-                  "fingerprint": 17672256777754227434
-                }
+                "text": "The dominant non-background color is bright red."
               }
             ],
             "head": {
@@ -349,7 +341,7 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+                "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
               },
               "stop": "stop",
               "native": {
@@ -359,7 +351,7 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 11073571618283544370
+                "fingerprint": 14585632120862735230
               }
             },
             "done": true,
@@ -382,15 +374,7 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is bright red.",
-                  "native": {
-                    "item": {
-                      "annotations": [],
-                      "content": "The dominant non-background color is bright red.",
-                      "refusal": null
-                    },
-                    "fingerprint": 17672256777754227434
-                  }
+                  "text": "The dominant non-background color is bright red."
                 }
               ],
               "usage": {
@@ -405,7 +389,7 @@
                 "provider": "openai",
                 "model": "gpt-5-mini",
                 "response_model": "gpt-5-mini-2025-08-07",
-                "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+                "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
               },
               "native": {
                 "item": {
@@ -414,9 +398,9 @@
                   "refusal": null,
                   "role": "assistant"
                 },
-                "fingerprint": 11073571618283544370
+                "fingerprint": 14585632120862735230
               },
-              "provider_request_id": "req_74c7a7210b1840a4979f2fec711f1353",
+              "provider_request_id": "req_1a38404650834cf7a3be6c88157f5335",
               "finish_reason": "stop",
               "raw": {
                 "choices": [
@@ -432,7 +416,7 @@
                   }
                 ],
                 "created": 0,
-                "id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA",
+                "id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH",
                 "model": "gpt-5-mini-2025-08-07",
                 "object": "chat.completion",
                 "service_tier": "default",
@@ -469,7 +453,7 @@
               "provider": "openai",
               "model": "gpt-5-mini",
               "response_model": "gpt-5-mini-2025-08-07",
-              "response_id": "chatcmpl-EUPabWT8s18fooVK0mJxpqRuSyENA"
+              "response_id": "chatcmpl-EUeEn2SnKZuyiuu5vUCpag1AyxshH"
             },
             "stop": "stop",
             "native": {
@@ -479,7 +463,7 @@
                 "refusal": null,
                 "role": "assistant"
               },
-              "fingerprint": 11073571618283544370
+              "fingerprint": 14585632120862735230
             }
           }
         },
@@ -487,15 +471,7 @@
           "bevy_ecs::hierarchy::ChildOf": 10,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "The dominant non-background color is bright red.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null
-                },
-                "fingerprint": 17672256777754227434
-              }
+              "text": "The dominant non-background color is bright red."
             }
           }
         },

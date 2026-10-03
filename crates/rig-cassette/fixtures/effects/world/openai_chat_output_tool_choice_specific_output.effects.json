@@ -125,7 +125,7 @@
                   "id": "call_WrSxGNmyHGwN3740degKUBAg",
                   "type": "function"
                 },
-                "fingerprint": 14349063677854804686
+                "fingerprint": 7654866528402226744
               }
             }
           ],
@@ -160,7 +160,7 @@
                 }
               ]
             },
-            "fingerprint": 6677878711659364334
+            "fingerprint": 10602750144982291796
           },
           "provider_request_id": "req_f359eaff7be943bdbf3d7c606b1fb488",
           "finish_reason": "tool_calls",

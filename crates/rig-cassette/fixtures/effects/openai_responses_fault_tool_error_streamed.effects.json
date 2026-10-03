@@ -122,7 +122,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -146,7 +146,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4862558200046304315
+                "fingerprint": 5338141375501986831
               }
             }
           ],
@@ -168,54 +168,84 @@
           "provider_request_id": "req_3d3bdcf704d94c0ba96c70082c6c8390",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_0c2a6469cff50075016abf499dc0c887d0b57c5321057e6248",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0c2a6469cff50075016abf499dc0c887d0b57c5321057e6248",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0mfsOc0fyB1MqHkQjtnK0rWVTsFRycOc3dNONtceTviEimoQOuNZZz3N3sacouXAO8z3UXaYiRCkggf-KiFYAhxB7gMaQ_EymHmdPOaICIweNLU2FpjBsyDoG0zXrDB8Jex2U2FAdp9k9p5Od1hUxv22V1VyC4AwlIcqZR3u3MjDCptcXpK8z2kAoIZ31vFvJQ14rf79u0qSRsQJyv9hWIh4NzkjodGkS8PVfCJrVf3ykSO7zzhsxRjUT8fnrE-Wd-eRNbmRCU1uPDEeL7sljykmbPQrqtNa8-gzoMQ0gxOJ9mbefQIFj6i7FHycvYdYDgrZ5in7835zERU-qoMRnwAZZjM2hFzoKLF528V8rmk4Kp4YfyGO2ECC_qslw8NU1MnUyiZvGqyyK_yQ16J75CggD-O6Zn6LJpTUbYFS0fSxDz_bYBGO5CeIT0k9UkY0h7TSvW7fMySfOCjo6UplKJp5t1eZN1UFgxAiBdd7QjLs0_xk7WxY3hpepJfd_wXB3YKy0G0uTG71bsS3DqoupWEqWpYFHLNVP_NuQ2aZVORQSrVnAHoNzZHsOOXVAo-vs4I37UdQwaXtCoxzORtXROB1JZ8S-qa2t7pRgZegeKt7pbaT2Dx1IVaWPhVG5edGXc6FdGnowYQJS7CZ3jueu2ARw7fn6j9bvNwRyCQvQVyjn8nK1u6GmNbqIEamVCOXekt2ioPIqORNp9UtzjnYzq67WGzaXwYOz-XEzSQ8LpyOVQuGe9pdTKBCqzRojRi1INvWU9gMR6gL4tIpoX4v1fN8KIoiNiPJ7Cw8AmZnPc_PwQbvIj_b75Y1ixQwOmJCbe-6fJioMPb_qjWRYEVJDkil6RCbV1WxGR6TbAtUnxqGqiidWgL2FxecPRs0Ge9TleyaJ9Xb5EOfuGBd1Q7h7_Rpyhrdg75qObU9Y56P2vkaJu56ePe6xt4PgAAdxODeN8t2WrsK4RbOVS_0EIUIV7VYWT4VBSiD8y39-VhzudswA0yDA44w_nCKzNgNE66XA9J1S2q5-YRAE8KmPOzfuYMy-vFwlhgXooWnvC9gF0ckIRifeNbn8n1wnCxu0wBKxKTt4turXNBLdVTq80GHldCE4pmrHtpBiK1oyfH2vs1r3CqKVT-hpmkJjo3xH7TPMUknyJlPFc6EfBoc8yCfUEfKyz-RKl5fdaGhgW-rlXezKsbTqcy0_6yMXgdrb8F-h6cR5CxQLB3HMrANDHPa9z9nWuF3hzPUC885HRjV5fPzF-9qUbw__lA78TwYWOu8YJO_zNa64k249Mms61E91GLmaRorab1gR0bbA7gbfd95GBDI9AkxBNoEoqIbJQk-E2VoBww3pS42pZfmFaQjM5mks2C0C3OJNvUG9ZBPI7WjkNRazHiv9oeaNQ2Ct02KLTMPH4L543p88l4uVPOdX-vnhXPMTMxV2Eu2uRztz4XoTMEMVbsaa_4Xa-pGfkGWNm_cnfksC4lW_pBbO3FnSnPJ96hE1jUZvA4Rd5XC1fs5tn1vgf0k6lWe5mKiX75LjwV15pbbzOoqUHqXfj17ht8tF2hbqA-F2Jd0bRxZOTH-8XDkqHsppjeBvycPFZ9jenMeodkCvMYywk7Oi-C6u-RZ-ScHdoiBAWHKrVbOx3Le_OmVKrP0TcC73LHMsOZtzpEml-r6P9kMulsx5rm8ofDbbjDkYq7-l5dUuGmCUZ6wHGb3ANlmpNw-pu8vD1GRc2hVucb6iFXlpzprCBECA0iOFAJxhtDGApgKzD0N99xhB5kIQfXUFN2O9dD6gYg_eF55AtRrQnO5e_DU4rSry_LdQPpUYIfXNcSpHnxXOEXHQiLYkxUiX4t0yDzTthVslSCKweO0rkIYU8f-9m-wVjikcboB0Vi_DWtTYzxG4H9EeeVn49Z2_ejz6w5X75rkq2Dmu2-67x9fH_LCuRZTXj3hxweKd9kh5WLxXt20EQj743UAgBLS9Iqu9zz3VZHUvBt45CKeZlO8djUUT8d0KZql2A8LfRlxNfbwEmn4qC55Tg11tI8HfrRvwJ-6aaD7zpgX2Vro47JuuyOeYNtJSQfm9dtcGMpWpDGjiwxqz3-dbwVGY4thq9GL_Sn4o6gtij-j_pI1B-3fITWn0TJ3eGBtoSbXp3ffHLfoQf4L-68aDPNg4RRsIGohGmE7Pgz1d-V",
+                "id": "rs_0c2a6469cff50075016abf499e279487d0aa9d073b22a93f54",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"x\":17,\"y\":25}",
+                "call_id": "call_3E9bfHpdljDABS9zT4DsqY0B",
+                "id": "fc_0c2a6469cff50075016abf499f77bc87d0ab81cb5423c84a22",
+                "name": "add",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
-            "usage": {
-              "input_tokens": 103,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 175,
-              "output_tokens_details": {
-                "reasoning_tokens": 128
-              },
-              "total_tokens": 278
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_0c2a6469cff50075016abf499e279487d0aa9d073b22a93f54",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0mfsOc0fyB1MqHkQjtnK0rWVTsFRycOc3dNONtceTviEimoQOuNZZz3N3sacouXAO8z3UXaYiRCkggf-KiFYAhxB7gMaQ_EymHmdPOaICIweNLU2FpjBsyDoG0zXrDB8Jex2U2FAdp9k9p5Od1hUxv22V1VyC4AwlIcqZR3u3MjDCptcXpK8z2kAoIZ31vFvJQ14rf79u0qSRsQJyv9hWIh4NzkjodGkS8PVfCJrVf3ykSO7zzhsxRjUT8fnrE-Wd-eRNbmRCU1uPDEeL7sljykmbPQrqtNa8-gzoMQ0gxOJ9mbefQIFj6i7FHycvYdYDgrZ5in7835zERU-qoMRnwAZZjM2hFzoKLF528V8rmk4Kp4YfyGO2ECC_qslw8NU1MnUyiZvGqyyK_yQ16J75CggD-O6Zn6LJpTUbYFS0fSxDz_bYBGO5CeIT0k9UkY0h7TSvW7fMySfOCjo6UplKJp5t1eZN1UFgxAiBdd7QjLs0_xk7WxY3hpepJfd_wXB3YKy0G0uTG71bsS3DqoupWEqWpYFHLNVP_NuQ2aZVORQSrVnAHoNzZHsOOXVAo-vs4I37UdQwaXtCoxzORtXROB1JZ8S-qa2t7pRgZegeKt7pbaT2Dx1IVaWPhVG5edGXc6FdGnowYQJS7CZ3jueu2ARw7fn6j9bvNwRyCQvQVyjn8nK1u6GmNbqIEamVCOXekt2ioPIqORNp9UtzjnYzq67WGzaXwYOz-XEzSQ8LpyOVQuGe9pdTKBCqzRojRi1INvWU9gMR6gL4tIpoX4v1fN8KIoiNiPJ7Cw8AmZnPc_PwQbvIj_b75Y1ixQwOmJCbe-6fJioMPb_qjWRYEVJDkil6RCbV1WxGR6TbAtUnxqGqiidWgL2FxecPRs0Ge9TleyaJ9Xb5EOfuGBd1Q7h7_Rpyhrdg75qObU9Y56P2vkaJu56ePe6xt4PgAAdxODeN8t2WrsK4RbOVS_0EIUIV7VYWT4VBSiD8y39-VhzudswA0yDA44w_nCKzNgNE66XA9J1S2q5-YRAE8KmPOzfuYMy-vFwlhgXooWnvC9gF0ckIRifeNbn8n1wnCxu0wBKxKTt4turXNBLdVTq80GHldCE4pmrHtpBiK1oyfH2vs1r3CqKVT-hpmkJjo3xH7TPMUknyJlPFc6EfBoc8yCfUEfKyz-RKl5fdaGhgW-rlXezKsbTqcy0_6yMXgdrb8F-h6cR5CxQLB3HMrANDHPa9z9nWuF3hzPUC885HRjV5fPzF-9qUbw__lA78TwYWOu8YJO_zNa64k249Mms61E91GLmaRorab1gR0bbA7gbfd95GBDI9AkxBNoEoqIbJQk-E2VoBww3pS42pZfmFaQjM5mks2C0C3OJNvUG9ZBPI7WjkNRazHiv9oeaNQ2Ct02KLTMPH4L543p88l4uVPOdX-vnhXPMTMxV2Eu2uRztz4XoTMEMVbsaa_4Xa-pGfkGWNm_cnfksC4lW_pBbO3FnSnPJ96hE1jUZvA4Rd5XC1fs5tn1vgf0k6lWe5mKiX75LjwV15pbbzOoqUHqXfj17ht8tF2hbqA-F2Jd0bRxZOTH-8XDkqHsppjeBvycPFZ9jenMeodkCvMYywk7Oi-C6u-RZ-ScHdoiBAWHKrVbOx3Le_OmVKrP0TcC73LHMsOZtzpEml-r6P9kMulsx5rm8ofDbbjDkYq7-l5dUuGmCUZ6wHGb3ANlmpNw-pu8vD1GRc2hVucb6iFXlpzprCBECA0iOFAJxhtDGApgKzD0N99xhB5kIQfXUFN2O9dD6gYg_eF55AtRrQnO5e_DU4rSry_LdQPpUYIfXNcSpHnxXOEXHQiLYkxUiX4t0yDzTthVslSCKweO0rkIYU8f-9m-wVjikcboB0Vi_DWtTYzxG4H9EeeVn49Z2_ejz6w5X75rkq2Dmu2-67x9fH_LCuRZTXj3hxweKd9kh5WLxXt20EQj743UAgBLS9Iqu9zz3VZHUvBt45CKeZlO8djUUT8d0KZql2A8LfRlxNfbwEmn4qC55Tg11tI8HfrRvwJ-6aaD7zpgX2Vro47JuuyOeYNtJSQfm9dtcGMpWpDGjiwxqz3-dbwVGY4thq9GL_Sn4o6gtij-j_pI1B-3fITWn0TJ3eGBtoSbXp3ffHLfoQf4L-68aDPNg4RRsIGohGmE7Pgz1d-V",
-                "status": null
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
               },
-              {
-                "id": "fc_0c2a6469cff50075016abf499f77bc87d0ab81cb5423c84a22",
-                "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_3E9bfHpdljDABS9zT4DsqY0B",
-                "name": "add",
-                "status": "completed",
-                "type": "function_call"
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "adds two integers",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -232,22 +262,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "adds two integers",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "usage": {
+              "input_tokens": 103,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 175,
+              "output_tokens_details": {
+                "reasoning_tokens": 128
+              },
+              "total_tokens": 278
+            },
+            "user": null
           }
         }
       },
@@ -276,7 +309,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -285,7 +318,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -293,7 +326,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"x\":17,\"y\":25}"
           }
         },
@@ -301,7 +334,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -323,12 +356,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4862558200046304315
+                "fingerprint": 5338141375501986831
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     },
     {
       "tool_output": {},
@@ -398,7 +436,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -422,7 +460,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4862558200046304315
+                    "fingerprint": 5338141375501986831
                   }
                 }
               ],
@@ -449,7 +487,8 @@
                       "type": "text",
                       "text": "the adder is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -501,7 +540,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -522,7 +561,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 4501334444821699225
+                "fingerprint": 8382217321388958331
               }
             }
           ],
@@ -544,60 +583,90 @@
           "provider_request_id": "req_b2fb90ddfe42411caefcb369f0881cce",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_0c2a6469cff50075016abf499fc6b487d0abe24b55fce92366",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0c2a6469cff50075016abf499fc6b487d0abe24b55fce92366",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0mhRcDMpn9DmYpedmRtIIxhOB4f87_yShL5YwRPIOvUcn5OriliLsxvSg-rl5EUSLsQSJy5HnVMmjS6sYeflDOZkGHtUX0-XBa_fglT6D5Yd3O2bGpQ_hJ47seDsLwcn4tzoP2O-joQpkaZZWWreM0Mh9nVbhXWvgqcf_4qs-l78vDquZr8JzmhTUV0s94HZnlq4yXjkX7-S4vESUBFaSvRIfFM3cjaAfSlBtr8qV6WMCYMkeLjiZEl7W9IVyCI9xX2-o9VcmUDLj21OcE7rIoDF4riUpcrm6jwTmuuYQj4ihDJrrMtdpAMNnixs54abToTC3HJj6BNYqrZVgD-brFXdCjGXQJU4kl3dwmVgI1pzogy2zzeLNHhJ5MnY6h60VQoCUknxihEXqLUXtTkflNnBdk715oL2P8yRAZ8GHr3PTwuiQ9o2M6tFa32WKyLG_WVc9rA0CseT7ZYbl4_r1Xwj7g3JIfe6_FKrObpQgpFPdsqSPdzK8zmb_hjBoeJ0aFbVVrnGJ5GnXmEF3s2jaJdhCL950p-jUtyc1sPYK6u4tAkrbfMD44sMSiXelY6FytQoIu-HzrXtw5nNKWoV4D6e6nfNDL-guu4Pe9GaSBiNaS8uKaX2qSlJgjAzs5BIXt5IAbyfrKOb2TmiRe7YIwmq3cXyDTfK3nAUqQsthI3xJAQ4HCDv7vGsUzcXQY5O31eys2yv74WtuxMHVPspEX5o8tGC2YVNJoWiHAY_9IvtrUG6NIY23V849n9Y117vCqUSgZ5ZlT2bas39e08iUd0zbDpiNxSmeQ18-t2PxhaQ-exnSONNj7Xe5WO_RXBbYQ68hJuulzm92-vWasoD2nnLBplRH1yLt2fIH9RUJ0o_kAG27m03JX-1YNevhsNHnaNFqzoNyDTAM9YEDZrbeSAYs76tXUOv4KWwVVRsJIFAQsdUxc_0dU_sET1TnsPvrRHsvj_DXNvnJFsYCeLk2dlZEyOPHvP0MIsL8mAqrxrB2R7KXNkloy2G3iIA_tgPAktHHybOPvPo7gP2ZLhi3AlvHth9-_010GMdWOxCYswH1yafr1evwvkKZKpGLrevWLSP2DB1nfbRYuiKtE5qabPChlhXMFhtK9tY_ecDVUceKLeFulr0lYxSLChFH0D9uKAnE5sVgiXftmc1m3JLk252HPd3Id3w7Fj9JQtn8fs8m1GiurdTbDH1urrSWOJgA_V8AvLxEM1M26zR91iohstZxYZg6oARA8PWLKJ9eQHwNDSAgHR37J6RbuMSC54-iQVR8NDjSRQFuzlbWeaIrOgVhyAdo43pq7qTGsPr-wuUH2CFpzg1Lv6Hm_6qXIcWHnwXz9oLM9VehBrnN44iTmA1GkwptqnglebI52XLcVW_U-tWQXls7GmM6OxNw25zrTQIs3S5gHMipAPoWNr8bR8pkcRr35V0RHIIsKYAsJVFbVbYT7by5qRGRBRAwfi1ugPEdtxyJbBHVhvK4NRVq6vcWU8rcAbug0RWuRCzh7SUk_IxWeDHHoG0Bc1oZ5attVOQQamDJQ9OIwgq1D09dNwjJg2WpglfLIdnsqjQpi4RkFQc0NWWTZ71aG9B5Ukg4C8FsSDjXZbndqDkxIkvmReb-49ikQNG9lEdB0Dhto_iTqlo8evyXiKghJZ6ODVRTlOAxJleX_39b3oxuNlND6IBnb-X3xrXSosbPNaUC8sfsZqhKKuUD0qx70QWM-sX8JHGS2DEXRzfYfwohsMGwMC9Vn-OYde-bmdsQ20Qw7-qCyQCFmP8OYSgKMiMd5paCqW",
+                "id": "rs_0c2a6469cff50075016abf49a042a887d0adc74d99599d38bb",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "the adder is broken",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_0c2a6469cff50075016abf49a112bc87d08f3328d1b76b1f10",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
-            "usage": {
-              "input_tokens": 290,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 113,
-              "output_tokens_details": {
-                "reasoning_tokens": 64
-              },
-              "total_tokens": 403
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_0c2a6469cff50075016abf49a042a887d0adc74d99599d38bb",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0mhRcDMpn9DmYpedmRtIIxhOB4f87_yShL5YwRPIOvUcn5OriliLsxvSg-rl5EUSLsQSJy5HnVMmjS6sYeflDOZkGHtUX0-XBa_fglT6D5Yd3O2bGpQ_hJ47seDsLwcn4tzoP2O-joQpkaZZWWreM0Mh9nVbhXWvgqcf_4qs-l78vDquZr8JzmhTUV0s94HZnlq4yXjkX7-S4vESUBFaSvRIfFM3cjaAfSlBtr8qV6WMCYMkeLjiZEl7W9IVyCI9xX2-o9VcmUDLj21OcE7rIoDF4riUpcrm6jwTmuuYQj4ihDJrrMtdpAMNnixs54abToTC3HJj6BNYqrZVgD-brFXdCjGXQJU4kl3dwmVgI1pzogy2zzeLNHhJ5MnY6h60VQoCUknxihEXqLUXtTkflNnBdk715oL2P8yRAZ8GHr3PTwuiQ9o2M6tFa32WKyLG_WVc9rA0CseT7ZYbl4_r1Xwj7g3JIfe6_FKrObpQgpFPdsqSPdzK8zmb_hjBoeJ0aFbVVrnGJ5GnXmEF3s2jaJdhCL950p-jUtyc1sPYK6u4tAkrbfMD44sMSiXelY6FytQoIu-HzrXtw5nNKWoV4D6e6nfNDL-guu4Pe9GaSBiNaS8uKaX2qSlJgjAzs5BIXt5IAbyfrKOb2TmiRe7YIwmq3cXyDTfK3nAUqQsthI3xJAQ4HCDv7vGsUzcXQY5O31eys2yv74WtuxMHVPspEX5o8tGC2YVNJoWiHAY_9IvtrUG6NIY23V849n9Y117vCqUSgZ5ZlT2bas39e08iUd0zbDpiNxSmeQ18-t2PxhaQ-exnSONNj7Xe5WO_RXBbYQ68hJuulzm92-vWasoD2nnLBplRH1yLt2fIH9RUJ0o_kAG27m03JX-1YNevhsNHnaNFqzoNyDTAM9YEDZrbeSAYs76tXUOv4KWwVVRsJIFAQsdUxc_0dU_sET1TnsPvrRHsvj_DXNvnJFsYCeLk2dlZEyOPHvP0MIsL8mAqrxrB2R7KXNkloy2G3iIA_tgPAktHHybOPvPo7gP2ZLhi3AlvHth9-_010GMdWOxCYswH1yafr1evwvkKZKpGLrevWLSP2DB1nfbRYuiKtE5qabPChlhXMFhtK9tY_ecDVUceKLeFulr0lYxSLChFH0D9uKAnE5sVgiXftmc1m3JLk252HPd3Id3w7Fj9JQtn8fs8m1GiurdTbDH1urrSWOJgA_V8AvLxEM1M26zR91iohstZxYZg6oARA8PWLKJ9eQHwNDSAgHR37J6RbuMSC54-iQVR8NDjSRQFuzlbWeaIrOgVhyAdo43pq7qTGsPr-wuUH2CFpzg1Lv6Hm_6qXIcWHnwXz9oLM9VehBrnN44iTmA1GkwptqnglebI52XLcVW_U-tWQXls7GmM6OxNw25zrTQIs3S5gHMipAPoWNr8bR8pkcRr35V0RHIIsKYAsJVFbVbYT7by5qRGRBRAwfi1ugPEdtxyJbBHVhvK4NRVq6vcWU8rcAbug0RWuRCzh7SUk_IxWeDHHoG0Bc1oZ5attVOQQamDJQ9OIwgq1D09dNwjJg2WpglfLIdnsqjQpi4RkFQc0NWWTZ71aG9B5Ukg4C8FsSDjXZbndqDkxIkvmReb-49ikQNG9lEdB0Dhto_iTqlo8evyXiKghJZ6ODVRTlOAxJleX_39b3oxuNlND6IBnb-X3xrXSosbPNaUC8sfsZqhKKuUD0qx70QWM-sX8JHGS2DEXRzfYfwohsMGwMC9Vn-OYde-bmdsQ20Qw7-qCyQCFmP8OYSgKMiMd5paCqW",
-                "status": null
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
               },
-              {
-                "id": "msg_0c2a6469cff50075016abf49a112bc87d08f3328d1b76b1f10",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "the adder is broken",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "adds two integers",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -614,22 +683,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "adds two integers",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "usage": {
+              "input_tokens": 290,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 113,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 403
+            },
+            "user": null
           }
         }
       },
@@ -658,7 +730,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -734,12 +806,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 4501334444821699225
+                "fingerprint": 8382217321388958331
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     }
   ]
 }

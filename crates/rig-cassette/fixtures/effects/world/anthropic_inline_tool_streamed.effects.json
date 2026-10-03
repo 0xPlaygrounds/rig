@@ -2,19 +2,11 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -26,7 +18,15 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,25 +34,17 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 1,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 21,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -76,11 +68,19 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
         "batch": 25,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 26,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -216,7 +216,7 @@
                   "text": "I'll calculate the sum right away!",
                   "type": "text"
                 },
-                "fingerprint": 1884067669826009340
+                "fingerprint": 8607239451623559848
               }
             },
             {
@@ -244,7 +244,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12701433112043059745
+                "fingerprint": 10412343574078086093
               }
             }
           ],
@@ -335,7 +335,7 @@
                   "text": "I'll calculate the sum right away!",
                   "type": "text"
                 },
-                "fingerprint": 1884067669826009340
+                "fingerprint": 8607239451623559848
               }
             }
           }
@@ -386,12 +386,17 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 12701433112043059745
+                "fingerprint": 10412343574078086093
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -460,7 +465,7 @@
                       "text": "I'll calculate the sum right away!",
                       "type": "text"
                     },
-                    "fingerprint": 1884067669826009340
+                    "fingerprint": 8607239451623559848
                   }
                 },
                 {
@@ -488,7 +493,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 12701433112043059745
+                    "fingerprint": 10412343574078086093
                   }
                 }
               ],
@@ -564,7 +569,7 @@
                   "text": "The dominant color in the image is **red**, and 17 + 25 = **42**.",
                   "type": "text"
                 },
-                "fingerprint": 4124684465518590869
+                "fingerprint": 13266254865328821479
               }
             }
           ],
@@ -687,12 +692,17 @@
                   "text": "The dominant color in the image is **red**, and 17 + 25 = **42**.",
                   "type": "text"
                 },
-                "fingerprint": 4124684465518590869
+                "fingerprint": 13266254865328821479
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     }
   ]

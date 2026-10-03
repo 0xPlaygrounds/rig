@@ -159,7 +159,7 @@
                   },
                   "thoughtSignature": "CocBAWkUfROLVeo9nHFpvEFDalshx7fRjUkh6jMFxhr5GuNaHz+CtUhv+X52FUtTbGCwREt3KDbPgclsVZ5h/YVqD0rYfTmXjXCr/9e11fdpJPmSShpYMMAevXd1OCayR0V12+7360Fat8nVWBRDedqW0/icpIQC/Fmy4GPExIowpOKxqRLlD2by"
                 },
-                "fingerprint": 5478563870962233673
+                "fingerprint": 8224270912407369721
               }
             }
           ],
@@ -182,7 +182,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 12631682853037376563
+            "fingerprint": 17167446897035012831
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -301,7 +301,7 @@
                       },
                       "thoughtSignature": "CocBAWkUfROLVeo9nHFpvEFDalshx7fRjUkh6jMFxhr5GuNaHz+CtUhv+X52FUtTbGCwREt3KDbPgclsVZ5h/YVqD0rYfTmXjXCr/9e11fdpJPmSShpYMMAevXd1OCayR0V12+7360Fat8nVWBRDedqW0/icpIQC/Fmy4GPExIowpOKxqRLlD2by"
                     },
-                    "fingerprint": 5478563870962233673
+                    "fingerprint": 8224270912407369721
                   }
                 }
               ],
@@ -319,7 +319,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 12631682853037376563
+                "fingerprint": 17167446897035012831
               }
             },
             {
@@ -385,7 +385,7 @@
                   "text": "7",
                   "thoughtSignature": "CpgBAWkUfROuO7G0mgpbE5vayykQCWzQTlb1V853DLp26dnbG2k/1fsFluSaTRDPEJOWaZ473EREisXXKTwACRTqKvabUhkmhhH8VFKa84xQQ2y4eoAMDHtxeFVZhG287/msGuWku9dsnAERyLmI4ukiZ1D8yeWF8ODheg6Ii/BFTI0pujWSJCS/riWcMwTb/gkUGVZPBvzb4KY="
                 },
-                "fingerprint": 5055689385454452998
+                "fingerprint": 690176975215199472
               }
             }
           ],
@@ -407,7 +407,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 16616782654267275500
+            "fingerprint": 6496392969739960434
           },
           "finish_reason": "stop",
           "raw": {

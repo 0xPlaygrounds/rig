@@ -230,7 +230,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9Ey5knbYPWrzLxiEfg3uWZWsS4j0+mc7PsIUgDejFrkQKXAFpFH0TDYOtNHJfzspk0lXDpp4X+WrDMp0slfelcU7HxSC0ApUAyJn2szIInS4h01GuyWB2EF6eZgsqohN5NAwbwoK2RuoG7+yRg7voDofWt4y04rX3hGCZET8BCksBaRR9ExBDes6t1MNztjpyNYmGUsRvbo7PEaIC3LeDMHjxvzCNXn5zJSkgOn5n9fDWPWUe7C3BbsFraAW12vx0MkPTU0w2lwGt83Y="
                 },
-                "fingerprint": 7888621069192584831
+                "fingerprint": 8975351853811734159
               }
             }
           ],
@@ -253,21 +253,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 12543701785984805829
+            "fingerprint": 14133290258368346733
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 166,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 221,
-              "thoughtsTokenCount": 37,
+              "promptTokenCount": 166,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 166
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 37,
+              "totalTokenCount": 221
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -321,12 +322,17 @@
                   },
                   "thoughtSignature": "CiQBaRR9Ey5knbYPWrzLxiEfg3uWZWsS4j0+mc7PsIUgDejFrkQKXAFpFH0TDYOtNHJfzspk0lXDpp4X+WrDMp0slfelcU7HxSC0ApUAyJn2szIInS4h01GuyWB2EF6eZgsqohN5NAwbwoK2RuoG7+yRg7voDofWt4y04rX3hGCZET8BCksBaRR9ExBDes6t1MNztjpyNYmGUsRvbo7PEaIC3LeDMHjxvzCNXn5zJSkgOn5n9fDWPWUe7C3BbsFraAW12vx0MkPTU0w2lwGt83Y="
                 },
-                "fingerprint": 7888621069192584831
+                "fingerprint": 8975351853811734159
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -402,7 +408,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9Ey5knbYPWrzLxiEfg3uWZWsS4j0+mc7PsIUgDejFrkQKXAFpFH0TDYOtNHJfzspk0lXDpp4X+WrDMp0slfelcU7HxSC0ApUAyJn2szIInS4h01GuyWB2EF6eZgsqohN5NAwbwoK2RuoG7+yRg7voDofWt4y04rX3hGCZET8BCksBaRR9ExBDes6t1MNztjpyNYmGUsRvbo7PEaIC3LeDMHjxvzCNXn5zJSkgOn5n9fDWPWUe7C3BbsFraAW12vx0MkPTU0w2lwGt83Y="
                     },
-                    "fingerprint": 7888621069192584831
+                    "fingerprint": 8975351853811734159
                   }
                 }
               ],
@@ -420,7 +426,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 12543701785984805829
+                "fingerprint": 14133290258368346733
               }
             },
             {
@@ -506,7 +512,7 @@
                 "item": {
                   "text": "5"
                 },
-                "fingerprint": 6246414299000683136
+                "fingerprint": 17762354422333057438
               }
             }
           ],
@@ -527,20 +533,21 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 15537831959918308370
+            "fingerprint": 17233102420409929724
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 197,
               "candidatesTokenCount": 1,
-              "totalTokenCount": 198,
+              "promptTokenCount": 197,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 197
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 198
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -577,12 +584,17 @@
                 "item": {
                   "text": "5"
                 },
-                "fingerprint": 6246414299000683136
+                "fingerprint": 17762354422333057438
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

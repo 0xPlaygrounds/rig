@@ -123,7 +123,7 @@
                   "text": "Ada",
                   "thoughtSignature": "EsMCCsACAWkUfROk2avbP1JxWunVzF2ffmb7ZAh+A1XULTwBpbyz9V/4T3mzYo1PZexATHmL9yqlRwKYs9d6GbF8gPQmGsLzA0GRuqNK30XwaDwTCO+wWQIyRtLntO4RNN4NaQ2Qsh8Nowz5RdAOJp4CvQ+wxcXVhqyO3UoZzzJeRX+W6IgUn9UMxt0SV0pSkEoVJF9ZMxoJw85ZEUmgz3FUodkt856G7EopWqeNg7T8XnVj/YlmUfukngiDuGYV6uGJ6DqMVKZT+4UyyX/uQ3UxsW3srPqZdjb05BUFusdWc2D+dYA86on2r1VjTX2vSTNpqle0Pnk+qvO8cdqr/nw7/aTWsC25PNGgdQzkY0lr8bBfEOl5cCBVKmFtm2k+kD8LqumcRmDFo3BHflHX3ChGEbqJjpD1pFA6g2qCZVn2axQEQ08="
                 },
-                "fingerprint": 11689945161834907103
+                "fingerprint": 5537197465831084537
               }
             }
           ],
@@ -145,7 +145,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 8448737388283586131
+            "fingerprint": 4857962483737284025
           },
           "finish_reason": "stop",
           "raw": {
@@ -213,7 +213,7 @@
                       "text": "Ada",
                       "thoughtSignature": "EsMCCsACAWkUfROk2avbP1JxWunVzF2ffmb7ZAh+A1XULTwBpbyz9V/4T3mzYo1PZexATHmL9yqlRwKYs9d6GbF8gPQmGsLzA0GRuqNK30XwaDwTCO+wWQIyRtLntO4RNN4NaQ2Qsh8Nowz5RdAOJp4CvQ+wxcXVhqyO3UoZzzJeRX+W6IgUn9UMxt0SV0pSkEoVJF9ZMxoJw85ZEUmgz3FUodkt856G7EopWqeNg7T8XnVj/YlmUfukngiDuGYV6uGJ6DqMVKZT+4UyyX/uQ3UxsW3srPqZdjb05BUFusdWc2D+dYA86on2r1VjTX2vSTNpqle0Pnk+qvO8cdqr/nw7/aTWsC25PNGgdQzkY0lr8bBfEOl5cCBVKmFtm2k+kD8LqumcRmDFo3BHflHX3ChGEbqJjpD1pFA6g2qCZVn2axQEQ08="
                     },
-                    "fingerprint": 11689945161834907103
+                    "fingerprint": 5537197465831084537
                   }
                 }
               ],
@@ -230,7 +230,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 8448737388283586131
+                "fingerprint": 4857962483737284025
               }
             }
           ]

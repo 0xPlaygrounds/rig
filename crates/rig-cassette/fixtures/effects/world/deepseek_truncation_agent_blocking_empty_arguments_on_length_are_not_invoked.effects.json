@@ -7,6 +7,13 @@
         "kind": {
           "delivery": "outcome"
         }
+      },
+      {
+        "batch": 5,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
       }
     ],
     "handlers": [
@@ -35,7 +42,8 @@
       }
     ],
     "signature": {
-      "parity/model": "completion"
+      "parity/model": "completion",
+      "parity/tool#0": "tool"
     },
     "hooks": [],
     "required": {},
@@ -100,7 +108,29 @@
       "outcome": {
         "Ok": {
           "outcome": "completion",
-          "choice": [],
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_nnqw1McgLwfS7HiJr8t63543"
+              },
+              "function": {
+                "name": "file_report",
+                "arguments": {}
+              },
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "",
+                    "name": "file_report"
+                  },
+                  "id": "call_00_nnqw1McgLwfS7HiJr8t63543",
+                  "type": "function"
+                },
+                "fingerprint": 13495484702170417714
+              }
+            }
+          ],
           "usage": {
             "input_tokens": 346,
             "output_tokens": 16,
@@ -117,9 +147,19 @@
           "native": {
             "item": {
               "content": "",
-              "role": "assistant"
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "",
+                    "name": "file_report"
+                  },
+                  "id": "call_00_nnqw1McgLwfS7HiJr8t63543",
+                  "type": "function"
+                }
+              ]
             },
-            "fingerprint": 675868731199239589
+            "fingerprint": 15685390947338604374
           },
           "finish_reason": "length",
           "raw": {
@@ -160,6 +200,31 @@
               },
               "total_tokens": 362
             }
+          }
+        }
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "file_report",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "filed"
+              }
+            ]
           }
         }
       },

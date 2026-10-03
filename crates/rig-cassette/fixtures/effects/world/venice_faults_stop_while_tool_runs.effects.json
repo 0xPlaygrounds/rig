@@ -150,7 +150,7 @@
                   "id": "9C7RdXWf3",
                   "type": "function"
                 },
-                "fingerprint": 17004601343433805440
+                "fingerprint": 9174975520624471016
               }
             }
           ],
@@ -183,7 +183,7 @@
                 }
               ]
             },
-            "fingerprint": 1856030287073401040
+            "fingerprint": 6475594655682429832
           },
           "finish_reason": "tool_calls",
           "raw": {

@@ -130,7 +130,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17939559675911689397
+                "fingerprint": 9705399250042756883
               }
             }
           ],
@@ -323,7 +323,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17939559675911689397
+                    "fingerprint": 9705399250042756883
                   }
                 }
               ],
@@ -397,7 +397,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 11231240767045752081
+                "fingerprint": 6033222713521759663
               }
             }
           ],

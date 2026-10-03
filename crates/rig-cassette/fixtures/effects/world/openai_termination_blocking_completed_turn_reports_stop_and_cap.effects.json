@@ -75,15 +75,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "cedar",
-                  "refusal": null
-                },
-                "fingerprint": 1019647121729191188
-              }
+              "text": "cedar"
             }
           ],
           "usage": {
@@ -107,7 +99,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 452362687342519526
+            "fingerprint": 10831170027988163448
           },
           "provider_request_id": "req_4812a7970a154cce98a27faf3215800c",
           "finish_reason": "stop",

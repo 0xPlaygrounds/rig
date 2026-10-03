@@ -84,7 +84,7 @@
             "provider": "deepseek",
             "model": "deepseek-chat",
             "response_model": "deepseek-flash",
-            "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a"
+            "response_id": "62692a1e-c4be-4b75-960c-541315e1fbf0"
           },
           "native": {
             "item": {
@@ -96,17 +96,17 @@
           "finish_reason": "content_filter",
           "raw": {
             "usage": {
-              "prompt_tokens": 55,
               "completion_tokens": 15,
-              "total_tokens": 70,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 55,
+              "prompt_tokens": 55,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 55
+              "total_tokens": 70
             },
             "finish_reason": "content_filter",
-            "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+            "response_id": "62692a1e-c4be-4b75-960c-541315e1fbf0",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -117,6 +117,11 @@
         }
       },
       "events": [],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     }
   ]

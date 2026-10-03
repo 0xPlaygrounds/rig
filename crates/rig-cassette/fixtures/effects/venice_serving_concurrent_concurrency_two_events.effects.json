@@ -116,7 +116,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "mbkBHJxms"
+                "provider": "MHf85VsI8"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -128,16 +128,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "mbkBHJxms",
+                  "id": "MHf85VsI8",
                   "type": "function"
                 },
-                "fingerprint": 16580206412509542698
+                "fingerprint": 2204965400213942252
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "2zWADToSt"
+                "provider": "TJHCvQVU9"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -149,10 +149,10 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "2zWADToSt",
+                  "id": "TJHCvQVU9",
                   "type": "function"
                 },
-                "fingerprint": 6622850905262572511
+                "fingerprint": 13277374113842624991
               }
             }
           ],
@@ -166,7 +166,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RCZjCDtuRyFjKHJz8lSoL3PB"
+            "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL"
           },
           "native": {
             "item": {
@@ -179,7 +179,7 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "mbkBHJxms",
+                  "id": "MHf85VsI8",
                   "type": "function"
                 },
                 {
@@ -187,22 +187,22 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "2zWADToSt",
+                  "id": "TJHCvQVU9",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 8598238077205774088
+            "fingerprint": 4407191838942949610
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 1154,
               "completion_tokens": 16,
+              "prompt_tokens": 1154,
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RCZjCDtuRyFjKHJz8lSoL3PB",
+            "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -241,7 +241,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "mbkBHJxms"
+                "provider": "MHf85VsI8"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -253,10 +253,10 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "mbkBHJxms",
+                  "id": "MHf85VsI8",
                   "type": "function"
                 },
-                "fingerprint": 16580206412509542698
+                "fingerprint": 2204965400213942252
               }
             }
           }
@@ -285,7 +285,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "2zWADToSt"
+                "provider": "TJHCvQVU9"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -297,15 +297,20 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "2zWADToSt",
+                  "id": "TJHCvQVU9",
                   "type": "function"
                 },
-                "fingerprint": 6622850905262572511
+                "fingerprint": 13277374113842624991
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      }
     },
     {
       "tool_output": {},
@@ -383,7 +388,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "mbkBHJxms"
+                    "provider": "MHf85VsI8"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -395,16 +400,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "mbkBHJxms",
+                      "id": "MHf85VsI8",
                       "type": "function"
                     },
-                    "fingerprint": 16580206412509542698
+                    "fingerprint": 2204965400213942252
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "2zWADToSt"
+                    "provider": "TJHCvQVU9"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -416,10 +421,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "2zWADToSt",
+                      "id": "TJHCvQVU9",
                       "type": "function"
                     },
-                    "fingerprint": 6622850905262572511
+                    "fingerprint": 13277374113842624991
                   }
                 }
               ],
@@ -428,7 +433,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RCZjCDtuRyFjKHJz8lSoL3PB"
+                "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL"
               },
               "stop": "tool_use",
               "native": {
@@ -442,7 +447,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "mbkBHJxms",
+                      "id": "MHf85VsI8",
                       "type": "function"
                     },
                     {
@@ -450,12 +455,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "2zWADToSt",
+                      "id": "TJHCvQVU9",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 8598238077205774088
+                "fingerprint": 4407191838942949610
               }
             },
             {
@@ -464,7 +469,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "mbkBHJxms"
+                    "provider": "MHf85VsI8"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -477,7 +482,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "2zWADToSt"
+                    "provider": "TJHCvQVU9"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -525,44 +530,38 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard.",
-              "native": {
-                "item": {
-                  "content": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
-                },
-                "fingerprint": 12501307913330788256
-              }
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 1214,
-            "output_tokens": 20,
-            "total_tokens": 1234
+            "input_tokens": 1218,
+            "output_tokens": 15,
+            "total_tokens": 1233
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RVqOY1hPBhN4Zxzo4IZZfict"
+            "response_id": "chatcmpl-RbsMxTFOC3XK7i4Gt1ToRLia"
           },
           "native": {
             "item": {
-              "content": "The harbor label is crimson-harbor and the orchard label is silver-orchard.",
+              "content": "The current signals are crimson-harbor and silver-orchard.",
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 2434543460716163370
+            "fingerprint": 9436805893853109908
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 1214,
-              "completion_tokens": 20,
-              "total_tokens": 1234
+              "completion_tokens": 15,
+              "prompt_tokens": 1218,
+              "total_tokens": 1233
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RVqOY1hPBhN4Zxzo4IZZfict",
+            "response_id": "chatcmpl-RbsMxTFOC3XK7i4Gt1ToRLia",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -570,7 +569,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.0001188125
+                "usd": 0.0001179375
               }
             }
           }
@@ -598,7 +597,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " harbor"
+            "text": " current"
           }
         },
         {
@@ -606,7 +605,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " label"
+            "text": " signals"
           }
         },
         {
@@ -614,7 +613,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is"
+            "text": " are"
           }
         },
         {
@@ -670,46 +669,6 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " orch"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ard"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " label"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
             "text": " silver"
           }
         },
@@ -744,17 +703,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard.",
-              "native": {
-                "item": {
-                  "content": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
-                },
-                "fingerprint": 12501307913330788256
-              }
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      }
     }
   ]
 }

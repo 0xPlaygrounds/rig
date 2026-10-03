@@ -75,13 +75,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar",
-              "native": {
-                "item": {
-                  "content": "cedar"
-                },
-                "fingerprint": 1019647121729191188
-              }
+              "text": "cedar"
             }
           ],
           "usage": {
@@ -102,7 +96,7 @@
               "content": "cedar",
               "role": "assistant"
             },
-            "fingerprint": 452362687342519526
+            "fingerprint": 10831170027988163448
           },
           "finish_reason": "stop",
           "raw": {

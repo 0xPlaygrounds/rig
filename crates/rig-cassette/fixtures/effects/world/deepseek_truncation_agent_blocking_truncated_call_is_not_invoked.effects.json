@@ -114,7 +114,21 @@
       "outcome": {
         "Ok": {
           "outcome": "completion",
-          "choice": [],
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_JbVJNQ8A7CM1u4ccyIk63076"
+              },
+              "function": {
+                "name": "file_report",
+                "arguments": {
+                  "summary": "Log this incident: the nightly build broke"
+                },
+                "invalid_arguments": "{\"summary\": \"Log this incident: the nightly build broke"
+              }
+            }
+          ],
           "usage": {
             "input_tokens": 363,
             "output_tokens": 32,
@@ -131,9 +145,19 @@
           "native": {
             "item": {
               "content": "",
-              "role": "assistant"
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"summary\": \"Log this incident: the nightly build broke",
+                    "name": "file_report"
+                  },
+                  "id": "call_00_JbVJNQ8A7CM1u4ccyIk63076",
+                  "type": "function"
+                }
+              ]
             },
-            "fingerprint": 675868731199239589
+            "fingerprint": 4995805359216447038
           },
           "finish_reason": "length",
           "raw": {

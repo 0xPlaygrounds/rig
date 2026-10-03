@@ -145,7 +145,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -169,7 +169,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 8415879344767203876
+                "fingerprint": 15988471840348112292
               }
             }
           ],
@@ -381,7 +381,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -405,7 +405,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8415879344767203876
+                    "fingerprint": 15988471840348112292
                   }
                 }
               ],
@@ -432,7 +432,8 @@
                       "type": "text",
                       "text": "the adder is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -484,7 +485,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -505,7 +506,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 4501334444821699225
+                "fingerprint": 8382217321388958331
               }
             }
           ],

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 11,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,28 +10,28 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 12,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
+        "batch": 17,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -39,7 +39,7 @@
         }
       },
       {
-        "batch": 26,
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -180,7 +180,7 @@
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": 10036541437451478574
+                "fingerprint": 11658884501472644088
               }
             }
           ],
@@ -262,12 +262,17 @@
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": 10036541437451478574
+                "fingerprint": 11658884501472644088
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -340,7 +345,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 10014039168603989904
+                "fingerprint": 7677433660722303974
               }
             }
           ],
@@ -442,7 +447,7 @@
                       "name": "lookup",
                       "type": "tool_use"
                     },
-                    "fingerprint": 10036541437451478574
+                    "fingerprint": 11658884501472644088
                   }
                 }
               ],
@@ -517,7 +522,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 10014039168603989904
+                "fingerprint": 7677433660722303974
               }
             }
           ],
@@ -584,12 +589,17 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 10014039168603989904
+                "fingerprint": 7677433660722303974
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     }
   ]

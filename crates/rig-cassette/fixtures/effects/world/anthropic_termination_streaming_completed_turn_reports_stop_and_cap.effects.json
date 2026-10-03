@@ -2,15 +2,23 @@
   "header": {
     "deliveries": [
       {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -89,7 +97,7 @@
                   "text": "cedar",
                   "type": "text"
                 },
-                "fingerprint": 1019647121729191188
+                "fingerprint": 9699097597918212434
               }
             }
           ],
@@ -156,12 +164,17 @@
                   "text": "cedar",
                   "type": "text"
                 },
-                "fingerprint": 1019647121729191188
+                "fingerprint": 9699097597918212434
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     }
   ]

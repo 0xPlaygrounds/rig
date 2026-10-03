@@ -68,13 +68,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship.",
-              "native": {
-                "item": {
-                  "content": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship."
-                },
-                "fingerprint": 7481365758383667144
-              }
+              "text": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship."
             }
           ],
           "usage": {
@@ -95,7 +89,7 @@
               "content": "Rust be a systems language that stops ye from shootin' yer own foot with memory bugs, and memory safety matters 'cause a wild pointer can sink yer whole ship.",
               "role": "assistant"
             },
-            "fingerprint": 10342751857868011060
+            "fingerprint": 16059462463832856412
           },
           "finish_reason": "stop",
           "raw": {

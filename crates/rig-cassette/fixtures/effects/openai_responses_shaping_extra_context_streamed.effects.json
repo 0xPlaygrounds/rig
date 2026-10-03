@@ -84,7 +84,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -105,7 +105,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 9658890132495485441
+                "fingerprint": 14673726990416479137
               }
             }
           ],
@@ -127,26 +127,94 @@
           "provider_request_id": "req_bad708048a5e4801be8f73114c461023",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_0796149fddbbe48a016abf4b4d086487d08b8292f0de17a1ac",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0796149fddbbe48a016abf4b4d086487d08b8292f0de17a1ac",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0tOZkML2o0ZABaNPyc7i2wIKmtaXK5LXnzdneYzx4CpkoJ1rocSksDsIfhNyedf1PkD4PHBoO7GcXqQAV8-N-Xc4tmByxqQuk_VZ7aIsOTVyhBQ_yhq8xWkSuUp60rsBjPPw0l1RkqhuDw-SQayLaC64Z6KrBq-iZK33hJR7PEUbwcHEBXmPiXRgS-M4FEClq-fFK_5ECL9FVdlh22FYICnlvr4f5DRapTrFCwBWNf36uEFGzg-Xc3qaffF6DqJBWTfaBPmuqhu03klwHQtSFIMQH7m1bnc0fj5__aAUYfmRFbfG5xFxXlhxL3rqSpzstb08nBQC4xz17P92vcnvVj942owPqnV4lJvWKlx1g6DJH9ab33FryGwZT00Cw4YfMlcx1dxJUWZItb4mqxMKvxjWOZqGxBojhrzb0c6zodbqDslZ29Ftcm8uG-4drSnL_wXaAxEJKn10GHUkV8h2S8Oa1DxGTh0mlW_qfWoQJCjiZW06HWet-fiKxvv162zm_mLhx6WND9YGJl7WDsLEq1R_rLWDJUBJjY3ZQlPNnw8Rs3OwUBl3Xuxt-2wTNVbpx0wIJpUq0FmUREHKOMGthvE8dVRkTNjXzjeX0BsEPaf_Bcs7Lrl4zEyOIo97niAfKuXXq2YE8cyFRvsHL-0nUDmgXhZuwgT-Spk1U43To0F_TXMxWZY3iqcIkWyI9B1y66NNEDtwzJItxEE25rUbctWMUupRJwspzlBK7EMmPPCwSwC4e69JUQhUoadSUhYXNfqYnXeBBQ75DL_rd4dNTJO5kvRKkmhsy9XrkYmjSM9sjYks_IXhdT6THacT0RGcoxlwRnG9pLBUcvugTB-6z8pshI-PrVWQa2HPx-dfxknL62yq2FlCJnX0EABw9G-6IbjPAKQaZ7meui5kWRrejNeJrNVGTatbOMGql1hnUpxkHcEoMOz_LzxEDIc8RyzBo5ttdHLv_XX-jCal_-8BT1ljYKvfLed-NUZNrEEc9PUOp6_ICFAjJigKDcWEmavb3CsvHE_GU7iNTfr_FwMNG9qMBm1q7pCxnPEUPOUYL5il-QWQrZ4tHzFS4YJA8mK9EnlYqqqRlsy5MJnTpvk3jMIADb-1zFvMzSWchmjvuJspEHXtBpREfAVj6iK8PxNFNQemgXz8v-8SNp22MZtcnGjlk1TsCXEwbIKlG711I1TSmC-apSL9LDRe7DtDsh8E5b05Jgoai7f6RCJ8uWVGRgrFlzDN_WNxli4ywL4QSGCaNw8VFIs4hnk6ZGpCDOC5Xe2Etw6zXnN7dFV7dhV653QTfWTY0NWpYH1sZ7s4e-9MuLhOyy_5bRvR6H9xkA3RgzWMoy-Qe09ChwFIVVhYBHg4KNoQOFpAqOjjngEUOWnIrFM-k75Ks3G7oyysFfh7lHRDt5sXF2xz55UWGx_NQlpluGhjPKzS4TgoFqjmEVYq_kKStfMSX-NY0kX_z2AD55I5zIVLd9B3aEmcLX_MXHaaNahYiyBRSOtLUfD4FtwxgxBXj3z8cTGYc_1onzO12GC_fjU9eoDtSCecScip3wmUOsXhfbXX1cOOIHwQ61tsVAQfTwfsjvjeKUIav5Tffz09pn6hSmgb1nGbZmZbZ_uofJkFHh95P8067s8yKGwxg-hRMl9XrYJH6Nvtrs_1xJ-Q7WFwmmbsSEfvcIwD7WlgF3XfMO5Bizlcs8mq5gEEQ1g6SHDtPo_Prr-g7XKtL7u9bL6Id7MRg6ZbQKDEPfTMCijYh-XCrdyTF05q480C6IuNZw7QvXjxXligcaEHm9Szjc2z-M1CgE7rarIRci44S--rKiTaNBMO5SIN65O-nw=",
+                "id": "rs_0796149fddbbe48a016abf4b4d713087d08be922958ed1bc64",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_0796149fddbbe48a016abf4b4e149887d0a7463e87d38d1bcb",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 65,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 144,
               "output_tokens_details": {
@@ -154,42 +222,7 @@
               },
               "total_tokens": 209
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_0796149fddbbe48a016abf4b4d713087d08be922958ed1bc64",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0tOZkML2o0ZABaNPyc7i2wIKmtaXK5LXnzdneYzx4CpkoJ1rocSksDsIfhNyedf1PkD4PHBoO7GcXqQAV8-N-Xc4tmByxqQuk_VZ7aIsOTVyhBQ_yhq8xWkSuUp60rsBjPPw0l1RkqhuDw-SQayLaC64Z6KrBq-iZK33hJR7PEUbwcHEBXmPiXRgS-M4FEClq-fFK_5ECL9FVdlh22FYICnlvr4f5DRapTrFCwBWNf36uEFGzg-Xc3qaffF6DqJBWTfaBPmuqhu03klwHQtSFIMQH7m1bnc0fj5__aAUYfmRFbfG5xFxXlhxL3rqSpzstb08nBQC4xz17P92vcnvVj942owPqnV4lJvWKlx1g6DJH9ab33FryGwZT00Cw4YfMlcx1dxJUWZItb4mqxMKvxjWOZqGxBojhrzb0c6zodbqDslZ29Ftcm8uG-4drSnL_wXaAxEJKn10GHUkV8h2S8Oa1DxGTh0mlW_qfWoQJCjiZW06HWet-fiKxvv162zm_mLhx6WND9YGJl7WDsLEq1R_rLWDJUBJjY3ZQlPNnw8Rs3OwUBl3Xuxt-2wTNVbpx0wIJpUq0FmUREHKOMGthvE8dVRkTNjXzjeX0BsEPaf_Bcs7Lrl4zEyOIo97niAfKuXXq2YE8cyFRvsHL-0nUDmgXhZuwgT-Spk1U43To0F_TXMxWZY3iqcIkWyI9B1y66NNEDtwzJItxEE25rUbctWMUupRJwspzlBK7EMmPPCwSwC4e69JUQhUoadSUhYXNfqYnXeBBQ75DL_rd4dNTJO5kvRKkmhsy9XrkYmjSM9sjYks_IXhdT6THacT0RGcoxlwRnG9pLBUcvugTB-6z8pshI-PrVWQa2HPx-dfxknL62yq2FlCJnX0EABw9G-6IbjPAKQaZ7meui5kWRrejNeJrNVGTatbOMGql1hnUpxkHcEoMOz_LzxEDIc8RyzBo5ttdHLv_XX-jCal_-8BT1ljYKvfLed-NUZNrEEc9PUOp6_ICFAjJigKDcWEmavb3CsvHE_GU7iNTfr_FwMNG9qMBm1q7pCxnPEUPOUYL5il-QWQrZ4tHzFS4YJA8mK9EnlYqqqRlsy5MJnTpvk3jMIADb-1zFvMzSWchmjvuJspEHXtBpREfAVj6iK8PxNFNQemgXz8v-8SNp22MZtcnGjlk1TsCXEwbIKlG711I1TSmC-apSL9LDRe7DtDsh8E5b05Jgoai7f6RCJ8uWVGRgrFlzDN_WNxli4ywL4QSGCaNw8VFIs4hnk6ZGpCDOC5Xe2Etw6zXnN7dFV7dhV653QTfWTY0NWpYH1sZ7s4e-9MuLhOyy_5bRvR6H9xkA3RgzWMoy-Qe09ChwFIVVhYBHg4KNoQOFpAqOjjngEUOWnIrFM-k75Ks3G7oyysFfh7lHRDt5sXF2xz55UWGx_NQlpluGhjPKzS4TgoFqjmEVYq_kKStfMSX-NY0kX_z2AD55I5zIVLd9B3aEmcLX_MXHaaNahYiyBRSOtLUfD4FtwxgxBXj3z8cTGYc_1onzO12GC_fjU9eoDtSCecScip3wmUOsXhfbXX1cOOIHwQ61tsVAQfTwfsjvjeKUIav5Tffz09pn6hSmgb1nGbZmZbZ_uofJkFHh95P8067s8yKGwxg-hRMl9XrYJH6Nvtrs_1xJ-Q7WFwmmbsSEfvcIwD7WlgF3XfMO5Bizlcs8mq5gEEQ1g6SHDtPo_Prr-g7XKtL7u9bL6Id7MRg6ZbQKDEPfTMCijYh-XCrdyTF05q480C6IuNZw7QvXjxXligcaEHm9Szjc2z-M1CgE7rarIRci44S--rKiTaNBMO5SIN65O-nw=",
-                "status": null
-              },
-              {
-                "id": "msg_0796149fddbbe48a016abf4b4e149887d0a7463e87d38d1bcb",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -218,7 +251,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -390,12 +423,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 9658890132495485441
+                "fingerprint": 14673726990416479137
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     }
   ]
 }

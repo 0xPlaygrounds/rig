@@ -113,15 +113,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "ready",
-                  "refusal": null
-                },
-                "fingerprint": 815434921069355996
-              }
+              "text": "ready"
             }
           ],
           "usage": {
@@ -145,7 +137,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 16268972914252074274
+            "fingerprint": 5329546866666182096
           },
           "provider_request_id": "req_2bc88481a5c949a0a0c7b7395394d185",
           "finish_reason": "stop",

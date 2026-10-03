@@ -84,15 +84,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup — Monthly Gathering\",\"category\":\"Programming / Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup (3rd Wednesday, 7:00–9:00 PM) at Capitol Hill Community Center. Agenda: lightning talks, beginner Rust workshop, open help desk, and networking. Free; bring a laptop. RSVP: seattlerust.org/events\"}",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "{\"title\":\"Seattle Rust Meetup — Monthly Gathering\",\"category\":\"Programming / Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup (3rd Wednesday, 7:00–9:00 PM) at Capitol Hill Community Center. Agenda: lightning talks, beginner Rust workshop, open help desk, and networking. Free; bring a laptop. RSVP: seattlerust.org/events\"}",
-                  "refusal": null
-                },
-                "fingerprint": 12041073541857171820
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup — Monthly Gathering\",\"category\":\"Programming / Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup (3rd Wednesday, 7:00–9:00 PM) at Capitol Hill Community Center. Agenda: lightning talks, beginner Rust workshop, open help desk, and networking. Free; bring a laptop. RSVP: seattlerust.org/events\"}"
             }
           ],
           "usage": {
@@ -116,7 +108,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 10125958212558465080
+            "fingerprint": 9744010409928759472
           },
           "provider_request_id": "req_450618de022e4ee98e6442e85e612265",
           "finish_reason": "stop",

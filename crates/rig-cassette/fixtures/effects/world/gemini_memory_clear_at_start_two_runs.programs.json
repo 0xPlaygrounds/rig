@@ -236,7 +236,7 @@
                     "text": "ready.",
                     "thoughtSignature": "ErECCq4CAWkUfRNkPzprBnQN3krUBNMKeG3s18VCd5Uu1CHB1WJb/f1c9RL242Ch7E2mE6BFlU4iF9JBEmnb7tPkP8r4YBVJeqyfvIKv4lxR16DnbWOsjgX4vwOE3q4IjPW9gpB6WuvQtaM8Nfs6zAAXb8MbYytQ5NXLMOuj7XUDvnhuq4Pn5eNl0sDmqrVWIbvXLzPK/W8rF+lx/10tGCQjpgupgDeLMgCk4hD9YIhjCOJGtYXHEKwn/pMeN+QXLXiTjF1KjMr4wHZ9N90TGn85ljcSVtECrDQReD2Rub7dtONd9SxBXy73BBnAogy6hGyQVhh2E7OFmRlxRWvqr8NBhSrXadSoWmL7eB3nsvDBhLfxq6F5uJo2OFsVC3jseRd0Tod9ZI8sLM29DeidoLvxwxw="
                   },
-                  "fingerprint": 7790244451924217344
+                  "fingerprint": 7622115463999594536
                 }
               }
             ],
@@ -254,7 +254,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 546811913261009092
+                "fingerprint": 3928977403987171332
               }
             },
             "done": true,
@@ -283,7 +283,7 @@
                       "text": "ready.",
                       "thoughtSignature": "ErECCq4CAWkUfRNkPzprBnQN3krUBNMKeG3s18VCd5Uu1CHB1WJb/f1c9RL242Ch7E2mE6BFlU4iF9JBEmnb7tPkP8r4YBVJeqyfvIKv4lxR16DnbWOsjgX4vwOE3q4IjPW9gpB6WuvQtaM8Nfs6zAAXb8MbYytQ5NXLMOuj7XUDvnhuq4Pn5eNl0sDmqrVWIbvXLzPK/W8rF+lx/10tGCQjpgupgDeLMgCk4hD9YIhjCOJGtYXHEKwn/pMeN+QXLXiTjF1KjMr4wHZ9N90TGn85ljcSVtECrDQReD2Rub7dtONd9SxBXy73BBnAogy6hGyQVhh2E7OFmRlxRWvqr8NBhSrXadSoWmL7eB3nsvDBhLfxq6F5uJo2OFsVC3jseRd0Tod9ZI8sLM29DeidoLvxwxw="
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -305,7 +305,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 546811913261009092
+                "fingerprint": 3928977403987171332
               },
               "finish_reason": "stop",
               "raw": {
@@ -364,7 +364,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 546811913261009092
+              "fingerprint": 3928977403987171332
             }
           }
         },
@@ -378,7 +378,7 @@
                   "text": "ready.",
                   "thoughtSignature": "ErECCq4CAWkUfRNkPzprBnQN3krUBNMKeG3s18VCd5Uu1CHB1WJb/f1c9RL242Ch7E2mE6BFlU4iF9JBEmnb7tPkP8r4YBVJeqyfvIKv4lxR16DnbWOsjgX4vwOE3q4IjPW9gpB6WuvQtaM8Nfs6zAAXb8MbYytQ5NXLMOuj7XUDvnhuq4Pn5eNl0sDmqrVWIbvXLzPK/W8rF+lx/10tGCQjpgupgDeLMgCk4hD9YIhjCOJGtYXHEKwn/pMeN+QXLXiTjF1KjMr4wHZ9N90TGn85ljcSVtECrDQReD2Rub7dtONd9SxBXy73BBnAogy6hGyQVhh2E7OFmRlxRWvqr8NBhSrXadSoWmL7eB3nsvDBhLfxq6F5uJo2OFsVC3jseRd0Tod9ZI8sLM29DeidoLvxwxw="
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           }

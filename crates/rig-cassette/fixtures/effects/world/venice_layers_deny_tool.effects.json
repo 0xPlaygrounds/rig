@@ -134,7 +134,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "bZRVXq32u"
+                "provider": "vPlAgbGR0"
               },
               "function": {
                 "name": "add",
@@ -149,10 +149,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "bZRVXq32u",
+                  "id": "vPlAgbGR0",
                   "type": "function"
                 },
-                "fingerprint": 15024596767964905760
+                "fingerprint": 8277223783633774470
               }
             }
           ],
@@ -166,7 +166,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RKiBy7xnF6wLSbVSGiCZd5IQ"
+            "response_id": "chatcmpl-R7bVstIngowcMl9HwTasX1q4"
           },
           "native": {
             "item": {
@@ -180,12 +180,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "bZRVXq32u",
+                  "id": "vPlAgbGR0",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 4245290747791872568
+            "fingerprint": 4319230685159122014
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -205,7 +205,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "bZRVXq32u",
+                      "id": "vPlAgbGR0",
                       "type": "function"
                     }
                   ]
@@ -217,7 +217,7 @@
               "usd": 0.00010696875
             },
             "created": 0,
-            "id": "chatcmpl-RKiBy7xnF6wLSbVSGiCZd5IQ",
+            "id": "chatcmpl-R7bVstIngowcMl9HwTasX1q4",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -272,7 +272,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "bZRVXq32u"
+                    "provider": "vPlAgbGR0"
                   },
                   "function": {
                     "name": "add",
@@ -287,10 +287,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "bZRVXq32u",
+                      "id": "vPlAgbGR0",
                       "type": "function"
                     },
-                    "fingerprint": 15024596767964905760
+                    "fingerprint": 8277223783633774470
                   }
                 }
               ],
@@ -299,7 +299,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RKiBy7xnF6wLSbVSGiCZd5IQ"
+                "response_id": "chatcmpl-R7bVstIngowcMl9HwTasX1q4"
               },
               "stop": "tool_use",
               "native": {
@@ -314,12 +314,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "bZRVXq32u",
+                      "id": "vPlAgbGR0",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 4245290747791872568
+                "fingerprint": 4319230685159122014
               }
             },
             {
@@ -328,7 +328,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "bZRVXq32u"
+                    "provider": "vPlAgbGR0"
                   },
                   "name": "add",
                   "content": [
@@ -336,7 +336,8 @@
                       "type": "text",
                       "text": "add is disabled for this run"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -379,36 +380,29 @@
           "choice": [
             {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42",
-                  "name": null
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "I'm unable to assist with that tool right now. However, I can help with the calculation directly! The sum of 17 and 25 is 42."
             }
           ],
           "usage": {
-            "input_tokens": 1137,
-            "output_tokens": 3,
-            "total_tokens": 1140
+            "input_tokens": 1133,
+            "output_tokens": 37,
+            "total_tokens": 1170
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RYHvuLLLpD9e6mGUIZIGRd17"
+            "response_id": "chatcmpl-RI1gmaSmgIGezyEkCA1jSUR2"
           },
           "native": {
             "item": {
-              "content": "42",
+              "content": "I'm unable to assist with that tool right now. However, I can help with the calculation directly! The sum of 17 and 25 is 42.",
               "name": null,
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 5372475738331673531
+            "fingerprint": 3229127993939056412
           },
           "finish_reason": "stop",
           "raw": {
@@ -418,7 +412,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "42",
+                  "content": "I'm unable to assist with that tool right now. However, I can help with the calculation directly! The sum of 17 and 25 is 42.",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
@@ -428,17 +422,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00010734375
+              "usd": 0.00011546875
             },
             "created": 0,
-            "id": "chatcmpl-RYHvuLLLpD9e6mGUIZIGRd17",
+            "id": "chatcmpl-RI1gmaSmgIGezyEkCA1jSUR2",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 3,
-              "prompt_tokens": 1137,
-              "total_tokens": 1140
+              "completion_tokens": 37,
+              "prompt_tokens": 1133,
+              "total_tokens": 1170
             },
             "venice_parameters": {
               "disable_thinking": false,

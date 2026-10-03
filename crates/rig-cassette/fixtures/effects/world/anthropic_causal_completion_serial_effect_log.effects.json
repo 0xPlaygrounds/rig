@@ -164,7 +164,7 @@
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": 17066219521336168427
+                "fingerprint": 10687537869136156801
               }
             }
           ],
@@ -294,7 +294,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 10014039168603989904
+                "fingerprint": 7677433660722303974
               }
             }
           ],
@@ -396,7 +396,7 @@
                       "name": "lookup",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17066219521336168427
+                    "fingerprint": 10687537869136156801
                   }
                 }
               ],
@@ -471,7 +471,7 @@
                   "text": "Paris",
                   "type": "text"
                 },
-                "fingerprint": 10014039168603989904
+                "fingerprint": 7677433660722303974
               }
             }
           ],

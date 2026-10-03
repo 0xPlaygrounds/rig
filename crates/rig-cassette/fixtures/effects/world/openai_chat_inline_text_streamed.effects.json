@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -74,15 +74,7 @@
         }
       },
       {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -163,14 +155,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color is bright red.",
-              "native": {
-                "item": {
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null
-                },
-                "fingerprint": 17672256777754227434
-              }
+              "text": "The dominant non-background color is bright red."
             }
           ],
           "usage": {
@@ -193,21 +178,25 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 11073571618283544370
+            "fingerprint": 14585632120862735230
           },
           "provider_request_id": "req_480e7af02d1241f391852cceb57e1ead",
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 37,
               "completion_tokens": 82,
-              "total_tokens": 119,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 64,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 37,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 64
-              }
+              "total_tokens": 119
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-ERDDDON0mcxFYggiKluoYPeIbfMab",
@@ -310,18 +299,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The dominant non-background color is bright red.",
-              "native": {
-                "item": {
-                  "content": "The dominant non-background color is bright red.",
-                  "refusal": null
-                },
-                "fingerprint": 17672256777754227434
-              }
+              "text": "The dominant non-background color is bright red."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

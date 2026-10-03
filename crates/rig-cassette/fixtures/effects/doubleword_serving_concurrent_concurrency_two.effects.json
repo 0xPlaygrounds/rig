@@ -118,7 +118,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_8192bf4684174004bfb5d2db"
+                "provider": "call_b8265633bfb54c878d5cb3bf"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -130,16 +130,20 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_8192bf4684174004bfb5d2db",
+                  "id": "call_b8265633bfb54c878d5cb3bf",
                   "type": "function"
                 },
-                "fingerprint": 12383635637428578080
+                "fingerprint": 1762422030848772344
               }
+            },
+            {
+              "type": "text",
+              "text": "\n"
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_8d43e384c85847efaff4dab9"
+                "provider": "call_cc21fb8d6315440b8e53f1f0"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -151,17 +155,17 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_8d43e384c85847efaff4dab9",
+                  "id": "call_cc21fb8d6315440b8e53f1f0",
                   "type": "function"
                 },
-                "fingerprint": 17159735494524364928
+                "fingerprint": 16507437340326331458
               }
             }
           ],
           "usage": {
-            "input_tokens": 410,
-            "output_tokens": 35,
-            "total_tokens": 445,
+            "input_tokens": 430,
+            "output_tokens": 36,
+            "total_tokens": 466,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -170,19 +174,19 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "gen-1790914827-U6YX76FzkfU4zSQiqHys"
+            "response_id": "gen-1790976466-O8wbWFNi0lzAwiMHwZ3I"
           },
           "native": {
             "item": {
               "role": "assistant",
-              "content": "",
+              "content": "\n",
               "tool_calls": [
                 {
                   "function": {
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_8192bf4684174004bfb5d2db",
+                  "id": "call_b8265633bfb54c878d5cb3bf",
                   "type": "function"
                 },
                 {
@@ -190,36 +194,40 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_8d43e384c85847efaff4dab9",
+                  "id": "call_cc21fb8d6315440b8e53f1f0",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 12223774264025431011
+            "fingerprint": 8455306733498990587
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 410,
-              "completion_tokens": 35,
-              "total_tokens": 445,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 36,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 430,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 466
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790914827-U6YX76FzkfU4zSQiqHys",
+            "response_id": "gen-1790976466-O8wbWFNi0lzAwiMHwZ3I",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -305,7 +313,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_8192bf4684174004bfb5d2db"
+                    "provider": "call_b8265633bfb54c878d5cb3bf"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -317,16 +325,20 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_8192bf4684174004bfb5d2db",
+                      "id": "call_b8265633bfb54c878d5cb3bf",
                       "type": "function"
                     },
-                    "fingerprint": 12383635637428578080
+                    "fingerprint": 1762422030848772344
                   }
+                },
+                {
+                  "type": "text",
+                  "text": "\n"
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_8d43e384c85847efaff4dab9"
+                    "provider": "call_cc21fb8d6315440b8e53f1f0"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -338,10 +350,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_8d43e384c85847efaff4dab9",
+                      "id": "call_cc21fb8d6315440b8e53f1f0",
                       "type": "function"
                     },
-                    "fingerprint": 17159735494524364928
+                    "fingerprint": 16507437340326331458
                   }
                 }
               ],
@@ -350,20 +362,20 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "gen-1790914827-U6YX76FzkfU4zSQiqHys"
+                "response_id": "gen-1790976466-O8wbWFNi0lzAwiMHwZ3I"
               },
               "stop": "tool_use",
               "native": {
                 "item": {
                   "role": "assistant",
-                  "content": "",
+                  "content": "\n",
                   "tool_calls": [
                     {
                       "function": {
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_8192bf4684174004bfb5d2db",
+                      "id": "call_b8265633bfb54c878d5cb3bf",
                       "type": "function"
                     },
                     {
@@ -371,12 +383,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_8d43e384c85847efaff4dab9",
+                      "id": "call_cc21fb8d6315440b8e53f1f0",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 12223774264025431011
+                "fingerprint": 8455306733498990587
               }
             },
             {
@@ -385,7 +397,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_8192bf4684174004bfb5d2db"
+                    "provider": "call_b8265633bfb54c878d5cb3bf"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -398,7 +410,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_8d43e384c85847efaff4dab9"
+                    "provider": "call_cc21fb8d6315440b8e53f1f0"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -448,19 +460,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard.",
-              "native": {
-                "item": {
-                  "content": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard."
-                },
-                "fingerprint": 14170487281069361561
-              }
+              "text": "The labels are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 473,
-            "output_tokens": 20,
-            "total_tokens": 493,
+            "input_tokens": 477,
+            "output_tokens": 14,
+            "total_tokens": 491,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -469,42 +475,47 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "gen-1790914829-EW22shZhbEmPWhjJY9mf"
+            "response_id": "gen-1790976469-kQpqoOrWDdb1IEPzWdy4"
           },
           "native": {
             "item": {
-              "content": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard.",
+              "content": "The labels are crimson-harbor and silver-orchard.",
               "role": "assistant"
             },
-            "fingerprint": 11488736273050172533
+            "fingerprint": 8695463699350161601
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 473,
-              "completion_tokens": 20,
-              "total_tokens": 493,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 14,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 477,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 491
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790914829-EW22shZhbEmPWhjJY9mf",
+            "response_id": "gen-1790976469-kQpqoOrWDdb1IEPzWdy4",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "service_tier": "default"
             }
           }
         }

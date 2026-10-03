@@ -9,7 +9,7 @@
         }
       },
       {
-        "batch": 31,
+        "batch": 23,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -17,7 +17,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 25,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -25,7 +25,7 @@
         }
       },
       {
-        "batch": 39,
+        "batch": 27,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -33,96 +33,32 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 29,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 30,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 56,
+        "batch": 32,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 82,
+        "batch": 54,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 84,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 85,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 86,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 87,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 88,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 89,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 91,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 10
         }
       },
       {
@@ -130,11 +66,11 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
-        "batch": 93,
+        "batch": 99,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -142,7 +78,7 @@
         }
       },
       {
-        "batch": 94,
+        "batch": 107,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -150,7 +86,7 @@
         }
       },
       {
-        "batch": 97,
+        "batch": 109,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -161,11 +97,27 @@
         "batch": 112,
         "id": 4,
         "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 118,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 118,
+        "id": 4,
+        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 113,
+        "batch": 120,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -326,7 +278,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -347,7 +299,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10908625621052761122
+                "fingerprint": 10590570138739042484
               }
             },
             {
@@ -368,7 +320,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7989156210310380150
+                "fingerprint": 14143360782874510166
               }
             }
           ],
@@ -390,26 +342,121 @@
           "provider_request_id": "req_b74f8704410e4db9a81e94142121bf43",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_0d30c5571b30ea54016abf4aa95f3887d095efc8fc5a6220a5",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0d30c5571b30ea54016abf4aa95f3887d095efc8fc5a6220a5",
             "incomplete_details": null,
             "instructions": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0qqnLL_pr28L7p1INHFShLUJoHWq6iDK3eUETHzL5mSwCWzf7DlBBd7QdCbkbw0IN735-dv1L2q4rnAyRaHRAqK2gpQG-COn8BIeSjSd3B39Ws6HMnjHnsphQmozNCHnlLXK9bs9rY0Axiksdv90oZKzlXR_8BFsWCvBqQ6XQUyZ4mAcItFH6PpDpQhxgw_7AnUFbTHEKiuiYuHR6zn935Tnv13R6uKQ2YFBsAX7W8p0QzmauS3PzDfU6Fr_AgsjLnIhGsUPYObawZ_BPBauajARSvm_h1i7CiVLnN-fh2wfJExbXyifPeogWpOgylSceQ-21N1zbmZ6NazMJqMnOjMJsQ9BkT2DgSFDal448q4p72WpBoVpZVUYrdmhp6fYUj0fA6al_p6BN7Se3RaZe9Q5AwbkpqKQZqU-s4ZLW_G8EpSCWdRFqVg3YQmGcuR46AoVzNYFn1u-MaXR1j42Q5j6QKT63zyJPTztO7CoNazf0o1dh7miYrpBHNB9TJds7UwGjqo8YA7l4g7i78ticxyUvszcWZzs8NJhQ_XKxHZ2K2b0s9UHYi6reTkMNKlGTYJJd5derKvCS-ZlF2Wo4cJnNi7Uibw1cKRT8AP2FXcBPTKi5kvHQkkRFBbBJooczwbdQxDrWLmdMRxZmXThT1Dlsm2rGGA8K46xZ0Dk7qoWneZi7FqG8wfmjA0wLShhzOj1jO_iLSHpcS3c97Bu8YHmYHyGLqbHVZvP9PmwuaytYXkD0fxL8cm4XFueqH08l8n42gOQbmCT0Fp45Gpl_GD2rOKU9EokDY_WNsiUfsfXjZjf_dOzgBOfCLh3ggdRFei0U303GC4EY9_x8HDp4HlKb2x_m0sy27nlgfdAmiq2LJsBwZScTcii-SxNk0LgueNKiKuWDf_vga-Oh30ToB_FMDvHZslgFdWGtoQQVlCfBkJk0colpmkfvKPr_Mx1h_5otub1f9_U4AK2nI_nBCwO1O-FhlO9cEBual4zUUnGVbWjMlZLTJ8hiVCH1-aIaXfevArEGhGkXec3p6SBGUuHFOaj9APmSGqkjCDSKFg_sfacri-0tl2eYBVAihXB5OBcoA7z4Z3M_IWkTy77wy5Bwu1H0TJUL3RWS7xiayj0G3SO-hi3H-SviRv-R-OZJVSeCN14-C0n2813JObw4R8ro2_WjKphrockJ7wsckmoo7qIR_2YRV-r-ScunT2uTV8K4V-YWVyY-SNpIL3rwzL0RG5miPeRr_KRYARGk4a3DNM1_sGjzuVuZPDO_y99pQ_4euaAiSjOK0LQBpovtm-mUyDz1ps5FcFKhjAp5Y_lB6QgF5Xu57kVLGXiG0ZBE-vHhmR9OIM13-FiISj7QYedl1_SxAo3Jk4ZxazPBWlvQU6co0on3VQ7PFs7QIOYtBKUt-EYoyaCSAuTrli76R2Co3pdMGuKAr1qxovQDAuoKP9H9eKJ1x5SH__uRfeXiIxU15hY9ptEAigjcWSyWH7x1L4jGKEGIJdcUU9hnFb_XH9yBlO4j_Mqm7Vvb3xlMXppExVC3u-_Ofe-1tRoN6T71fSVvm-h8Ua7liUYM16IujNU5aSDyJfRyk4-sA90voo3LslA6fBhNPrceIYnBEBsB99cet_2V5b_A4nEXON6meHcPDN7fxrMu4Job53HVGiasy5H45dLhPiU_D2xkin-d4IsJ4prMnD3dtYcwhhM29NO3Vb027JEafP_6nal7gXfke1a5pSCHxnudOsjAn8I5D7o4k15bO_KNIOrrUJO4ajikVmTE6MhRyn7KMI1Lw5B8vgUzZ5Joyu4YDQm7KyaMGV2YA-_5G3rvXtHNrbJY_0yxgwCLSHBHXWaJmjxHlGk7HwCzu3FDItTTGSgynpl1I_3xrfiWq_HY48oCCpH4ciY5f6tHzXbqvGDPcaXH22HepSPazuMZYDCwkXef6yfkanqQUEr3kDJ5tfmDiN45x2piC65m2tontnBYZ6ArZYElIfNoLDw4Tkj932RDOJI13ZEKjwMOi9nRLUCCob9_djnxEdfZjtS0eLbnSBpnwoUVOFHxySdAoKeQO6hIFQe-yASO46sFzd2O_Oi5hNRnxMc3B0BUNcJq1xK0782MrZ_socnQDyyYq04bZX3gs7TPnoE80LVhx1ZUF1ZKFf7jjodmiUK8tQZraWxhYNog6uP8h2kgt52k7B8SQcglt0TG9LoqVkN1XfM3i2BQcr6bAbm8wyZkOJZRebsZ_z5u_roUFmJG9eo4kAfxfoUgvIiT8N3OOXhy2Twly3xpZ2vYQiJINPsqxv88iPpmqwR3t5gJJupwkWLR1ClVStZnnzfQ==",
+                "id": "rs_0d30c5571b30ea54016abf4aa9b27c87d0855385125078b648",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{}",
+                "call_id": "call_ncSKb1hFJMBSV8EKiacG0Ozx",
+                "id": "fc_0d30c5571b30ea54016abf4aaae19887d0a66ae9d0753de648",
+                "name": "lookup_harbor_label",
+                "status": "completed",
+                "type": "function_call"
+              },
+              {
+                "arguments": "{}",
+                "call_id": "call_AT3VloVzxsy9rIZ8QsOOmoAr",
+                "id": "fc_0d30c5571b30ea54016abf4aaae1a487d096789a5438522a99",
+                "name": "lookup_orchard_label",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [
+              {
+                "description": "Return the alpha signal marker.",
+                "name": "lookup_harbor_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Return the beta signal marker.",
+                "name": "lookup_orchard_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 160,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 215,
               "output_tokens_details": {
@@ -417,69 +464,7 @@
               },
               "total_tokens": 375
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_0d30c5571b30ea54016abf4aa9b27c87d0855385125078b648",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0qqnLL_pr28L7p1INHFShLUJoHWq6iDK3eUETHzL5mSwCWzf7DlBBd7QdCbkbw0IN735-dv1L2q4rnAyRaHRAqK2gpQG-COn8BIeSjSd3B39Ws6HMnjHnsphQmozNCHnlLXK9bs9rY0Axiksdv90oZKzlXR_8BFsWCvBqQ6XQUyZ4mAcItFH6PpDpQhxgw_7AnUFbTHEKiuiYuHR6zn935Tnv13R6uKQ2YFBsAX7W8p0QzmauS3PzDfU6Fr_AgsjLnIhGsUPYObawZ_BPBauajARSvm_h1i7CiVLnN-fh2wfJExbXyifPeogWpOgylSceQ-21N1zbmZ6NazMJqMnOjMJsQ9BkT2DgSFDal448q4p72WpBoVpZVUYrdmhp6fYUj0fA6al_p6BN7Se3RaZe9Q5AwbkpqKQZqU-s4ZLW_G8EpSCWdRFqVg3YQmGcuR46AoVzNYFn1u-MaXR1j42Q5j6QKT63zyJPTztO7CoNazf0o1dh7miYrpBHNB9TJds7UwGjqo8YA7l4g7i78ticxyUvszcWZzs8NJhQ_XKxHZ2K2b0s9UHYi6reTkMNKlGTYJJd5derKvCS-ZlF2Wo4cJnNi7Uibw1cKRT8AP2FXcBPTKi5kvHQkkRFBbBJooczwbdQxDrWLmdMRxZmXThT1Dlsm2rGGA8K46xZ0Dk7qoWneZi7FqG8wfmjA0wLShhzOj1jO_iLSHpcS3c97Bu8YHmYHyGLqbHVZvP9PmwuaytYXkD0fxL8cm4XFueqH08l8n42gOQbmCT0Fp45Gpl_GD2rOKU9EokDY_WNsiUfsfXjZjf_dOzgBOfCLh3ggdRFei0U303GC4EY9_x8HDp4HlKb2x_m0sy27nlgfdAmiq2LJsBwZScTcii-SxNk0LgueNKiKuWDf_vga-Oh30ToB_FMDvHZslgFdWGtoQQVlCfBkJk0colpmkfvKPr_Mx1h_5otub1f9_U4AK2nI_nBCwO1O-FhlO9cEBual4zUUnGVbWjMlZLTJ8hiVCH1-aIaXfevArEGhGkXec3p6SBGUuHFOaj9APmSGqkjCDSKFg_sfacri-0tl2eYBVAihXB5OBcoA7z4Z3M_IWkTy77wy5Bwu1H0TJUL3RWS7xiayj0G3SO-hi3H-SviRv-R-OZJVSeCN14-C0n2813JObw4R8ro2_WjKphrockJ7wsckmoo7qIR_2YRV-r-ScunT2uTV8K4V-YWVyY-SNpIL3rwzL0RG5miPeRr_KRYARGk4a3DNM1_sGjzuVuZPDO_y99pQ_4euaAiSjOK0LQBpovtm-mUyDz1ps5FcFKhjAp5Y_lB6QgF5Xu57kVLGXiG0ZBE-vHhmR9OIM13-FiISj7QYedl1_SxAo3Jk4ZxazPBWlvQU6co0on3VQ7PFs7QIOYtBKUt-EYoyaCSAuTrli76R2Co3pdMGuKAr1qxovQDAuoKP9H9eKJ1x5SH__uRfeXiIxU15hY9ptEAigjcWSyWH7x1L4jGKEGIJdcUU9hnFb_XH9yBlO4j_Mqm7Vvb3xlMXppExVC3u-_Ofe-1tRoN6T71fSVvm-h8Ua7liUYM16IujNU5aSDyJfRyk4-sA90voo3LslA6fBhNPrceIYnBEBsB99cet_2V5b_A4nEXON6meHcPDN7fxrMu4Job53HVGiasy5H45dLhPiU_D2xkin-d4IsJ4prMnD3dtYcwhhM29NO3Vb027JEafP_6nal7gXfke1a5pSCHxnudOsjAn8I5D7o4k15bO_KNIOrrUJO4ajikVmTE6MhRyn7KMI1Lw5B8vgUzZ5Joyu4YDQm7KyaMGV2YA-_5G3rvXtHNrbJY_0yxgwCLSHBHXWaJmjxHlGk7HwCzu3FDItTTGSgynpl1I_3xrfiWq_HY48oCCpH4ciY5f6tHzXbqvGDPcaXH22HepSPazuMZYDCwkXef6yfkanqQUEr3kDJ5tfmDiN45x2piC65m2tontnBYZ6ArZYElIfNoLDw4Tkj932RDOJI13ZEKjwMOi9nRLUCCob9_djnxEdfZjtS0eLbnSBpnwoUVOFHxySdAoKeQO6hIFQe-yASO46sFzd2O_Oi5hNRnxMc3B0BUNcJq1xK0782MrZ_socnQDyyYq04bZX3gs7TPnoE80LVhx1ZUF1ZKFf7jjodmiUK8tQZraWxhYNog6uP8h2kgt52k7B8SQcglt0TG9LoqVkN1XfM3i2BQcr6bAbm8wyZkOJZRebsZ_z5u_roUFmJG9eo4kAfxfoUgvIiT8N3OOXhy2Twly3xpZ2vYQiJINPsqxv88iPpmqwR3t5gJJupwkWLR1ClVStZnnzfQ==",
-                "status": null
-              },
-              {
-                "id": "fc_0d30c5571b30ea54016abf4aaae19887d0a66ae9d0753de648",
-                "arguments": "{}",
-                "call_id": "call_ncSKb1hFJMBSV8EKiacG0Ozx",
-                "name": "lookup_harbor_label",
-                "status": "completed",
-                "type": "function_call"
-              },
-              {
-                "id": "fc_0d30c5571b30ea54016abf4aaae1a487d096789a5438522a99",
-                "arguments": "{}",
-                "call_id": "call_AT3VloVzxsy9rIZ8QsOOmoAr",
-                "name": "lookup_orchard_label",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "tools": [
-              {
-                "type": "function",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the alpha signal marker.",
-                "output_schema": null
-              },
-              {
-                "type": "function",
-                "name": "lookup_orchard_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the beta signal marker.",
-                "output_schema": null
-              }
-            ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -508,7 +493,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -517,7 +502,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -525,7 +510,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{}"
           }
         },
@@ -533,7 +518,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -552,7 +537,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10908625621052761122
+                "fingerprint": 10590570138739042484
               }
             }
           }
@@ -561,7 +546,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 2,
+            "part": 4,
             "kind": "tool_call"
           }
         },
@@ -569,7 +554,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 2,
+            "part": 4,
             "json": "{}"
           }
         },
@@ -577,7 +562,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 2,
+            "part": 4,
             "content": {
               "type": "toolcall",
               "id": {
@@ -596,12 +581,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7989156210310380150
+                "fingerprint": 14143360782874510166
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -690,7 +680,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -711,7 +701,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10908625621052761122
+                    "fingerprint": 10590570138739042484
                   }
                 },
                 {
@@ -732,7 +722,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7989156210310380150
+                    "fingerprint": 14143360782874510166
                   }
                 }
               ],
@@ -823,7 +813,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -844,7 +834,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 3295787737534410207
+                "fingerprint": 12834049148526240865
               }
             }
           ],
@@ -866,26 +856,119 @@
           "provider_request_id": "req_39ac4a872c314bd78cd7689e55f7da4c",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_0d30c5571b30ea54016abf4aab0b2487d0a7285047e1a2b7fb",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0d30c5571b30ea54016abf4aab0b2487d0a7285047e1a2b7fb",
             "incomplete_details": null,
             "instructions": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0qt8zTE0Xl3mtiKl1jI6SPWQFsytQNr3u99A_Czyup47cvRdvPUSkg3aBx0iDRw8xsOWU_cb56HSKrryBJa790sPO4rOdRSXNDIoWWQNn8VpCz1HBWv6093u8nxe0DwFkl7KlraUxpXLJp9Rp89EY65gZaPp3O90wSQeb22dvlUU8GombKsi1yL5pb0AcGYU8NgrpYf8v9Zqijd3XbtrlRSGkfJZ1DpVsEDs2QD_IuUL2RZlaEe2GwUSb0s-n0YtCCkzFTFmRtPBUeqGN_aLBaAdf02Khk5psialtaYQmh4LJcS_d1cTptVTZwtS1lK3dlWBZK1kbs20pDns_pIn0LpolMjL7DH3vTgezKte8HMMtVKB3d4YIIHsPu-0uH_olVA4aEEgLbtkCqsiWziOhuS8tq7EIX43JdPor3bm3q3V2gQLQ2IpfgQc0am7gT0ndiAt20xdjyj32DwoT2ml0Q5dTH9-T_HA1q3rkjfOnfytt5S9AJQgAL3a6tJBDAy5wTtxGDrQ_7q7Yc7-BXqIh8SlPVazwRW59EpAx6KEm_zJ1ZUzZTXvN-igy0DZNOpdych8E8Qg0idj3hLJYJfhxBzBFqDmciwyCfnRUixglL-xnuTT4-jBtCD4n9gKV3cwLx_1VEAd5riu8MIYxSmnaK_LBCtUIX8Ff3G5Cxpha2gJPdls3N4i7sA5xHFUO566alAvs3_e61YrTk3wVYLBNU95ELJUVAL8uaJPxkG7laEl3oonil_RVHDpPKgsqUd7JWBR4LwS7b1S2VnxPz5yuVfHnotO4Tel1uAUlFnfaTiDyOh5vECyQUQp6hBj8hWGHslUekcNRIRSihNh8LMN2RFZ-PWilO_l4Jm0LVU4F1OKw7rGz5pYLmyVJhnmZB2feZDsKFCTBQGb1T3p6rkq_VLsGBQPlYRx1rMGNc60b12K0wI8ZA1bqSjvFpY5A4zw-k7KQ0WsQfRsJp623IbuKdP1ZS9jFvuM9YaupxOCUdJaP-KwOTv401XwzYNeSYJrrHOaobWP-jNLycyJ8_kVq6ki2yWed3Tco3Sd2nChWuHAB8-EhFGvFWK1Cop5xQ31yIw2Wf6viuSGjsTMydEkpTmX5BZY4oTiJi1WY_A5kDVD1B-cTsi0AgKFzl-URlbgyXM9T4SYCbT5Dko0-x7cgCvHglgdvB8_Tu9tg-TtlSi0In6noMTUDS4Uytse0zRKxhm8B07wvgWopD6yy946jgJdmzl6aMd56s9tAWjL7WjIRasduSIoe76QxAh2JsENMC7J4-LBTE4CPPhWRJrOwNQ8N8Sqp4EEQGsdYixCS2--lRK5rbTIhx6qipPH7ZmOSrWXfaZ0oPNRGS06T5SXaNTpkS2yOcfoHgKUOKlon3eFie8b_GxJoraQaWnHHf39o47nLMHT69H_dKfTd9WVIcT8-kJc8-qIJc4oXVtBlww-gSSNrcNdOB3n5c74SWhcPlepfLXoTAyCESD_28iAIlYnH_4pTsxzK5fRkZ-kb_9kFWzcPSC7Ot9QzSSfm-xD1sM6cCHZ0LuBkriEAkJ5C589R_w9c_HmiaaQlAGt_qr8c6DLIFAbhZz3knHWs_cVRm4FzRj2OpcIN9GJpFrAzjcT-6Vf21tpJd0okKI--knRSa5WIaZEDhCJkw3pSkU_dmrLJybyCArNMrtE0bVQd7kxHI952YrK8Na1Kz1Nu5g4m2Q8tycujHvGF4p9u33rKvbuuy66MKTnCoEwA9qQ3wCoVK5J8sba8OAXwPPoq0_zpZ_pDfnuy68IrSqq92JnGQBljpQeBkaUzw5uUGLe-x1A7xfAd6SX0pWP1NUE7ipKhJkoSIJF2l_AIjuGmi6AG2xfbXVDK-G4ok0ZAKoO2p6znKzkGyLySFjSB-tt7KyA_m6wUFFOb9zE7h-8zX3dC2Ps2NrxOaCVGWbSM05RgrNLd0gFsmmBvowGU1YnFSe5K6CoypDAXa_ZCPb-K8v2c6bYT7cKREgzG69erZthRfmGJCaMEAnxMLk8JnulTbOpK6CDZKjnLfZg0i_lsPOH26bE_aYBdtDLDSQy6iXD-Brj2_x5orKxIzO5f_shrM8XUCLqn_HyTW2f9rKIbj5w_T1CiDIu8t2zzPEeQf4Ba9NZbeDN9RCIjV08Nj6QEO3JVNH2M0aQiNDEgt0dyn5Osv2Mr1Tz_eOWKyczqxZFGTB2mOISM0dIrE-Q_iSCqjIHXFIIcli542p6XzB1t6fOlXmcynEhLaSYGDZkhRQKjOSjbxktf7OySnVQ6L_gRokiZtHPK4rr_ZOq4meqXaVDtYGn2rdSn6AQcR8ozLQVHeXu-b3f-u3_eLaS_vhBzOufrwUmaCuQVR-GCiEcJigSzpq4v_14JMhpI18QkYv-ONHJeUWW00unCwlJNg-AvZCOu4NEfTdSbjmKT3U466hu3eL4E3It9pVnaCuSfJ7TfkA-s-aXK3gX_xA9hUzxJF74t74koDQezBFlfvoSSF-6CVNbSBfxWLQlru8Lo0unU8MAGilTbeueo6xQVIphy-l8Fho3YjvzRVaXEEsoPs0XyK97xYhYQtnBaGtvCJ-nW8W0XI6EiPF_RUEsVR8ZEAX7eLHO3BriJFw22xqPIrn5qGEvNmbS7qAutumzfAsUD92JTjQX10uznKaan9QDw5rvbUcuI8PFxOavkw6tWHry8M7qhw36jL6QAPqg12691_5QP3U6v03YOYliIeNwhRXVHhDqTLDWI7sr6mPHZ8uVJ67K3N7PeYYdwUriQpETpgnq6xOAKTvrr_rTyfzLUfRbwGSSYyuVsoMoUWmDXe5cwWApB58fAMyNayAMypwdhS-GOYloJ7S8twoNir708zn5CYRmsHS5OvyCK6Tfjg8A8hb",
+                "id": "rs_0d30c5571b30ea54016abf4aab84a887d09c41a673e90d0e88",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The labels are crimson-harbor and silver-orchard.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_0d30c5571b30ea54016abf4aacfdcc87d0a81c9b430fe416e1",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [
+              {
+                "description": "Return the alpha signal marker.",
+                "name": "lookup_harbor_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              },
+              {
+                "description": "Return the beta signal marker.",
+                "name": "lookup_orchard_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 391,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 293,
               "output_tokens_details": {
@@ -893,67 +976,7 @@
               },
               "total_tokens": 684
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_0d30c5571b30ea54016abf4aab84a887d09c41a673e90d0e88",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0qt8zTE0Xl3mtiKl1jI6SPWQFsytQNr3u99A_Czyup47cvRdvPUSkg3aBx0iDRw8xsOWU_cb56HSKrryBJa790sPO4rOdRSXNDIoWWQNn8VpCz1HBWv6093u8nxe0DwFkl7KlraUxpXLJp9Rp89EY65gZaPp3O90wSQeb22dvlUU8GombKsi1yL5pb0AcGYU8NgrpYf8v9Zqijd3XbtrlRSGkfJZ1DpVsEDs2QD_IuUL2RZlaEe2GwUSb0s-n0YtCCkzFTFmRtPBUeqGN_aLBaAdf02Khk5psialtaYQmh4LJcS_d1cTptVTZwtS1lK3dlWBZK1kbs20pDns_pIn0LpolMjL7DH3vTgezKte8HMMtVKB3d4YIIHsPu-0uH_olVA4aEEgLbtkCqsiWziOhuS8tq7EIX43JdPor3bm3q3V2gQLQ2IpfgQc0am7gT0ndiAt20xdjyj32DwoT2ml0Q5dTH9-T_HA1q3rkjfOnfytt5S9AJQgAL3a6tJBDAy5wTtxGDrQ_7q7Yc7-BXqIh8SlPVazwRW59EpAx6KEm_zJ1ZUzZTXvN-igy0DZNOpdych8E8Qg0idj3hLJYJfhxBzBFqDmciwyCfnRUixglL-xnuTT4-jBtCD4n9gKV3cwLx_1VEAd5riu8MIYxSmnaK_LBCtUIX8Ff3G5Cxpha2gJPdls3N4i7sA5xHFUO566alAvs3_e61YrTk3wVYLBNU95ELJUVAL8uaJPxkG7laEl3oonil_RVHDpPKgsqUd7JWBR4LwS7b1S2VnxPz5yuVfHnotO4Tel1uAUlFnfaTiDyOh5vECyQUQp6hBj8hWGHslUekcNRIRSihNh8LMN2RFZ-PWilO_l4Jm0LVU4F1OKw7rGz5pYLmyVJhnmZB2feZDsKFCTBQGb1T3p6rkq_VLsGBQPlYRx1rMGNc60b12K0wI8ZA1bqSjvFpY5A4zw-k7KQ0WsQfRsJp623IbuKdP1ZS9jFvuM9YaupxOCUdJaP-KwOTv401XwzYNeSYJrrHOaobWP-jNLycyJ8_kVq6ki2yWed3Tco3Sd2nChWuHAB8-EhFGvFWK1Cop5xQ31yIw2Wf6viuSGjsTMydEkpTmX5BZY4oTiJi1WY_A5kDVD1B-cTsi0AgKFzl-URlbgyXM9T4SYCbT5Dko0-x7cgCvHglgdvB8_Tu9tg-TtlSi0In6noMTUDS4Uytse0zRKxhm8B07wvgWopD6yy946jgJdmzl6aMd56s9tAWjL7WjIRasduSIoe76QxAh2JsENMC7J4-LBTE4CPPhWRJrOwNQ8N8Sqp4EEQGsdYixCS2--lRK5rbTIhx6qipPH7ZmOSrWXfaZ0oPNRGS06T5SXaNTpkS2yOcfoHgKUOKlon3eFie8b_GxJoraQaWnHHf39o47nLMHT69H_dKfTd9WVIcT8-kJc8-qIJc4oXVtBlww-gSSNrcNdOB3n5c74SWhcPlepfLXoTAyCESD_28iAIlYnH_4pTsxzK5fRkZ-kb_9kFWzcPSC7Ot9QzSSfm-xD1sM6cCHZ0LuBkriEAkJ5C589R_w9c_HmiaaQlAGt_qr8c6DLIFAbhZz3knHWs_cVRm4FzRj2OpcIN9GJpFrAzjcT-6Vf21tpJd0okKI--knRSa5WIaZEDhCJkw3pSkU_dmrLJybyCArNMrtE0bVQd7kxHI952YrK8Na1Kz1Nu5g4m2Q8tycujHvGF4p9u33rKvbuuy66MKTnCoEwA9qQ3wCoVK5J8sba8OAXwPPoq0_zpZ_pDfnuy68IrSqq92JnGQBljpQeBkaUzw5uUGLe-x1A7xfAd6SX0pWP1NUE7ipKhJkoSIJF2l_AIjuGmi6AG2xfbXVDK-G4ok0ZAKoO2p6znKzkGyLySFjSB-tt7KyA_m6wUFFOb9zE7h-8zX3dC2Ps2NrxOaCVGWbSM05RgrNLd0gFsmmBvowGU1YnFSe5K6CoypDAXa_ZCPb-K8v2c6bYT7cKREgzG69erZthRfmGJCaMEAnxMLk8JnulTbOpK6CDZKjnLfZg0i_lsPOH26bE_aYBdtDLDSQy6iXD-Brj2_x5orKxIzO5f_shrM8XUCLqn_HyTW2f9rKIbj5w_T1CiDIu8t2zzPEeQf4Ba9NZbeDN9RCIjV08Nj6QEO3JVNH2M0aQiNDEgt0dyn5Osv2Mr1Tz_eOWKyczqxZFGTB2mOISM0dIrE-Q_iSCqjIHXFIIcli542p6XzB1t6fOlXmcynEhLaSYGDZkhRQKjOSjbxktf7OySnVQ6L_gRokiZtHPK4rr_ZOq4meqXaVDtYGn2rdSn6AQcR8ozLQVHeXu-b3f-u3_eLaS_vhBzOufrwUmaCuQVR-GCiEcJigSzpq4v_14JMhpI18QkYv-ONHJeUWW00unCwlJNg-AvZCOu4NEfTdSbjmKT3U466hu3eL4E3It9pVnaCuSfJ7TfkA-s-aXK3gX_xA9hUzxJF74t74koDQezBFlfvoSSF-6CVNbSBfxWLQlru8Lo0unU8MAGilTbeueo6xQVIphy-l8Fho3YjvzRVaXEEsoPs0XyK97xYhYQtnBaGtvCJ-nW8W0XI6EiPF_RUEsVR8ZEAX7eLHO3BriJFw22xqPIrn5qGEvNmbS7qAutumzfAsUD92JTjQX10uznKaan9QDw5rvbUcuI8PFxOavkw6tWHry8M7qhw36jL6QAPqg12691_5QP3U6v03YOYliIeNwhRXVHhDqTLDWI7sr6mPHZ8uVJ67K3N7PeYYdwUriQpETpgnq6xOAKTvrr_rTyfzLUfRbwGSSYyuVsoMoUWmDXe5cwWApB58fAMyNayAMypwdhS-GOYloJ7S8twoNir708zn5CYRmsHS5OvyCK6Tfjg8A8hb",
-                "status": null
-              },
-              {
-                "id": "msg_0d30c5571b30ea54016abf4aacfdcc87d0a81c9b430fe416e1",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The labels are crimson-harbor and silver-orchard.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [
-              {
-                "type": "function",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the alpha signal marker.",
-                "output_schema": null
-              },
-              {
-                "type": "function",
-                "name": "lookup_orchard_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the beta signal marker.",
-                "output_schema": null
-              }
-            ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "user": null
           }
         }
       },
@@ -982,7 +1005,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -1122,12 +1145,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 3295787737534410207
+                "fingerprint": 12834049148526240865
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1163,7 +1191,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -1184,7 +1212,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10908625621052761122
+                    "fingerprint": 10590570138739042484
                   }
                 },
                 {
@@ -1205,7 +1233,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7989156210310380150
+                    "fingerprint": 14143360782874510166
                   }
                 }
               ],
@@ -1263,7 +1291,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -1284,7 +1312,7 @@
                       "status": "completed",
                       "type": "message"
                     },
-                    "fingerprint": 3295787737534410207
+                    "fingerprint": 12834049148526240865
                   }
                 }
               ],

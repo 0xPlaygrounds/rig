@@ -86,15 +86,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Ada",
-                  "refusal": null
-                },
-                "fingerprint": 11689945161834907103
-              }
+              "text": "Ada"
             }
           ],
           "usage": {
@@ -118,7 +110,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 8448737388283586131
+            "fingerprint": 4857962483737284025
           },
           "provider_request_id": "req_fcb62310d5f04dffbb4cbee3a8eb8362",
           "finish_reason": "stop",

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 21,
+        "batch": 19,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 21,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -158,7 +158,7 @@
                   "id": "call_00_zL4qPyJyBBG0nM7ccJXB0492",
                   "type": "function"
                 },
-                "fingerprint": 14119760924513260194
+                "fingerprint": 5560489290547678014
               }
             }
           ],
@@ -190,19 +190,19 @@
                 }
               ]
             },
-            "fingerprint": 6056588200172355424
+            "fingerprint": 11052970448342572144
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 336,
               "completion_tokens": 52,
-              "total_tokens": 388,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 208,
+              "prompt_tokens": 336,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 208
+              "total_tokens": 388
             },
             "finish_reason": "tool_calls",
             "response_id": "f938dc64-1edd-416b-9ac3-581355166d27",
@@ -258,12 +258,17 @@
                   "id": "call_00_zL4qPyJyBBG0nM7ccJXB0492",
                   "type": "function"
                 },
-                "fingerprint": 14119760924513260194
+                "fingerprint": 5560489290547678014
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     },
     {

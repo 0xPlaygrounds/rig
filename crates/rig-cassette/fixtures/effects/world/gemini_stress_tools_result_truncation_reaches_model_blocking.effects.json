@@ -129,7 +129,7 @@
                   },
                   "thoughtSignature": "CqMBAWkUfROdWBtuCgtlyXX9J1950IuQ1Tj43cP25m6Fs5kcY1vFOWzoQ/PYeVF4RfyaZV0nPe/kHhUkcmcouyrQrbEcX7yIX932YoLDF7uf+XvgJEZwIcTgFr9ffL87Dm3P5rQ15QiYkFuvMfAtwvxtt9oCrhhg+Bjx0Yj7q4nlCxgZsBSUJSNWnZjY9yPmKJdT9HV/tWwmIvK/6jg9TcvnDpk0Fg=="
                 },
-                "fingerprint": 4745483981319220124
+                "fingerprint": 15541174006626745822
               }
             }
           ],
@@ -152,7 +152,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 4669160229972898710
+            "fingerprint": 12565707186894933728
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -262,7 +262,7 @@
                       },
                       "thoughtSignature": "CqMBAWkUfROdWBtuCgtlyXX9J1950IuQ1Tj43cP25m6Fs5kcY1vFOWzoQ/PYeVF4RfyaZV0nPe/kHhUkcmcouyrQrbEcX7yIX932YoLDF7uf+XvgJEZwIcTgFr9ffL87Dm3P5rQ15QiYkFuvMfAtwvxtt9oCrhhg+Bjx0Yj7q4nlCxgZsBSUJSNWnZjY9yPmKJdT9HV/tWwmIvK/6jg9TcvnDpk0Fg=="
                     },
-                    "fingerprint": 4745483981319220124
+                    "fingerprint": 15541174006626745822
                   }
                 }
               ],
@@ -280,7 +280,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 4669160229972898710
+                "fingerprint": 12565707186894933728
               }
             },
             {
@@ -333,7 +333,7 @@
                 "item": {
                   "text": "The tool returned: `{\"fetch_motto_response\": {\"result\": \"steady\"}}`"
                 },
-                "fingerprint": 10748640028550942290
+                "fingerprint": 6904441257678307336
               }
             }
           ],
@@ -354,7 +354,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 929948436872211812
+            "fingerprint": 15510779372462266542
           },
           "finish_reason": "stop",
           "raw": {

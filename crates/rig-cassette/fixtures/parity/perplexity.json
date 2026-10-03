@@ -4,12 +4,7 @@
     "choice": [
       {
         "text": "Rust is a **systems programming language** designed for **speed, reliability, and memory safety** without using a garbage collector.[1][18] Memory safety matters because it helps prevent common bugs and security problems like crashes, memory leaks, and unsafe memory access, and Rust’s compiler checks these issues at compile time.[2][5][18]",
-        "native": {
-          "item": {
-            "content": "Rust is a **systems programming language** designed for **speed, reliability, and memory safety** without using a garbage collector.[1][18] Memory safety matters because it helps prevent common bugs and security problems like crashes, memory leaks, and unsafe memory access, and Rust’s compiler checks these issues at compile time.[2][5][18]"
-          },
-          "fingerprint": 5921525936496455476
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -243,12 +238,7 @@
     "choice": [
       {
         "text": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
-        "native": {
-          "item": {
-            "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]"
-          },
-          "fingerprint": 10260108212768679106
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -459,12 +449,7 @@
     "choice": [
       {
         "text": "Got it — I’ll remember **amber-rig** for the next turn.",
-        "native": {
-          "item": {
-            "content": "Got it — I’ll remember **amber-rig** for the next turn."
-          },
-          "fingerprint": 7510822776869647683
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -918,12 +903,7 @@
     "choice": [
       {
         "text": "You asked me to remember **amber-rig**.",
-        "native": {
-          "item": {
-            "content": "You asked me to remember **amber-rig**."
-          },
-          "fingerprint": 8876939445881169544
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1337,12 +1317,7 @@
     "choice": [
       {
         "text": "“glarb-glarb” means an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
-        "native": {
-          "item": {
-            "content": "“glarb-glarb” means an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
-          },
-          "fingerprint": 3515379020946568592
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1546,12 +1521,7 @@
     "choice": [
       {
         "text": "**Memory safety** is a major Rust benefit because it helps prevent bugs like null pointers and use-after-free at compile time.[1][9]",
-        "native": {
-          "item": {
-            "content": "**Memory safety** is a major Rust benefit because it helps prevent bugs like null pointers and use-after-free at compile time.[1][9]"
-          },
-          "fingerprint": 16558093186822626378
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -1785,12 +1755,7 @@
     "choice": [
       {
         "text": "amber-rig",
-        "native": {
-          "item": {
-            "content": "amber-rig"
-          },
-          "fingerprint": 11296374642081640483
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2029,25 +1994,20 @@
       }
     }
   },
-  "migration_pain_points/tool_exchange_history_is_stripped_and_remerged.yaml#0": {
+  "migration_pain_points/tool_exchange_history_reaches_perplexity_as_text.yaml#0": {
     "mode": "unary",
     "choice": [
       {
-        "text": "The code word in the surviving conversation history is **amber-rig**.[1]",
-        "native": {
-          "item": {
-            "content": "The code word in the surviving conversation history is **amber-rig**.[1]"
-          },
-          "fingerprint": 2882043043183151678
-        }
+        "text": "The code word is **amber-rig**.",
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 36,
-      "output_tokens": 18,
-      "total_tokens": 54
+      "input_tokens": 59,
+      "output_tokens": 10,
+      "total_tokens": 69
     },
-    "response_id": "9772ef82-b17f-426c-b587-91260619a032",
+    "response_id": "11927b29-c53c-4f83-a0a9-0e78f97f4949",
     "finish_reason": "stop",
     "model": "sonar",
     "provider_request_id": null,
@@ -2061,410 +2021,230 @@
           "finish_reason": "stop",
           "index": 0,
           "message": {
-            "content": "The code word in the surviving conversation history is **amber-rig**.[1]",
+            "content": "The code word is **amber-rig**.",
             "role": "assistant"
           }
         }
       ],
       "citations": [
-        "https://x.com/alxfazio/article/2081415650912727439",
         "https://code.claude.com/docs/en/sessions",
-        "https://kentgigger.com/posts/claude-code-conversation-history",
-        "https://aaif.io/blog/agent-memory-patterns-tradeoffs-open-problems",
+        "https://www.mentalfloss.com/history/historical-code-words",
+        "https://code.claude.com/docs/en/commands",
         "https://getchatcache.com/blog/backup-chatgpt-chat-history",
-        "https://x.com/alxfazio/status/2081415650912727439",
-        "https://www.chatexports.com/how-to",
-        "https://institute.sfeir.com/en/claude-code/claude-code-context-management/cheatsheet/",
-        "https://geotoolbox.ai/blog/claude-code-context-window",
-        "https://haneystrategy.com/signal/articles/the-words-you-keep-seeing",
-        "https://adk.dev/live/sessions/",
-        "https://www.codebuddy.ai/docs/cli/interactive-mode",
-        "https://medium.com/@nomannayeem/building-ai-agents-that-actually-remember-a-developers-guide-to-memory-management-in-2025-062fd0be80a1",
-        "https://arxiv.org/html/2608.26742v1",
-        "https://github.com/luongnv89/claude-howto/blob/main/09-advanced-features/README.md",
-        "https://aibusinessweekly.net/p/chatgpt-to-pdf",
-        "https://www.xwxexporter.com/en/blog/export-claude-conversations",
-        "https://www.npr.org/2026/09/11/nx-s1-5965794/the-voices-of-sept-11-my-first-thought-was-i-cant-believe-that-i-survived",
+        "https://kentgigger.com/posts/claude-code-conversation-history",
+        "https://toolsbase.dev/en/reference/codex-commands",
+        "https://explainx.ai/blog/conversation-history-management-ai-agents-2026",
+        "https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/sessions.md",
+        "https://dev.to/izgorodin/my-llm-agents-forget-conversation-history-when-i-restart-them-how-do-i-fix-this-2c4c",
+        "https://learn.microsoft.com/en-us/semantic-kernel/concepts/ai-services/chat-completion/chat-history",
+        "https://continuumcode.ai/guides/claude-code-session-management/",
+        "https://code.claude.com/docs/en/prompt-caching",
+        "https://aaif.io/blog/agent-memory-patterns-tradeoffs-open-problems",
+        "https://scholarshare.temple.edu/server/api/core/bitstreams/9680ba47-5749-4c07-8df5-cfd27fcc515c/content",
         "https://code.claude.com/docs/en/interactive-mode",
-        "https://flaviocopes.com/t3-code/",
-        "https://www.webpronews.com/google-opens-the-door-to-ai-chat-histories-but-switching-remains-a-one-way-street",
-        "https://www.wsj.com/tech/ai/saving-ai-chats-ea7a8e73",
-        "https://www.thehindu.com/food/features/meet-the-people-keeping-india-culinary-memories-alive/article71467082.ece",
-        "https://science.thewire.in/politics/6-tips-for-protecting-your-communications-from-prying-eyes/",
-        "https://www.myjoyonline.com/i-am-american-i-am-ghanaian-where-do-i-stand-in-the-reparations-conversation/",
-        "https://economictimes.indiatimes.com/news/new-updates/in-maine-a-woman-bought-an-1880s-victorian-silk-dress-only-to-discover-hidden-pockets-filled-with-mysterious-papers-strange-words-numbers-and-10pm/articleshow/133825639.cms",
-        "https://www.phonearena.com/news/archive/2015/5",
-        "https://www.bbc.co.uk/learningenglish/chinese/features/6-minute-english/ep-210923",
-        "https://www.cxtoday.com/customer-engagement-journey-orchestration/liveperson-conversational-cloud/",
-        "https://www.therundown.ai/articles/inside-openai-log-of-misbehaving-models",
-        "https://www.indiatoday.in/history-of-it/story/9-11-terror-attack-al-qaida-flight-93-tom-burnett-phone-call-helped-save-us-capitol-history-2991917-2026-09-11",
-        "https://www.commondreams.org/opinion/knowledge-is-survival",
-        "https://www.tomshardware.com/software/windows/retired-microsoft-engineer-details-the-story-about-the-famous-leaked-fckgw-windows-xp-key-copy-protection-used-10mb-of-encrypted-microsoft-bob-for-validation",
-        "https://www.hollywoodreporter.com/tv/tv-news/hbo-max-family-drama-how-to-survive-without-me-series-order-1236703511/",
-        "https://thehackernews.com/search/label/sha1%20collision%20attack?updated-max=2017-02-23T21:39:00+05:30&max-results=20&start=20&by-date=false&m=1&hl=ru",
-        "https://www.latimes.com/entertainment-arts/music/story/2026-09-15/from-dyslexic-kid-to-resident-punk-legs-mcneil-on-surviving-scene-that-made-him-writer",
-        "https://www.popsci.com/authors/elaine-reno-the-conversation/",
-        "https://www.nytimes.com/games/strands"
+        "https://arxiv.org/html/2608.26742v1",
+        "https://www.techsafety.org/chat-best-practices",
+        "https://aibusinessweekly.net/p/chatgpt-to-pdf",
+        "https://www.reddit.com/r/ClaudeAI/comments/1ue2y6z/how_do_you_manage_conversation_history_in_claude/",
+        "https://docs.openclaw.ai/web/control-ui/chat"
       ],
       "created": 0,
-      "id": "9772ef82-b17f-426c-b587-91260619a032",
+      "id": "11927b29-c53c-4f83-a0a9-0e78f97f4949",
       "model": "sonar",
       "object": "chat.completion",
       "search_results": [
         {
-          "date": "2026-07-26",
-          "last_updated": "2026-09-15",
-          "place_metadata": null,
-          "snippet": "Three names recur through everything that follows:\n- a **thread** is the conversation.\nThe databases use this name (thread_history_1.sqlite)\n- a **session** is the older name for the same conversation.\nIt survives in folder names (sessions/, session_index.jsonl)\n- a **rollout** is the conversation’s...",
-          "source": "web",
-          "title": "the life of a codex conversation on disk | alex fazio (@alxfazio) on X",
-          "url": "https://x.com/alxfazio/article/2081415650912727439"
-        },
-        {
           "date": null,
-          "last_updated": "2026-09-22",
+          "last_updated": "2026-10-02",
           "place_metadata": null,
-          "snippet": "| Command                             | What it does                                                                                                           |\n...\n| `claude --resume <name>`            | Resumes the named session directly                                                             ...",
+          "snippet": "* Conversation history: the full history, including tool calls and results.",
           "source": "web",
           "title": "Manage sessions - Claude Code Docs",
           "url": "https://code.claude.com/docs/en/sessions"
         },
         {
-          "date": "2025-11-11",
-          "last_updated": "2026-09-23",
+          "date": "2024-05-06",
+          "last_updated": "2026-09-29",
           "place_metadata": null,
-          "snippet": "For each conversation, show:\n- Entry number\n- Date/time (human readable format: \"Nov 10, 2025 15:48\")\n- Project name (just the folder name, not full path)\n- First 60-80 characters of the conversation topic\n- Session ID (if available)\n...\nTip: Resume any conversation by running:\n- claude --resume <se...",
+          "snippet": "But speaking in code isn’t a modern phenomenon: Throughout history, people have come up with all kinds of codes to allude to things they wanted to keep secret, from the movement of troops to information about gold coins.\n...\n1. 763\n2. Do you drink, officer?\n3. Hornet\n4. Fleece\n5. Bacon and Magic\n6. ...",
           "source": "web",
-          "title": "How to resume, search, and manage Claude Code conversations",
-          "url": "https://kentgigger.com/posts/claude-code-conversation-history"
+          "title": "12 Historical Code Words and Phrases - Mental Floss",
+          "url": "https://www.mentalfloss.com/history/historical-code-words"
         },
         {
           "date": null,
-          "last_updated": "2026-09-21",
+          "last_updated": "2026-10-02",
           "place_metadata": null,
-          "snippet": "The practical choice starts with the type of persistence the agent needs:\n- Use conversation state when the agent needs to continue an interaction.\n- Use retrieval when it needs to find relevant material from a larger corpus.\n- Use checkpoints when a workflow needs to pause, recover, or resume.\n- Us...",
+          "snippet": "`/resume` returns to an earlier conversation, `/branch` branches the current one to try a different direction, and `/fork` copies it into a new [background session](/docs/en/agent-view).\n...\n| `/compact [instructions]` | Free up context by summarizing the conversation so far.\nOptionally pass focus i...",
           "source": "web",
-          "title": "Agent memory: patterns, tradeoffs, open problems",
-          "url": "https://aaif.io/blog/agent-memory-patterns-tradeoffs-open-problems"
+          "title": "Commands - Claude Code Docs",
+          "url": "https://code.claude.com/docs/en/commands"
         },
         {
           "date": "2026-04-23",
-          "last_updated": "2026-08-29",
+          "last_updated": "2026-09-23",
           "place_metadata": null,
-          "snippet": "Securing your ChatGPT data with ChatCache is a seamless, three-step process that takes only seconds.\n1. **Install the Extension:** Navigate to the Chrome Web Store and add the free ChatCache extension to your browser.\n2. **Open Your Conversation:** Go to chatgpt.com and open the specific thread you ...",
+          "snippet": "The fastest backup method is the ChatCache Chrome extension: open any conversation, click Export, and choose a format - Markdown, PDF, HTML, TXT, JSON, CSV, or PNG.\nSelective export lets you save specific messages rather than entire threads.\n...\nUnlike copy-pasting or basic printing, ChatCache ensur...",
           "source": "web",
           "title": "The Ultimate Guide to Backing Up Your ChatGPT Chat History",
           "url": "https://getchatcache.com/blog/backup-chatgpt-chat-history"
         },
         {
-          "date": "2026-07-26",
-          "last_updated": "2026-08-25",
-          "place_metadata": null,
-          "snippet": "Three names recur through everything that follows:\n- a **thread** is the conversation.\nThe databases use this name (thread_history_1.sqlite)\n- a **session** is the older name for the same conversation.\nIt survives in folder names (sessions/, session_index.jsonl)\n- a **rollout** is the conversation’s...",
-          "source": "web",
-          "title": "alex fazio - The life of a Codex conversation on disk",
-          "url": "https://x.com/alxfazio/status/2081415650912727439"
-        },
-        {
-          "date": null,
-          "last_updated": "2026-09-19",
-          "place_metadata": null,
-          "snippet": "- Download ChatGPT history: Download your complete ChatGPT history as files you own.",
-          "source": "web",
-          "title": "AI Chat Export Guides | ChatExports",
-          "url": "https://www.chatexports.com/how-to"
-        },
-        {
-          "date": "2026-02-19",
-          "last_updated": "2026-09-22",
-          "place_metadata": null,
-          "snippet": "|`Ctrl+R`|**Reverse search** through history|No token impact|",
-          "source": "web",
-          "title": "Context Management - Cheatsheet | SFEIR Institute",
-          "url": "https://institute.sfeir.com/en/claude-code/claude-code-context-management/cheatsheet/"
-        },
-        {
-          "date": "2026-07-04",
-          "last_updated": "2026-09-22",
-          "place_metadata": null,
-          "snippet": "Anthropic's documentation on what survives compaction notes that the system prompt stays unchanged and isn't part of the compacted message history in the first place, while your project-root `CLAUDE.md`, memory, and MCP tools all reload automatically.\n**The skill listing is the one exception.** Ever...",
-          "source": "web",
-          "title": "Claude Code Context Window: What It Is and Why It Controls Costs",
-          "url": "https://geotoolbox.ai/blog/claude-code-context-window"
-        },
-        {
-          "date": "2026-08-01",
-          "last_updated": "2026-08-17",
-          "place_metadata": null,
-          "snippet": "1. **Learn three words before you learn seventy-six.** Context, token, and agent carry most of the weight.",
-          "source": "web",
-          "title": "The Words You Keep Seeing, Decoded - Haney Strategy",
-          "url": "https://haneystrategy.com/signal/articles/the-words-you-keep-seeing"
-        },
-        {
-          "date": null,
-          "last_updated": "2026-09-02",
-          "place_metadata": null,
-          "snippet": "- **ADK `Session`** (managed by `SessionService`) is persistent conversation storage.\nIt\nsurvives across many `run_live()` calls and application restarts.\n- **Live API session** (managed by the Live API backend) is a transient streaming context that exists only while the loop runs.",
-          "source": "web",
-          "title": "Sessions - Agent Development Kit (ADK)",
-          "url": "https://adk.dev/live/sessions/"
-        },
-        {
-          "date": null,
-          "last_updated": "2026-09-18",
-          "place_metadata": null,
-          "snippet": "|``` Ctrl+L ```|Clear terminal screen|Preserves conversation history|✅ Supported|\n...\nCodeBuddy Code maintains command history for the current session:\n- History is stored by working directory\n- Use\n```\n /clear\n ```\nto start a fresh conversation (old conversations can be resumed via\n…\n```\nCtrl+R\n```...",
-          "source": "web",
-          "title": "Interactive Mode | Tencent Cloud Code Assistant CodeBuddy",
-          "url": "https://www.codebuddy.ai/docs/cli/interactive-mode"
-        },
-        {
-          "date": "2025-06-13",
-          "last_updated": "2025-11-29",
-          "place_metadata": null,
-          "snippet": "**Buffer Memory (Remember Everything):**\n- Short conversations (under 20 exchanges)\n- When you need perfect recall\n- Testing and development\n**Summary Memory (Smart Compression):**\n- Long conversations where context matters\n- Educational applications\n- Complex problem-solving sessions\n...\n**Level 1:...",
-          "source": "web",
-          "title": "Building AI Agents That Actually Remember: A Developer's ...",
-          "url": "https://medium.com/@nomannayeem/building-ai-agents-that-actually-remember-a-developers-guide-to-memory-management-in-2025-062fd0be80a1"
-        },
-        {
-          "date": null,
-          "last_updated": "2026-08-28",
-          "place_metadata": null,
-          "snippet": "The previous conversation is not lost: resume it with /resume, or reach it from the rewind menu’s previous-session entry in the same process [30].",
-          "source": "web",
-          "title": "Claude Code Complete User Handbook - arXiv",
-          "url": "https://arxiv.org/html/2608.26742v1"
-        },
-        {
-          "date": "2025-11-08",
-          "last_updated": "2026-09-21",
-          "place_metadata": null,
-          "snippet": "> **v2.1.212 update**: Typing `/resume` (with no arguments) in the agent view now opens a picker of past sessions — including sessions removed from the visible list — and resumes the chosen one as a background session.\n...\n|`Ctrl+R`|Reverse search history.\nDefaults to **all prompts across all projec...",
-          "source": "web",
-          "title": "claude-howto/09-advanced-features/README.md at main - GitHub",
-          "url": "https://github.com/luongnv89/claude-howto/blob/main/09-advanced-features/README.md"
-        },
-        {
-          "date": "2026-09-22",
+          "date": "2026-03-23",
           "last_updated": "2026-09-23",
           "place_metadata": null,
-          "snippet": "There's no single official way to turn a ChatGPT conversation into a PDF, but four real methods cover every situation: browser printing for a quick single chat, Export Data for a full history backup, copy-paste when you need to edit the content first, and a browser extension for long or complex conv...",
+          "snippet": "`claude --resume` (or `claude -r`) opens a picker to browse all recent sessions.\n...\nClaude Code saves every conversation you have.\nEvery single one, sitting right there in `~/.claude/history.jsonl`.\n...\nThe custom `/history` command reads the raw `history.jsonl` file, which logs every individual pr...",
           "source": "web",
-          "title": "ChatGPT to PDF: 4 Easy Ways to Export Any Conversation",
-          "url": "https://aibusinessweekly.net/p/chatgpt-to-pdf"
+          "title": "How to resume, search, and manage Claude Code ...",
+          "url": "https://kentgigger.com/posts/claude-code-conversation-history"
         },
         {
-          "date": "2026-08-02",
-          "last_updated": "2026-09-18",
+          "date": "2026-10-01",
+          "last_updated": "2026-10-02",
           "place_metadata": null,
-          "snippet": "## Method 1: Browser print\n1. Open the conversation on claude.ai.\n2. Press **Ctrl+P** (Windows) or **Cmd+P** (Mac).\n3. Destination → **Save as PDF**.\n4. Disable *Headers and footers*; enable *Background graphics* if you want Claude’s color scheme.\n...\nSelect all, copy, paste into Word or Google Docs...",
+          "snippet": "codex resume reopens a previous interactive session by ID, name, or through an interactive picker, preserving the full conversation history.",
           "source": "web",
-          "title": "Export Claude Chats to PDF & Markdown (2026)",
-          "url": "https://www.xwxexporter.com/en/blog/export-claude-conversations"
+          "title": "OpenAI Codex CLI Cheat Sheet 2026 — 71 Entries | Toolsbase",
+          "url": "https://toolsbase.dev/en/reference/codex-commands"
         },
         {
-          "date": "2026-09-11",
-          "last_updated": "2026-09-23",
+          "date": "2026-06-28",
+          "last_updated": "2026-10-02",
           "place_metadata": null,
-          "snippet": "NPR\n...\nNow, the fact that we were able to recover him was because Timmy had gotten so high in the north tower.",
+          "snippet": "Keep all conversation turns in the context window until the limit is hit, then either truncate (drop the oldest turns) or error out.\n...\nKeep only the N most recent turns.\nOlder turns are dropped entirely.\n...\nrecent_history = history[-MAX_HISTORY_TURNS:]\n...\nPeriodically convert old conversation tu...",
           "source": "web",
-          "title": "The voices of Sept. 11: 'My first thought was ... I can't ...",
-          "url": "https://www.npr.org/2026/09/11/nx-s1-5965794/the-voices-of-sept-11-my-first-thought-was-i-cant-believe-that-i-survived"
+          "title": "Conversation History Management for AI Agents: 2026 Guide",
+          "url": "https://explainx.ai/blog/conversation-history-management-ai-agents-2026"
+        },
+        {
+          "date": "2025-07-22",
+          "last_updated": "2026-10-02",
+          "place_metadata": null,
+          "snippet": "Hermes Agent automatically saves every conversation as a session.\nSessions enable conversation resume, cross-session search, and full conversation history management.\n...\nResume previous conversations from the CLI using `--continue` or `--resume`:",
+          "source": "web",
+          "title": "hermes-agent/website/docs/user-guide/sessions.md at main",
+          "url": "https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/sessions.md"
+        },
+        {
+          "date": "2026-09-17",
+          "last_updated": "2026-10-01",
+          "place_metadata": null,
+          "snippet": "Every one of the five coding tools I checked, Claude Code, Cursor, Codex, VS Code and Windsurf, already ships a working way to reopen the previous conversation.\n...\nClaude Code documents five entry points, among them a flag for the most recent session in the current directory and a picker, and state...",
+          "source": "web",
+          "title": "My LLM agents forget conversation history when I restart them, how ...",
+          "url": "https://dev.to/izgorodin/my-llm-agents-forget-conversation-history-when-i-restart-them-how-do-i-fix-this-2c4c"
+        },
+        {
+          "date": "2025-01-31",
+          "last_updated": "2026-10-01",
+          "place_metadata": null,
+          "snippet": "The chat history object is used to maintain a record of messages in a chat session.\nIt is used to store messages from different authors, such as users, assistants, tools, or the system.\n...\n- Truncation: The oldest messages are removed when the history exceeds a predefined limit, ensuring only recen...",
+          "source": "web",
+          "title": "Creating and managing a chat history object",
+          "url": "https://learn.microsoft.com/en-us/semantic-kernel/concepts/ai-services/chat-completion/chat-history"
+        },
+        {
+          "date": "2026-08-08",
+          "last_updated": "2026-10-02",
+          "place_metadata": null,
+          "snippet": "Claude Code saves every conversation as you work and reopens it by recency, name, session ID, branch, or pull request.\n...\n- Transcripts are plaintext JSONL at `~/.claude/projects/<project>/<session-id>.jsonl`, deleted after 30 days by default.\n...\nResume restores conversation context, and only that...",
+          "source": "web",
+          "title": "Claude Code session management: resume, restore",
+          "url": "https://continuumcode.ai/guides/claude-code-session-management/"
         },
         {
           "date": null,
-          "last_updated": "2026-09-18",
+          "last_updated": "2026-09-30",
           "place_metadata": null,
-          "snippet": "The question and answer never enter the conversation history.\nIn the terminal, they appear in a dismissible overlay.",
+          "snippet": "A change to the conversation layer leaves the system prompt and project context cached.\nA change to the system prompt invalidates everything, because all later content now sits behind a different prefix.\n...\nBy design, this invalidates the conversation layer, since the next request has a new, shorte...",
+          "source": "web",
+          "title": "How Claude Code uses prompt caching",
+          "url": "https://code.claude.com/docs/en/prompt-caching"
+        },
+        {
+          "date": "2026-09-08",
+          "last_updated": "2026-10-02",
+          "place_metadata": null,
+          "snippet": "Here, agent memory covers information or execution state that persists beyond a single model call and can be made available to the agent later.\n...\nThe simplest form of memory is preserving enough of an interaction for the next turn or session.\nOpenAI's Conversations API, for example, provides durab...",
+          "source": "web",
+          "title": "Agent memory: patterns, tradeoffs, open problems",
+          "url": "https://aaif.io/blog/agent-memory-patterns-tradeoffs-open-problems"
+        },
+        {
+          "date": null,
+          "last_updated": "2025-12-20",
+          "place_metadata": null,
+          "snippet": "Word coding, the ancient practice of transferring ideas into tangible communication,3 was refined during enslavement when it was especially useful for resistance and liberation efforts.\n...\nUsing colors, shapes, patterns or particular pieces of material, enslaved Black women, coded messages into qui...",
+          "source": "web",
+          "title": "[PDF] liberatory expressions: black women, resistance and the coded word ...",
+          "url": "https://scholarshare.temple.edu/server/api/core/bitstreams/9680ba47-5749-4c07-8df5-cfd27fcc515c/content"
+        },
+        {
+          "date": null,
+          "last_updated": "2026-10-02",
+          "place_metadata": null,
+          "snippet": "Claude Code keeps a history of the prompts you type, and Up-arrow recall reaches prompts from past sessions of the same project:\n...\nThe question and answer never enter the conversation history.",
           "source": "web",
           "title": "Interactive mode - Claude Code Docs",
           "url": "https://code.claude.com/docs/en/interactive-mode"
         },
         {
-          "date": "2026-08-28",
-          "last_updated": "2026-08-29",
+          "date": null,
+          "last_updated": "2026-10-02",
           "place_metadata": null,
-          "snippet": "- DARP: Durable Activity Record Protocol\n...\n- A deep dive into Nurb",
+          "snippet": "/recap generates a one-line summary of the session, and /export writes a rendered plain-text transcript for the record [30], [35].\n...\nThe previous conversation is not lost: resume it with /resume, or reach it from the rewind menu’s previous-session entry in the same process [30].\n...\n|To|Set|Where|...",
           "source": "web",
-          "title": "A deep dive into T3 Code - Flavio Copes",
-          "url": "https://flaviocopes.com/t3-code/"
+          "title": "Claude Code Complete User Handbook - arXiv",
+          "url": "https://arxiv.org/html/2608.26742v1"
         },
         {
-          "date": "2026-09-21",
-          "last_updated": "2026-09-21",
+          "date": null,
+          "last_updated": "2026-09-27",
           "place_metadata": null,
-          "snippet": "",
+          "snippet": "- Some chat services allow you to set up the platform so that when the conversation is ended by the advocate, the chat window on the survivor’s device is automatically closed and the conversation history is erased.\n...\nCode words can be used at the beginning of each conversation to confirm the ident...",
           "source": "web",
-          "title": "Google Opens the Door to AI Chat Histories, But Switching Remains a One-Way Street",
-          "url": "https://www.webpronews.com/google-opens-the-door-to-ai-chat-histories-but-switching-remains-a-one-way-street"
-        },
-        {
-          "date": "2026-09-09",
-          "last_updated": "2026-09-16",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "The Case for Saving Every AI Chat - WSJ",
-          "url": "https://www.wsj.com/tech/ai/saving-ai-chats-ea7a8e73"
-        },
-        {
-          "date": "2026-09-19",
-          "last_updated": "2026-09-20",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "Meet the people keeping India's culinary memories alive",
-          "url": "https://www.thehindu.com/food/features/meet-the-people-keeping-india-culinary-memories-alive/article71467082.ece"
-        },
-        {
-          "date": "2026-09-21",
-          "last_updated": "2026-09-21",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "6 Tips for Protecting Your Communications From Prying Eyes",
-          "url": "https://science.thewire.in/politics/6-tips-for-protecting-your-communications-from-prying-eyes/"
-        },
-        {
-          "date": "2026-09-07",
-          "last_updated": "2026-09-19",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "I am American, I am Ghanaian: Where do I stand in the reparations conversation? - MyJoyOnline",
-          "url": "https://www.myjoyonline.com/i-am-american-i-am-ghanaian-where-do-i-stand-in-the-reparations-conversation/"
-        },
-        {
-          "date": "2026-09-06",
-          "last_updated": "2026-09-06",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "In Maine, a woman bought an 1880s Victorian silk dress ...",
-          "url": "https://economictimes.indiatimes.com/news/new-updates/in-maine-a-woman-bought-an-1880s-victorian-silk-dress-only-to-discover-hidden-pockets-filled-with-mysterious-papers-strange-words-numbers-and-10pm/articleshow/133825639.cms"
-        },
-        {
-          "date": "2026-09-09",
-          "last_updated": "2026-09-10",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "News Archive - May 2015 - PhoneArena",
-          "url": "https://www.phonearena.com/news/archive/2015/5"
+          "title": "Chat with Survivors: Best Practices",
+          "url": "https://www.techsafety.org/chat-best-practices"
         },
         {
           "date": "2026-09-22",
-          "last_updated": "2026-09-22",
+          "last_updated": "2026-09-23",
           "place_metadata": null,
-          "snippet": "",
+          "snippet": "The real limitation shows up with long conversations, code blocks, or tables, though.\nBrowser printing captures only what's currently loaded on the page.\nA very long chat may get cut off.\nFormatting like code blocks can come out messy too.\n...\nExport Data downloads your entire ChatGPT history at onc...",
           "source": "web",
-          "title": "BBC Learning English - 6 Minute English / I love my language!",
-          "url": "https://www.bbc.co.uk/learningenglish/chinese/features/6-minute-english/ep-210923"
+          "title": "ChatGPT to PDF: 4 Easy Ways to Export Any Conversation",
+          "url": "https://aibusinessweekly.net/p/chatgpt-to-pdf"
         },
         {
-          "date": "2026-09-10",
-          "last_updated": "2026-09-22",
+          "date": "2026-07-04",
+          "last_updated": "2026-08-09",
           "place_metadata": null,
-          "snippet": "",
+          "snippet": "Use /resume\n...\nI just used --resume, and it was precisely what I was looking for.\nNow I can view all my previous sessions, which is incredibly useful.",
           "source": "web",
-          "title": "LivePerson Conversational Cloud Says AI Agent Testing Is 60% Faster. Buyers Need the Proof",
-          "url": "https://www.cxtoday.com/customer-engagement-journey-orchestration/liveperson-conversational-cloud/"
+          "title": "How do you manage conversation history in Claude Code",
+          "url": "https://www.reddit.com/r/ClaudeAI/comments/1ue2y6z/how_do_you_manage_conversation_history_in_claude/"
         },
         {
-          "date": "2026-09-18",
-          "last_updated": "2026-09-22",
+          "date": null,
+          "last_updated": "2026-10-02",
           "place_metadata": null,
-          "snippet": "",
+          "snippet": "- Live `chat` events are delivery state, while `chat.history` is rebuilt from the durable session transcript.",
           "source": "web",
-          "title": "Inside OpenAI's log of misbehaving models",
-          "url": "https://www.therundown.ai/articles/inside-openai-log-of-misbehaving-models"
-        },
-        {
-          "date": "2026-09-11",
-          "last_updated": "2026-09-12",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "How a phone call from hijacked Flight 93 saved US Capitol on 9/11 as flyers fought terrorists",
-          "url": "https://www.indiatoday.in/history-of-it/story/9-11-terror-attack-al-qaida-flight-93-tom-burnett-phone-call-helped-save-us-capitol-history-2991917-2026-09-11"
-        },
-        {
-          "date": "2026-09-20",
-          "last_updated": "2026-09-21",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "In a World of Nukes and Climate Emergency, Knowledge Is Survival",
-          "url": "https://www.commondreams.org/opinion/knowledge-is-survival"
-        },
-        {
-          "date": "2026-09-17",
-          "last_updated": "2026-09-21",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "Retired Microsoft Engineer details the story about the famous leaked ...",
-          "url": "https://www.tomshardware.com/software/windows/retired-microsoft-engineer-details-the-story-about-the-famous-leaked-fckgw-windows-xp-key-copy-protection-used-10mb-of-encrypted-microsoft-bob-for-validation"
-        },
-        {
-          "date": "2026-09-16",
-          "last_updated": "2026-09-17",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "Family Drama ‘How to Survive Without Me' Scores HBO Max Series Order",
-          "url": "https://www.hollywoodreporter.com/tv/tv-news/hbo-max-family-drama-how-to-survive-without-me-series-order-1236703511/"
-        },
-        {
-          "date": "2026-09-07",
-          "last_updated": "2026-09-11",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "sha1 collision attack — Latest News, Reports & Analysis | The Hacker News",
-          "url": "https://thehackernews.com/search/label/sha1%20collision%20attack?updated-max=2017-02-23T21:39:00+05:30&max-results=20&start=20&by-date=false&m=1&hl=ru"
-        },
-        {
-          "date": "2026-09-15",
-          "last_updated": "2026-09-22",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "From dyslexic kid to 'Resident Punk': Legs McNeil on surviving the ...",
-          "url": "https://www.latimes.com/entertainment-arts/music/story/2026-09-15/from-dyslexic-kid-to-resident-punk-legs-mcneil-on-surviving-scene-that-made-him-writer"
-        },
-        {
-          "date": "2026-09-10",
-          "last_updated": "2026-09-14",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "Elaine Reno / The Conversation Archives",
-          "url": "https://www.popsci.com/authors/elaine-reno-the-conversation/"
-        },
-        {
-          "date": "2026-09-22",
-          "last_updated": "2026-09-22",
-          "place_metadata": null,
-          "snippet": "",
-          "source": "web",
-          "title": "Strands: Uncover Words. - The New York Times",
-          "url": "https://www.nytimes.com/games/strands"
+          "title": "Chat - OpenClaw Docs",
+          "url": "https://docs.openclaw.ai/web/control-ui/chat"
         }
       ],
       "usage": {
-        "completion_tokens": 18,
+        "completion_tokens": 10,
         "cost": {
-          "input_tokens_cost": 0.00004,
-          "output_tokens_cost": 0.00002,
+          "input_tokens_cost": 0.00006,
+          "output_tokens_cost": 0.00001,
           "request_cost": 0.005,
-          "total_cost": 0.00505
+          "total_cost": 0.00507
         },
-        "prompt_tokens": 36,
+        "prompt_tokens": 59,
         "search_context_size": "low",
-        "total_tokens": 54
+        "total_tokens": 69
       }
     }
   },
@@ -2473,12 +2253,7 @@
     "choice": [
       {
         "text": "tools dropped ok",
-        "native": {
-          "item": {
-            "content": "tools dropped ok"
-          },
-          "fingerprint": 15460941395609624674
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2722,12 +2497,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -2951,12 +2721,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3180,12 +2945,7 @@
     "choice": [
       {
         "text": "probe still ready",
-        "native": {
-          "item": {
-            "content": "probe still ready"
-          },
-          "fingerprint": 11889464021292680932
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3409,12 +3169,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -3428,16 +3183,16 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 4365,
         "completion_tokens": 3,
-        "total_tokens": 4368,
         "cost": {
           "input_tokens_cost": 0.00437,
           "output_tokens_cost": 0,
           "request_cost": 0.005,
           "total_cost": 0.00937
         },
-        "search_context_size": "low"
+        "prompt_tokens": 4365,
+        "search_context_size": "low",
+        "total_tokens": 4368
       },
       "finish_reason": "stop",
       "response_id": "5ea49730-acc5-46ce-a2d4-5d2a2cd6b511",
@@ -4137,12 +3892,7 @@
     "choice": [
       {
         "text": "cache probe ready",
-        "native": {
-          "item": {
-            "content": "cache probe ready"
-          },
-          "fingerprint": 17931945363212184360
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4156,16 +3906,16 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 4365,
         "completion_tokens": 3,
-        "total_tokens": 4368,
         "cost": {
           "input_tokens_cost": 0.00437,
           "output_tokens_cost": 0,
           "request_cost": 0.005,
           "total_cost": 0.00937
         },
-        "search_context_size": "low"
+        "prompt_tokens": 4365,
+        "search_context_size": "low",
+        "total_tokens": 4368
       },
       "finish_reason": "stop",
       "response_id": "0f153be2-078c-489b-88de-3c36110b8f37",
@@ -4865,12 +4615,7 @@
     "choice": [
       {
         "text": "probe still ready",
-        "native": {
-          "item": {
-            "content": "probe still ready"
-          },
-          "fingerprint": 11889464021292680932
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -4884,16 +4629,16 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 4384,
         "completion_tokens": 3,
-        "total_tokens": 4387,
         "cost": {
           "input_tokens_cost": 0.00438,
           "output_tokens_cost": 0,
           "request_cost": 0.005,
           "total_cost": 0.00939
         },
-        "search_context_size": "low"
+        "prompt_tokens": 4384,
+        "search_context_size": "low",
+        "total_tokens": 4387
       },
       "finish_reason": "stop",
       "response_id": "2a185eb1-289a-4c46-802a-9a5e6f496681",
@@ -5593,12 +5338,7 @@
     "choice": [
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -5832,12 +5572,7 @@
     "choice": [
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6071,12 +5806,7 @@
     "choice": [
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6310,12 +6040,7 @@
     "choice": [
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6329,16 +6054,16 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 7,
         "completion_tokens": 1,
-        "total_tokens": 8,
         "cost": {
           "input_tokens_cost": 0.00001,
           "output_tokens_cost": 0,
           "request_cost": 0.005,
           "total_cost": 0.00501
         },
-        "search_context_size": "low"
+        "prompt_tokens": 7,
+        "search_context_size": "low",
+        "total_tokens": 8
       },
       "finish_reason": "stop",
       "response_id": "ea63f2f9-52d6-4b17-a112-de770eeca3d4",
@@ -6718,12 +6443,7 @@
     "choice": [
       {
         "text": "pong",
-        "native": {
-          "item": {
-            "content": "pong"
-          },
-          "fingerprint": 220707766100057057
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -6737,16 +6457,16 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 7,
         "completion_tokens": 1,
-        "total_tokens": 8,
         "cost": {
           "input_tokens_cost": 0.00001,
           "output_tokens_cost": 0,
           "request_cost": 0.005,
           "total_cost": 0.00501
         },
-        "search_context_size": "low"
+        "prompt_tokens": 7,
+        "search_context_size": "low",
+        "total_tokens": 8
       },
       "finish_reason": "stop",
       "response_id": "84f60425-7bfb-4348-a8e7-b12cb366fa0c",
@@ -7126,12 +6846,7 @@
     "choice": [
       {
         "text": "A **solar eclipse** happens when the Moon moves between Earth and",
-        "native": {
-          "item": {
-            "content": "A **solar eclipse** happens when the Moon moves between Earth and"
-          },
-          "fingerprint": 391100454692598754
-        }
+        "native": null
       }
     ],
     "usage": {
@@ -7145,16 +6860,16 @@
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 24,
         "completion_tokens": 14,
-        "total_tokens": 38,
         "cost": {
           "input_tokens_cost": 0.00002,
           "output_tokens_cost": 0.00001,
           "request_cost": 0.005,
           "total_cost": 0.00504
         },
-        "search_context_size": "low"
+        "prompt_tokens": 24,
+        "search_context_size": "low",
+        "total_tokens": 38
       },
       "finish_reason": "length",
       "response_id": "9ac8bec3-aa74-4927-aab1-6f68a2794582",

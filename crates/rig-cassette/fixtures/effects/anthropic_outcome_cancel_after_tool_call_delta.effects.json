@@ -162,12 +162,17 @@
                   "name": "write_note",
                   "type": "tool_use"
                 },
-                "fingerprint": 11562050895249573407
+                "fingerprint": 1840209247437372035
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     }
   ]
 }

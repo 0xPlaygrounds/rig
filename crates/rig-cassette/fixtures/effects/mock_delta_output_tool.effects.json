@@ -155,7 +155,12 @@
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "mock.script",
+        "provider": "mock",
+        "model": "mock-model"
+      }
     }
   ]
 }

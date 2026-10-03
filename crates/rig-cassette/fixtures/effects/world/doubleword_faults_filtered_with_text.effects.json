@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
+        "batch": 1,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
         "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 19
+          "items": 3
         }
       },
       {
@@ -85,19 +93,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
-              "native": {
-                "item": {
-                  "content": "A glarb-glarb is an ancient farming tool from the planet Jiro."
-                },
-                "fingerprint": 9658890132495485441
-              }
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
             }
           ],
           "usage": {
-            "input_tokens": 75,
-            "output_tokens": 18,
-            "total_tokens": 93,
+            "input_tokens": 71,
+            "output_tokens": 17,
+            "total_tokens": 88,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -106,38 +108,42 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c"
+            "response_id": "gen-1790976622-pOFvx4fBgHopzmqfborQ"
           },
           "native": {
             "item": {
               "content": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
               "role": "assistant"
             },
-            "fingerprint": 8549421029602975643
+            "fingerprint": 5117098154201444803
           },
           "finish_reason": "content_filter",
           "raw": {
             "usage": {
-              "prompt_tokens": 75,
-              "completion_tokens": 18,
-              "total_tokens": 93,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 17,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 71,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 88
             },
             "finish_reason": "content_filter",
-            "response_id": "gen-1790146078-pa0UeobUYbYFE284Dq4c",
+            "response_id": "gen-1790976622-pOFvx4fBgHopzmqfborQ",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -168,7 +174,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " gl"
+            "text": " glarb-glar"
           }
         },
         {
@@ -176,7 +182,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "arb"
+            "text": "b is an ancient"
           }
         },
         {
@@ -184,7 +190,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "-g"
+            "text": " farming tool from the"
           }
         },
         {
@@ -192,103 +198,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "lar"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "b"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " an"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " ancient"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " farming"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " tool"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " from"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " planet"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " J"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "iro"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
+            "text": " planet Jiro."
           }
         },
         {
@@ -298,17 +208,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
-              "native": {
-                "item": {
-                  "content": "A glarb-glarb is an ancient farming tool from the planet Jiro."
-                },
-                "fingerprint": 9658890132495485441
-              }
+              "text": "A glarb-glarb is an ancient farming tool from the planet Jiro."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      },
       "scope": "golden/run#0"
     }
   ]

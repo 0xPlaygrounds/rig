@@ -159,9 +159,9 @@
                     },
                     "name": "lookup_codeword"
                   },
-                  "thoughtSignature": "CqoCAWkUfRO2JqAS7w6CvuSL1EULSGnXv0PlazbS9S2y93iT6BOeIxoAHe7J5fLjxRiocZNEgYB09R82eQTK4FklCGmNvbH2y8VL1zWa1PV28agoEDiGHg5h11ydv52DSa7wJ5Bcbw51LekMU0EQB64E2BFSpfH6W/Wb/Seeict2Xi42+l08BHM88DkREOMBrqEA70hOGrO+KLwKmJRHKUSllljnLIrVCPgAzotXty/6FSElf7TQJey5RI6LzkfDbxXMPd4g4bhV2y5WN8yjapPQcGN+rQpIvxy1jxyJj5WSaW8D0yvdsKqlPyQ4bw9VtkttNNM713tu6GbPojXl2Hut03CYA5/ydTpLAuUZsywei6ihb2ohaP41OSHMM7w1ZiMZhftOqZj29ANcBQ=="
+                  "thoughtSignature": "CqoCAWkUfRP/SHiMGhTnSqFmCHNRaMEBjveMhi5fI38EOxFqIxAMGAImZe2PAuQTRIUCA+mW0SlpYc2mpCtwYxiESIxsPALJ1P7w06brNUur6fztmM02dzCh5KsgW+/z08VgNfhDEy4xQhH+Fe9bEsVGajcEjavfccZH/991hUQ5hUi/3TeLgoHNjpGw9wsnz/XWqWFT3l6qS5iHrOaJH46qN2DaJMazDO/UKwvnEwyI9EInEh0dy2o5QEJYTz40c1Hbvzr9xbmQlziBlRgTZbXARQ7yqHc4prpmsuteaM0imMmtweg7YZkt2Ou3KTH+5iBtZK4khT5F5aBUWR/mloiwP6szOUfDerVcJxpllInWFeBNPTwrzJrcJg+R/3Qbgh0dQqwGQIOefK7Nxw=="
                 },
-                "fingerprint": 16165310931501220996
+                "fingerprint": 439739264429853666
               }
             }
           ],
@@ -176,7 +176,7 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "mC2_are8CfaMmtkPt_6mkQM"
+            "response_id": "WRDAapGwNOqfz7IPoLWP6Qc"
           },
           "native": {
             "item": {
@@ -184,7 +184,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 5760347217905722698
+            "fingerprint": 9796492200764825392
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -199,7 +199,7 @@
                         },
                         "name": "lookup_codeword"
                       },
-                      "thoughtSignature": "CqoCAWkUfRO2JqAS7w6CvuSL1EULSGnXv0PlazbS9S2y93iT6BOeIxoAHe7J5fLjxRiocZNEgYB09R82eQTK4FklCGmNvbH2y8VL1zWa1PV28agoEDiGHg5h11ydv52DSa7wJ5Bcbw51LekMU0EQB64E2BFSpfH6W/Wb/Seeict2Xi42+l08BHM88DkREOMBrqEA70hOGrO+KLwKmJRHKUSllljnLIrVCPgAzotXty/6FSElf7TQJey5RI6LzkfDbxXMPd4g4bhV2y5WN8yjapPQcGN+rQpIvxy1jxyJj5WSaW8D0yvdsKqlPyQ4bw9VtkttNNM713tu6GbPojXl2Hut03CYA5/ydTpLAuUZsywei6ihb2ohaP41OSHMM7w1ZiMZhftOqZj29ANcBQ=="
+                      "thoughtSignature": "CqoCAWkUfRP/SHiMGhTnSqFmCHNRaMEBjveMhi5fI38EOxFqIxAMGAImZe2PAuQTRIUCA+mW0SlpYc2mpCtwYxiESIxsPALJ1P7w06brNUur6fztmM02dzCh5KsgW+/z08VgNfhDEy4xQhH+Fe9bEsVGajcEjavfccZH/991hUQ5hUi/3TeLgoHNjpGw9wsnz/XWqWFT3l6qS5iHrOaJH46qN2DaJMazDO/UKwvnEwyI9EInEh0dy2o5QEJYTz40c1Hbvzr9xbmQlziBlRgTZbXARQ7yqHc4prpmsuteaM0imMmtweg7YZkt2Ou3KTH+5iBtZK4khT5F5aBUWR/mloiwP6szOUfDerVcJxpllInWFeBNPTwrzJrcJg+R/3Qbgh0dQqwGQIOefK7Nxw=="
                     }
                   ],
                   "role": "model"
@@ -210,7 +210,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "mC2_are8CfaMmtkPt_6mkQM",
+            "responseId": "WRDAapGwNOqfz7IPoLWP6Qc",
             "usageMetadata": {
               "candidatesTokenCount": 16,
               "promptTokenCount": 93,
@@ -306,9 +306,9 @@
                         },
                         "name": "lookup_codeword"
                       },
-                      "thoughtSignature": "CqoCAWkUfRO2JqAS7w6CvuSL1EULSGnXv0PlazbS9S2y93iT6BOeIxoAHe7J5fLjxRiocZNEgYB09R82eQTK4FklCGmNvbH2y8VL1zWa1PV28agoEDiGHg5h11ydv52DSa7wJ5Bcbw51LekMU0EQB64E2BFSpfH6W/Wb/Seeict2Xi42+l08BHM88DkREOMBrqEA70hOGrO+KLwKmJRHKUSllljnLIrVCPgAzotXty/6FSElf7TQJey5RI6LzkfDbxXMPd4g4bhV2y5WN8yjapPQcGN+rQpIvxy1jxyJj5WSaW8D0yvdsKqlPyQ4bw9VtkttNNM713tu6GbPojXl2Hut03CYA5/ydTpLAuUZsywei6ihb2ohaP41OSHMM7w1ZiMZhftOqZj29ANcBQ=="
+                      "thoughtSignature": "CqoCAWkUfRP/SHiMGhTnSqFmCHNRaMEBjveMhi5fI38EOxFqIxAMGAImZe2PAuQTRIUCA+mW0SlpYc2mpCtwYxiESIxsPALJ1P7w06brNUur6fztmM02dzCh5KsgW+/z08VgNfhDEy4xQhH+Fe9bEsVGajcEjavfccZH/991hUQ5hUi/3TeLgoHNjpGw9wsnz/XWqWFT3l6qS5iHrOaJH46qN2DaJMazDO/UKwvnEwyI9EInEh0dy2o5QEJYTz40c1Hbvzr9xbmQlziBlRgTZbXARQ7yqHc4prpmsuteaM0imMmtweg7YZkt2Ou3KTH+5iBtZK4khT5F5aBUWR/mloiwP6szOUfDerVcJxpllInWFeBNPTwrzJrcJg+R/3Qbgh0dQqwGQIOefK7Nxw=="
                     },
-                    "fingerprint": 16165310931501220996
+                    "fingerprint": 439739264429853666
                   }
                 }
               ],
@@ -317,7 +317,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "mC2_are8CfaMmtkPt_6mkQM"
+                "response_id": "WRDAapGwNOqfz7IPoLWP6Qc"
               },
               "stop": "tool_use",
               "native": {
@@ -326,7 +326,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 5760347217905722698
+                "fingerprint": 9796492200764825392
               }
             },
             {
@@ -343,7 +343,8 @@
                       "type": "text",
                       "text": "the red team was disbanded; look up the codeword for the \"blue\" team instead"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -398,24 +399,24 @@
                     },
                     "name": "lookup_codeword"
                   },
-                  "thoughtSignature": "CuoCAWkUfRPxmYggeM+zHFtNZ4s9IT72vXq8qfjx4ZcJgWit85zpk7qhGfkaDDL8hqfTLZjfF+9zbp5VCOBEUOhD+G/n0cXiHtDhu6IKocaAUANrzWKtnWjbO66Dhf80X76Gv2hc5ypU9ZCiYkylaSXSVMavkwPkBnSwjlq38pWny5QCAggDi5/A6ssdf58F1yQHXW1Q/ukQisigxpS2F8mmbY/qIkvk5tPUuSXbtn1l1zJz3FCstKtufhyRejEmZtjt6hHoAujQZ78a1OxWdwUNHCjZ8dzHZGb3m/ybHqW04vjGIHFqL1FK/W4uAlCb91baK/+S4tzeR8WZYqVIst+TZCbwBlh8vkQRVgbBmth6lY0c/D2zmqHYymeLG54NBaJVjiIEyiDLBwSHPRylq9jdNm6UOkEwIB2Ngt5VDspqMUlzW2nMNCh61EojGffry5hizLd4q8y3ig4zWmrrb4dyV/+UgkTSuMDGcSs="
+                  "thoughtSignature": "CvYCAWkUfRO2dTxMZnuuSvlKQb+ttyhphgjbz/lkIsMG3qqO4FT1Yz0l0eDwMCvchSqVaJ8LdJcWhXZiGxIFG9IwDj9HSl9jGBQaxId0mMraqnAka14k7T818XNMrd5bXYBkjJ/Wqrb6NSfB189nVXc0KPsKHH7Bs7TksG5hREdc3HJjeoVBMyPLnsbPFYx3V1ztt5to9ZRf2thzPNNWCLzbm78IRYI6DdZQme0UGINg+44ukTb3CbGfv7FyXK9JO5gisGeTulx/2jj4JPE9JKaTqOUKTRemNbBNNIfozVAY601bNOhvdT3aK0v3iXnqFThFcnjkargSUwfPYyy9Lt+kTo33A+csHVaWFOFnGQF3cSmlSAVxq1UKaScudSH1hRH2pfSi18jDFv69/VSFA1LihD+GSkCi69hv6xPxSy7AyPMC6LQqd8iwNvpkeKAPzIJKmpEmlZO5Fp8zGC14eEgdg46Atl5gU7dDNjI4NoKyM/nwyUW8P34="
                 },
-                "fingerprint": 13385753049097088047
+                "fingerprint": 7847753711520805969
               }
             }
           ],
           "usage": {
             "input_tokens": 141,
-            "output_tokens": 99,
-            "total_tokens": 240,
-            "reasoning_tokens": 83
+            "output_tokens": 101,
+            "total_tokens": 242,
+            "reasoning_tokens": 85
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "mC2_arbxNbWjqtsP4L7HkA0"
+            "response_id": "WhDAat_aH5PVz7IP27v0iAM"
           },
           "native": {
             "item": {
@@ -423,7 +424,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 105450446387853885
+            "fingerprint": 7167143506929917583
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -438,7 +439,7 @@
                         },
                         "name": "lookup_codeword"
                       },
-                      "thoughtSignature": "CuoCAWkUfRPxmYggeM+zHFtNZ4s9IT72vXq8qfjx4ZcJgWit85zpk7qhGfkaDDL8hqfTLZjfF+9zbp5VCOBEUOhD+G/n0cXiHtDhu6IKocaAUANrzWKtnWjbO66Dhf80X76Gv2hc5ypU9ZCiYkylaSXSVMavkwPkBnSwjlq38pWny5QCAggDi5/A6ssdf58F1yQHXW1Q/ukQisigxpS2F8mmbY/qIkvk5tPUuSXbtn1l1zJz3FCstKtufhyRejEmZtjt6hHoAujQZ78a1OxWdwUNHCjZ8dzHZGb3m/ybHqW04vjGIHFqL1FK/W4uAlCb91baK/+S4tzeR8WZYqVIst+TZCbwBlh8vkQRVgbBmth6lY0c/D2zmqHYymeLG54NBaJVjiIEyiDLBwSHPRylq9jdNm6UOkEwIB2Ngt5VDspqMUlzW2nMNCh61EojGffry5hizLd4q8y3ig4zWmrrb4dyV/+UgkTSuMDGcSs="
+                      "thoughtSignature": "CvYCAWkUfRO2dTxMZnuuSvlKQb+ttyhphgjbz/lkIsMG3qqO4FT1Yz0l0eDwMCvchSqVaJ8LdJcWhXZiGxIFG9IwDj9HSl9jGBQaxId0mMraqnAka14k7T818XNMrd5bXYBkjJ/Wqrb6NSfB189nVXc0KPsKHH7Bs7TksG5hREdc3HJjeoVBMyPLnsbPFYx3V1ztt5to9ZRf2thzPNNWCLzbm78IRYI6DdZQme0UGINg+44ukTb3CbGfv7FyXK9JO5gisGeTulx/2jj4JPE9JKaTqOUKTRemNbBNNIfozVAY601bNOhvdT3aK0v3iXnqFThFcnjkargSUwfPYyy9Lt+kTo33A+csHVaWFOFnGQF3cSmlSAVxq1UKaScudSH1hRH2pfSi18jDFv69/VSFA1LihD+GSkCi69hv6xPxSy7AyPMC6LQqd8iwNvpkeKAPzIJKmpEmlZO5Fp8zGC14eEgdg46Atl5gU7dDNjI4NoKyM/nwyUW8P34="
                     }
                   ],
                   "role": "model"
@@ -449,7 +450,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "mC2_arbxNbWjqtsP4L7HkA0",
+            "responseId": "WhDAat_aH5PVz7IP27v0iAM",
             "usageMetadata": {
               "candidatesTokenCount": 16,
               "promptTokenCount": 141,
@@ -460,8 +461,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 83,
-              "totalTokenCount": 240
+              "thoughtsTokenCount": 85,
+              "totalTokenCount": 242
             }
           }
         }
@@ -537,9 +538,9 @@
                         },
                         "name": "lookup_codeword"
                       },
-                      "thoughtSignature": "CqoCAWkUfRO2JqAS7w6CvuSL1EULSGnXv0PlazbS9S2y93iT6BOeIxoAHe7J5fLjxRiocZNEgYB09R82eQTK4FklCGmNvbH2y8VL1zWa1PV28agoEDiGHg5h11ydv52DSa7wJ5Bcbw51LekMU0EQB64E2BFSpfH6W/Wb/Seeict2Xi42+l08BHM88DkREOMBrqEA70hOGrO+KLwKmJRHKUSllljnLIrVCPgAzotXty/6FSElf7TQJey5RI6LzkfDbxXMPd4g4bhV2y5WN8yjapPQcGN+rQpIvxy1jxyJj5WSaW8D0yvdsKqlPyQ4bw9VtkttNNM713tu6GbPojXl2Hut03CYA5/ydTpLAuUZsywei6ihb2ohaP41OSHMM7w1ZiMZhftOqZj29ANcBQ=="
+                      "thoughtSignature": "CqoCAWkUfRP/SHiMGhTnSqFmCHNRaMEBjveMhi5fI38EOxFqIxAMGAImZe2PAuQTRIUCA+mW0SlpYc2mpCtwYxiESIxsPALJ1P7w06brNUur6fztmM02dzCh5KsgW+/z08VgNfhDEy4xQhH+Fe9bEsVGajcEjavfccZH/991hUQ5hUi/3TeLgoHNjpGw9wsnz/XWqWFT3l6qS5iHrOaJH46qN2DaJMazDO/UKwvnEwyI9EInEh0dy2o5QEJYTz40c1Hbvzr9xbmQlziBlRgTZbXARQ7yqHc4prpmsuteaM0imMmtweg7YZkt2Ou3KTH+5iBtZK4khT5F5aBUWR/mloiwP6szOUfDerVcJxpllInWFeBNPTwrzJrcJg+R/3Qbgh0dQqwGQIOefK7Nxw=="
                     },
-                    "fingerprint": 16165310931501220996
+                    "fingerprint": 439739264429853666
                   }
                 }
               ],
@@ -548,7 +549,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "mC2_are8CfaMmtkPt_6mkQM"
+                "response_id": "WRDAapGwNOqfz7IPoLWP6Qc"
               },
               "stop": "tool_use",
               "native": {
@@ -557,7 +558,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 5760347217905722698
+                "fingerprint": 9796492200764825392
               }
             },
             {
@@ -574,7 +575,8 @@
                       "type": "text",
                       "text": "the red team was disbanded; look up the codeword for the \"blue\" team instead"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -600,9 +602,9 @@
                         },
                         "name": "lookup_codeword"
                       },
-                      "thoughtSignature": "CuoCAWkUfRPxmYggeM+zHFtNZ4s9IT72vXq8qfjx4ZcJgWit85zpk7qhGfkaDDL8hqfTLZjfF+9zbp5VCOBEUOhD+G/n0cXiHtDhu6IKocaAUANrzWKtnWjbO66Dhf80X76Gv2hc5ypU9ZCiYkylaSXSVMavkwPkBnSwjlq38pWny5QCAggDi5/A6ssdf58F1yQHXW1Q/ukQisigxpS2F8mmbY/qIkvk5tPUuSXbtn1l1zJz3FCstKtufhyRejEmZtjt6hHoAujQZ78a1OxWdwUNHCjZ8dzHZGb3m/ybHqW04vjGIHFqL1FK/W4uAlCb91baK/+S4tzeR8WZYqVIst+TZCbwBlh8vkQRVgbBmth6lY0c/D2zmqHYymeLG54NBaJVjiIEyiDLBwSHPRylq9jdNm6UOkEwIB2Ngt5VDspqMUlzW2nMNCh61EojGffry5hizLd4q8y3ig4zWmrrb4dyV/+UgkTSuMDGcSs="
+                      "thoughtSignature": "CvYCAWkUfRO2dTxMZnuuSvlKQb+ttyhphgjbz/lkIsMG3qqO4FT1Yz0l0eDwMCvchSqVaJ8LdJcWhXZiGxIFG9IwDj9HSl9jGBQaxId0mMraqnAka14k7T818XNMrd5bXYBkjJ/Wqrb6NSfB189nVXc0KPsKHH7Bs7TksG5hREdc3HJjeoVBMyPLnsbPFYx3V1ztt5to9ZRf2thzPNNWCLzbm78IRYI6DdZQme0UGINg+44ukTb3CbGfv7FyXK9JO5gisGeTulx/2jj4JPE9JKaTqOUKTRemNbBNNIfozVAY601bNOhvdT3aK0v3iXnqFThFcnjkargSUwfPYyy9Lt+kTo33A+csHVaWFOFnGQF3cSmlSAVxq1UKaScudSH1hRH2pfSi18jDFv69/VSFA1LihD+GSkCi69hv6xPxSy7AyPMC6LQqd8iwNvpkeKAPzIJKmpEmlZO5Fp8zGC14eEgdg46Atl5gU7dDNjI4NoKyM/nwyUW8P34="
                     },
-                    "fingerprint": 13385753049097088047
+                    "fingerprint": 7847753711520805969
                   }
                 }
               ],
@@ -611,7 +613,7 @@
                 "provider": "gcp.gemini",
                 "model": "gemini-2.5-flash",
                 "response_model": "gemini-2.5-flash",
-                "response_id": "mC2_arbxNbWjqtsP4L7HkA0"
+                "response_id": "WhDAat_aH5PVz7IP27v0iAM"
               },
               "stop": "tool_use",
               "native": {
@@ -620,7 +622,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 105450446387853885
+                "fingerprint": 7167143506929917583
               }
             },
             {
@@ -675,20 +677,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "The codeword for the blue team is azure-falcon.",
+              "text": "The red team was disbanded. The codeword for the blue team is azure-falcon.",
               "native": {
                 "item": {
-                  "text": "The codeword for the blue team is azure-falcon.",
-                  "thoughtSignature": "CuQDAWkUfROOYwhFytvCNJ60yRDQeZPLVy7pYsltIKGdzGhEt2V8pg7MfKHzCKgJ4pyMe8CEhOVDdvlfrT+dzRusLEoOVVL5aF5WcOqgaXkfFTeMj8DyWrdVy99NYXHohpDrQjFcvmJ6KH9jvn1MDq7xecUG1KJ7VOUgkB1kiIopxZcJetm06ZioynolqfB4upCJHg1S/jkYy269fOvJERrPhc+Z9bBbxFJKkFxVd8KxojuNIgo9SpCF9gOzVgytX/J0oXeUnSWG9aLaGVAe40LFiP2naHBOIqzkeLMDRnA+pV9X8igb2TjgrPpqrLm6TIxlcf+Ff50rBn2/BcFOLVG10nxdsIKXtUtu81HG6Uu12Ccn+HXGJXcUW0wvlLA9IHWXZ66gjKLZ9bm9McDkXYvquC8RSKtxT2IoEeFozDQIKK414dNJ5+eeb7vMwjZoJz8ADg72bBRo2CZ4YnwQcEdbVCQrsIUHr2SKnckJ7wW/fgDg7oFDVdsbilK6Bj95AKhlRJYXpxLY4oCThrUQr3bajoLzxtn2pvCf2wOaKriWVWFqM1dnUH8bbRx5Th/VPECTL3xvuLmWbmYX1JPOjUuLi8kqqwbEEdnFLZa5r8PnTgBq57pJsXUt7mmQS97MO0wfsotl9w=="
+                  "text": "The red team was disbanded. The codeword for the blue team is azure-falcon.",
+                  "thoughtSignature": "CuMDAWkUfRPLgu49vMTLl0S0hzFkJVAUYHTaDneBaFcOlCuka6EBgXqtfKcSpd6lmIa6yxcHgpb0MJpV9agG5gvwha+AbWbrCqg+U7+UXZlJLFLhydOeRhmWqlJzfpzibqWLQtnqhhBv8ZlT5hXvkr4OWhrEZKVGBovZSusRQkqSTgaWbFea4oWlQD/wuQRJ0uO7cYiw9A9I8UO2g2rklYhF7SVT7yIDX0G715/BinRA04wDDa7DIlUc2cbHu/+rBX5RhtOU4hPsnZRMYa4aF6St2qMjyoP+zYEOoxPpz8bq8fB4irlAiyX9hFxKuexSwuvr47ziYcHD5GFwD5eXMCzuFDp2/aJzJWkDD9e2FAYDtQQDZjM66JUcnYZJi/3g1C1wO87dwUKT2vV2gZPPK1SSc8nVXOmi2VQ9tNqxxnjMwaZNaWdMPdgHvlF5stutq8ZuqmV8zYisxVOBrTqkQFwUhChVLkRUsNyN9yCo+hrOHy/KVugoJT7HxlT+cUrVKWfQhgSf3nl2Dp8U/rKW1iRWR+fOySmp0lIiTLXPN/XejPe/X8TOgP5qcv7LZh78W5HTALk1JG7Rh+e/ElOzfhIp06a5YPas+BcBSwD3oy4yxq5Y034DI9IJK0AMLay5oQD+idm2"
                 },
-                "fingerprint": 13641046708037709139
+                "fingerprint": 13620754067882479649
               }
             }
           ],
           "usage": {
             "input_tokens": 175,
-            "output_tokens": 113,
-            "total_tokens": 288,
+            "output_tokens": 119,
+            "total_tokens": 294,
             "reasoning_tokens": 102
           },
           "origin": {
@@ -696,14 +698,14 @@
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "mi2_ap2yDsKImtkP0L6SkAY"
+            "response_id": "WxDAatbNFIudz7IP4riYGA"
           },
           "native": {
             "item": {
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 157115899302793839
+            "fingerprint": 11833582079690139697
           },
           "finish_reason": "stop",
           "raw": {
@@ -712,8 +714,8 @@
                 "content": {
                   "parts": [
                     {
-                      "text": "The codeword for the blue team is azure-falcon.",
-                      "thoughtSignature": "CuQDAWkUfROOYwhFytvCNJ60yRDQeZPLVy7pYsltIKGdzGhEt2V8pg7MfKHzCKgJ4pyMe8CEhOVDdvlfrT+dzRusLEoOVVL5aF5WcOqgaXkfFTeMj8DyWrdVy99NYXHohpDrQjFcvmJ6KH9jvn1MDq7xecUG1KJ7VOUgkB1kiIopxZcJetm06ZioynolqfB4upCJHg1S/jkYy269fOvJERrPhc+Z9bBbxFJKkFxVd8KxojuNIgo9SpCF9gOzVgytX/J0oXeUnSWG9aLaGVAe40LFiP2naHBOIqzkeLMDRnA+pV9X8igb2TjgrPpqrLm6TIxlcf+Ff50rBn2/BcFOLVG10nxdsIKXtUtu81HG6Uu12Ccn+HXGJXcUW0wvlLA9IHWXZ66gjKLZ9bm9McDkXYvquC8RSKtxT2IoEeFozDQIKK414dNJ5+eeb7vMwjZoJz8ADg72bBRo2CZ4YnwQcEdbVCQrsIUHr2SKnckJ7wW/fgDg7oFDVdsbilK6Bj95AKhlRJYXpxLY4oCThrUQr3bajoLzxtn2pvCf2wOaKriWVWFqM1dnUH8bbRx5Th/VPECTL3xvuLmWbmYX1JPOjUuLi8kqqwbEEdnFLZa5r8PnTgBq57pJsXUt7mmQS97MO0wfsotl9w=="
+                      "text": "The red team was disbanded. The codeword for the blue team is azure-falcon.",
+                      "thoughtSignature": "CuMDAWkUfRPLgu49vMTLl0S0hzFkJVAUYHTaDneBaFcOlCuka6EBgXqtfKcSpd6lmIa6yxcHgpb0MJpV9agG5gvwha+AbWbrCqg+U7+UXZlJLFLhydOeRhmWqlJzfpzibqWLQtnqhhBv8ZlT5hXvkr4OWhrEZKVGBovZSusRQkqSTgaWbFea4oWlQD/wuQRJ0uO7cYiw9A9I8UO2g2rklYhF7SVT7yIDX0G715/BinRA04wDDa7DIlUc2cbHu/+rBX5RhtOU4hPsnZRMYa4aF6St2qMjyoP+zYEOoxPpz8bq8fB4irlAiyX9hFxKuexSwuvr47ziYcHD5GFwD5eXMCzuFDp2/aJzJWkDD9e2FAYDtQQDZjM66JUcnYZJi/3g1C1wO87dwUKT2vV2gZPPK1SSc8nVXOmi2VQ9tNqxxnjMwaZNaWdMPdgHvlF5stutq8ZuqmV8zYisxVOBrTqkQFwUhChVLkRUsNyN9yCo+hrOHy/KVugoJT7HxlT+cUrVKWfQhgSf3nl2Dp8U/rKW1iRWR+fOySmp0lIiTLXPN/XejPe/X8TOgP5qcv7LZh78W5HTALk1JG7Rh+e/ElOzfhIp06a5YPas+BcBSwD3oy4yxq5Y034DI9IJK0AMLay5oQD+idm2"
                     }
                   ],
                   "role": "model"
@@ -723,9 +725,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "mi2_ap2yDsKImtkP0L6SkAY",
+            "responseId": "WxDAatbNFIudz7IP4riYGA",
             "usageMetadata": {
-              "candidatesTokenCount": 11,
+              "candidatesTokenCount": 17,
               "promptTokenCount": 175,
               "promptTokensDetails": [
                 {
@@ -735,7 +737,7 @@
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 102,
-              "totalTokenCount": 288
+              "totalTokenCount": 294
             }
           }
         }

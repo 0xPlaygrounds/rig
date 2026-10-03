@@ -221,7 +221,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4475011628479761290
+                "fingerprint": 3729046359653311892
               }
             }
           ],
@@ -469,7 +469,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -593,7 +593,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5655802895910498221
+                "fingerprint": 5565065297799381141
               }
             }
           ],
@@ -841,7 +841,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -895,7 +895,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -1019,7 +1019,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2170692189086063834
+                "fingerprint": 7812372306910099194
               }
             }
           ],
@@ -1267,7 +1267,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -1321,7 +1321,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -1375,7 +1375,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -1499,7 +1499,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1751806330068144268
+                "fingerprint": 5878377189482148060
               }
             }
           ],
@@ -1747,7 +1747,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -1801,7 +1801,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -1855,7 +1855,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -1909,7 +1909,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -2031,7 +2031,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 13257549768815145806
+                "fingerprint": 11964879680260668080
               }
             }
           ],
@@ -2287,7 +2287,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -2341,7 +2341,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -2395,7 +2395,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -2449,7 +2449,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -2501,7 +2501,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13257549768815145806
+                    "fingerprint": 11964879680260668080
                   }
                 }
               ],
@@ -2528,7 +2528,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -2623,7 +2624,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 18357027504697469141
+                "fingerprint": 14930935674130169525
               }
             }
           ],
@@ -2871,7 +2872,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -2925,7 +2926,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -2979,7 +2980,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -3033,7 +3034,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -3085,7 +3086,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13257549768815145806
+                    "fingerprint": 11964879680260668080
                   }
                 }
               ],
@@ -3112,7 +3113,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -3137,7 +3139,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18357027504697469141
+                    "fingerprint": 14930935674130169525
                   }
                 }
               ],
@@ -3262,7 +3264,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 10031072703224431455
+                "fingerprint": 11763755605510537209
               }
             }
           ],
@@ -3510,7 +3512,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -3564,7 +3566,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -3618,7 +3620,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -3672,7 +3674,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -3724,7 +3726,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13257549768815145806
+                    "fingerprint": 11964879680260668080
                   }
                 }
               ],
@@ -3751,7 +3753,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -3776,7 +3779,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18357027504697469141
+                    "fingerprint": 14930935674130169525
                   }
                 }
               ],
@@ -3831,7 +3834,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10031072703224431455
+                    "fingerprint": 11763755605510537209
                   }
                 }
               ],
@@ -3953,7 +3956,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 9448417703289983801
+                "fingerprint": 12434838474281572097
               }
             }
           ],
@@ -4201,7 +4204,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -4255,7 +4258,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -4309,7 +4312,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -4363,7 +4366,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -4415,7 +4418,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13257549768815145806
+                    "fingerprint": 11964879680260668080
                   }
                 }
               ],
@@ -4442,7 +4445,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -4467,7 +4471,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18357027504697469141
+                    "fingerprint": 14930935674130169525
                   }
                 }
               ],
@@ -4522,7 +4526,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10031072703224431455
+                    "fingerprint": 11763755605510537209
                   }
                 }
               ],
@@ -4574,7 +4578,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9448417703289983801
+                    "fingerprint": 12434838474281572097
                   }
                 }
               ],
@@ -4698,7 +4702,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7933340040195548212
+                "fingerprint": 9414392344322982418
               }
             }
           ],
@@ -4946,7 +4950,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -5000,7 +5004,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -5054,7 +5058,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -5108,7 +5112,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -5160,7 +5164,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13257549768815145806
+                    "fingerprint": 11964879680260668080
                   }
                 }
               ],
@@ -5187,7 +5191,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -5212,7 +5217,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18357027504697469141
+                    "fingerprint": 14930935674130169525
                   }
                 }
               ],
@@ -5267,7 +5272,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10031072703224431455
+                    "fingerprint": 11763755605510537209
                   }
                 }
               ],
@@ -5319,7 +5324,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9448417703289983801
+                    "fingerprint": 12434838474281572097
                   }
                 }
               ],
@@ -5373,7 +5378,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7933340040195548212
+                    "fingerprint": 9414392344322982418
                   }
                 }
               ],
@@ -5498,7 +5503,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 1110005286798282138
+                "fingerprint": 8238931028163214816
               }
             }
           ],
@@ -5746,7 +5751,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -5800,7 +5805,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -5854,7 +5859,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -5908,7 +5913,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -5960,7 +5965,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13257549768815145806
+                    "fingerprint": 11964879680260668080
                   }
                 }
               ],
@@ -5987,7 +5992,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -6012,7 +6018,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18357027504697469141
+                    "fingerprint": 14930935674130169525
                   }
                 }
               ],
@@ -6067,7 +6073,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10031072703224431455
+                    "fingerprint": 11763755605510537209
                   }
                 }
               ],
@@ -6119,7 +6125,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9448417703289983801
+                    "fingerprint": 12434838474281572097
                   }
                 }
               ],
@@ -6173,7 +6179,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7933340040195548212
+                    "fingerprint": 9414392344322982418
                   }
                 }
               ],
@@ -6228,7 +6234,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1110005286798282138
+                    "fingerprint": 8238931028163214816
                   }
                 }
               ],
@@ -6350,7 +6356,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 14303417805878689284
+                "fingerprint": 235991459428652786
               }
             }
           ],
@@ -6598,7 +6604,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 4475011628479761290
+                    "fingerprint": 3729046359653311892
                   }
                 }
               ],
@@ -6652,7 +6658,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5655802895910498221
+                    "fingerprint": 5565065297799381141
                   }
                 }
               ],
@@ -6706,7 +6712,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2170692189086063834
+                    "fingerprint": 7812372306910099194
                   }
                 }
               ],
@@ -6760,7 +6766,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1751806330068144268
+                    "fingerprint": 5878377189482148060
                   }
                 }
               ],
@@ -6812,7 +6818,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 13257549768815145806
+                    "fingerprint": 11964879680260668080
                   }
                 }
               ],
@@ -6839,7 +6845,8 @@
                       "type": "text",
                       "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
@@ -6864,7 +6871,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18357027504697469141
+                    "fingerprint": 14930935674130169525
                   }
                 }
               ],
@@ -6919,7 +6926,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 10031072703224431455
+                    "fingerprint": 11763755605510537209
                   }
                 }
               ],
@@ -6971,7 +6978,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 9448417703289983801
+                    "fingerprint": 12434838474281572097
                   }
                 }
               ],
@@ -7025,7 +7032,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7933340040195548212
+                    "fingerprint": 9414392344322982418
                   }
                 }
               ],
@@ -7080,7 +7087,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 1110005286798282138
+                    "fingerprint": 8238931028163214816
                   }
                 }
               ],
@@ -7132,7 +7139,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 14303417805878689284
+                    "fingerprint": 235991459428652786
                   }
                 }
               ],
@@ -7254,7 +7261,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 16950038988497426807
+                "fingerprint": 17621867238521964955
               }
             }
           ],

@@ -144,7 +144,7 @@
                   "id": "call_929fccb9ba1f4c0688a5c3cc",
                   "type": "function"
                 },
-                "fingerprint": 15778278078326615400
+                "fingerprint": 13629854040942038340
               }
             }
           ],
@@ -177,7 +177,7 @@
                 }
               ]
             },
-            "fingerprint": 17779581535190052252
+            "fingerprint": 10313430061173761000
           },
           "finish_reason": "tool_calls",
           "raw": {

@@ -115,7 +115,7 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": 131567082699576390
+                "fingerprint": 7025148662212511952
               }
             }
           ],
@@ -201,12 +201,17 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": 131567082699576390
+                "fingerprint": 7025148662212511952
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     }
   ]
 }

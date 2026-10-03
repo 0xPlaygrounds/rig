@@ -161,12 +161,17 @@
                   "id": "call_yFEvCr1ZYiRIZsFYzEpWuOCU",
                   "type": "function"
                 },
-                "fingerprint": 11225038250982226026
+                "fingerprint": 16279141722654825712
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     }
   ]
 }

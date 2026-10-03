@@ -24,7 +24,7 @@
         }
       },
       {
-        "batch": 107,
+        "batch": 98,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 110,
+        "batch": 101,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 112,
+        "batch": 103,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 152,
+        "batch": 141,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 155,
+        "batch": 144,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 157,
+        "batch": 145,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 196,
+        "batch": 177,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,17 +76,137 @@
         }
       },
       {
-        "batch": 199,
+        "batch": 180,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 200,
+        "batch": 182,
         "id": 7,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 187,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 188,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 189,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 190,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 191,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 192,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 193,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 194,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 195,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 196,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 198,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 200,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 201,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 202,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 203,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -94,7 +214,15 @@
         "id": 8,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 205,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -138,6 +266,14 @@
         }
       },
       {
+        "batch": 211,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 212,
         "id": 8,
         "kind": {
@@ -154,7 +290,7 @@
         }
       },
       {
-        "batch": 214,
+        "batch": 216,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -162,127 +298,7 @@
         }
       },
       {
-        "batch": 215,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 217,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 218,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 219,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 220,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 222,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 223,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 224,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 226,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 227,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 228,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 229,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 230,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 231,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 236,
-        "id": 8,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 236,
+        "batch": 216,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -583,7 +599,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
               },
               "function": {
                 "name": "ping_empty",
@@ -595,10 +611,10 @@
                     "arguments": "{}",
                     "name": "ping_empty"
                   },
-                  "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                  "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                   "type": "function"
                 },
-                "fingerprint": 6880823829132772345
+                "fingerprint": 8766763812417017961
               }
             }
           ],
@@ -615,7 +631,7 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
-            "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu"
+            "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
           },
           "native": {
             "item": {
@@ -627,24 +643,20 @@
                     "arguments": "{}",
                     "name": "ping_empty"
                   },
-                  "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                  "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 7820341559021255127
+            "fingerprint": 8733142130881323655
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 352,
               "completion_tokens": 11,
-              "total_tokens": 363,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "cost": 0.00099,
@@ -653,10 +665,18 @@
                 "upstream_inference_cost": 0.00099,
                 "upstream_inference_prompt_cost": 0.00088
               },
-              "is_byok": false
+              "is_byok": false,
+              "prompt_tokens": 352,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 363
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu",
+            "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK",
             "model": "openai/gpt-4o",
             "additional_params": {
               "created": 0,
@@ -693,7 +713,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
               },
               "function": {
                 "name": "ping_empty",
@@ -705,15 +725,20 @@
                     "arguments": "{}",
                     "name": "ping_empty"
                   },
-                  "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                  "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                   "type": "function"
                 },
-                "fingerprint": 6880823829132772345
+                "fingerprint": 8766763812417017961
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openrouter",
+        "model": "openai/gpt-4o"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -769,7 +794,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -781,10 +806,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 6880823829132772345
+                    "fingerprint": 8766763812417017961
                   }
                 }
               ],
@@ -793,7 +818,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu"
+                "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
               "stop": "tool_use",
               "native": {
@@ -806,12 +831,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7820341559021255127
+                "fingerprint": 8733142130881323655
               }
             },
             {
@@ -820,7 +845,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -953,7 +978,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -982,10 +1007,10 @@
                     "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                     "name": "inspect_manifest"
                   },
-                  "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                  "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                   "type": "function"
                 },
-                "fingerprint": 3110525312706441786
+                "fingerprint": 16342013323427368485
               }
             }
           ],
@@ -1002,7 +1027,7 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
-            "response_id": "gen-1790925608-qMpIUBSz0Xp0wa8Z3AED"
+            "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
           },
           "native": {
             "item": {
@@ -1014,24 +1039,20 @@
                     "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                     "name": "inspect_manifest"
                   },
-                  "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                  "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 14312904303350165102
+            "fingerprint": 985371752751468039
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 374,
               "completion_tokens": 67,
-              "total_tokens": 441,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "cost": 0.001605,
@@ -1040,10 +1061,18 @@
                 "upstream_inference_cost": 0.001605,
                 "upstream_inference_prompt_cost": 0.000935
               },
-              "is_byok": false
+              "is_byok": false,
+              "prompt_tokens": 374,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 441
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790925608-qMpIUBSz0Xp0wa8Z3AED",
+            "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5",
             "model": "openai/gpt-4o",
             "additional_params": {
               "created": 0,
@@ -1080,7 +1109,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
               },
               "function": {
                 "name": "inspect_manifest",
@@ -1109,15 +1138,20 @@
                     "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                     "name": "inspect_manifest"
                   },
-                  "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                  "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                   "type": "function"
                 },
-                "fingerprint": 3110525312706441786
+                "fingerprint": 16342013323427368485
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openrouter",
+        "model": "openai/gpt-4o"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -1173,7 +1207,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1185,10 +1219,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 6880823829132772345
+                    "fingerprint": 8766763812417017961
                   }
                 }
               ],
@@ -1197,7 +1231,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu"
+                "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
               "stop": "tool_use",
               "native": {
@@ -1210,12 +1244,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7820341559021255127
+                "fingerprint": 8733142130881323655
               }
             },
             {
@@ -1224,7 +1258,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1242,7 +1276,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                    "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1271,10 +1305,10 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     },
-                    "fingerprint": 3110525312706441786
+                    "fingerprint": 16342013323427368485
                   }
                 }
               ],
@@ -1283,7 +1317,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925608-qMpIUBSz0Xp0wa8Z3AED"
+                "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
               },
               "stop": "tool_use",
               "native": {
@@ -1296,12 +1330,12 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 14312904303350165102
+                "fingerprint": 985371752751468039
               }
             },
             {
@@ -1310,7 +1344,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                    "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1443,7 +1477,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_ZCyIyHmDItay2JKKQGyCqyFF"
+                "provider": "call_0eyVaYHdQdMDvKrHuVDiLHE7"
               },
               "function": {
                 "name": "join_labels",
@@ -1463,10 +1497,10 @@
                     "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                     "name": "join_labels"
                   },
-                  "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
+                  "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                   "type": "function"
                 },
-                "fingerprint": 318456620788361877
+                "fingerprint": 18090450621014759766
               }
             }
           ],
@@ -1483,7 +1517,7 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
-            "response_id": "gen-1790925609-c8tqwRDXiua0wvnFXuxs"
+            "response_id": "gen-1790978373-vdpryICSmP5piLmsvyUp"
           },
           "native": {
             "item": {
@@ -1495,24 +1529,20 @@
                     "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                     "name": "join_labels"
                   },
-                  "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
+                  "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 11274612766984668675
+            "fingerprint": 8664140557831495114
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 464,
               "completion_tokens": 31,
-              "total_tokens": 495,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "cost": 0.00147,
@@ -1521,10 +1551,18 @@
                 "upstream_inference_cost": 0.00147,
                 "upstream_inference_prompt_cost": 0.00116
               },
-              "is_byok": false
+              "is_byok": false,
+              "prompt_tokens": 464,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 495
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790925609-c8tqwRDXiua0wvnFXuxs",
+            "response_id": "gen-1790978373-vdpryICSmP5piLmsvyUp",
             "model": "openai/gpt-4o",
             "additional_params": {
               "created": 0,
@@ -1561,7 +1599,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_ZCyIyHmDItay2JKKQGyCqyFF"
+                "provider": "call_0eyVaYHdQdMDvKrHuVDiLHE7"
               },
               "function": {
                 "name": "join_labels",
@@ -1581,15 +1619,20 @@
                     "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                     "name": "join_labels"
                   },
-                  "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
+                  "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                   "type": "function"
                 },
-                "fingerprint": 318456620788361877
+                "fingerprint": 18090450621014759766
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openrouter",
+        "model": "openai/gpt-4o"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -1645,7 +1688,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -1657,10 +1700,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 6880823829132772345
+                    "fingerprint": 8766763812417017961
                   }
                 }
               ],
@@ -1669,7 +1712,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu"
+                "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
               "stop": "tool_use",
               "native": {
@@ -1682,12 +1725,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7820341559021255127
+                "fingerprint": 8733142130881323655
               }
             },
             {
@@ -1696,7 +1739,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -1714,7 +1757,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                    "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -1743,10 +1786,10 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     },
-                    "fingerprint": 3110525312706441786
+                    "fingerprint": 16342013323427368485
                   }
                 }
               ],
@@ -1755,7 +1798,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925608-qMpIUBSz0Xp0wa8Z3AED"
+                "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
               },
               "stop": "tool_use",
               "native": {
@@ -1768,12 +1811,12 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 14312904303350165102
+                "fingerprint": 985371752751468039
               }
             },
             {
@@ -1782,7 +1825,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                    "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -1800,7 +1843,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_ZCyIyHmDItay2JKKQGyCqyFF"
+                    "provider": "call_0eyVaYHdQdMDvKrHuVDiLHE7"
                   },
                   "function": {
                     "name": "join_labels",
@@ -1820,10 +1863,10 @@
                         "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
+                      "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                       "type": "function"
                     },
-                    "fingerprint": 318456620788361877
+                    "fingerprint": 18090450621014759766
                   }
                 }
               ],
@@ -1832,7 +1875,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925609-c8tqwRDXiua0wvnFXuxs"
+                "response_id": "gen-1790978373-vdpryICSmP5piLmsvyUp"
               },
               "stop": "tool_use",
               "native": {
@@ -1845,12 +1888,12 @@
                         "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
+                      "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 11274612766984668675
+                "fingerprint": 8664140557831495114
               }
             },
             {
@@ -1859,7 +1902,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_ZCyIyHmDItay2JKKQGyCqyFF"
+                    "provider": "call_0eyVaYHdQdMDvKrHuVDiLHE7"
                   },
                   "name": "join_labels",
                   "content": [
@@ -1992,7 +2035,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_WHDU9k2e8x3AfMj79UQrs2Ht"
+                "provider": "call_gGoTjeh6zWUe1Ae41LjNaCKM"
               },
               "function": {
                 "name": "escape_echo",
@@ -2006,10 +2049,10 @@
                     "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                     "name": "escape_echo"
                   },
-                  "id": "call_WHDU9k2e8x3AfMj79UQrs2Ht",
+                  "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                   "type": "function"
                 },
-                "fingerprint": 5593701275953130573
+                "fingerprint": 17008967999681552231
               }
             }
           ],
@@ -2026,7 +2069,7 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
-            "response_id": "gen-1790925610-ELeCRRYvNFo3rojufI8Y"
+            "response_id": "gen-1790978374-7FrbwKLBcdTMrgb3gVhu"
           },
           "native": {
             "item": {
@@ -2038,24 +2081,20 @@
                     "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                     "name": "escape_echo"
                   },
-                  "id": "call_WHDU9k2e8x3AfMj79UQrs2Ht",
+                  "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 10861272082571268719
+            "fingerprint": 1811592314675305885
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 519,
               "completion_tokens": 31,
-              "total_tokens": 550,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "cost": 0.0016075,
@@ -2064,10 +2103,18 @@
                 "upstream_inference_cost": 0.0016075,
                 "upstream_inference_prompt_cost": 0.0012975
               },
-              "is_byok": false
+              "is_byok": false,
+              "prompt_tokens": 519,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 550
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790925610-ELeCRRYvNFo3rojufI8Y",
+            "response_id": "gen-1790978374-7FrbwKLBcdTMrgb3gVhu",
             "model": "openai/gpt-4o",
             "additional_params": {
               "created": 0,
@@ -2104,7 +2151,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_WHDU9k2e8x3AfMj79UQrs2Ht"
+                "provider": "call_gGoTjeh6zWUe1Ae41LjNaCKM"
               },
               "function": {
                 "name": "escape_echo",
@@ -2118,15 +2165,20 @@
                     "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                     "name": "escape_echo"
                   },
-                  "id": "call_WHDU9k2e8x3AfMj79UQrs2Ht",
+                  "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                   "type": "function"
                 },
-                "fingerprint": 5593701275953130573
+                "fingerprint": 17008967999681552231
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openrouter",
+        "model": "openai/gpt-4o"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -2182,7 +2234,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "function": {
                     "name": "ping_empty",
@@ -2194,10 +2246,10 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     },
-                    "fingerprint": 6880823829132772345
+                    "fingerprint": 8766763812417017961
                   }
                 }
               ],
@@ -2206,7 +2258,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925607-cdztY1hUq6Yxag3odtXu"
+                "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK"
               },
               "stop": "tool_use",
               "native": {
@@ -2219,12 +2271,12 @@
                         "arguments": "{}",
                         "name": "ping_empty"
                       },
-                      "id": "call_SVPXEpiRg1C2xCHKL9A0Hhgc",
+                      "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7820341559021255127
+                "fingerprint": 8733142130881323655
               }
             },
             {
@@ -2233,7 +2285,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_SVPXEpiRg1C2xCHKL9A0Hhgc"
+                    "provider": "call_m7kNXg2KeusmnQnbD3KApvt9"
                   },
                   "name": "ping_empty",
                   "content": [
@@ -2251,7 +2303,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                    "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
                   },
                   "function": {
                     "name": "inspect_manifest",
@@ -2280,10 +2332,10 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     },
-                    "fingerprint": 3110525312706441786
+                    "fingerprint": 16342013323427368485
                   }
                 }
               ],
@@ -2292,7 +2344,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925608-qMpIUBSz0Xp0wa8Z3AED"
+                "response_id": "gen-1790978372-7sZ3kufXTeWEX7FoxYb5"
               },
               "stop": "tool_use",
               "native": {
@@ -2305,12 +2357,12 @@
                         "arguments": "{\"project\":\"rig-openrouter\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\openrouter\"}",
                         "name": "inspect_manifest"
                       },
-                      "id": "call_Ti33sMJEptRTZNkuBplLSPHF",
+                      "id": "call_XppqPxlSDE5ZFMI8UT0Mf8TN",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 14312904303350165102
+                "fingerprint": 985371752751468039
               }
             },
             {
@@ -2319,7 +2371,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_Ti33sMJEptRTZNkuBplLSPHF"
+                    "provider": "call_XppqPxlSDE5ZFMI8UT0Mf8TN"
                   },
                   "name": "inspect_manifest",
                   "content": [
@@ -2337,7 +2389,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_ZCyIyHmDItay2JKKQGyCqyFF"
+                    "provider": "call_0eyVaYHdQdMDvKrHuVDiLHE7"
                   },
                   "function": {
                     "name": "join_labels",
@@ -2357,10 +2409,10 @@
                         "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
+                      "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                       "type": "function"
                     },
-                    "fingerprint": 318456620788361877
+                    "fingerprint": 18090450621014759766
                   }
                 }
               ],
@@ -2369,7 +2421,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925609-c8tqwRDXiua0wvnFXuxs"
+                "response_id": "gen-1790978373-vdpryICSmP5piLmsvyUp"
               },
               "stop": "tool_use",
               "native": {
@@ -2382,12 +2434,12 @@
                         "arguments": "{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}",
                         "name": "join_labels"
                       },
-                      "id": "call_ZCyIyHmDItay2JKKQGyCqyFF",
+                      "id": "call_0eyVaYHdQdMDvKrHuVDiLHE7",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 11274612766984668675
+                "fingerprint": 8664140557831495114
               }
             },
             {
@@ -2396,7 +2448,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_ZCyIyHmDItay2JKKQGyCqyFF"
+                    "provider": "call_0eyVaYHdQdMDvKrHuVDiLHE7"
                   },
                   "name": "join_labels",
                   "content": [
@@ -2414,7 +2466,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_WHDU9k2e8x3AfMj79UQrs2Ht"
+                    "provider": "call_gGoTjeh6zWUe1Ae41LjNaCKM"
                   },
                   "function": {
                     "name": "escape_echo",
@@ -2428,10 +2480,10 @@
                         "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_WHDU9k2e8x3AfMj79UQrs2Ht",
+                      "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                       "type": "function"
                     },
-                    "fingerprint": 5593701275953130573
+                    "fingerprint": 17008967999681552231
                   }
                 }
               ],
@@ -2440,7 +2492,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790925610-ELeCRRYvNFo3rojufI8Y"
+                "response_id": "gen-1790978374-7FrbwKLBcdTMrgb3gVhu"
               },
               "stop": "tool_use",
               "native": {
@@ -2453,12 +2505,12 @@
                         "arguments": "{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}",
                         "name": "escape_echo"
                       },
-                      "id": "call_WHDU9k2e8x3AfMj79UQrs2Ht",
+                      "id": "call_gGoTjeh6zWUe1Ae41LjNaCKM",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 10861272082571268719
+                "fingerprint": 1811592314675305885
               }
             },
             {
@@ -2467,7 +2519,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_WHDU9k2e8x3AfMj79UQrs2Ht"
+                    "provider": "call_gGoTjeh6zWUe1Ae41LjNaCKM"
                   },
                   "name": "escape_echo",
                   "content": [
@@ -2599,19 +2651,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The results are EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
-              "native": {
-                "item": {
-                  "content": "The results are EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-                },
-                "fingerprint": 9104106927048642947
-              }
+              "text": "The production-readiness scenario results are: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           ],
           "usage": {
             "input_tokens": 580,
-            "output_tokens": 24,
-            "total_tokens": 604,
+            "output_tokens": 29,
+            "total_tokens": 609,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
@@ -2621,38 +2667,42 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
-            "response_id": "gen-1790925611-BpVqdBYdc5C8OYAhOwVM"
+            "response_id": "gen-1790978374-tgKILIYDAnMP2r3izziT"
           },
           "native": {
             "item": {
-              "content": "The results are EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
+              "content": "The production-readiness scenario results are: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
               "role": "assistant"
             },
-            "fingerprint": 15621562003153778581
+            "fingerprint": 17407549297619358677
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 580,
-              "completion_tokens": 24,
-              "total_tokens": 604,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
+              "completion_tokens": 29,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "cost": 0.00169,
+              "cost": 0.00174,
               "cost_details": {
-                "upstream_inference_completions_cost": 0.00024,
-                "upstream_inference_cost": 0.00169,
+                "upstream_inference_completions_cost": 0.00029,
+                "upstream_inference_cost": 0.00174,
                 "upstream_inference_prompt_cost": 0.00145
               },
-              "is_byok": false
+              "is_byok": false,
+              "prompt_tokens": 580,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 609
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790925611-BpVqdBYdc5C8OYAhOwVM",
+            "response_id": "gen-1790978374-tgKILIYDAnMP2r3izziT",
             "model": "openai/gpt-4o",
             "additional_params": {
               "created": 0,
@@ -2686,6 +2736,38 @@
           "value": {
             "event": "text",
             "part": 0,
+            "text": " production"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "-read"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "iness"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " scenario"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " results"
           }
         },
@@ -2695,6 +2777,14 @@
             "event": "text",
             "part": 0,
             "text": " are"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": ":"
           }
         },
         {
@@ -2864,17 +2954,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The results are EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.",
-              "native": {
-                "item": {
-                  "content": "The results are EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
-                },
-                "fingerprint": 9104106927048642947
-              }
+              "text": "The production-readiness scenario results are: EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openrouter",
+        "model": "openai/gpt-4o"
+      },
       "scope": "parity/run#0"
     }
   ]

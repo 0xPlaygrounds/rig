@@ -120,7 +120,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_e26e6faafa5841488ab4bb4f"
+                "provider": "call_d53790ab723f4df786a3d705"
               },
               "function": {
                 "name": "add",
@@ -135,17 +135,17 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_e26e6faafa5841488ab4bb4f",
+                  "id": "call_d53790ab723f4df786a3d705",
                   "type": "function"
                 },
-                "fingerprint": 5783207290424962044
+                "fingerprint": 8525337387503964024
               }
             }
           ],
           "usage": {
             "input_tokens": 346,
-            "output_tokens": 36,
-            "total_tokens": 382,
+            "output_tokens": 37,
+            "total_tokens": 383,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -154,7 +154,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_f8653320-9799-43f2-a261-56dc5cc5d16c"
+            "response_id": "resp_cebca45b-1340-44bf-9ae1-64b5225402aa"
           },
           "native": {
             "item": {
@@ -166,12 +166,12 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "call_e26e6faafa5841488ab4bb4f",
+                  "id": "call_d53790ab723f4df786a3d705",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 804410140487922240
+            "fingerprint": 10705809287527439532
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -188,7 +188,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_e26e6faafa5841488ab4bb4f",
+                      "id": "call_d53790ab723f4df786a3d705",
                       "type": "function"
                     }
                   ]
@@ -196,9 +196,10 @@
               }
             ],
             "created": 0,
-            "id": "resp_f8653320-9799-43f2-a261-56dc5cc5d16c",
+            "id": "resp_cebca45b-1340-44bf-9ae1-64b5225402aa",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
+            "service_tier": "default",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -207,7 +208,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 36,
+              "completion_tokens": 37,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -220,7 +221,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 382
+              "total_tokens": 383
             }
           }
         }
@@ -278,7 +279,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_e26e6faafa5841488ab4bb4f"
+                    "provider": "call_d53790ab723f4df786a3d705"
                   },
                   "function": {
                     "name": "add",
@@ -293,10 +294,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_e26e6faafa5841488ab4bb4f",
+                      "id": "call_d53790ab723f4df786a3d705",
                       "type": "function"
                     },
-                    "fingerprint": 5783207290424962044
+                    "fingerprint": 8525337387503964024
                   }
                 }
               ],
@@ -305,7 +306,7 @@
                 "provider": "doubleword",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-                "response_id": "resp_f8653320-9799-43f2-a261-56dc5cc5d16c"
+                "response_id": "resp_cebca45b-1340-44bf-9ae1-64b5225402aa"
               },
               "stop": "tool_use",
               "native": {
@@ -318,12 +319,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_e26e6faafa5841488ab4bb4f",
+                      "id": "call_d53790ab723f4df786a3d705",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 804410140487922240
+                "fingerprint": 10705809287527439532
               }
             },
             {
@@ -332,7 +333,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_e26e6faafa5841488ab4bb4f"
+                    "provider": "call_d53790ab723f4df786a3d705"
                   },
                   "name": "add",
                   "content": [
@@ -385,20 +386,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "42",
-              "native": {
-                "item": {
-                  "content": "42",
-                  "refusal": null
-                },
-                "fingerprint": 15903709825217441321
-              }
+              "text": "42"
             }
           ],
           "usage": {
             "input_tokens": 402,
-            "output_tokens": 2,
-            "total_tokens": 404,
+            "output_tokens": 3,
+            "total_tokens": 405,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -407,7 +401,7 @@
             "provider": "doubleword",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "response_id": "resp_ecccb7a0-3bc1-4fc7-9efc-25df584d8301"
+            "response_id": "resp_6aa1dae4-d672-4f7e-87b6-d0afcbeea5cf"
           },
           "native": {
             "item": {
@@ -415,7 +409,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 5372475738331673531
+            "fingerprint": 7497150175235120171
           },
           "finish_reason": "stop",
           "raw": {
@@ -431,9 +425,10 @@
               }
             ],
             "created": 0,
-            "id": "resp_ecccb7a0-3bc1-4fc7-9efc-25df584d8301",
+            "id": "resp_6aa1dae4-d672-4f7e-87b6-d0afcbeea5cf",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
+            "service_tier": "default",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
@@ -442,7 +437,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 2,
+              "completion_tokens": 3,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -455,7 +450,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 404
+              "total_tokens": 405
             }
           }
         }

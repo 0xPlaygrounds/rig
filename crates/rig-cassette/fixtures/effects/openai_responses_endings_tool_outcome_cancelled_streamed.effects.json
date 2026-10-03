@@ -129,7 +129,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -153,7 +153,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4348258782286900386
+                "fingerprint": 4014805945243882058
               }
             }
           ],
@@ -175,54 +175,84 @@
           "provider_request_id": "req_f7e04235e7c942888e97813477c97169",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_0fecda243a829523016abf49f4bc0487d09068b4dc7385d913",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0fecda243a829523016abf49f4bc0487d09068b4dc7385d913",
             "incomplete_details": null,
             "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-5-mini-2025-08-07",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [],
+                "encrypted_content": "gAAAAABqv0n1uqKYkf67lk0HNqJDMElrwv7JiWj6rGuTV4xWEcRKr5-oXqHEKcbNtOpCxwbDfHgczPlrZQLnwq4diQAuCYXUc3LBg55_c0UVCihJVsBlim-XCtIYr8t1a_VUa3Qt-qwKvdNO_kp5hYz8uIOA-vMbzMig8-6_IjdIRtlLxkAGydvnmWK2EwAbXFCBu35mZPh7bVlapMSdC2NADsWYOeWDkc-ouicgrMvevBkb8g9G-si8EHIFdhHJPlGxFQ9vGn4c-weqcf88BwxdXz2ybEMgx5ZN3uZxzcvdsgdFOybI-RFl-NTbSGuEaW0yIR5Axa1QakjNaknomddeGlt6Li3vzoKq63Bz_9kwDLqDs1YCXo9mI5JDe_38DMwfZQ0iYxtFZuC2_hhLZdbYkzJSngC_dInxGSpbi2EkEJSzjZB39JKX348Ghmi0L_7xW1yRuR2OrBsTMfBKXL6WTX3ibBuoqj0M_wkQeh-aZOnfXgfaUEvVbXPKUHJTOeKhTetVYS13VqVy2KGaixb6Ff9a4DsvTE2APc3wahYtUiYnQV48BBBU5tj7e21GWsP-a60MkdwZs5iVDq0HNEKVlt8ZSEFTXdFvxaExUZ1cx--olxMYJ4QK8quRaHrdlQryTcdIBCBGzn8dJZJSt_l_rzyiSE8KPvlEITDZSO6Ihnnf7EhypuWfFlMIHDm1lVNpToPHd8kTUMN-32Q3DwH2iUFgBT1qk-M69s6Q43UcEPIWFHpky3okA-SDsISZJ-3bTa-Dtl8MQzSsYzpQPHYYp9J_N7eZSL7YnQub1xtAa5TVr1f0qD40-DjgM3v5OcYl6BABygxN1bW5m--UbBV75kmyPwAD2xOedF21Sd2a8k49s4LY6aVgjPWL3PnKInm6cu3mpTHadnOborroV-_H6VtGmkKdpen5qL0SLg9sqKLLQfdmi-oDHIgYCpX930I9qWM6y-FwFvrqiOTg_hoaVo-Q9EmJFaqAcfw1gmmXf52ObuaDom-0Csls1a0Q4EviXWIopiqd2qBv_nSx1zrbry3CGx2ePBDsOrtAph-QxNvhuwo_BL7ucUnY6kwhrmT0wiV-rcfrgrQneAA0b2VUbaXDG1UDAeO-dDb1xIuwX7Xn6CHZGXJOkr2EK-k4h_aSK3sA3LXP_nu6IZK-wm5JmGoWAABYYwZrQ4oV0miy_ZvIXJmrSCCn6_IHyowJOicuT8xs0zG-KabaTgS0ffYBnsbP4iuzZxwmTluxiH9P5LRA1xq7a00wrd9vAZ0u6y9_TkjoUku8yAwnc42JkCeYos_IfBr8EQg9LnwT4wmLliJwRJBwpj954hSZXbeDkMM8HvDOEryQnCDoYF5mNJHdfxl7iQ3umBAiHUYd6oaCY3-VZhXszocwR6Cnq-XcINl7qqaxOPz5amqth4x1sBAQLf39eHOJSprEYotL8on46VQapk0YNfX0RyV9xEGBt-EMvGrQhFmoe0Z_uNpoRgWVXBwP0BuwGOcykfVjSfGk9iDHoQm60KCRKFwvYbgzgzq2NEfJEZP5",
+                "id": "rs_0fecda243a829523016abf49f54dd487d0b1833898c31e6178",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"x\":17,\"y\":25}",
+                "call_id": "call_6RmeIvUKWhCZpGwsn4vPeywE",
+                "id": "fc_0fecda243a829523016abf49f5e39c87d0a7f3d2971f95fdd9",
+                "name": "add",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": "current_turn",
               "effort": "medium",
               "mode": "standard",
               "summary": null
             },
-            "usage": {
-              "input_tokens": 104,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 81,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 185
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "type": "reasoning",
-                "id": "rs_0fecda243a829523016abf49f54dd487d0b1833898c31e6178",
-                "summary": [],
-                "encrypted_content": "gAAAAABqv0n1uqKYkf67lk0HNqJDMElrwv7JiWj6rGuTV4xWEcRKr5-oXqHEKcbNtOpCxwbDfHgczPlrZQLnwq4diQAuCYXUc3LBg55_c0UVCihJVsBlim-XCtIYr8t1a_VUa3Qt-qwKvdNO_kp5hYz8uIOA-vMbzMig8-6_IjdIRtlLxkAGydvnmWK2EwAbXFCBu35mZPh7bVlapMSdC2NADsWYOeWDkc-ouicgrMvevBkb8g9G-si8EHIFdhHJPlGxFQ9vGn4c-weqcf88BwxdXz2ybEMgx5ZN3uZxzcvdsgdFOybI-RFl-NTbSGuEaW0yIR5Axa1QakjNaknomddeGlt6Li3vzoKq63Bz_9kwDLqDs1YCXo9mI5JDe_38DMwfZQ0iYxtFZuC2_hhLZdbYkzJSngC_dInxGSpbi2EkEJSzjZB39JKX348Ghmi0L_7xW1yRuR2OrBsTMfBKXL6WTX3ibBuoqj0M_wkQeh-aZOnfXgfaUEvVbXPKUHJTOeKhTetVYS13VqVy2KGaixb6Ff9a4DsvTE2APc3wahYtUiYnQV48BBBU5tj7e21GWsP-a60MkdwZs5iVDq0HNEKVlt8ZSEFTXdFvxaExUZ1cx--olxMYJ4QK8quRaHrdlQryTcdIBCBGzn8dJZJSt_l_rzyiSE8KPvlEITDZSO6Ihnnf7EhypuWfFlMIHDm1lVNpToPHd8kTUMN-32Q3DwH2iUFgBT1qk-M69s6Q43UcEPIWFHpky3okA-SDsISZJ-3bTa-Dtl8MQzSsYzpQPHYYp9J_N7eZSL7YnQub1xtAa5TVr1f0qD40-DjgM3v5OcYl6BABygxN1bW5m--UbBV75kmyPwAD2xOedF21Sd2a8k49s4LY6aVgjPWL3PnKInm6cu3mpTHadnOborroV-_H6VtGmkKdpen5qL0SLg9sqKLLQfdmi-oDHIgYCpX930I9qWM6y-FwFvrqiOTg_hoaVo-Q9EmJFaqAcfw1gmmXf52ObuaDom-0Csls1a0Q4EviXWIopiqd2qBv_nSx1zrbry3CGx2ePBDsOrtAph-QxNvhuwo_BL7ucUnY6kwhrmT0wiV-rcfrgrQneAA0b2VUbaXDG1UDAeO-dDb1xIuwX7Xn6CHZGXJOkr2EK-k4h_aSK3sA3LXP_nu6IZK-wm5JmGoWAABYYwZrQ4oV0miy_ZvIXJmrSCCn6_IHyowJOicuT8xs0zG-KabaTgS0ffYBnsbP4iuzZxwmTluxiH9P5LRA1xq7a00wrd9vAZ0u6y9_TkjoUku8yAwnc42JkCeYos_IfBr8EQg9LnwT4wmLliJwRJBwpj954hSZXbeDkMM8HvDOEryQnCDoYF5mNJHdfxl7iQ3umBAiHUYd6oaCY3-VZhXszocwR6Cnq-XcINl7qqaxOPz5amqth4x1sBAQLf39eHOJSprEYotL8on46VQapk0YNfX0RyV9xEGBt-EMvGrQhFmoe0Z_uNpoRgWVXBwP0BuwGOcykfVjSfGk9iDHoQm60KCRKFwvYbgzgzq2NEfJEZP5",
-                "status": null
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
               },
-              {
-                "id": "fc_0fecda243a829523016abf49f5e39c87d0a7f3d2971f95fdd9",
-                "arguments": "{\"x\":17,\"y\":25}",
-                "call_id": "call_6RmeIvUKWhCZpGwsn4vPeywE",
-                "name": "add",
-                "status": "completed",
-                "type": "function_call"
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -241,22 +271,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": false
+            "usage": {
+              "input_tokens": 104,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 81,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 185
+            },
+            "user": null
           }
         }
       },
@@ -285,7 +318,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -294,7 +327,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 1,
+            "part": 2,
             "kind": "tool_call"
           }
         },
@@ -302,7 +335,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 2,
             "json": "{\"x\":17,\"y\":25}"
           }
         },
@@ -310,7 +343,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 2,
             "content": {
               "type": "toolcall",
               "id": {
@@ -332,12 +365,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 4348258782286900386
+                "fingerprint": 4014805945243882058
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      }
     },
     {
       "tool_output": {},

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 32,
+        "batch": 30,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,25 +10,33 @@
         }
       },
       {
-        "batch": 41,
+        "batch": 39,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 42,
+        "batch": 40,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 62,
+        "batch": 60,
         "id": 2,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 61,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -80,14 +88,6 @@
         }
       },
       {
-        "batch": 70,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 71,
         "id": 2,
         "kind": {
@@ -97,14 +97,6 @@
       },
       {
         "batch": 72,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 73,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -144,7 +136,7 @@
         }
       },
       {
-        "batch": 79,
+        "batch": 80,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -152,7 +144,7 @@
         }
       },
       {
-        "batch": 83,
+        "batch": 81,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -160,7 +152,15 @@
         }
       },
       {
-        "batch": 93,
+        "batch": 82,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 82,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -348,7 +348,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5765544269716283936
+                "fingerprint": 1596110461768326784
               }
             }
           ],
@@ -370,46 +370,76 @@
           "provider_request_id": "req_33b2c18697874bc6b52e57048ee51a5a",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_0dd460aaf73c6856006ab3969fef6887d08a4072501dc0eda1",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0dd460aaf73c6856006ab3969fef6887d08a4072501dc0eda1",
             "incomplete_details": null,
             "instructions": "You are a calculator. Use the provided tools before answering arithmetic questions.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 120,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 138
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
                 "arguments": "{\"x\":2,\"y\":5}",
                 "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+                "id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
                 "name": "subtract",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -428,12 +458,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Subtract y from x (i.e.: x - y)",
                 "name": "subtract",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -452,22 +482,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Subtract y from x (i.e.: x - y)",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 120,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 18,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 138
+            },
+            "user": null
           }
         }
       },
@@ -476,7 +509,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -484,7 +517,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"x\":2,\"y\":5}"
           }
         },
@@ -492,7 +525,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -514,12 +547,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5765544269716283936
+                "fingerprint": 1596110461768326784
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -593,7 +631,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5765544269716283936
+                    "fingerprint": 1596110461768326784
                   }
                 }
               ],
@@ -700,7 +738,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10980446232331066488
+                "fingerprint": 6983192443972837536
               }
             }
           ],
@@ -722,52 +760,82 @@
           "provider_request_id": "req_b3b88bf1ca224f93a96099f9dd07cece",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_0dd460aaf73c6856006ab396a0e27487d09b5939704a0b2ad8",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0dd460aaf73c6856006ab396a0e27487d09b5939704a0b2ad8",
             "incomplete_details": null,
             "instructions": "You are a calculator. Use the provided tools before answering arithmetic questions.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
-            "usage": {
-              "input_tokens": 147,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 165
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "id": "msg_0dd460aaf73c6856006ab396a16d4087d098632b900e6239a4",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The result of \\(2 - 5\\) is \\(-3\\).",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -786,12 +854,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Subtract y from x (i.e.: x - y)",
                 "name": "subtract",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -810,22 +878,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Subtract y from x (i.e.: x - y)",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 147,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 18,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 165
+            },
+            "user": null
           }
         }
       },
@@ -989,12 +1060,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 10980446232331066488
+                "fingerprint": 6983192443972837536
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "parity/run#0"
     }
   ]

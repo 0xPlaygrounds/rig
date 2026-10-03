@@ -127,7 +127,7 @@
                   "id": "chatcmpl-tool-ad95dabd8fc097db",
                   "type": "function"
                 },
-                "fingerprint": 14109349765631782930
+                "fingerprint": 3943550388802205260
               }
             }
           ],
@@ -160,7 +160,7 @@
                 }
               ]
             },
-            "fingerprint": 1439393780071463034
+            "fingerprint": 15633022164073968772
           },
           "finish_reason": "tool_calls",
           "raw": {

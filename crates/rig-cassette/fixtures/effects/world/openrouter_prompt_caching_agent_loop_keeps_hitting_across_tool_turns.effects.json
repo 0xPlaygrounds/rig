@@ -136,7 +136,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_olmF1u4oglqQ77vQgHhDDKEv"
+                "provider": "call_oSxDU6xWkx9Xj4YidEpuAyxV"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -150,16 +150,16 @@
                     "arguments": "{\"topic\": \"prefix\"}",
                     "name": "lookup_cache_policy"
                   },
-                  "id": "call_olmF1u4oglqQ77vQgHhDDKEv",
+                  "id": "call_oSxDU6xWkx9Xj4YidEpuAyxV",
                   "type": "function"
                 },
-                "fingerprint": 18308705721484654434
+                "fingerprint": 5041179843765314686
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_kJUxbkSbj2FWvW2mv59np5xt"
+                "provider": "call_LmHub9sRBSCf8Sl5TOzSrHjJ"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -173,10 +173,10 @@
                     "arguments": "{\"topic\": \"breakpoint\"}",
                     "name": "lookup_cache_policy"
                   },
-                  "id": "call_kJUxbkSbj2FWvW2mv59np5xt",
+                  "id": "call_LmHub9sRBSCf8Sl5TOzSrHjJ",
                   "type": "function"
                 },
-                "fingerprint": 6130025423263766795
+                "fingerprint": 5030483115899977357
               }
             }
           ],
@@ -193,7 +193,7 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
-            "response_id": "gen-1790917090-QPFJwGjMGh1iO2g5Z8NN"
+            "response_id": "gen-1790971836-0Vf7MzXG4rD1YWlOwlvL"
           },
           "native": {
             "item": {
@@ -207,7 +207,7 @@
                     "arguments": "{\"topic\": \"prefix\"}",
                     "name": "lookup_cache_policy"
                   },
-                  "id": "call_olmF1u4oglqQ77vQgHhDDKEv",
+                  "id": "call_oSxDU6xWkx9Xj4YidEpuAyxV",
                   "type": "function"
                 },
                 {
@@ -215,12 +215,12 @@
                     "arguments": "{\"topic\": \"breakpoint\"}",
                     "name": "lookup_cache_policy"
                   },
-                  "id": "call_kJUxbkSbj2FWvW2mv59np5xt",
+                  "id": "call_LmHub9sRBSCf8Sl5TOzSrHjJ",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 7089026212586914572
+            "fingerprint": 1584578152157648262
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -240,7 +240,7 @@
                         "arguments": "{\"topic\": \"prefix\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_olmF1u4oglqQ77vQgHhDDKEv",
+                      "id": "call_oSxDU6xWkx9Xj4YidEpuAyxV",
                       "index": 0,
                       "type": "function"
                     },
@@ -249,7 +249,7 @@
                         "arguments": "{\"topic\": \"breakpoint\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_kJUxbkSbj2FWvW2mv59np5xt",
+                      "id": "call_LmHub9sRBSCf8Sl5TOzSrHjJ",
                       "index": 1,
                       "type": "function"
                     }
@@ -259,7 +259,7 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790917090-QPFJwGjMGh1iO2g5Z8NN",
+            "id": "gen-1790971836-0Vf7MzXG4rD1YWlOwlvL",
             "model": "openai/gpt-4o-mini",
             "object": "chat.completion",
             "provider": "OpenAI",
@@ -371,7 +371,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_olmF1u4oglqQ77vQgHhDDKEv"
+                    "provider": "call_oSxDU6xWkx9Xj4YidEpuAyxV"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -385,16 +385,16 @@
                         "arguments": "{\"topic\": \"prefix\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_olmF1u4oglqQ77vQgHhDDKEv",
+                      "id": "call_oSxDU6xWkx9Xj4YidEpuAyxV",
                       "type": "function"
                     },
-                    "fingerprint": 18308705721484654434
+                    "fingerprint": 5041179843765314686
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_kJUxbkSbj2FWvW2mv59np5xt"
+                    "provider": "call_LmHub9sRBSCf8Sl5TOzSrHjJ"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -408,10 +408,10 @@
                         "arguments": "{\"topic\": \"breakpoint\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_kJUxbkSbj2FWvW2mv59np5xt",
+                      "id": "call_LmHub9sRBSCf8Sl5TOzSrHjJ",
                       "type": "function"
                     },
-                    "fingerprint": 6130025423263766795
+                    "fingerprint": 5030483115899977357
                   }
                 }
               ],
@@ -420,7 +420,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o-mini",
                 "response_model": "openai/gpt-4o-mini",
-                "response_id": "gen-1790917090-QPFJwGjMGh1iO2g5Z8NN"
+                "response_id": "gen-1790971836-0Vf7MzXG4rD1YWlOwlvL"
               },
               "stop": "tool_use",
               "native": {
@@ -435,7 +435,7 @@
                         "arguments": "{\"topic\": \"prefix\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_olmF1u4oglqQ77vQgHhDDKEv",
+                      "id": "call_oSxDU6xWkx9Xj4YidEpuAyxV",
                       "type": "function"
                     },
                     {
@@ -443,12 +443,12 @@
                         "arguments": "{\"topic\": \"breakpoint\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_kJUxbkSbj2FWvW2mv59np5xt",
+                      "id": "call_LmHub9sRBSCf8Sl5TOzSrHjJ",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 7089026212586914572
+                "fingerprint": 1584578152157648262
               }
             },
             {
@@ -457,7 +457,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_olmF1u4oglqQ77vQgHhDDKEv"
+                    "provider": "call_oSxDU6xWkx9Xj4YidEpuAyxV"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -470,7 +470,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_kJUxbkSbj2FWvW2mv59np5xt"
+                    "provider": "call_LmHub9sRBSCf8Sl5TOzSrHjJ"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -516,14 +516,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "cache probe ready",
-              "native": {
-                "item": {
-                  "content": "cache probe ready",
-                  "refusal": null
-                },
-                "fingerprint": 17931945363212184360
-              }
+              "text": "cache probe ready"
             }
           ],
           "usage": {
@@ -539,7 +532,7 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o-mini",
             "response_model": "openai/gpt-4o-mini",
-            "response_id": "gen-1790917091-vQj4YbE75wd3hKHjzIex"
+            "response_id": "gen-1790971838-Gsti4CiNwNI8qATibGgc"
           },
           "native": {
             "item": {
@@ -548,7 +541,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 10843060682969824794
+            "fingerprint": 11031540353312373956
           },
           "finish_reason": "stop",
           "raw": {
@@ -567,7 +560,7 @@
               }
             ],
             "created": 0,
-            "id": "gen-1790917091-vQj4YbE75wd3hKHjzIex",
+            "id": "gen-1790971838-Gsti4CiNwNI8qATibGgc",
             "model": "openai/gpt-4o-mini",
             "object": "chat.completion",
             "provider": "OpenAI",

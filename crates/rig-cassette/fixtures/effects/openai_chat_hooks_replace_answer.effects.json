@@ -68,15 +68,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language that offers C/C++-level performance while enforcing memory safety via ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety prevents bugs and security vulnerabilities (use-after-free, buffer overflows, data races), making programs more reliable and secure.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Rust is a systems programming language that offers C/C++-level performance while enforcing memory safety via ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety prevents bugs and security vulnerabilities (use-after-free, buffer overflows, data races), making programs more reliable and secure.",
-                  "refusal": null
-                },
-                "fingerprint": 7538762610198639595
-              }
+              "text": "Rust is a systems programming language that offers C/C++-level performance while enforcing memory safety via ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety prevents bugs and security vulnerabilities (use-after-free, buffer overflows, data races), making programs more reliable and secure."
             }
           ],
           "usage": {
@@ -100,7 +92,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 7931004986089103087
+            "fingerprint": 12155921335651847909
           },
           "provider_request_id": "req_028a1446f8c342cfb209d2f62217dccf",
           "finish_reason": "stop",

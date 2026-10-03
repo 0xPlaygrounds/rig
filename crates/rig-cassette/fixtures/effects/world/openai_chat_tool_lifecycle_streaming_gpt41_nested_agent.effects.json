@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 43,
+        "batch": 41,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 44,
+        "batch": 42,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -194,7 +194,7 @@
                   "id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1",
                   "type": "function"
                 },
-                "fingerprint": 7039696387772128068
+                "fingerprint": 2158539934080207568
               }
             }
           ],
@@ -228,21 +228,25 @@
                 }
               ]
             },
-            "fingerprint": 782513832232441140
+            "fingerprint": 1281457500805278524
           },
           "provider_request_id": "req_7d0a92f792564beead456732a22c9362",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 93,
               "completion_tokens": 30,
-              "total_tokens": 123,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 93,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 123
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-ERDAy5PUCAm0ly6Nshq6VcGfQNZQY",
@@ -307,12 +311,17 @@
                   "id": "call_LBFsWWsRJ4D8hoq61ZwRQUi1",
                   "type": "function"
                 },
-                "fingerprint": 7039696387772128068
+                "fingerprint": 2158539934080207568
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "parity/run#0"
     },
     {

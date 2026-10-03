@@ -152,7 +152,7 @@
                   },
                   "thoughtSignature": "CqoBAWkUfRNBZ1h4xfzRoL4UlH+/jt7tdLXJOo4tXG/ecjL4ug1hxctqpcvveo2mb1i14YwWgkFjadcz796roxZfNfPOIDoAi20gb1Lg+ZAEsyL0pjQb8v5VU1wGR4Q0oeV6xxtjJn7WGoosrKk9pwoFqeFkkdsyYP4PB0of2afYcQZGZ/ZmLbMRTNaqnwstHrz5bzDgvcvYAtajQ7DHYFv/BR8D27hLcNo5+LI="
                 },
-                "fingerprint": 13779263715897958994
+                "fingerprint": 17825429466415078988
               }
             }
           ],
@@ -175,7 +175,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 7154377908696540638
+            "fingerprint": 1796581241087333800
           },
           "finish_reason": "tool_calls",
           "raw": {

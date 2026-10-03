@@ -128,7 +128,7 @@
                   "id": "call_REDACTED_1",
                   "type": "function"
                 },
-                "fingerprint": 16153260419015349715
+                "fingerprint": 2287921980047520621
               }
             }
           ],
@@ -161,7 +161,7 @@
                 }
               ]
             },
-            "fingerprint": 6568443414789626151
+            "fingerprint": 6467858471246728401
           },
           "finish_reason": "tool_calls",
           "raw": {

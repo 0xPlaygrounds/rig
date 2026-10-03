@@ -214,7 +214,7 @@
                   },
                   "thoughtSignature": "CtECAWkUfRNjHbBSkzuQsfH1+0Oit465ow4hT6KfiF+ixc5Qd2BODRD2VQKRZUFJWHEUTGssFTzn7FHN5+F6jCQJutPpHRPchqw74AOTs4dvAZIUyEjPQGE6nfZhDpErlhpHyii24JckbWAGFcxiaYQvUdiGntsdfvVTsgHw0CzcxT15z4bKTpOzO3CWnnJtja2W+jLx0ZtN/D/qWgdiqVyYzmO42EjRMG5+LWwkeMYQlbigAICAlaaJKES9z0IcAFwEPx9FT2MBnRAbIiQmesAnTVTailMclnWxpi496oskjbuEL9CRJTCnnspYzoiW9QOtlhTPlKT7ObRhPLm08e5g2hW9VPYnB4xPRlMNqvPcZwa0DbQZv4mFY/9R6SgORN8TPv9HnXRihDbP6dOMhMKPSbxbSCn00igK4l8ou6AzJo6t53sc3td756vDFMFvBYuOWA=="
                 },
-                "fingerprint": 7336478770864751515
+                "fingerprint": 8902351908525368867
               }
             },
             {
@@ -239,7 +239,7 @@
                     "name": "subtract"
                   }
                 },
-                "fingerprint": 3193544571215810331
+                "fingerprint": 14679471216904567917
               }
             }
           ],
@@ -262,7 +262,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 599660953345155855
+            "fingerprint": 2696213893219151777
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -415,7 +415,7 @@
                       },
                       "thoughtSignature": "CtECAWkUfRNjHbBSkzuQsfH1+0Oit465ow4hT6KfiF+ixc5Qd2BODRD2VQKRZUFJWHEUTGssFTzn7FHN5+F6jCQJutPpHRPchqw74AOTs4dvAZIUyEjPQGE6nfZhDpErlhpHyii24JckbWAGFcxiaYQvUdiGntsdfvVTsgHw0CzcxT15z4bKTpOzO3CWnnJtja2W+jLx0ZtN/D/qWgdiqVyYzmO42EjRMG5+LWwkeMYQlbigAICAlaaJKES9z0IcAFwEPx9FT2MBnRAbIiQmesAnTVTailMclnWxpi496oskjbuEL9CRJTCnnspYzoiW9QOtlhTPlKT7ObRhPLm08e5g2hW9VPYnB4xPRlMNqvPcZwa0DbQZv4mFY/9R6SgORN8TPv9HnXRihDbP6dOMhMKPSbxbSCn00igK4l8ou6AzJo6t53sc3td756vDFMFvBYuOWA=="
                     },
-                    "fingerprint": 7336478770864751515
+                    "fingerprint": 8902351908525368867
                   }
                 },
                 {
@@ -440,7 +440,7 @@
                         "name": "subtract"
                       }
                     },
-                    "fingerprint": 3193544571215810331
+                    "fingerprint": 14679471216904567917
                   }
                 }
               ],
@@ -458,7 +458,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 599660953345155855
+                "fingerprint": 2696213893219151777
               }
             },
             {
@@ -557,7 +557,7 @@
                 "item": {
                   "text": "The sum of 12 and 8 is 20. The difference between 30 and 7 is 23."
                 },
-                "fingerprint": 10622125390009672238
+                "fingerprint": 11388165246717156688
               }
             }
           ],
@@ -578,7 +578,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 14131094943305167756
+            "fingerprint": 13688558598137693570
           },
           "finish_reason": "stop",
           "raw": {

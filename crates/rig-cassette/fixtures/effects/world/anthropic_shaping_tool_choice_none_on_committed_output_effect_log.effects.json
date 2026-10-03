@@ -174,7 +174,7 @@
                   "text": "I'll start by adding 17 and 25 using the add tool!",
                   "type": "text"
                 },
-                "fingerprint": 11924160327848034166
+                "fingerprint": 3577733087959972326
               }
             },
             {
@@ -202,7 +202,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 13352860329409718958
+                "fingerprint": 8154382538458520242
               }
             }
           ],
@@ -325,7 +325,7 @@
                       "text": "I'll start by adding 17 and 25 using the add tool!",
                       "type": "text"
                     },
-                    "fingerprint": 11924160327848034166
+                    "fingerprint": 3577733087959972326
                   }
                 },
                 {
@@ -353,7 +353,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 13352860329409718958
+                    "fingerprint": 8154382538458520242
                   }
                 }
               ],
@@ -452,7 +452,7 @@
                   "text": "The sum is **42**! Now I'll use that result to build the event object.",
                   "type": "text"
                 },
-                "fingerprint": 15067898798492217128
+                "fingerprint": 17986372690443952200
               }
             }
           ],
@@ -538,7 +538,7 @@
                       "text": "I'll start by adding 17 and 25 using the add tool!",
                       "type": "text"
                     },
-                    "fingerprint": 11924160327848034166
+                    "fingerprint": 3577733087959972326
                   }
                 },
                 {
@@ -566,7 +566,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 13352860329409718958
+                    "fingerprint": 8154382538458520242
                   }
                 }
               ],
@@ -608,7 +608,7 @@
                       "text": "The sum is **42**! Now I'll use that result to build the event object.",
                       "type": "text"
                     },
-                    "fingerprint": 15067898798492217128
+                    "fingerprint": 17986372690443952200
                   }
                 }
               ],
@@ -717,7 +717,7 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": 5606572356792512023
+                "fingerprint": 4512389863989970439
               }
             }
           ],

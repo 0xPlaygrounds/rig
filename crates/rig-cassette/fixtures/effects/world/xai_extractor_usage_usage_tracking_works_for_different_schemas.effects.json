@@ -134,7 +134,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 16722254524738704331
+                "fingerprint": 12485289579860747071
               }
             },
             {
@@ -159,7 +159,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6217749646746983802
+                "fingerprint": 17579557997486914746
               }
             }
           ],
@@ -386,7 +386,7 @@
                   ],
                   "type": "reasoning"
                 },
-                "fingerprint": 16334226311106446463
+                "fingerprint": 15111559120565253323
               }
             },
             {
@@ -412,7 +412,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7118602443313396152
+                "fingerprint": 13083284073349218130
               }
             }
           ],

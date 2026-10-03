@@ -80,7 +80,7 @@
                 "item": {
                   "text": "Hello. ZULU-99"
                 },
-                "fingerprint": 17173693766800375446
+                "fingerprint": 11277520815561679166
               }
             }
           ],
@@ -102,7 +102,7 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 3613789542631056370
+            "fingerprint": 1937213264124877946
           },
           "finish_reason": "stop",
           "raw": {

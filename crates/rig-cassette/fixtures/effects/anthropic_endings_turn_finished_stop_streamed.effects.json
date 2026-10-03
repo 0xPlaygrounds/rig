@@ -140,7 +140,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 17868771304935536025
+                "fingerprint": 13656667184779246981
               }
             }
           ],
@@ -224,12 +224,17 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 17868771304935536025
+                "fingerprint": 13656667184779246981
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     }
   ]
 }

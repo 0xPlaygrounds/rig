@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -34,7 +34,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,7 +42,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -50,7 +50,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -174,7 +174,7 @@
                 "item": {
                   "text": "The first number is 121932631112635269.\nThe second number is 63."
                 },
-                "fingerprint": 2812714962323137801
+                "fingerprint": 6392441863912881999
               }
             }
           ],
@@ -197,28 +197,29 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 9261435188803935139
+            "fingerprint": 16013037177734409693
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 91,
               "candidatesTokenCount": 93,
-              "totalTokenCount": 969,
-              "thoughtsTokenCount": 211,
+              "promptTokenCount": 91,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 91
                 }
               ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 211,
               "toolUsePromptTokenCount": 574,
               "toolUsePromptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 574
                 }
-              ]
+              ],
+              "totalTokenCount": 969
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -363,12 +364,17 @@
                 "item": {
                   "text": "The first number is 121932631112635269.\nThe second number is 63."
                 },
-                "fingerprint": 2812714962323137801
+                "fingerprint": 6392441863912881999
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

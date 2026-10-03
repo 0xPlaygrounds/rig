@@ -90,7 +90,12 @@
             "text": "Rust originated as a personal project by Graydon Hoare at Mozilla Research in 2006. Hoare's motivation stemmed from frustrations"
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      }
     }
   ]
 }

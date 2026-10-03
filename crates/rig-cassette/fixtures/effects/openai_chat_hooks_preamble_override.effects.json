@@ -68,15 +68,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "Arr, Rust be a fast, modern systems language that enforces memory safety via ownership and borrowing (no GC), which matters because stopping nulls, use‑after‑free, and data races keeps programs reliable and secure.",
-              "native": {
-                "item": {
-                  "annotations": [],
-                  "content": "Arr, Rust be a fast, modern systems language that enforces memory safety via ownership and borrowing (no GC), which matters because stopping nulls, use‑after‑free, and data races keeps programs reliable and secure.",
-                  "refusal": null
-                },
-                "fingerprint": 3316076851218502019
-              }
+              "text": "Arr, Rust be a fast, modern systems language that enforces memory safety via ownership and borrowing (no GC), which matters because stopping nulls, use‑after‑free, and data races keeps programs reliable and secure."
             }
           ],
           "usage": {
@@ -100,7 +92,7 @@
               "refusal": null,
               "role": "assistant"
             },
-            "fingerprint": 14257045243481262961
+            "fingerprint": 9528323522488154933
           },
           "provider_request_id": "req_a633f1f22c414341b837f81a1bea6d90",
           "finish_reason": "stop",

@@ -66,13 +66,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
-                },
-                "fingerprint": 17143301763609373726
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
             }
           ],
           "usage": {
@@ -93,19 +87,19 @@
               "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
               "role": "assistant"
             },
-            "fingerprint": 9989023589069902286
+            "fingerprint": 10451453978944546474
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 96,
               "completion_tokens": 33,
-              "total_tokens": 129,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 96,
+              "prompt_tokens": 96,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 96
+              "total_tokens": 129
             },
             "finish_reason": "stop",
             "response_id": "e4c1b61d-b53d-4e75-a9fc-60ef8cf326bd",
@@ -398,17 +392,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}",
-              "native": {
-                "item": {
-                  "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
-                },
-                "fingerprint": 17143301763609373726
-              }
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local gathering for Rust developers in Seattle featuring talks, demos, and networking.\"}"
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      }
     }
   ]
 }

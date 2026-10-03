@@ -119,18 +119,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+              "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
               "native": {
                 "item": {
-                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n"
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n"
                 },
-                "fingerprint": 13999238408307700219
+                "fingerprint": 13198675909376008673
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "chatcmpl-tool-91636c5f8576387d"
+                "provider": "chatcmpl-tool-b888298fe6521bfb"
               },
               "function": {
                 "name": "add",
@@ -145,29 +145,30 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-91636c5f8576387d",
+                  "id": "chatcmpl-tool-b888298fe6521bfb",
                   "type": "function"
                 },
-                "fingerprint": 241093023243189726
+                "fingerprint": 12684621014981140237
               }
             }
           ],
           "usage": {
             "input_tokens": 1308,
-            "output_tokens": 168,
-            "total_tokens": 1476
+            "output_tokens": 191,
+            "total_tokens": 1499,
+            "cached_input_tokens": 0
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "qwen3-235b-a22b-thinking-2507",
             "response_model": "qwen3-235b-a22b-thinking-2507",
-            "response_id": "chatcmpl-RU2j4YyBjaZ6OS5bf5sPrMyp"
+            "response_id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf"
           },
           "native": {
             "item": {
               "content": "",
-              "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+              "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
               "role": "assistant",
               "tool_calls": [
                 {
@@ -175,22 +176,25 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-91636c5f8576387d",
+                  "id": "chatcmpl-tool-b888298fe6521bfb",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 18378032328382497790
+            "fingerprint": 15378805961856489151
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
+              "completion_tokens": 191,
               "prompt_tokens": 1308,
-              "completion_tokens": 168,
-              "total_tokens": 1476
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "total_tokens": 1499
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RU2j4YyBjaZ6OS5bf5sPrMyp",
+            "response_id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -198,7 +202,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.0011765999999999999
+                "usd": 0.0012571000000000001
               }
             }
           }
@@ -610,7 +614,55 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " arguments**: `x = 1"
+            "text": " arguments"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "**:"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " `"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "x"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " ="
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "1"
           }
         },
         {
@@ -626,7 +678,23 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "`, `y"
+            "text": "`,"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " `"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "y"
           }
         },
         {
@@ -946,7 +1014,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " will"
+            "text": " should"
           }
         },
         {
@@ -962,7 +1030,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " the"
+            "text": " "
           }
         },
         {
@@ -970,7 +1038,15 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " sum"
+            "text": "4"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "2"
           }
         },
         {
@@ -1130,6 +1206,190 @@
           "value": {
             "event": "reasoning",
             "part": 0,
+            "text": "Plan"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ":"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " Call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " `"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "add"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "("
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ")"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "`."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " Return"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " result"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
             "text": "Let"
           }
         },
@@ -1146,7 +1406,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " call"
+            "text": " do"
           }
         },
         {
@@ -1154,15 +1414,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " tool"
+            "text": " it"
           }
         },
         {
@@ -1205,7 +1457,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "chatcmpl-tool-91636c5f8576387d"
+                "provider": "chatcmpl-tool-b888298fe6521bfb"
               },
               "function": {
                 "name": "add",
@@ -1220,10 +1472,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "chatcmpl-tool-91636c5f8576387d",
+                  "id": "chatcmpl-tool-b888298fe6521bfb",
                   "type": "function"
                 },
-                "fingerprint": 241093023243189726
+                "fingerprint": 12684621014981140237
               }
             }
           }
@@ -1235,17 +1487,22 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+              "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
               "native": {
                 "item": {
-                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n"
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n"
                 },
-                "fingerprint": 13999238408307700219
+                "fingerprint": 13198675909376008673
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "qwen3-235b-a22b-thinking-2507"
+      }
     },
     {
       "tool_output": {},
@@ -1298,18 +1555,18 @@
               "content": [
                 {
                   "type": "reasoning",
-                  "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+                  "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
                   "native": {
                     "item": {
-                      "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n"
+                      "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n"
                     },
-                    "fingerprint": 13999238408307700219
+                    "fingerprint": 13198675909376008673
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "chatcmpl-tool-91636c5f8576387d"
+                    "provider": "chatcmpl-tool-b888298fe6521bfb"
                   },
                   "function": {
                     "name": "add",
@@ -1324,10 +1581,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-91636c5f8576387d",
+                      "id": "chatcmpl-tool-b888298fe6521bfb",
                       "type": "function"
                     },
-                    "fingerprint": 241093023243189726
+                    "fingerprint": 12684621014981140237
                   }
                 }
               ],
@@ -1336,13 +1593,13 @@
                 "provider": "venice",
                 "model": "qwen3-235b-a22b-thinking-2507",
                 "response_model": "qwen3-235b-a22b-thinking-2507",
-                "response_id": "chatcmpl-RU2j4YyBjaZ6OS5bf5sPrMyp"
+                "response_id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf"
               },
               "stop": "tool_use",
               "native": {
                 "item": {
                   "content": "",
-                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return the sum.\n5.  **Format the output**: The user requested \"just the number\".\n\nLet's call the tool.\n",
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -1350,12 +1607,12 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "chatcmpl-tool-91636c5f8576387d",
+                      "id": "chatcmpl-tool-b888298fe6521bfb",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 18378032328382497790
+                "fingerprint": 15378805961856489151
               }
             },
             {
@@ -1364,7 +1621,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "chatcmpl-tool-91636c5f8576387d"
+                    "provider": "chatcmpl-tool-b888298fe6521bfb"
                   },
                   "name": "add",
                   "content": [
@@ -1419,54 +1676,52 @@
           "choice": [
             {
               "type": "reasoning",
-              "text": "The tool returned 42. The user requested \"just the number\".\n",
+              "text": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n",
               "native": {
                 "item": {
-                  "reasoning_content": "The tool returned 42. The user requested \"just the number\".\n"
+                  "reasoning_content": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n"
                 },
-                "fingerprint": 13648884088511773696
+                "fingerprint": 12038296663667553835
               }
             },
             {
               "type": "text",
-              "text": "\n\n42",
-              "native": {
-                "item": {
-                  "content": "\n\n42"
-                },
-                "fingerprint": 7313475253113603169
-              }
+              "text": "\n\n42"
             }
           ],
           "usage": {
-            "input_tokens": 1493,
-            "output_tokens": 21,
-            "total_tokens": 1514
+            "input_tokens": 1516,
+            "output_tokens": 45,
+            "total_tokens": 1561,
+            "cached_input_tokens": 0
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "qwen3-235b-a22b-thinking-2507",
             "response_model": "qwen3-235b-a22b-thinking-2507",
-            "response_id": "chatcmpl-RQSiTWbcBT4rLJA2kyOlZu5H"
+            "response_id": "chatcmpl-Riltw5EI2PwNqnGAgcmWPYdI"
           },
           "native": {
             "item": {
               "content": "\n\n42",
-              "reasoning_content": "The tool returned 42. The user requested \"just the number\".\n",
+              "reasoning_content": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n",
               "role": "assistant"
             },
-            "fingerprint": 8148024439832216194
+            "fingerprint": 9654468457420210869
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 1493,
-              "completion_tokens": 21,
-              "total_tokens": 1514
+              "completion_tokens": 45,
+              "prompt_tokens": 1516,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "total_tokens": 1561
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RQSiTWbcBT4rLJA2kyOlZu5H",
+            "response_id": "chatcmpl-Riltw5EI2PwNqnGAgcmWPYdI",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -1474,7 +1729,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00074535
+                "usd": 0.0008397
               }
             }
           }
@@ -1487,6 +1742,190 @@
             "event": "start",
             "part": 0,
             "kind": "reasoning"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "The"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " user"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " asked"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " add"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " using"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " tool"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " reply"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " with"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " just"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " number"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n"
           }
         },
         {
@@ -1550,7 +1989,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " The"
+            "text": "\n"
           }
         },
         {
@@ -1558,7 +1997,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " user"
+            "text": "I"
           }
         },
         {
@@ -1566,7 +2005,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " requested"
+            "text": " will reply with"
           }
         },
         {
@@ -1574,7 +2013,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " \""
+            "text": " \"4"
           }
         },
         {
@@ -1582,23 +2021,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "just"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " number"
+            "text": "2"
           }
         },
         {
@@ -1648,12 +2071,12 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "text": "The tool returned 42. The user requested \"just the number\".\n",
+              "text": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n",
               "native": {
                 "item": {
-                  "reasoning_content": "The tool returned 42. The user requested \"just the number\".\n"
+                  "reasoning_content": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n"
                 },
-                "fingerprint": 13648884088511773696
+                "fingerprint": 12038296663667553835
               }
             }
           }
@@ -1665,17 +2088,16 @@
             "part": 1,
             "content": {
               "type": "text",
-              "text": "\n\n42",
-              "native": {
-                "item": {
-                  "content": "\n\n42"
-                },
-                "fingerprint": 7313475253113603169
-              }
+              "text": "\n\n42"
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "qwen3-235b-a22b-thinking-2507"
+      }
     }
   ]
 }

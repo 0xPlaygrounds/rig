@@ -172,7 +172,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -196,7 +196,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 17335512287977143107
+                "fingerprint": 6103327838236200155
               }
             }
           ],
@@ -428,7 +428,7 @@
                       "summary": [],
                       "type": "reasoning"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -452,7 +452,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 17335512287977143107
+                    "fingerprint": 6103327838236200155
                   }
                 }
               ],
@@ -556,7 +556,7 @@
                   "summary": [],
                   "type": "reasoning"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -577,7 +577,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 14442224591542117184
+                "fingerprint": 11522384720788013030
               }
             },
             {
@@ -598,7 +598,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 357964132669974815
+                "fingerprint": 15231446177470289575
               }
             }
           ],

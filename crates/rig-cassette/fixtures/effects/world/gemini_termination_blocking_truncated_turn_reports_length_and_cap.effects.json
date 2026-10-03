@@ -86,7 +86,7 @@
                 "item": {
                   "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
                 },
-                "fingerprint": 5363687893723055404
+                "fingerprint": 11568383327230518152
               }
             }
           ],
@@ -107,7 +107,7 @@
               "finishReason": "MAX_TOKENS",
               "index": 0
             },
-            "fingerprint": 6186690227088006628
+            "fingerprint": 11793810135226508192
           },
           "finish_reason": "length",
           "raw": {

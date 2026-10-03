@@ -2,14 +2,6 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
         "batch": 8,
         "id": 0,
         "kind": {
@@ -19,6 +11,22 @@
       },
       {
         "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 10,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -105,7 +113,7 @@
                   "text": "The dominant non-background color is **bright red**.",
                   "type": "text"
                 },
-                "fingerprint": 2696697343555028926
+                "fingerprint": 12330449253093814802
               }
             }
           ],
@@ -204,12 +212,17 @@
                   "text": "The dominant non-background color is **bright red**.",
                   "type": "text"
                 },
-                "fingerprint": 2696697343555028926
+                "fingerprint": 12330449253093814802
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     }
   ]

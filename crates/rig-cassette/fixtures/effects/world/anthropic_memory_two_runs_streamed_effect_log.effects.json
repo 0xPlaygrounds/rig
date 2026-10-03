@@ -46,19 +46,11 @@
         }
       },
       {
-        "batch": 21,
-        "id": 4,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
         "batch": 22,
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -69,7 +61,7 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 25,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -183,7 +175,7 @@
                   "text": "ready.",
                   "type": "text"
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           ],
@@ -258,12 +250,17 @@
                   "text": "ready.",
                   "type": "text"
                 },
-                "fingerprint": 7790244451924217344
+                "fingerprint": 7622115463999594536
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -296,7 +293,7 @@
                       "text": "ready.",
                       "type": "text"
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -356,7 +353,7 @@
                       "text": "ready.",
                       "type": "text"
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -407,7 +404,7 @@
                       "text": "ready.",
                       "type": "text"
                     },
-                    "fingerprint": 7790244451924217344
+                    "fingerprint": 7622115463999594536
                   }
                 }
               ],
@@ -452,7 +449,7 @@
                   "text": "again.",
                   "type": "text"
                 },
-                "fingerprint": 7821551913352360261
+                "fingerprint": 1157459995538190673
               }
             }
           ],
@@ -519,12 +516,17 @@
                   "text": "again.",
                   "type": "text"
                 },
-                "fingerprint": 7821551913352360261
+                "fingerprint": 1157459995538190673
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "golden/run#1"
     },
     {
@@ -557,7 +559,7 @@
                       "text": "again.",
                       "type": "text"
                     },
-                    "fingerprint": 7821551913352360261
+                    "fingerprint": 1157459995538190673
                   }
                 }
               ],

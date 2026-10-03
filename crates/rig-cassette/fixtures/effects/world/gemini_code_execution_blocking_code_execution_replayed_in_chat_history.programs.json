@@ -188,7 +188,7 @@
                   "item": {
                     "text": "The number is 169."
                   },
-                  "fingerprint": 11085361638528759855
+                  "fingerprint": 14867055607564542871
                 }
               }
             ],
@@ -206,7 +206,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 11621067515166692845
+                "fingerprint": 13425564892417382995
               }
             },
             "done": true,
@@ -254,7 +254,7 @@
                     "item": {
                       "text": "The number is 169."
                     },
-                    "fingerprint": 11085361638528759855
+                    "fingerprint": 14867055607564542871
                   }
                 }
               ],
@@ -277,7 +277,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 11621067515166692845
+                "fingerprint": 13425564892417382995
               },
               "finish_reason": "stop",
               "raw": {
@@ -354,7 +354,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 11621067515166692845
+              "fingerprint": 13425564892417382995
             }
           }
         },
@@ -395,7 +395,7 @@
                 "item": {
                   "text": "The number is 169."
                 },
-                "fingerprint": 11085361638528759855
+                "fingerprint": 14867055607564542871
               }
             }
           }
@@ -448,7 +448,7 @@
                 "finishReason": "STOP",
                 "index": 0
               },
-              "fingerprint": 11621067515166692845
+              "fingerprint": 13425564892417382995
             }
           }
         },
@@ -489,7 +489,7 @@
                 "item": {
                   "text": "The number is 169."
                 },
-                "fingerprint": 11085361638528759855
+                "fingerprint": 14867055607564542871
               }
             }
           }

@@ -203,7 +203,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 11878198693399562073
+                "fingerprint": 3583576457128247499
               }
             }
           ],
@@ -225,46 +225,76 @@
           "provider_request_id": "req_8e396d51593e44da80d514f72a2ce5ba",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_06d2eb07f6220f2a006ab39693a7c887d09975777e2dfdedff",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_06d2eb07f6220f2a006ab39693a7c887d09975777e2dfdedff",
             "incomplete_details": null,
             "instructions": "You are a calculator. You must use the provided tools for every arithmetic operation.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 78,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 96
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0",
                 "arguments": "{\"x\":50,\"y\":8}",
                 "call_id": "call_pEo0IlvaunBZNuCvDjL4ibDN",
+                "id": "fc_06d2eb07f6220f2a006ab396943e4487d0bd62df28bc958fa0",
                 "name": "subtract",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Subtract y from x",
                 "name": "subtract",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -281,22 +311,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Subtract y from x",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 78,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 18,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 96
+            },
+            "user": null
           }
         }
       },
@@ -305,7 +338,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -313,7 +346,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"x\":50,\"y\":8}"
           }
         },
@@ -321,7 +354,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -343,12 +376,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 11878198693399562073
+                "fingerprint": 3583576457128247499
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      }
     },
     {
       "tool_output": {},
@@ -449,7 +487,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 11878198693399562073
+                    "fingerprint": 3583576457128247499
                   }
                 }
               ],
@@ -533,7 +571,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],
@@ -555,52 +593,82 @@
           "provider_request_id": "req_99118debf43248be95fd4969f7a03007",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_06d2eb07f6220f2a006ab39695049087d09dbb1c8bffed0f2a",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_06d2eb07f6220f2a006ab39695049087d09dbb1c8bffed0f2a",
             "incomplete_details": null,
             "instructions": "You are a calculator. You must use the provided tools for every arithmetic operation.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "42",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_06d2eb07f6220f2a006ab3969572e487d0898a7a7cdf5c3a87",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
-            "usage": {
-              "input_tokens": 104,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 3,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 107
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "id": "msg_06d2eb07f6220f2a006ab3969572e487d0898a7a7cdf5c3a87",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "42",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Subtract y from x",
                 "name": "subtract",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -617,22 +685,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Subtract y from x",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 104,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 3,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 107
+            },
+            "user": null
           }
         }
       },
@@ -676,12 +747,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      }
     }
   ]
 }

@@ -131,7 +131,7 @@
                   },
                   "thoughtSignature": "EpMECpAEAWkUfRMyzTYDxQUlfaVTH/a3iqgZUL855AAKHAOYDiUkT/qGbiDaIPcXnDdXYlQak1dxrqW6QZHLPe2iIctvWTLyRBXjR1ZCPsXB6mzUv3O5pgzqxl7kgVuwgG+mNLGj3uTxqAujtzoZZNePAuJQBQOm+/SQprDE80Rp8owopUEG8rkQL4B3pLf94ZtNBpqDJZMEDYQ1PcsqS8HTaAc/zgnMn1IgIbXtrHCTtKpqk788Ghw856TSESVOwQ8XQGbt0fZq8aXANWVDl9iNtbFVLlDnYZz0RyMk7RxBqSynbq6kBgPX8k7jnXOT9HDYhGZ4hPRpST0Vf9EMC/y7TpJxVDzEbAiUYpGLKpk4EAaJbIbm7JgYHg9HSRBEC0O+ZQ75S0x5zaRRTxWohKFqoQrl6+WHHFQckUj7AgluFILnLd7/1a2Xo+Pvmma3hnuhnmSQYc41bumTC83gCrdW3Ilq3C2uFzBHkbz8oEjOxRRKTm/AIc0SnLUR9OzeSHrNPJzxLb0XUSIk9aA16w7vEp3nniZPkXDaMXM7l6QlvmabPYCNQ5QXL6I4gOvJfoOCgH/4HF3KxDELyK5J2Wa2l7yOkC6/LBWcGZ26cizphYffjWhn7VqZ6Jn6KMj1/zBU18lVbs2xZSGqpf++eJpBxli3ossK1R5SCKZdDH3V5MpjjcwiEhn2fafGq8OR3WfVB/tA"
                 },
-                "fingerprint": 11170359271821709973
+                "fingerprint": 10313038336887971817
               }
             },
             {
@@ -151,7 +151,7 @@
                     "name": "lookup_orchard_label"
                   }
                 },
-                "fingerprint": 14140384541941902108
+                "fingerprint": 10695865824864011880
               }
             }
           ],
@@ -173,21 +173,22 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 14725586051779176672
+            "fingerprint": 16639704450526662804
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 166,
               "candidatesTokenCount": 26,
-              "totalTokenCount": 291,
-              "thoughtsTokenCount": 99,
+              "promptTokenCount": 166,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 166
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 99,
+              "totalTokenCount": 291
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
@@ -287,7 +288,7 @@
                       },
                       "thoughtSignature": "EpMECpAEAWkUfRMyzTYDxQUlfaVTH/a3iqgZUL855AAKHAOYDiUkT/qGbiDaIPcXnDdXYlQak1dxrqW6QZHLPe2iIctvWTLyRBXjR1ZCPsXB6mzUv3O5pgzqxl7kgVuwgG+mNLGj3uTxqAujtzoZZNePAuJQBQOm+/SQprDE80Rp8owopUEG8rkQL4B3pLf94ZtNBpqDJZMEDYQ1PcsqS8HTaAc/zgnMn1IgIbXtrHCTtKpqk788Ghw856TSESVOwQ8XQGbt0fZq8aXANWVDl9iNtbFVLlDnYZz0RyMk7RxBqSynbq6kBgPX8k7jnXOT9HDYhGZ4hPRpST0Vf9EMC/y7TpJxVDzEbAiUYpGLKpk4EAaJbIbm7JgYHg9HSRBEC0O+ZQ75S0x5zaRRTxWohKFqoQrl6+WHHFQckUj7AgluFILnLd7/1a2Xo+Pvmma3hnuhnmSQYc41bumTC83gCrdW3Ilq3C2uFzBHkbz8oEjOxRRKTm/AIc0SnLUR9OzeSHrNPJzxLb0XUSIk9aA16w7vEp3nniZPkXDaMXM7l6QlvmabPYCNQ5QXL6I4gOvJfoOCgH/4HF3KxDELyK5J2Wa2l7yOkC6/LBWcGZ26cizphYffjWhn7VqZ6Jn6KMj1/zBU18lVbs2xZSGqpf++eJpBxli3ossK1R5SCKZdDH3V5MpjjcwiEhn2fafGq8OR3WfVB/tA"
                     },
-                    "fingerprint": 11170359271821709973
+                    "fingerprint": 10313038336887971817
                   }
                 },
                 {
@@ -307,7 +308,7 @@
                         "name": "lookup_orchard_label"
                       }
                     },
-                    "fingerprint": 14140384541941902108
+                    "fingerprint": 10695865824864011880
                   }
                 }
               ],
@@ -324,7 +325,7 @@
                   "index": 0,
                   "finishReason": "STOP"
                 },
-                "fingerprint": 14725586051779176672
+                "fingerprint": 16639704450526662804
               }
             },
             {
@@ -399,7 +400,7 @@
                 "item": {
                   "text": "The signals are crimson-harbor and silver-orchard."
                 },
-                "fingerprint": 1587286427738759527
+                "fingerprint": 13140296511795826339
               }
             }
           ],
@@ -420,20 +421,21 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 6251720698706622597
+            "fingerprint": 4267563868192018001
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 330,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 343,
+              "promptTokenCount": 330,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 330
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 343
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",

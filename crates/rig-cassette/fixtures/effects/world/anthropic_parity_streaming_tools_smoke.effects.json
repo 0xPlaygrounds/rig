@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 11,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 12,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -28,19 +28,11 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 5
         }
       },
       {
         "batch": 22,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 24,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -232,7 +224,7 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": 11416640520355684433
+                "fingerprint": 17560259853881716993
               }
             }
           ],
@@ -316,12 +308,17 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": 11416640520355684433
+                "fingerprint": 17560259853881716993
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -399,7 +396,7 @@
                       "name": "subtract",
                       "type": "tool_use"
                     },
-                    "fingerprint": 11416640520355684433
+                    "fingerprint": 17560259853881716993
                   }
                 }
               ],
@@ -496,7 +493,7 @@
                   "text": "The result of 2 - 5 is **-3**.",
                   "type": "text"
                 },
-                "fingerprint": 5037454956457325956
+                "fingerprint": 6013490760940471252
               }
             }
           ],
@@ -579,12 +576,17 @@
                   "text": "The result of 2 - 5 is **-3**.",
                   "type": "text"
                 },
-                "fingerprint": 5037454956457325956
+                "fingerprint": 6013490760940471252
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 18,
+        "batch": 17,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -193,7 +193,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                 },
-                "fingerprint": 2932437381983616610
+                "fingerprint": 9787574756319870180
               }
             }
           ],
@@ -216,21 +216,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 1888820172643035752
+            "fingerprint": 1522745164610273574
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 166,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 220,
-              "thoughtsTokenCount": 41,
+              "promptTokenCount": 166,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 166
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 41,
+              "totalTokenCount": 220
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -278,12 +279,17 @@
                   },
                   "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                 },
-                "fingerprint": 2932437381983616610
+                "fingerprint": 9787574756319870180
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -353,7 +359,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                     },
-                    "fingerprint": 2932437381983616610
+                    "fingerprint": 9787574756319870180
                   }
                 }
               ],
@@ -371,7 +377,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 1888820172643035752
+                "fingerprint": 1522745164610273574
               }
             },
             {
@@ -445,7 +451,7 @@
                   },
                   "thoughtSignature": "CiIBaRR9E+qx6KfTlsltSQLauyH0L2D6wd27b4aqABPTXh48CmwBaRR9E/kWZcn5Rd91LqN5AT+095kKCoebQ5th3V61jxgiF9XTl/tVCtsSSrFgqxrWQwv1gOJ6vE9yWnvc3AT3Gf6W77Tmr7OvdbyRDSciIfs8P7KaSXvX5o/UJl//wRx1k1mUHm8xeqHedN0KUAFpFH0TssvdaSDe5iUnYHCLXXO9J6xkBaRhBo2CGOLys56WolhmnW6N4oNo79IaZyI8iN79ogYbVG4ZHFHxwJfi6DYWVK0wafYWD+POb7tC"
                 },
-                "fingerprint": 2853062079788876889
+                "fingerprint": 4809057603624679569
               }
             }
           ],
@@ -468,21 +474,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 10471858315166023407
+            "fingerprint": 2208729604140953391
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 242,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 288,
-              "thoughtsTokenCount": 33,
+              "promptTokenCount": 242,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 242
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 33,
+              "totalTokenCount": 288
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -530,12 +537,17 @@
                   },
                   "thoughtSignature": "CiIBaRR9E+qx6KfTlsltSQLauyH0L2D6wd27b4aqABPTXh48CmwBaRR9E/kWZcn5Rd91LqN5AT+095kKCoebQ5th3V61jxgiF9XTl/tVCtsSSrFgqxrWQwv1gOJ6vE9yWnvc3AT3Gf6W77Tmr7OvdbyRDSciIfs8P7KaSXvX5o/UJl//wRx1k1mUHm8xeqHedN0KUAFpFH0TssvdaSDe5iUnYHCLXXO9J6xkBaRhBo2CGOLys56WolhmnW6N4oNo79IaZyI8iN79ogYbVG4ZHFHxwJfi6DYWVK0wafYWD+POb7tC"
                 },
-                "fingerprint": 2853062079788876889
+                "fingerprint": 4809057603624679569
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -605,7 +617,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E2LsXozXrBntDN/mLXa8ygSTHrEaqD1tBXJzsn3bEM0KVwFpFH0TY5HzlwMp39YA8R+wehcryAS9jXb6N8iKNzkH5XikQGH7lCp6AI7+s8sQxdTJuzBOL2fd3MoEJuOJYK5+1eNkH9MEtV0EbtvAxp551H94TPZwCgqTAQFpFH0Tx9qkNGSIVcmg4YrNWhh47auqfrKDx6Jg5ADqvcoQOvJ1W7DoZEY4KcrH/eP07QvXioQ76TCS6Aagj9I5oemueRP1k4qtZpUyihmAsw6yhRI1sxqKFSBhdmPMqmH3r/hEzpG2JoZfPTb5+JocGcX8kC8K9pswpivgPBSVntJ0k3k8oAeopa3/uiDWRWWSgQ=="
                     },
-                    "fingerprint": 2932437381983616610
+                    "fingerprint": 9787574756319870180
                   }
                 }
               ],
@@ -623,7 +635,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 1888820172643035752
+                "fingerprint": 1522745164610273574
               }
             },
             {
@@ -664,7 +676,7 @@
                       },
                       "thoughtSignature": "CiIBaRR9E+qx6KfTlsltSQLauyH0L2D6wd27b4aqABPTXh48CmwBaRR9E/kWZcn5Rd91LqN5AT+095kKCoebQ5th3V61jxgiF9XTl/tVCtsSSrFgqxrWQwv1gOJ6vE9yWnvc3AT3Gf6W77Tmr7OvdbyRDSciIfs8P7KaSXvX5o/UJl//wRx1k1mUHm8xeqHedN0KUAFpFH0TssvdaSDe5iUnYHCLXXO9J6xkBaRhBo2CGOLys56WolhmnW6N4oNo79IaZyI8iN79ogYbVG4ZHFHxwJfi6DYWVK0wafYWD+POb7tC"
                     },
-                    "fingerprint": 2853062079788876889
+                    "fingerprint": 4809057603624679569
                   }
                 }
               ],
@@ -682,7 +694,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 10471858315166023407
+                "fingerprint": 2208729604140953391
               }
             },
             {
@@ -747,7 +759,7 @@
                   "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
                   "thoughtSignature": "CloBaRR9E9FLG0CBKdgKLlLZVBNY66VNh3CZoyP6DOOI9dnnyIk9yrd2/74SmodQlNpnG3R52DTRxLLGTh22q/RL7B3B3c90GAmWY+sV0P7Flh1Exu7hWF7HvdMKtgEBaRR9Ex9o4ZTmaGhA7uXG6D+JhwQYRZeGtR3Tpxp1l7WxXmezcDnDoypC7tNZ4AsVeZcG1QvAh4prSntmWhEJvlsn+nuNpYoQSfImqeZcbDQQuLiT5e6Q6vwvC6vlitYd6ypQ0cW4DpOI8N6coep9CIVnwxKL0/CwCfLYtTs0EPfZY/Lm9jjaYiUaear8p99+kMx5hNqoX69quO54dBEIBbj8yJ8C510Hp7CHBdOjx3ZSRcCsegp2AWkUfRNhMNIguesEZTH3YGPdQKjjy0x0yR9LT6dRxweesbmsZctnE8WF3BVcL+U1ReN1oQSFys0XYd5HJyqP3/8QNrFgpz5Rg/HMqA+Nz3Ed3Q031mFCT0PfMx/S1Pta7DWA4ZpIOl8vYS5+Zn52f6GnsORANQ=="
                 },
-                "fingerprint": 11209782304429577407
+                "fingerprint": 11101283957732075835
               }
             }
           ],
@@ -769,21 +781,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 8476421816997579581
+            "fingerprint": 10318810282950349641
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 309,
               "candidatesTokenCount": 21,
-              "totalTokenCount": 409,
-              "thoughtsTokenCount": 79,
+              "promptTokenCount": 309,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 309
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 79,
+              "totalTokenCount": 409
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -821,12 +834,17 @@
                   "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
                   "thoughtSignature": "CloBaRR9E9FLG0CBKdgKLlLZVBNY66VNh3CZoyP6DOOI9dnnyIk9yrd2/74SmodQlNpnG3R52DTRxLLGTh22q/RL7B3B3c90GAmWY+sV0P7Flh1Exu7hWF7HvdMKtgEBaRR9Ex9o4ZTmaGhA7uXG6D+JhwQYRZeGtR3Tpxp1l7WxXmezcDnDoypC7tNZ4AsVeZcG1QvAh4prSntmWhEJvlsn+nuNpYoQSfImqeZcbDQQuLiT5e6Q6vwvC6vlitYd6ypQ0cW4DpOI8N6coep9CIVnwxKL0/CwCfLYtTs0EPfZY/Lm9jjaYiUaear8p99+kMx5hNqoX69quO54dBEIBbj8yJ8C510Hp7CHBdOjx3ZSRcCsegp2AWkUfRNhMNIguesEZTH3YGPdQKjjy0x0yR9LT6dRxweesbmsZctnE8WF3BVcL+U1ReN1oQSFys0XYd5HJyqP3/8QNrFgpz5Rg/HMqA+Nz3Ed3Q031mFCT0PfMx/S1Pta7DWA4ZpIOl8vYS5+Zn52f6GnsORANQ=="
                 },
-                "fingerprint": 11209782304429577407
+                "fingerprint": 11101283957732075835
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

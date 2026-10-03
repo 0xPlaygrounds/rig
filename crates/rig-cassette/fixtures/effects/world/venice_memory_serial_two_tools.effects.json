@@ -38,7 +38,7 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 23,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -74,7 +74,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -82,7 +82,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -90,7 +90,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -130,7 +130,7 @@
         "id": 4,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -150,7 +150,7 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 37,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -158,14 +158,22 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 39,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 39,
+        "batch": 40,
         "id": 5,
         "kind": {
           "delivery": "outcome"
@@ -316,7 +324,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "za3CWrYOc"
+                "provider": "jFaBfgXiG"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -328,16 +336,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "za3CWrYOc",
+                  "id": "jFaBfgXiG",
                   "type": "function"
                 },
-                "fingerprint": 4308233899772078877
+                "fingerprint": 4070887159319209060
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "SNeUmEuKP"
+                "provider": "j3uzLTCma"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -349,10 +357,10 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "SNeUmEuKP",
+                  "id": "j3uzLTCma",
                   "type": "function"
                 },
-                "fingerprint": 1254561299983990456
+                "fingerprint": 14960848513523965436
               }
             }
           ],
@@ -366,7 +374,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RA3DSGxdfSzVTqYH6b6drNh4"
+            "response_id": "chatcmpl-R3ck2XYWWJIQudgYvpHQkpua"
           },
           "native": {
             "item": {
@@ -379,7 +387,7 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "za3CWrYOc",
+                  "id": "jFaBfgXiG",
                   "type": "function"
                 },
                 {
@@ -387,22 +395,22 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "SNeUmEuKP",
+                  "id": "j3uzLTCma",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 5123150162383484912
+            "fingerprint": 10173393783007476007
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 1154,
               "completion_tokens": 16,
+              "prompt_tokens": 1154,
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RA3DSGxdfSzVTqYH6b6drNh4",
+            "response_id": "chatcmpl-R3ck2XYWWJIQudgYvpHQkpua",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -441,7 +449,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "za3CWrYOc"
+                "provider": "jFaBfgXiG"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -453,10 +461,10 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "za3CWrYOc",
+                  "id": "jFaBfgXiG",
                   "type": "function"
                 },
-                "fingerprint": 4308233899772078877
+                "fingerprint": 4070887159319209060
               }
             }
           }
@@ -485,7 +493,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "SNeUmEuKP"
+                "provider": "j3uzLTCma"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -497,15 +505,20 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "SNeUmEuKP",
+                  "id": "j3uzLTCma",
                   "type": "function"
                 },
-                "fingerprint": 1254561299983990456
+                "fingerprint": 14960848513523965436
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -586,7 +599,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "za3CWrYOc"
+                    "provider": "jFaBfgXiG"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -598,16 +611,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "za3CWrYOc",
+                      "id": "jFaBfgXiG",
                       "type": "function"
                     },
-                    "fingerprint": 4308233899772078877
+                    "fingerprint": 4070887159319209060
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "SNeUmEuKP"
+                    "provider": "j3uzLTCma"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -619,10 +632,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "SNeUmEuKP",
+                      "id": "j3uzLTCma",
                       "type": "function"
                     },
-                    "fingerprint": 1254561299983990456
+                    "fingerprint": 14960848513523965436
                   }
                 }
               ],
@@ -631,7 +644,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RA3DSGxdfSzVTqYH6b6drNh4"
+                "response_id": "chatcmpl-R3ck2XYWWJIQudgYvpHQkpua"
               },
               "stop": "tool_use",
               "native": {
@@ -645,7 +658,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "za3CWrYOc",
+                      "id": "jFaBfgXiG",
                       "type": "function"
                     },
                     {
@@ -653,12 +666,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "SNeUmEuKP",
+                      "id": "j3uzLTCma",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 5123150162383484912
+                "fingerprint": 10173393783007476007
               }
             },
             {
@@ -667,7 +680,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "za3CWrYOc"
+                    "provider": "jFaBfgXiG"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -680,7 +693,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "SNeUmEuKP"
+                    "provider": "j3uzLTCma"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -728,44 +741,38 @@
           "choice": [
             {
               "type": "text",
-              "text": "The current signals are crimson-harbor and silver-orchard.",
-              "native": {
-                "item": {
-                  "content": "The current signals are crimson-harbor and silver-orchard."
-                },
-                "fingerprint": 9393016017534079496
-              }
+              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 1214,
-            "output_tokens": 15,
-            "total_tokens": 1229
+            "input_tokens": 1212,
+            "output_tokens": 20,
+            "total_tokens": 1232
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-R9RsrHMOySiwj4xyX4XTSevi"
+            "response_id": "chatcmpl-RHVwNJmNI91jtCWHHJZGG7xW"
           },
           "native": {
             "item": {
-              "content": "The current signals are crimson-harbor and silver-orchard.",
+              "content": "The harbor label is crimson-harbor and the orchard label is silver-orchard.",
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 8345343655077357428
+            "fingerprint": 12264389468973431916
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 1214,
-              "completion_tokens": 15,
-              "total_tokens": 1229
+              "completion_tokens": 20,
+              "prompt_tokens": 1212,
+              "total_tokens": 1232
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-R9RsrHMOySiwj4xyX4XTSevi",
+            "response_id": "chatcmpl-RHVwNJmNI91jtCWHHJZGG7xW",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -773,7 +780,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.00011756249999999999
+                "usd": 0.000118625
               }
             }
           }
@@ -801,7 +808,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " current"
+            "text": " harbor"
           }
         },
         {
@@ -809,7 +816,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " signals"
+            "text": " label"
           }
         },
         {
@@ -817,7 +824,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " are"
+            "text": " is"
           }
         },
         {
@@ -873,6 +880,46 @@
           "value": {
             "event": "text",
             "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " orch"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "ard"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " label"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " silver"
           }
         },
@@ -907,17 +954,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The current signals are crimson-harbor and silver-orchard.",
-              "native": {
-                "item": {
-                  "content": "The current signals are crimson-harbor and silver-orchard."
-                },
-                "fingerprint": 9393016017534079496
-              }
+              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -945,7 +991,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "za3CWrYOc"
+                    "provider": "jFaBfgXiG"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -957,16 +1003,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "za3CWrYOc",
+                      "id": "jFaBfgXiG",
                       "type": "function"
                     },
-                    "fingerprint": 4308233899772078877
+                    "fingerprint": 4070887159319209060
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "SNeUmEuKP"
+                    "provider": "j3uzLTCma"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -978,10 +1024,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "SNeUmEuKP",
+                      "id": "j3uzLTCma",
                       "type": "function"
                     },
-                    "fingerprint": 1254561299983990456
+                    "fingerprint": 14960848513523965436
                   }
                 }
               ],
@@ -990,7 +1036,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RA3DSGxdfSzVTqYH6b6drNh4"
+                "response_id": "chatcmpl-R3ck2XYWWJIQudgYvpHQkpua"
               },
               "stop": "tool_use",
               "native": {
@@ -1004,7 +1050,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "za3CWrYOc",
+                      "id": "jFaBfgXiG",
                       "type": "function"
                     },
                     {
@@ -1012,12 +1058,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "SNeUmEuKP",
+                      "id": "j3uzLTCma",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 5123150162383484912
+                "fingerprint": 10173393783007476007
               }
             },
             {
@@ -1026,7 +1072,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "za3CWrYOc"
+                    "provider": "jFaBfgXiG"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -1039,7 +1085,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "SNeUmEuKP"
+                    "provider": "j3uzLTCma"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -1056,13 +1102,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The current signals are crimson-harbor and silver-orchard.",
-                  "native": {
-                    "item": {
-                      "content": "The current signals are crimson-harbor and silver-orchard."
-                    },
-                    "fingerprint": 9393016017534079496
-                  }
+                  "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
                 }
               ],
               "origin": {
@@ -1070,16 +1110,16 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-R9RsrHMOySiwj4xyX4XTSevi"
+                "response_id": "chatcmpl-RHVwNJmNI91jtCWHHJZGG7xW"
               },
               "stop": "stop",
               "native": {
                 "item": {
-                  "content": "The current signals are crimson-harbor and silver-orchard.",
+                  "content": "The harbor label is crimson-harbor and the orchard label is silver-orchard.",
                   "reasoning_content": null,
                   "role": "assistant"
                 },
-                "fingerprint": 8345343655077357428
+                "fingerprint": 12264389468973431916
               }
             }
           ]

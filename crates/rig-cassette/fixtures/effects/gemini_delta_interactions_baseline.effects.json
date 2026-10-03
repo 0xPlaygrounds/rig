@@ -121,7 +121,7 @@
                   "type": "thought",
                   "signature": "CiQBaRR9E4gkWYkOPlFDtPsm3Va7l0T1sZNAZYFpGDUP7YQGOxUKRwFpFH0TDO/cpGIDeJtmz8aEYKFe/oHFqM7n6KUCDuCnrUprgQqq8ufSCX7+wdcenN/+1Lga8+QZE76lGl7DY780k4HAi91SCsQBAWkUfRPA8dt85AClu9DFfO3/628kqW1y5YdGBA0bf0jHHZHbhUGr28lPHSE1j6y3U4D7iMryUr/oEsjlLJHtl1Iq+KLP9wiys6f0DJKFCzw/ozurKxeveRlt67+6mVdu0gjHbzz5eSRmom5287uCUfiM068anE53GeirJ6c/IZUYlwh5eFKFWCAOmEGYGb+K2eMto0KS0q4k6DamxreKdBwZAXLrwGXnZLxDzUK3n96XOZJMZJkXPpJcVKeuXGB5HXgf6wpIAWkUfRN90Aym51EnFwFYVAmUfbX6HmYvGFd3kLi/EN3ewyYkJAkYCfUFN6nyPctcl2NYNg96dGBNrWWrowqpn8OP6chs+Ygu"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -146,7 +146,7 @@
                   "name": "add",
                   "type": "function_call"
                 },
-                "fingerprint": 2854006149980534545
+                "fingerprint": 1367735349799059465
               }
             }
           ],
@@ -168,27 +168,39 @@
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
+              "input_tokens_by_modality": [
+                {
+                  "modality": "text",
+                  "tokens": 102
+                }
+              ],
+              "total_cached_tokens": 0,
               "total_input_tokens": 102,
               "total_output_tokens": 20,
-              "total_tokens": 197,
-              "total_cached_tokens": 0,
               "total_thought_tokens": 75,
+              "total_tokens": 197,
               "total_tool_use_tokens": 0
             },
             "interaction": {
+              "created": "1970-01-01T00:00:00Z",
               "id": "v1_ChdMYXl5YXV5aEhaaVA2ZGtQd1l1VWlBURIXTGF5eWF1eWhIWmlQNmRrUHdZdVVpQVE",
               "model": "gemini-2.5-flash",
-              "status": "requires_action",
               "object": "interaction",
-              "created": "1970-01-01T00:00:00Z",
+              "service_tier": "standard",
+              "status": "requires_action",
               "updated": "1970-01-01T00:00:00Z",
-              "steps": [],
               "usage": {
+                "input_tokens_by_modality": [
+                  {
+                    "modality": "text",
+                    "tokens": 102
+                  }
+                ],
+                "total_cached_tokens": 0,
                 "total_input_tokens": 102,
                 "total_output_tokens": 20,
-                "total_tokens": 197,
-                "total_cached_tokens": 0,
                 "total_thought_tokens": 75,
+                "total_tokens": 197,
                 "total_tool_use_tokens": 0
               }
             },
@@ -218,7 +230,7 @@
                   "type": "thought",
                   "signature": "CiQBaRR9E4gkWYkOPlFDtPsm3Va7l0T1sZNAZYFpGDUP7YQGOxUKRwFpFH0TDO/cpGIDeJtmz8aEYKFe/oHFqM7n6KUCDuCnrUprgQqq8ufSCX7+wdcenN/+1Lga8+QZE76lGl7DY780k4HAi91SCsQBAWkUfRPA8dt85AClu9DFfO3/628kqW1y5YdGBA0bf0jHHZHbhUGr28lPHSE1j6y3U4D7iMryUr/oEsjlLJHtl1Iq+KLP9wiys6f0DJKFCzw/ozurKxeveRlt67+6mVdu0gjHbzz5eSRmom5287uCUfiM068anE53GeirJ6c/IZUYlwh5eFKFWCAOmEGYGb+K2eMto0KS0q4k6DamxreKdBwZAXLrwGXnZLxDzUK3n96XOZJMZJkXPpJcVKeuXGB5HXgf6wpIAWkUfRN90Aym51EnFwFYVAmUfbX6HmYvGFd3kLi/EN3ewyYkJAkYCfUFN6nyPctcl2NYNg96dGBNrWWrowqpn8OP6chs+Ygu"
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -266,12 +278,17 @@
                   "name": "add",
                   "type": "function_call"
                 },
-                "fingerprint": 2854006149980534545
+                "fingerprint": 1367735349799059465
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.interactions",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      }
     },
     {
       "tool_output": {},
@@ -330,7 +347,7 @@
                       "type": "thought",
                       "signature": "CiQBaRR9E4gkWYkOPlFDtPsm3Va7l0T1sZNAZYFpGDUP7YQGOxUKRwFpFH0TDO/cpGIDeJtmz8aEYKFe/oHFqM7n6KUCDuCnrUprgQqq8ufSCX7+wdcenN/+1Lga8+QZE76lGl7DY780k4HAi91SCsQBAWkUfRPA8dt85AClu9DFfO3/628kqW1y5YdGBA0bf0jHHZHbhUGr28lPHSE1j6y3U4D7iMryUr/oEsjlLJHtl1Iq+KLP9wiys6f0DJKFCzw/ozurKxeveRlt67+6mVdu0gjHbzz5eSRmom5287uCUfiM068anE53GeirJ6c/IZUYlwh5eFKFWCAOmEGYGb+K2eMto0KS0q4k6DamxreKdBwZAXLrwGXnZLxDzUK3n96XOZJMZJkXPpJcVKeuXGB5HXgf6wpIAWkUfRN90Aym51EnFwFYVAmUfbX6HmYvGFd3kLi/EN3ewyYkJAkYCfUFN6nyPctcl2NYNg96dGBNrWWrowqpn8OP6chs+Ygu"
                     },
-                    "fingerprint": 17796600549832473228
+                    "fingerprint": 337210683625289162
                   }
                 },
                 {
@@ -355,7 +372,7 @@
                       "name": "add",
                       "type": "function_call"
                     },
-                    "fingerprint": 2854006149980534545
+                    "fingerprint": 1367735349799059465
                   }
                 }
               ],
@@ -431,7 +448,7 @@
                   "type": "thought",
                   "signature": "CiRlMjQ4MzBhNy01Y2Q2LTQyZmUtOTk4Yi1lZTUzOWU3MmI5YzM="
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             },
             {
@@ -447,7 +464,7 @@
                     }
                   ]
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           ],
@@ -469,27 +486,39 @@
           "finish_reason": "stop",
           "raw": {
             "usage": {
+              "input_tokens_by_modality": [
+                {
+                  "modality": "text",
+                  "tokens": 211
+                }
+              ],
+              "total_cached_tokens": 0,
               "total_input_tokens": 211,
               "total_output_tokens": 2,
-              "total_tokens": 213,
-              "total_cached_tokens": 0,
               "total_thought_tokens": 0,
+              "total_tokens": 213,
               "total_tool_use_tokens": 0
             },
             "interaction": {
+              "created": "1970-01-01T00:00:00Z",
               "id": "v1_ChdMNnl5YXNHQUJ0aXBtdGtQX2RtNWtRdxIXTDZ5eWFzR0FCdGlwbXRrUF9kbTVrUXc",
               "model": "gemini-2.5-flash",
-              "status": "completed",
               "object": "interaction",
-              "created": "1970-01-01T00:00:00Z",
+              "service_tier": "standard",
+              "status": "completed",
               "updated": "1970-01-01T00:00:00Z",
-              "steps": [],
               "usage": {
+                "input_tokens_by_modality": [
+                  {
+                    "modality": "text",
+                    "tokens": 211
+                  }
+                ],
+                "total_cached_tokens": 0,
                 "total_input_tokens": 211,
                 "total_output_tokens": 2,
-                "total_tokens": 213,
-                "total_cached_tokens": 0,
                 "total_thought_tokens": 0,
+                "total_tokens": 213,
                 "total_tool_use_tokens": 0
               }
             },
@@ -519,7 +548,7 @@
                   "type": "thought",
                   "signature": "CiRlMjQ4MzBhNy01Y2Q2LTQyZmUtOTk4Yi1lZTUzOWU3MmI5YzM="
                 },
-                "fingerprint": 17796600549832473228
+                "fingerprint": 337210683625289162
               }
             }
           }
@@ -558,12 +587,17 @@
                     }
                   ]
                 },
-                "fingerprint": 15903709825217441321
+                "fingerprint": 10728865193441065857
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.interactions",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      }
     }
   ]
 }

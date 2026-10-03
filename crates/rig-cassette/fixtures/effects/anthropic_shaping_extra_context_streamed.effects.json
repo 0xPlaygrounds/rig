@@ -79,7 +79,7 @@
                   "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
                   "type": "text"
                 },
-                "fingerprint": 2343949720793021308
+                "fingerprint": 13589871804653066448
               }
             }
           ],
@@ -95,9 +95,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfLce6yy2fo7XCu5zTbpZ"
+            "response_id": "msg_011Cfdxu5GqYqjcLtcwRXBwj"
           },
-          "provider_request_id": "req_011CfLce6YvUqeEo95pZ95RQ",
+          "provider_request_id": "req_011Cfdxu4vWmHocWWMtWB3oP",
           "finish_reason": "stop",
           "raw": {
             "usage": {
@@ -111,7 +111,7 @@
               "cache_read_input_tokens": 0
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011CfLce6yy2fo7XCu5zTbpZ",
+            "message_id": "msg_011Cfdxu5GqYqjcLtcwRXBwj",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -170,12 +170,17 @@
                   "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
                   "type": "text"
                 },
-                "fingerprint": 2343949720793021308
+                "fingerprint": 13589871804653066448
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     }
   ]
 }

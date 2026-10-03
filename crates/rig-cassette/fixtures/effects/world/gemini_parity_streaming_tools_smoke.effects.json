@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,17 +10,25 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 14,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -32,15 +40,7 @@
         }
       },
       {
-        "batch": 17,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 17,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -232,7 +232,7 @@
                   },
                   "thoughtSignature": "CiQBaRR9E74awR/QXs2cn6Z/1dYMTEohq7nlnZF7U+f4mAWjhQsKXAFpFH0TytYGMSmCubHOiBtKGzgxPFnTkC/AOOHOmyO8ifV3HvCUl1YNm6YQp/38iE5FNRVtxDZyGRKyBDvK5VZpmihG8HXaydXDD+uU3v0VJCYVBSUEg33qqpRXCtoBAWkUfRPUg8KhaFskjRw1Y53IRT9UeQg0K+vigUPh/dr07LCluezvOP1iSF6oG6JxfA47xRibK/Ha0lV9o735qw1gCokLL60ymB01FaCg5nt4zN11dWhLw7UNuZ4HitkXiAf5d0eNIBWL6IsKIFIxPsmOdjGnMwTzsdMAvnd7/4fifOr8N5+tvqRH3mBugzfw5LQba1SBsar3C1WOTLFmfuvrs7osyq15u8yhMAKwcmEQlYmWPW7jbIhG16gQZdN3bHwVWrUlBsWCmIN+2gHD8D5Mb1nunOVRR6s="
                 },
-                "fingerprint": 1789257366682875336
+                "fingerprint": 8657837095694333088
               }
             }
           ],
@@ -255,21 +255,22 @@
               "finishReason": "STOP",
               "index": 0
             },
-            "fingerprint": 2615356658629703702
+            "fingerprint": 14099325371670013298
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 138,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 221,
-              "thoughtsTokenCount": 65,
+              "promptTokenCount": 138,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 138
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 65,
+              "totalTokenCount": 221
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
@@ -323,12 +324,17 @@
                   },
                   "thoughtSignature": "CiQBaRR9E74awR/QXs2cn6Z/1dYMTEohq7nlnZF7U+f4mAWjhQsKXAFpFH0TytYGMSmCubHOiBtKGzgxPFnTkC/AOOHOmyO8ifV3HvCUl1YNm6YQp/38iE5FNRVtxDZyGRKyBDvK5VZpmihG8HXaydXDD+uU3v0VJCYVBSUEg33qqpRXCtoBAWkUfRPUg8KhaFskjRw1Y53IRT9UeQg0K+vigUPh/dr07LCluezvOP1iSF6oG6JxfA47xRibK/Ha0lV9o735qw1gCokLL60ymB01FaCg5nt4zN11dWhLw7UNuZ4HitkXiAf5d0eNIBWL6IsKIFIxPsmOdjGnMwTzsdMAvnd7/4fifOr8N5+tvqRH3mBugzfw5LQba1SBsar3C1WOTLFmfuvrs7osyq15u8yhMAKwcmEQlYmWPW7jbIhG16gQZdN3bHwVWrUlBsWCmIN+2gHD8D5Mb1nunOVRR6s="
                 },
-                "fingerprint": 1789257366682875336
+                "fingerprint": 8657837095694333088
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -404,7 +410,7 @@
                       },
                       "thoughtSignature": "CiQBaRR9E74awR/QXs2cn6Z/1dYMTEohq7nlnZF7U+f4mAWjhQsKXAFpFH0TytYGMSmCubHOiBtKGzgxPFnTkC/AOOHOmyO8ifV3HvCUl1YNm6YQp/38iE5FNRVtxDZyGRKyBDvK5VZpmihG8HXaydXDD+uU3v0VJCYVBSUEg33qqpRXCtoBAWkUfRPUg8KhaFskjRw1Y53IRT9UeQg0K+vigUPh/dr07LCluezvOP1iSF6oG6JxfA47xRibK/Ha0lV9o735qw1gCokLL60ymB01FaCg5nt4zN11dWhLw7UNuZ4HitkXiAf5d0eNIBWL6IsKIFIxPsmOdjGnMwTzsdMAvnd7/4fifOr8N5+tvqRH3mBugzfw5LQba1SBsar3C1WOTLFmfuvrs7osyq15u8yhMAKwcmEQlYmWPW7jbIhG16gQZdN3bHwVWrUlBsWCmIN+2gHD8D5Mb1nunOVRR6s="
                     },
-                    "fingerprint": 1789257366682875336
+                    "fingerprint": 8657837095694333088
                   }
                 }
               ],
@@ -422,7 +428,7 @@
                   "finishReason": "STOP",
                   "index": 0
                 },
-                "fingerprint": 2615356658629703702
+                "fingerprint": 14099325371670013298
               }
             },
             {
@@ -510,7 +516,7 @@
                 "item": {
                   "text": "2 - 5 = -3"
                 },
-                "fingerprint": 2518587514744950260
+                "fingerprint": 12698384417803808692
               }
             }
           ],
@@ -531,20 +537,21 @@
               "index": 0,
               "finishReason": "STOP"
             },
-            "fingerprint": 9070495679545930416
+            "fingerprint": 2173878834990102336
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 234,
               "candidatesTokenCount": 7,
-              "totalTokenCount": 241,
+              "promptTokenCount": 234,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 234
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 241
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -589,12 +596,17 @@
                 "item": {
                   "text": "2 - 5 = -3"
                 },
-                "fingerprint": 2518587514744950260
+                "fingerprint": 12698384417803808692
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

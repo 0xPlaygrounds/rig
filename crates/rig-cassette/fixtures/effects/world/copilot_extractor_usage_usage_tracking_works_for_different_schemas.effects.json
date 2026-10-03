@@ -141,7 +141,7 @@
                   "id": "call_REDACTED_1",
                   "type": "function"
                 },
-                "fingerprint": 2642448250675498728
+                "fingerprint": 12908725377621566586
               }
             }
           ],
@@ -174,7 +174,7 @@
                 }
               ]
             },
-            "fingerprint": 10510137003339725748
+            "fingerprint": 6129085379251983414
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -352,7 +352,7 @@
                   "id": "call_REDACTED_2",
                   "type": "function"
                 },
-                "fingerprint": 18053554476929678027
+                "fingerprint": 14744261219499203297
               }
             }
           ],
@@ -385,7 +385,7 @@
                 }
               ]
             },
-            "fingerprint": 12144944906785248229
+            "fingerprint": 14398286322219527899
           },
           "finish_reason": "tool_calls",
           "raw": {

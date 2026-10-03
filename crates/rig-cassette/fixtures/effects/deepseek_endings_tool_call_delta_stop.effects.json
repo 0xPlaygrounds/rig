@@ -265,12 +265,17 @@
                   "id": "call_00_UT5eA5ZdA3XggHCk8jE91324",
                   "type": "function"
                 },
-                "fingerprint": 13329516856186676926
+                "fingerprint": 4194681819977128618
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      }
     }
   ]
 }

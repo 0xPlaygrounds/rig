@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 113,
+        "batch": 161,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 115,
+        "batch": 161,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -127,7 +127,7 @@
                   "id": "call_TPhKfdv0JBZz64kdgR7pYGou",
                   "type": "function"
                 },
-                "fingerprint": 3946606506112299840
+                "fingerprint": 12060521138439053886
               }
             }
           ],
@@ -161,21 +161,25 @@
                 }
               ]
             },
-            "fingerprint": 924024866493932334
+            "fingerprint": 1965704881156270792
           },
           "provider_request_id": "req_54014dcf423e4d2b929bc3300f9eaf11",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 224,
               "completion_tokens": 565,
-              "total_tokens": 789,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 448,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 224,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 448
-              }
+              "total_tokens": 789
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-ERDCKIF5YUAtKKZVGendTPt3EY6YL",
@@ -234,12 +238,17 @@
                   "id": "call_TPhKfdv0JBZz64kdgR7pYGou",
                   "type": "function"
                 },
-                "fingerprint": 3946606506112299840
+                "fingerprint": 12060521138439053886
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

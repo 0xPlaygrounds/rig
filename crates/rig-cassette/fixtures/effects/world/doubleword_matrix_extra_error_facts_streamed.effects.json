@@ -111,6 +111,11 @@
         }
       },
       "events": [],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "rig/definitely-not-a-doubleword-model"
+      },
       "scope": "parity/run#0"
     }
   ]

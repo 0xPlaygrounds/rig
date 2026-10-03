@@ -78,13 +78,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
-              "native": {
-                "item": {
-                  "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]"
-                },
-                "fingerprint": 10260108212768679106
-              }
+              "text": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]"
             }
           ],
           "usage": {
@@ -104,7 +98,7 @@
               "content": "One notable recent development is **RustRover 2026.2**, which added endpoint discovery and route-to-handler navigation for **axum** projects, along with support for the **Ferrocene** qualified Rust toolchain.[12]",
               "role": "assistant"
             },
-            "fingerprint": 5600434507514494858
+            "fingerprint": 17020944463807195854
           },
           "finish_reason": "stop",
           "raw": {

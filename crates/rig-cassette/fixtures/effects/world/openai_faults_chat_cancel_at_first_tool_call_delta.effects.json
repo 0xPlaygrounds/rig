@@ -140,7 +140,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_MwYQaBRBs5vU0df9F8JWeFEH"
+                "provider": "call_UeozjwjWiHFjGF78EatJA8TV"
               },
               "function": {
                 "name": "add",
@@ -155,26 +155,26 @@
                     "arguments": "{\"x\":17,\"y\":25}",
                     "name": "add"
                   },
-                  "id": "call_MwYQaBRBs5vU0df9F8JWeFEH",
+                  "id": "call_UeozjwjWiHFjGF78EatJA8TV",
                   "type": "function"
                 },
-                "fingerprint": 14052597279904661666
+                "fingerprint": 13652323540687132225
               }
             }
           ],
           "usage": {
             "input_tokens": 185,
-            "output_tokens": 154,
-            "total_tokens": 339,
+            "output_tokens": 90,
+            "total_tokens": 275,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 128
+            "reasoning_tokens": 64
           },
           "origin": {
             "api": "openai.chat",
             "provider": "openai",
             "model": "gpt-5-mini",
             "response_model": "gpt-5-mini-2025-08-07",
-            "response_id": "chatcmpl-EUPXs8ExtQ22gGzQwoqd0Ql73jdlF"
+            "response_id": "chatcmpl-EUe4VzCxIuaqimXr55hKlcynyea7S"
           },
           "native": {
             "item": {
@@ -187,32 +187,36 @@
                     "arguments": "{\"x\":17,\"y\":25}",
                     "name": "add"
                   },
-                  "id": "call_MwYQaBRBs5vU0df9F8JWeFEH",
+                  "id": "call_UeozjwjWiHFjGF78EatJA8TV",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 2069768047105191154
+            "fingerprint": 16061052268981570867
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
+              "completion_tokens": 90,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 64,
+                "rejected_prediction_tokens": 0
+              },
               "prompt_tokens": 185,
-              "completion_tokens": 154,
-              "total_tokens": 339,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 128
-              }
+              "total_tokens": 275
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-EUPXs8ExtQ22gGzQwoqd0Ql73jdlF",
+            "response_id": "chatcmpl-EUe4VzCxIuaqimXr55hKlcynyea7S",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "a",
+              "obfuscation": "BH3",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -245,7 +249,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_MwYQaBRBs5vU0df9F8JWeFEH"
+                "provider": "call_UeozjwjWiHFjGF78EatJA8TV"
               },
               "function": {
                 "name": "add",
@@ -260,15 +264,20 @@
                     "arguments": "{\"x\":17,\"y\":25}",
                     "name": "add"
                   },
-                  "id": "call_MwYQaBRBs5vU0df9F8JWeFEH",
+                  "id": "call_UeozjwjWiHFjGF78EatJA8TV",
                   "type": "function"
                 },
-                "fingerprint": 14052597279904661666
+                "fingerprint": 13652323540687132225
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

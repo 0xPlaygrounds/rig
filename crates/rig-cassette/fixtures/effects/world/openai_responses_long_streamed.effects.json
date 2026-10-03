@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 28,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 36,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 39,
+        "batch": 37,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 72,
+        "batch": 54,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 83,
+        "batch": 63,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 84,
+        "batch": 64,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 103,
+        "batch": 85,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 114,
+        "batch": 95,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 116,
+        "batch": 97,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 151,
+        "batch": 134,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,21 +76,21 @@
         }
       },
       {
-        "batch": 161,
+        "batch": 134,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 162,
+        "batch": 135,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 188,
+        "batch": 165,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -98,21 +98,21 @@
         }
       },
       {
-        "batch": 198,
+        "batch": 176,
         "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 200,
+        "batch": 178,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 263,
+        "batch": 274,
         "id": 10,
         "kind": {
           "delivery": "stream",
@@ -120,21 +120,21 @@
         }
       },
       {
-        "batch": 274,
+        "batch": 275,
         "id": 10,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 275,
+        "batch": 277,
         "id": 11,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 300,
+        "batch": 302,
         "id": 12,
         "kind": {
           "delivery": "stream",
@@ -142,21 +142,21 @@
         }
       },
       {
-        "batch": 310,
+        "batch": 305,
         "id": 12,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 312,
+        "batch": 306,
         "id": 13,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 341,
+        "batch": 319,
         "id": 14,
         "kind": {
           "delivery": "stream",
@@ -164,14 +164,14 @@
         }
       },
       {
-        "batch": 352,
+        "batch": 329,
         "id": 14,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 353,
+        "batch": 331,
         "id": 15,
         "kind": {
           "delivery": "outcome"
@@ -186,21 +186,21 @@
         }
       },
       {
-        "batch": 419,
+        "batch": 418,
         "id": 16,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 420,
+        "batch": 419,
         "id": 17,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 446,
+        "batch": 457,
         "id": 18,
         "kind": {
           "delivery": "stream",
@@ -208,14 +208,14 @@
         }
       },
       {
-        "batch": 456,
+        "batch": 465,
         "id": 18,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 457,
+        "batch": 467,
         "id": 19,
         "kind": {
           "delivery": "outcome"
@@ -226,19 +226,11 @@
         "id": 20,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
-        "batch": 483,
-        "id": 20,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 492,
+        "batch": 489,
         "id": 20,
         "kind": {
           "delivery": "outcome"
@@ -466,7 +458,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7705274608676407193
+                "fingerprint": 7604528152320690143
               }
             }
           ],
@@ -488,58 +480,88 @@
           "provider_request_id": "req_50eb65b3e766416d94061e4f634af7ec",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab3967e03cc87d0aa2bfa3c1181e83a",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab3967e03cc87d0aa2bfa3c1181e83a",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 393,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 404
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab3967e862887d082b4e92ff536bd2f",
                 "arguments": "{}",
                 "call_id": "call_fqwOCbCWmx8hrPUB0QUjdatU",
+                "id": "fc_010ba0bba66d1db4006ab3967e862887d082b4e92ff536bd2f",
                 "name": "list_files",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -554,12 +576,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -579,34 +601,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 393,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 11,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 404
+            },
+            "user": null
           }
         }
       },
@@ -615,7 +640,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -623,7 +648,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{}"
           }
         },
@@ -631,7 +656,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -650,12 +675,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 7705274608676407193
+                "fingerprint": 7604528152320690143
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -726,7 +756,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -850,7 +880,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12939045170314536331
+                "fingerprint": 11393704624206160435
               }
             }
           ],
@@ -872,58 +902,88 @@
           "provider_request_id": "req_c9ec6951b0f447909c61a562d559e23b",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab3967ee18887d0973e1fdfb62cc58c",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab3967ee18887d0973e1fdfb62cc58c",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 430,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 16,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 446
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab3967f66b087d0ac88c09aa162c730",
                 "arguments": "{\"path\":\"README.md\"}",
                 "call_id": "call_G7ICjt5Qmyfa0uUZ78ZjQLsY",
+                "id": "fc_010ba0bba66d1db4006ab3967f66b087d0ac88c09aa162c730",
                 "name": "read_file",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -938,12 +998,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -963,34 +1023,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 430,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 16,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 446
+            },
+            "user": null
           }
         }
       },
@@ -999,7 +1062,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -1007,7 +1070,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"path\":\"README.md\"}"
           }
         },
@@ -1015,7 +1078,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1036,12 +1099,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12939045170314536331
+                "fingerprint": 11393704624206160435
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1112,7 +1180,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -1166,7 +1234,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -1290,7 +1358,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 8330171772916670019
+                "fingerprint": 17413969927678961127
               }
             }
           ],
@@ -1312,58 +1380,88 @@
           "provider_request_id": "req_fdbc4c1bfb484068ab710327936e836e",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab3967fe50c87d08908f50e0ddbd740",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab3967fe50c87d08908f50e0ddbd740",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 515,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 17,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 532
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab396806a4887d094f069af25de0201",
                 "arguments": "{\"path\":\"tests/basic.rs\"}",
                 "call_id": "call_Dx6M6VShvs4VLrF2puO6I5rn",
+                "id": "fc_010ba0bba66d1db4006ab396806a4887d094f069af25de0201",
                 "name": "read_file",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -1378,12 +1476,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -1403,34 +1501,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 515,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 17,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 532
+            },
+            "user": null
           }
         }
       },
@@ -1439,7 +1540,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -1447,7 +1548,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"path\":\"tests/basic.rs\"}"
           }
         },
@@ -1455,7 +1556,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1476,12 +1577,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 8330171772916670019
+                "fingerprint": 17413969927678961127
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1552,7 +1658,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -1606,7 +1712,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -1660,7 +1766,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -1784,7 +1890,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 3409136872149993114
+                "fingerprint": 12062615277143624470
               }
             }
           ],
@@ -1806,58 +1912,88 @@
           "provider_request_id": "req_4c4f046b22a34e05a6942f3abf8c9e30",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab3968198cc87d0ba3925b8ef0808e3",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab3968198cc87d0ba3925b8ef0808e3",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 607,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 17,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 624
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab396823f6487d0ad288cb1a60ce4a8",
                 "arguments": "{\"path\":\"src/lib.rs\"}",
                 "call_id": "call_EUgkuJJgrYT1lVBbQgR0jG7Z",
+                "id": "fc_010ba0bba66d1db4006ab396823f6487d0ad288cb1a60ce4a8",
                 "name": "read_file",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -1872,12 +2008,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -1897,34 +2033,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 607,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 17,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 624
+            },
+            "user": null
           }
         }
       },
@@ -1933,7 +2072,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -1941,7 +2080,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"path\":\"src/lib.rs\"}"
           }
         },
@@ -1949,7 +2088,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -1970,12 +2109,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 3409136872149993114
+                "fingerprint": 12062615277143624470
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -2046,7 +2190,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -2100,7 +2244,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -2154,7 +2298,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -2208,7 +2352,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3409136872149993114
+                    "fingerprint": 12062615277143624470
                   }
                 }
               ],
@@ -2330,7 +2474,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5624495337244614495
+                "fingerprint": 5135434476376856243
               }
             }
           ],
@@ -2352,58 +2496,88 @@
           "provider_request_id": "req_4271491653864b16be0abc05a3343ba7",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab39682a4f487d0a8cb54a6651cbc39",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab39682a4f487d0a8cb54a6651cbc39",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 665,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 676
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab396831a1c87d0a2f3fac549ca0e69",
                 "arguments": "{}",
                 "call_id": "call_v1F0Z3VyUZZM8J5ZjrSAg330",
+                "id": "fc_010ba0bba66d1db4006ab396831a1c87d0a2f3fac549ca0e69",
                 "name": "run_tests",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -2418,12 +2592,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -2443,34 +2617,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 665,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 11,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 676
+            },
+            "user": null
           }
         }
       },
@@ -2479,7 +2656,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -2487,7 +2664,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{}"
           }
         },
@@ -2495,7 +2672,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -2514,12 +2691,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 5624495337244614495
+                "fingerprint": 5135434476376856243
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -2590,7 +2772,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -2644,7 +2826,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -2698,7 +2880,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -2752,7 +2934,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3409136872149993114
+                    "fingerprint": 12062615277143624470
                   }
                 }
               ],
@@ -2804,7 +2986,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5624495337244614495
+                    "fingerprint": 5135434476376856243
                   }
                 }
               ],
@@ -2929,7 +3111,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6494640763593994823
+                "fingerprint": 6261744962689911633
               }
             }
           ],
@@ -2951,58 +3133,88 @@
           "provider_request_id": "req_609874101d964b01a7222b109abf1638",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab3968380b487d08bcb0d8526dcfe60",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab3968380b487d08bcb0d8526dcfe60",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 815,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 59,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 874
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab3968411e087d081194c0155638bea",
                 "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
                 "call_id": "call_2MdFgBn5chfTihkPXDPnjI1Q",
+                "id": "fc_010ba0bba66d1db4006ab3968411e087d081194c0155638bea",
                 "name": "write_file",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -3017,12 +3229,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -3042,34 +3254,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 815,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 59,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 874
+            },
+            "user": null
           }
         }
       },
@@ -3078,7 +3293,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -3086,7 +3301,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
           }
         },
@@ -3094,7 +3309,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -3116,12 +3331,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6494640763593994823
+                "fingerprint": 6261744962689911633
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -3192,7 +3412,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -3246,7 +3466,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -3300,7 +3520,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -3354,7 +3574,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3409136872149993114
+                    "fingerprint": 12062615277143624470
                   }
                 }
               ],
@@ -3406,7 +3626,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5624495337244614495
+                    "fingerprint": 5135434476376856243
                   }
                 }
               ],
@@ -3461,7 +3681,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6494640763593994823
+                    "fingerprint": 6261744962689911633
                   }
                 }
               ],
@@ -3583,7 +3803,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12457474537677872271
+                "fingerprint": 1959018063803911827
               }
             }
           ],
@@ -3605,58 +3825,88 @@
           "provider_request_id": "req_9daa5c3773b74531a8f078987137f01f",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab39684ff5087d0b7d503786461f455",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab39684ff5087d0b7d503786461f455",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 891,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 902
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab39685916c87d08500ef50251cba53",
                 "arguments": "{}",
                 "call_id": "call_j6KIYd2Wyz9I76frpagNgGKF",
+                "id": "fc_010ba0bba66d1db4006ab39685916c87d08500ef50251cba53",
                 "name": "run_tests",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -3671,12 +3921,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -3696,34 +3946,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 891,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 11,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 902
+            },
+            "user": null
           }
         }
       },
@@ -3732,7 +3985,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -3740,7 +3993,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{}"
           }
         },
@@ -3748,7 +4001,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -3767,12 +4020,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 12457474537677872271
+                "fingerprint": 1959018063803911827
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -3843,7 +4101,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -3897,7 +4155,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -3951,7 +4209,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -4005,7 +4263,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3409136872149993114
+                    "fingerprint": 12062615277143624470
                   }
                 }
               ],
@@ -4057,7 +4315,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5624495337244614495
+                    "fingerprint": 5135434476376856243
                   }
                 }
               ],
@@ -4112,7 +4370,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6494640763593994823
+                    "fingerprint": 6261744962689911633
                   }
                 }
               ],
@@ -4164,7 +4422,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12457474537677872271
+                    "fingerprint": 1959018063803911827
                   }
                 }
               ],
@@ -4288,7 +4546,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6617734535058438994
+                "fingerprint": 15031731605824976876
               }
             }
           ],
@@ -4310,58 +4568,88 @@
           "provider_request_id": "req_b8c66b3906e54b389c57330982fef155",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab39686071c87d0a8b64a4506c4b6aa",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab39686071c87d0a8b64a4506c4b6aa",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 1049,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 17,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 1066
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab39686abe087d08f3d27c56c765cc3",
                 "arguments": "{\"path\":\"src/calendar.rs\"}",
                 "call_id": "call_DjjUZ9ysvzzRlGwIrnkAjpRJ",
+                "id": "fc_010ba0bba66d1db4006ab39686abe087d08f3d27c56c765cc3",
                 "name": "read_file",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -4376,12 +4664,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -4401,34 +4689,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 1049,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 17,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 1066
+            },
+            "user": null
           }
         }
       },
@@ -4437,7 +4728,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -4445,7 +4736,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"path\":\"src/calendar.rs\"}"
           }
         },
@@ -4453,7 +4744,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -4474,12 +4765,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 6617734535058438994
+                "fingerprint": 15031731605824976876
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -4550,7 +4846,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -4604,7 +4900,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -4658,7 +4954,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -4712,7 +5008,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3409136872149993114
+                    "fingerprint": 12062615277143624470
                   }
                 }
               ],
@@ -4764,7 +5060,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5624495337244614495
+                    "fingerprint": 5135434476376856243
                   }
                 }
               ],
@@ -4819,7 +5115,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6494640763593994823
+                    "fingerprint": 6261744962689911633
                   }
                 }
               ],
@@ -4871,7 +5167,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12457474537677872271
+                    "fingerprint": 1959018063803911827
                   }
                 }
               ],
@@ -4925,7 +5221,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6617734535058438994
+                    "fingerprint": 15031731605824976876
                   }
                 }
               ],
@@ -5050,7 +5346,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 18106816595926740831
+                "fingerprint": 10117180979939012461
               }
             }
           ],
@@ -5072,58 +5368,88 @@
           "provider_request_id": "req_cdf7711912b54118b6749cad61c16532",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab39687354087d09d1b0770920ed8db",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab39687354087d09d1b0770920ed8db",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 1098,
-              "input_tokens_details": {
-                "cached_tokens": 1024,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 47,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 1145
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab39687be9c87d0aaf9c227e241f431",
                 "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
                 "call_id": "call_ag70i72f1WP8TPhGQ64pahtu",
+                "id": "fc_010ba0bba66d1db4006ab39687be9c87d0aaf9c227e241f431",
                 "name": "write_file",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -5138,12 +5464,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -5163,34 +5489,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 1098,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 1024
+              },
+              "output_tokens": 47,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 1145
+            },
+            "user": null
           }
         }
       },
@@ -5199,7 +5528,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -5207,7 +5536,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}"
           }
         },
@@ -5215,7 +5544,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -5237,12 +5566,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 18106816595926740831
+                "fingerprint": 10117180979939012461
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -5313,7 +5647,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -5367,7 +5701,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -5421,7 +5755,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -5475,7 +5809,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3409136872149993114
+                    "fingerprint": 12062615277143624470
                   }
                 }
               ],
@@ -5527,7 +5861,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5624495337244614495
+                    "fingerprint": 5135434476376856243
                   }
                 }
               ],
@@ -5582,7 +5916,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6494640763593994823
+                    "fingerprint": 6261744962689911633
                   }
                 }
               ],
@@ -5634,7 +5968,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12457474537677872271
+                    "fingerprint": 1959018063803911827
                   }
                 }
               ],
@@ -5688,7 +6022,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6617734535058438994
+                    "fingerprint": 15031731605824976876
                   }
                 }
               ],
@@ -5743,7 +6077,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18106816595926740831
+                    "fingerprint": 10117180979939012461
                   }
                 }
               ],
@@ -5865,7 +6199,7 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2483381906621436646
+                "fingerprint": 7684905171791451568
               }
             }
           ],
@@ -5887,58 +6221,88 @@
           "provider_request_id": "req_f3e67b1fd0204926acd1aba789cdda99",
           "finish_reason": "tool_calls",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab39688b87c87d0ac7981e90beb662e",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab39688b87c87d0ac7981e90beb662e",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 1162,
-              "input_tokens_details": {
-                "cached_tokens": 1024,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 11,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 1173
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_010ba0bba66d1db4006ab3968937dc87d0b7f22c70e68f6d36",
                 "arguments": "{}",
                 "call_id": "call_48DcaveJvjUqj77MYm0QonnP",
+                "id": "fc_010ba0bba66d1db4006ab3968937dc87d0b7f22c70e68f6d36",
                 "name": "run_tests",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -5953,12 +6317,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -5978,34 +6342,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 1162,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 1024
+              },
+              "output_tokens": 11,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 1173
+            },
+            "user": null
           }
         }
       },
@@ -6014,7 +6381,7 @@
           "item": "event",
           "value": {
             "event": "start",
-            "part": 0,
+            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -6022,7 +6389,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 0,
+            "part": 1,
             "json": "{}"
           }
         },
@@ -6030,7 +6397,7 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 0,
+            "part": 1,
             "content": {
               "type": "toolcall",
               "id": {
@@ -6049,12 +6416,17 @@
                   "status": "completed",
                   "type": "function_call"
                 },
-                "fingerprint": 2483381906621436646
+                "fingerprint": 7684905171791451568
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -6125,7 +6497,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 7705274608676407193
+                    "fingerprint": 7604528152320690143
                   }
                 }
               ],
@@ -6179,7 +6551,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12939045170314536331
+                    "fingerprint": 11393704624206160435
                   }
                 }
               ],
@@ -6233,7 +6605,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 8330171772916670019
+                    "fingerprint": 17413969927678961127
                   }
                 }
               ],
@@ -6287,7 +6659,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 3409136872149993114
+                    "fingerprint": 12062615277143624470
                   }
                 }
               ],
@@ -6339,7 +6711,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 5624495337244614495
+                    "fingerprint": 5135434476376856243
                   }
                 }
               ],
@@ -6394,7 +6766,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6494640763593994823
+                    "fingerprint": 6261744962689911633
                   }
                 }
               ],
@@ -6446,7 +6818,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 12457474537677872271
+                    "fingerprint": 1959018063803911827
                   }
                 }
               ],
@@ -6500,7 +6872,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 6617734535058438994
+                    "fingerprint": 15031731605824976876
                   }
                 }
               ],
@@ -6555,7 +6927,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 18106816595926740831
+                    "fingerprint": 10117180979939012461
                   }
                 }
               ],
@@ -6607,7 +6979,7 @@
                       "status": "completed",
                       "type": "function_call"
                     },
-                    "fingerprint": 2483381906621436646
+                    "fingerprint": 7684905171791451568
                   }
                 }
               ],
@@ -6729,7 +7101,7 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 16950038988497426807
+                "fingerprint": 17621867238521964955
               }
             }
           ],
@@ -6751,64 +7123,94 @@
           "provider_request_id": "req_4dd3bf87f6de4037a4bc1f03d719be87",
           "finish_reason": "stop",
           "raw": {
-            "id": "resp_010ba0bba66d1db4006ab3968990e887d08d9c15df02cdf4a1",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_010ba0bba66d1db4006ab3968990e887d08d9c15df02cdf4a1",
             "incomplete_details": null,
             "instructions": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.",
             "max_output_tokens": 2048,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4.1-mini-2025-04-14",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "done",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_010ba0bba66d1db4006ab39689fabc87d0ac5e2d0bfa7172bc",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
-            "usage": {
-              "input_tokens": 1229,
-              "input_tokens_details": {
-                "cached_tokens": 1024,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 3,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 1232
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "id": "msg_010ba0bba66d1db4006ab39689fabc87d0ac5e2d0bfa7172bc",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "done",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "List every file in the repository, one path per line.",
                 "name": "list_files",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "List every file in the repository, one path per line.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
                 "name": "read_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -6823,12 +7225,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
                 "name": "write_file",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {
@@ -6848,34 +7250,37 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
                 "name": "run_tests",
+                "output_schema": null,
                 "parameters": {
                   "additionalProperties": false,
                   "properties": {},
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 1229,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 1024
+              },
+              "output_tokens": 3,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 1232
+            },
+            "user": null
           }
         }
       },
@@ -6919,12 +7324,17 @@
                   "status": "completed",
                   "type": "message"
                 },
-                "fingerprint": 16950038988497426807
+                "fingerprint": 17621867238521964955
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

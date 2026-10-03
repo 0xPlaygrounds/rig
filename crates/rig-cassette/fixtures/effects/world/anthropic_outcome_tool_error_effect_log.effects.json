@@ -135,7 +135,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01JYJ7EznqbswZ1vjpXZCCbE"
+                "provider": "toolu_01GmpHwJXurhNw5UrrUqd8RX"
               },
               "function": {
                 "name": "add",
@@ -149,7 +149,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01JYJ7EznqbswZ1vjpXZCCbE",
+                  "id": "toolu_01GmpHwJXurhNw5UrrUqd8RX",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -157,7 +157,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": 17355933209552707252
+                "fingerprint": 18235884860990484229
               }
             }
           ],
@@ -173,9 +173,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfci4xv8cNh13JdnzUVo7"
+            "response_id": "msg_011CfdxoaUMFk38egpVzpmV5"
           },
-          "provider_request_id": "req_011Cfci4xa3qD4t1iNS6t6xf",
+          "provider_request_id": "req_011Cfdxoa8FYRtCe4bNnPxyb",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -184,7 +184,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01JYJ7EznqbswZ1vjpXZCCbE",
+                "id": "toolu_01GmpHwJXurhNw5UrrUqd8RX",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -194,7 +194,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfci4xv8cNh13JdnzUVo7",
+            "id": "msg_011CfdxoaUMFk38egpVzpmV5",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -279,7 +279,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01JYJ7EznqbswZ1vjpXZCCbE"
+                    "provider": "toolu_01GmpHwJXurhNw5UrrUqd8RX"
                   },
                   "function": {
                     "name": "add",
@@ -293,7 +293,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01JYJ7EznqbswZ1vjpXZCCbE",
+                      "id": "toolu_01GmpHwJXurhNw5UrrUqd8RX",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -301,7 +301,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": 17355933209552707252
+                    "fingerprint": 18235884860990484229
                   }
                 }
               ],
@@ -310,7 +310,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011Cfci4xv8cNh13JdnzUVo7"
+                "response_id": "msg_011CfdxoaUMFk38egpVzpmV5"
               },
               "stop": "tool_use"
             },
@@ -320,7 +320,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01JYJ7EznqbswZ1vjpXZCCbE"
+                    "provider": "toolu_01GmpHwJXurhNw5UrrUqd8RX"
                   },
                   "name": "add",
                   "content": [
@@ -328,7 +328,8 @@
                       "type": "text",
                       "text": "the adder is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -369,20 +370,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, but it seems the addition tool is currently broken and unable to return a result. You may want to try again later!",
+              "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
               "native": {
                 "item": {
-                  "text": "I'm sorry, but it seems the addition tool is currently broken and unable to return a result. You may want to try again later!",
+                  "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
                   "type": "text"
                 },
-                "fingerprint": 1567717646702840548
+                "fingerprint": 2496423871877992919
               }
             }
           ],
           "usage": {
-            "input_tokens": 697,
-            "output_tokens": 31,
-            "total_tokens": 728,
+            "input_tokens": 705,
+            "output_tokens": 27,
+            "total_tokens": 732,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -391,20 +392,20 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfci546S8Rnm2KtqGaFm3"
+            "response_id": "msg_011Cfdxognc525yeMyiG5cik"
           },
-          "provider_request_id": "req_011Cfci53kqhpZHeAh3sR7cB",
+          "provider_request_id": "req_011CfdxogTWCnS58dEQEgNfq",
           "finish_reason": "stop",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "I'm sorry, but it seems the addition tool is currently broken and unable to return a result. You may want to try again later!",
+                "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
                 "type": "text"
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfci546S8Rnm2KtqGaFm3",
+            "id": "msg_011Cfdxognc525yeMyiG5cik",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -419,8 +420,8 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 697,
-              "output_tokens": 31,
+              "input_tokens": 705,
+              "output_tokens": 27,
               "service_tier": "standard"
             }
           }

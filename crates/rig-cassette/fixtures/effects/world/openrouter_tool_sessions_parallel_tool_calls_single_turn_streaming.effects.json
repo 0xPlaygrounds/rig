@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 16,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,24 +10,32 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 18,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 19,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 2,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 24,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -40,6 +48,14 @@
       },
       {
         "batch": 26,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -87,6 +103,14 @@
         }
       },
       {
+        "batch": 33,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 34,
         "id": 3,
         "kind": {
@@ -119,6 +143,14 @@
         }
       },
       {
+        "batch": 38,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 39,
         "id": 3,
         "kind": {
@@ -131,7 +163,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -159,23 +191,15 @@
         }
       },
       {
+        "batch": 44,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 45,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 47,
         "id": 3,
         "kind": {
           "delivery": "stream",
@@ -191,47 +215,7 @@
         }
       },
       {
-        "batch": 49,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 53,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
+        "batch": 48,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -354,7 +338,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_fmlRzB4yNItr6eDeID1izsoO"
+                "provider": "call_J8eDVBrAlGo16VZtxmy7jVR9"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -366,16 +350,16 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_fmlRzB4yNItr6eDeID1izsoO",
+                  "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                   "type": "function"
                 },
-                "fingerprint": 1432040024677088432
+                "fingerprint": 9453530483797388230
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "call_RaP9Cc0nTOzYlm2GFiHUbPfk"
+                "provider": "call_Qb18iimPV01n7WP4zAgnp3S8"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -387,10 +371,10 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_RaP9Cc0nTOzYlm2GFiHUbPfk",
+                  "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                   "type": "function"
                 },
-                "fingerprint": 5373776654530985213
+                "fingerprint": 11078893725985676210
               }
             }
           ],
@@ -407,7 +391,7 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
-            "response_id": "gen-1790917078-5Coax9oYjdePhVQrfXaL"
+            "response_id": "gen-1790971807-dBiw1k1C1ghp4cB98X5g"
           },
           "native": {
             "item": {
@@ -419,7 +403,7 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_fmlRzB4yNItr6eDeID1izsoO",
+                  "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                   "type": "function"
                 },
                 {
@@ -427,24 +411,20 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_RaP9Cc0nTOzYlm2GFiHUbPfk",
+                  "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                   "type": "function"
                 }
               ]
             },
-            "fingerprint": 5479825005138831380
+            "fingerprint": 18369181988732604587
           },
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
-              "prompt_tokens": 157,
               "completion_tokens": 45,
-              "total_tokens": 202,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "cost": 0.0008425,
@@ -453,16 +433,24 @@
                 "upstream_inference_cost": 0.0008425,
                 "upstream_inference_prompt_cost": 0.0003925
               },
-              "is_byok": false
+              "is_byok": false,
+              "prompt_tokens": 157,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 202
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790917078-5Coax9oYjdePhVQrfXaL",
+            "response_id": "gen-1790971807-dBiw1k1C1ghp4cB98X5g",
             "model": "openai/gpt-4o",
             "additional_params": {
               "created": 0,
               "object": "chat.completion.chunk",
               "provider": "OpenAI",
-              "system_fingerprint": "fp_c998437c34",
+              "system_fingerprint": "fp_3172c6e1cc",
               "service_tier": "default"
             }
           }
@@ -493,7 +481,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_fmlRzB4yNItr6eDeID1izsoO"
+                "provider": "call_J8eDVBrAlGo16VZtxmy7jVR9"
               },
               "function": {
                 "name": "lookup_harbor_label",
@@ -505,10 +493,10 @@
                     "arguments": "{}",
                     "name": "lookup_harbor_label"
                   },
-                  "id": "call_fmlRzB4yNItr6eDeID1izsoO",
+                  "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                   "type": "function"
                 },
-                "fingerprint": 1432040024677088432
+                "fingerprint": 9453530483797388230
               }
             }
           }
@@ -537,7 +525,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "call_RaP9Cc0nTOzYlm2GFiHUbPfk"
+                "provider": "call_Qb18iimPV01n7WP4zAgnp3S8"
               },
               "function": {
                 "name": "lookup_orchard_label",
@@ -549,15 +537,20 @@
                     "arguments": "{}",
                     "name": "lookup_orchard_label"
                   },
-                  "id": "call_RaP9Cc0nTOzYlm2GFiHUbPfk",
+                  "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                   "type": "function"
                 },
-                "fingerprint": 5373776654530985213
+                "fingerprint": 11078893725985676210
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openrouter",
+        "model": "openai/gpt-4o"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -638,7 +631,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_fmlRzB4yNItr6eDeID1izsoO"
+                    "provider": "call_J8eDVBrAlGo16VZtxmy7jVR9"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
@@ -650,16 +643,16 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_fmlRzB4yNItr6eDeID1izsoO",
+                      "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                       "type": "function"
                     },
-                    "fingerprint": 1432040024677088432
+                    "fingerprint": 9453530483797388230
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "call_RaP9Cc0nTOzYlm2GFiHUbPfk"
+                    "provider": "call_Qb18iimPV01n7WP4zAgnp3S8"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
@@ -671,10 +664,10 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_RaP9Cc0nTOzYlm2GFiHUbPfk",
+                      "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                       "type": "function"
                     },
-                    "fingerprint": 5373776654530985213
+                    "fingerprint": 11078893725985676210
                   }
                 }
               ],
@@ -683,7 +676,7 @@
                 "provider": "openrouter",
                 "model": "openai/gpt-4o",
                 "response_model": "openai/gpt-4o",
-                "response_id": "gen-1790917078-5Coax9oYjdePhVQrfXaL"
+                "response_id": "gen-1790971807-dBiw1k1C1ghp4cB98X5g"
               },
               "stop": "tool_use",
               "native": {
@@ -696,7 +689,7 @@
                         "arguments": "{}",
                         "name": "lookup_harbor_label"
                       },
-                      "id": "call_fmlRzB4yNItr6eDeID1izsoO",
+                      "id": "call_J8eDVBrAlGo16VZtxmy7jVR9",
                       "type": "function"
                     },
                     {
@@ -704,12 +697,12 @@
                         "arguments": "{}",
                         "name": "lookup_orchard_label"
                       },
-                      "id": "call_RaP9Cc0nTOzYlm2GFiHUbPfk",
+                      "id": "call_Qb18iimPV01n7WP4zAgnp3S8",
                       "type": "function"
                     }
                   ]
                 },
-                "fingerprint": 5479825005138831380
+                "fingerprint": 18369181988732604587
               }
             },
             {
@@ -718,7 +711,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_fmlRzB4yNItr6eDeID1izsoO"
+                    "provider": "call_J8eDVBrAlGo16VZtxmy7jVR9"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -731,7 +724,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "call_RaP9Cc0nTOzYlm2GFiHUbPfk"
+                    "provider": "call_Qb18iimPV01n7WP4zAgnp3S8"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -779,13 +772,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
-              "native": {
-                "item": {
-                  "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
-                },
-                "fingerprint": 8453353300682549933
-              }
+              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
             }
           ],
           "usage": {
@@ -801,26 +788,22 @@
             "provider": "openrouter",
             "model": "openai/gpt-4o",
             "response_model": "openai/gpt-4o",
-            "response_id": "gen-1790917080-MXt7MpS5z3H2DrIhbnLD"
+            "response_id": "gen-1790971808-hKo3T0fKYL5Ita5TZXu9"
           },
           "native": {
             "item": {
               "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
               "role": "assistant"
             },
-            "fingerprint": 7567524005599120889
+            "fingerprint": 13876475795802914263
           },
           "finish_reason": "stop",
           "raw": {
             "usage": {
-              "prompt_tokens": 225,
               "completion_tokens": 25,
-              "total_tokens": 250,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 0
               },
               "cost": 0.0008125,
@@ -829,16 +812,24 @@
                 "upstream_inference_cost": 0.0008125,
                 "upstream_inference_prompt_cost": 0.0005625
               },
-              "is_byok": false
+              "is_byok": false,
+              "prompt_tokens": 225,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 250
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790917080-MXt7MpS5z3H2DrIhbnLD",
+            "response_id": "gen-1790971808-hKo3T0fKYL5Ita5TZXu9",
             "model": "openai/gpt-4o",
             "additional_params": {
               "created": 0,
               "object": "chat.completion.chunk",
               "provider": "OpenAI",
-              "system_fingerprint": "fp_c998437c34",
+              "system_fingerprint": "fp_3172c6e1cc",
               "service_tier": "default"
             }
           }
@@ -1052,17 +1043,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
-              "native": {
-                "item": {
-                  "content": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
-                },
-                "fingerprint": 8453353300682549933
-              }
+              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openrouter",
+        "model": "openai/gpt-4o"
+      },
       "scope": "parity/run#0"
     }
   ]

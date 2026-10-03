@@ -66,14 +66,7 @@
           "choice": [
             {
               "type": "text",
-              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering for Rust programming language enthusiasts in Seattle to share knowledge and collaborate on projects.\"\n}\n```",
-              "native": {
-                "item": {
-                  "content": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering for Rust programming language enthusiasts in Seattle to share knowledge and collaborate on projects.\"\n}\n```",
-                  "name": null
-                },
-                "fingerprint": 1782048569404448873
-              }
+              "text": "```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering for Rust programming language enthusiasts in Seattle to share knowledge and collaborate on projects.\"\n}\n```"
             }
           ],
           "usage": {
@@ -95,7 +88,7 @@
               "reasoning_content": null,
               "role": "assistant"
             },
-            "fingerprint": 9703728461356990225
+            "fingerprint": 8134396120992780219
           },
           "finish_reason": "stop",
           "raw": {
