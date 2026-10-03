@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
 use crate::operation::Completion;
+use crate::streaming::{Item, StreamEvent};
 use crate::wire::{Call, Mode, Operation, Reply, Shared, Wire};
 
 /// The response `frames` fold into on `wire`, as a reply to `request`.
@@ -37,6 +38,17 @@ pub fn partial<W: Wire<Op = Completion>>(
     mode: Mode,
     frames: impl IntoIterator<Item = W::Frame>,
 ) -> (CompletionResponse, bool) {
+    let (response, ended, _) = cut(wire, mode, frames);
+    (response, ended)
+}
+
+/// [`partial`], with the items the consumer took, as a runtime that folds
+/// them with [`delivered`](crate::streaming::delivered) holds them.
+pub fn cut<W: Wire<Op = Completion>>(
+    wire: &W,
+    mode: Mode,
+    frames: impl IntoIterator<Item = W::Frame>,
+) -> (CompletionResponse, bool, Vec<Item<StreamEvent>>) {
     let describe = wire.describe();
     let request = CompletionRequest::new("restate");
     let fold = Completion::fold(&request, &mut Call::new(&describe, mode));
@@ -57,9 +69,13 @@ pub fn partial<W: Wire<Op = Completion>>(
     let mut shared = shared
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut items = Vec::new();
     while let Some(item) = shared.take() {
-        if let Err(error) = item {
-            failure.get_or_insert(error);
+        match item {
+            Ok(item) => items.push(item),
+            Err(error) => {
+                failure.get_or_insert(error);
+            }
         }
     }
     let ended = shared.end.is_some();
@@ -68,7 +84,7 @@ pub fn partial<W: Wire<Op = Completion>>(
         &reply_of(describe.name),
         failure.as_ref(),
     );
-    (response, ended)
+    (response, ended, items)
 }
 
 fn reply_of(provider: &str) -> Reply {

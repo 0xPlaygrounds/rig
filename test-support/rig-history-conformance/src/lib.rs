@@ -125,7 +125,10 @@ pub const ROWS: &[(&str, &str)] = &[
          capability (Moonshot's Messages wire), review: encoders refuse canonical content on \
          every wire",
     ),
-    ("h10_persistence", "core NEW fingerprint key order"),
+    (
+        "h10_persistence",
+        "core NEW fingerprint key order, round 5: generated finding 7 (integers beyond 2^53)",
+    ),
     (
         "h11_order",
         "#2647, Responses NEW terminal-only order, chatA NEW-5",
@@ -137,7 +140,7 @@ pub const ROWS: &[(&str, &str)] = &[
     (
         "h13_rollback",
         "core #1559, core NEW rollback origin, chatB NEW rollback, review: a cut Chat, Cohere \
-         or Ollama reply loses its reasoning",
+         or Ollama reply loses its reasoning, round 5: a cut turn keeps no provider item",
     ),
     (
         "h14_model_identity",
@@ -156,16 +159,21 @@ pub const ROWS: &[(&str, &str)] = &[
     ),
     (
         "h17_generated_histories",
-        "round 4: fuzz F1 (duplicate ids), F2 (fingerprint number form), role alternation",
+        "round 4: fuzz F1 (duplicate ids), F2 (fingerprint number form), role alternation, \
+         round 5: generated findings 1 (windows), 5 (store bodies, explicit skips, reached \
+         checks) and 6 (hosted pairs, late and split results, own streamed and generated \
+         turns, adjacency)",
     ),
     (
         "h18_generated_stream_equals_whole",
         "round 6: fuzz R6-A (terminal-only Responses items reordered), R6-B (index-less \
-         id-less Chat calls merged)",
+         id-less Chat calls merged), round 5: generated finding 2 (OpenRouter details and \
+         Mistral parts in the Chat generator)",
     ),
     (
         "h19_generated_cuts",
-        "round 6: fuzz (e) (a cut stream never replays as a success), #2647 cut paths",
+        "round 6: fuzz (e) (a cut stream never replays as a success), #2647 cut paths, \
+         round 5: generated findings 3 and 4 (continued and delivered turns keep no item)",
     ),
 ];
 
@@ -173,6 +181,26 @@ pub const ROWS: &[(&str, &str)] = &[
 /// holds it, the test function, and the findings. The workspace registry
 /// fails when a named test no longer exists.
 pub const TESTS: &[(&str, &str, &str)] = &[
+    (
+        "crates/rig-bedrock/tests/history_conformance.rs",
+        "an_orphan_first_result_still_leaves_a_user_message_first",
+        "round 5: generated finding 1 (a Bedrock request opens with the assistant)",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
+        "reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive",
+        "round 5: generated finding 2 (OpenRouter details after the content)",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/responses_api/history_tests.rs",
+        "a_call_cut_off_after_a_missing_output_index_goes_back_without_its_item",
+        "round 5: generated finding 3 (a Responses cut at a missing output_index)",
+    ),
+    (
+        "tests/core/history_conformance/deepseek.rs",
+        "generated_reply_checks_catch_what_they_guard",
+        "round 5: generated finding 4 (H19's checks can fail)",
+    ),
     (
         "crates/rig-gemini-grpc/src/completion/tests.rs",
         "a_user_video_keeps_its_video_metadata",
@@ -620,6 +648,19 @@ pub trait HistoryFixture {
     /// Whether the wire keeps provider items. A local runtime keeps none.
     fn keeps_natives(&self) -> bool {
         true
+    }
+
+    /// Why the wire's bodies carry no tool call or result the walker can
+    /// find, so rows skip their pairing and adjacency checks and say so;
+    /// `None` when they carry them.
+    fn no_tool_calls(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Why a stream on the wire has no point to cut before its end, so H19
+    /// skips and says so; `None` when it has.
+    fn no_cuts(&self) -> Option<&'static str> {
+        None
     }
 
     /// What same-model replay sends for `turn`: by default each current
@@ -1581,7 +1622,10 @@ fn payloads(history: &[Message]) -> Vec<(&'static str, Vec<String>)> {
 }
 
 /// H10. A turn stored and loaded again, by serde and by a store that sorts
-/// object keys, replays to the same model exactly as before.
+/// object keys, replays to the same model exactly as before. A store that
+/// reads numbers as JavaScript does cannot hold an integer beyond 2^53, so
+/// it changes a call's arguments: the request then carries the value the
+/// store holds, never the stale item.
 pub fn h10_persistence<F: HistoryFixture>(fixture: &F) {
     fn sorted(value: Value) -> Value {
         match value {
@@ -1636,10 +1680,43 @@ pub fn h10_persistence<F: HistoryFixture>(fixture: &F) {
             }
         }
     }
+    let wire = fixture.wire(fixture.model());
+    for mode in MODES {
+        let Some(frames) = fixture.call_reply(r#"{"big":12345678901234567}"#, mode) else {
+            continue;
+        };
+        let response = decode(&wire, &CompletionRequest::new("restate"), mode, frames)
+            .unwrap_or_else(|error| panic!("{mode:?}: a call with a big integer decodes: {error}"));
+        let Some(turn) = response.message() else {
+            panic!("{mode:?}: the call is a turn");
+        };
+        let stored = serde_json::to_value(turn).expect("a turn serializes");
+        let loaded: Message = serde_json::from_value(numbers(stored, Numbers::ThroughF64))
+            .expect("a rewritten turn loads");
+        let Message::Assistant(loaded) = loaded else {
+            panic!("an assistant turn loads as one");
+        };
+        let results = loaded
+            .tool_calls()
+            .map(|call| UserContent::ToolResult(call.result(vec![ToolResultContent::text("ok")])))
+            .collect();
+        let history = vec![
+            Message::user("q"),
+            Message::Assistant(loaded),
+            Message::User { content: results },
+        ];
+        let body = sent(fixture, fixture.model(), history, mode)
+            .unwrap_or_else(|error| panic!("{mode:?}: a call a store changed encodes: {error}"));
+        let text = body.to_string();
+        assert!(
+            !text.contains("2345678901234567") && text.contains("2345678901234568"),
+            "{mode:?}: a call a store changed goes out with the value the store holds: {body}"
+        );
+    }
 }
 
 /// How a store rewrites numbers ([`h10_persistence`]).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Numbers {
     /// Every number passes through an f64, as JavaScript and Mongo read it.
     ThroughF64,
@@ -2104,50 +2181,250 @@ pub fn h16_call_identity<F: HistoryFixture>(fixture: &F) {
     for mode in MODES {
         let body = sent(fixture, fixture.model(), history.clone(), mode)
             .unwrap_or_else(|error| panic!("{mode:?}: shared call ids encode: {error}"));
+        if let Some(reason) = fixture.no_tool_calls() {
+            eprintln!("skip pairing: {reason}");
+            continue;
+        }
         let problems = generated::pairing(&body);
         assert!(problems.is_empty(), "{mode:?}: {problems:?} in {body}");
     }
 }
 
-/// H17. Generated histories: every one encodes, every call in the body has
-/// exactly one result after it and no result lacks a call, a stored turn
-/// replays the same items after a store rewrites it, roles alternate on a
-/// wire that requires it, and a wire that requires a leading user message
-/// gets one. The seed is fixed; `RIG_HISTORY_CASES` raises
-/// the case count (256 by default).
-pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
-    let cases: u64 = std::env::var("RIG_HISTORY_CASES")
+/// The number of generated cases a row runs: 256, or `RIG_HISTORY_CASES`.
+fn cases() -> u64 {
+    std::env::var("RIG_HISTORY_CASES")
         .ok()
         .and_then(|cases| cases.parse().ok())
-        .unwrap_or(256);
-    let own: Vec<AssistantMessage> = [Shape::Rich, Shape::Interleaved]
-        .into_iter()
-        .filter_map(|shape| turn_of(fixture, shape, Mode::Unary))
-        .collect();
-    // The wire's own rule: a wire that requires a leading user message
-    // gets one whatever the generated history.
+        .unwrap_or(256)
+}
+
+/// How often a row reached each of its checks, so a check that never ran
+/// fails the row instead of passing it.
+#[derive(Default)]
+struct Reached(std::cell::RefCell<std::collections::BTreeMap<&'static str, usize>>);
+
+impl Reached {
+    fn hit(&self, check: &'static str) {
+        self.add(check, 1);
+    }
+
+    fn add(&self, check: &'static str, count: usize) {
+        *self.0.borrow_mut().entry(check).or_default() += count;
+    }
+
+    /// Assert every one of `checks` ran at least once.
+    fn assert(&self, row: &str, checks: &[&'static str]) {
+        let reached = self.0.borrow();
+        for check in checks {
+            assert!(
+                reached.get(check).is_some_and(|count| *count > 0),
+                "{row} never reached its `{check}` check: {reached:?}"
+            );
+        }
+    }
+}
+
+/// What breaks the wire's message rules in `body`: a call without exactly
+/// one result right after it, or a result without a call (unless the
+/// fixture says the wire sends no tool calls); a first message that is not
+/// the user's on a wire that requires it; and roles that do not alternate
+/// where the wire requires it, or two user messages in a row where it
+/// joins them.
+fn message_rules<F: HistoryFixture>(fixture: &F, body: &Value, reached: &Reached) -> Vec<String> {
+    let mut problems = Vec::new();
+    if fixture.no_tool_calls().is_none() {
+        for event in generated::events(body) {
+            reached.hit(match event {
+                generated::Event::Call(_) => "calls",
+                generated::Event::Result(_) => "results",
+            });
+        }
+        problems.extend(generated::pairing(body));
+        problems.extend(generated::adjacency(body));
+    }
     let starts_with_user = fixture
         .wire(fixture.model())
         .describe()
         .replay
         .is_some_and(|target| target.starts_with_user());
+    if starts_with_user {
+        reached.hit("first role");
+        problems.extend(generated::first_is_user(body));
+    }
+    if fixture.strict_roles() {
+        reached.hit("alternation");
+        problems.extend(generated::alternation(body));
+    } else if !fixture.combines_same_role() {
+        problems.extend(generated::adjacent_users(body));
+    }
+    problems
+}
+
+/// The checks [`message_rules`] reaches on the fixture's wire.
+fn rule_checks<F: HistoryFixture>(fixture: &F) -> Vec<&'static str> {
+    let mut checks = Vec::new();
+    match fixture.no_tool_calls() {
+        Some(reason) => eprintln!("skip pairing and adjacency: {reason}"),
+        None => checks.extend(["calls", "results"]),
+    }
+    if fixture
+        .wire(fixture.model())
+        .describe()
+        .replay
+        .is_some_and(|target| target.starts_with_user())
+    {
+        checks.push("first role");
+    }
+    if fixture.strict_roles() {
+        checks.push("alternation");
+    }
+    checks
+}
+
+/// The fixture's own turns: every reply shape in both modes, and generated
+/// replies whole and streamed, whatever their stop.
+fn own_turns<F: HistoryFixture>(fixture: &F) -> Vec<AssistantMessage> {
+    let wire = fixture.wire(fixture.model());
+    let request = CompletionRequest::new("restate");
+    let mut frames = Vec::new();
+    for shape in [Shape::Rich, Shape::Interleaved, Shape::Unknown] {
+        for mode in MODES {
+            frames.extend(fixture.reply(shape, mode).map(|frames| (mode, frames)));
+        }
+    }
+    let mut rng = Rng::new(0x0e5e_ed00);
+    for _ in 0..32 {
+        let Some(mut spec) = fixture.reply_spec(&mut rng) else {
+            break;
+        };
+        spec.seed = rng.next();
+        if let Some(replies::Frames { whole, streamed }) = fixture.reply_frames(&spec) {
+            frames.push((Mode::Unary, whole));
+            frames.push((Mode::Streaming, streamed));
+        }
+    }
+    frames
+        .into_iter()
+        .filter_map(
+            |(mode, frames)| match decode(&wire, &request, mode, frames) {
+                Ok(response) => match response.message() {
+                    Some(Message::Assistant(turn)) => Some(turn),
+                    _ => None,
+                },
+                Err(_) => None,
+            },
+        )
+        .collect()
+}
+
+/// Whether `value` holds an integer beyond 2^53, which a store that reads
+/// numbers as JavaScript does cannot hold (row H10 checks that case).
+fn holds_big_integer(value: &Value) -> bool {
+    const LIMIT: u64 = 1 << 53;
+    match value {
+        Value::Number(number) => {
+            number.as_u64().is_some_and(|n| n > LIMIT)
+                || number.as_i64().is_some_and(|n| n.unsigned_abs() > LIMIT)
+        }
+        Value::String(text) => serde_json::from_str::<Value>(text)
+            .is_ok_and(|inner| inner.is_object() && holds_big_integer(&inner)),
+        Value::Array(values) => values.iter().any(holds_big_integer),
+        Value::Object(fields) => fields.values().any(holds_big_integer),
+        _ => false,
+    }
+}
+
+/// `value` with every whole float written as an integer, in text too, so
+/// two bodies compare by the numbers they carry: a store that writes `3` as
+/// `3.0` changes canonical arguments a rebuild then spells `3.0`.
+fn whole_numbers(value: Value) -> Value {
+    fn text(text: &str) -> String {
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = String::with_capacity(text.len());
+        let mut at = 0;
+        while at < chars.len() {
+            let whole = chars[at] == '.'
+                && at > 0
+                && chars[at - 1].is_ascii_digit()
+                && chars.get(at + 1) == Some(&'0')
+                && !chars
+                    .get(at + 2)
+                    .is_some_and(|next| next.is_ascii_digit() || matches!(next, 'e' | 'E'));
+            if whole {
+                at += 2;
+                continue;
+            }
+            out.push(chars[at]);
+            at += 1;
+        }
+        out
+    }
+    match value {
+        Value::String(value) => Value::String(text(&value)),
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .map(|(key, value)| (key, whole_numbers(value)))
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(values.into_iter().map(whole_numbers).collect()),
+        value => value,
+    }
+}
+
+/// `history` stored and loaded again by a store that rewrites numbers as
+/// `how` says.
+fn reloaded(history: &[Message], how: Numbers) -> Vec<Message> {
+    let stored = serde_json::to_value(history).expect("a history serializes");
+    serde_json::from_value(numbers(stored, how)).expect("a rewritten history loads")
+}
+
+/// H17. Generated histories (`generated::history`) of the fixture's own
+/// turns (every reply shape and generated replies, whole and streamed) and
+/// other models' turns: every one encodes; every call in the body has
+/// exactly one result, right after it in the wire's shape, and no result
+/// lacks a call; roles alternate on a wire that requires it, and a wire
+/// that requires a leading user message gets one. A store that rewrites
+/// numbers sends the same body after a reload, and a stored own turn
+/// replays the same items. The seed is fixed; `RIG_HISTORY_CASES` raises
+/// the case count (256 by default). Each check asserts it ran, unless the
+/// fixture states why the wire has nothing for it.
+pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
+    let own = own_turns(fixture);
+    let reached = Reached::default();
     let problems = |history: &[Message], mode: Mode, tools: generated::Tools| -> Vec<String> {
         let body = match sent_as(fixture, fixture.model(), history.to_vec(), mode, tools) {
             Ok(body) => body,
             Err(error) => return vec![format!("it does not encode: {error}")],
         };
-        let mut problems = generated::pairing(&body);
-        if starts_with_user {
-            problems.extend(generated::first_is_user(&body));
+        reached.hit("encoded");
+        let mut problems = message_rules(fixture, &body, &reached);
+        let stored = serde_json::to_value(history).expect("a history serializes");
+        if holds_big_integer(&stored) {
+            return problems;
         }
-        if fixture.strict_roles() {
-            problems.extend(generated::alternation(&body));
-        } else if !fixture.combines_same_role() {
-            problems.extend(generated::adjacent_users(&body));
+        for how in [Numbers::ThroughF64, Numbers::WholeAsFloat] {
+            match sent_as(
+                fixture,
+                fixture.model(),
+                reloaded(history, how),
+                mode,
+                tools,
+            ) {
+                Ok(again) if same(&whole_numbers(body.clone()), &whole_numbers(again.clone())) => {
+                    reached.hit("store");
+                }
+                Ok(again) => problems.push(format!(
+                    "a store that rewrites numbers ({how:?}) sends another body: {again}"
+                )),
+                Err(error) => problems.push(format!(
+                    "a store that rewrites numbers ({how:?}) leaves it unencodable: {error}"
+                )),
+            }
         }
         problems
     };
-    for case in 0..cases {
+    for case in 0..cases() {
         let mut rng = generated::Rng::new(0x5eed_0000 + case);
         let history = generated::history(&mut rng, &own);
         let tools = generated::tools(&mut rng);
@@ -2168,21 +2445,31 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
     }
     for turn in &own {
         let expected = fixture.replayed(turn);
-        let stored =
-            serde_json::to_value(Message::Assistant(turn.clone())).expect("a turn serializes");
         for how in [Numbers::ThroughF64, Numbers::WholeAsFloat] {
-            let loaded: Message = serde_json::from_value(numbers(stored.clone(), how))
-                .expect("a rewritten turn loads");
-            let Message::Assistant(loaded) = loaded else {
+            let message = Message::Assistant(turn.clone());
+            if holds_big_integer(&serde_json::to_value(&message).expect("a turn serializes")) {
+                continue;
+            }
+            let Some(Message::Assistant(loaded)) = reloaded(&[message], how).pop() else {
                 panic!("an assistant turn loads as one");
             };
-            assert_eq!(
-                fixture.replayed(&loaded).len(),
-                expected.len(),
-                "a store that rewrites numbers keeps every provider item current"
+            let replayed = fixture.replayed(&loaded);
+            reached.add("stored items", replayed.len());
+            assert!(
+                replayed.len() == expected.len()
+                    && replayed.iter().zip(&expected).all(|(left, right)| {
+                        same(&whole_numbers(left.clone()), &whole_numbers(right.clone()))
+                    }),
+                "a store that rewrites numbers ({how:?}) keeps every provider item current\nbefore: {expected:?}\nafter:  {replayed:?}"
             );
         }
     }
+    let mut checks = vec!["encoded", "store"];
+    checks.extend(rule_checks(fixture));
+    if fixture.keeps_natives() {
+        checks.push("stored items");
+    }
+    reached.assert("H17", &checks);
 }
 
 /// H18: on generated replies ([`HistoryFixture::reply_spec`]), the stream
@@ -2190,47 +2477,176 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
 /// fails or panics alone.
 pub fn h18_generated_stream_equals_whole<F: HistoryFixture>(fixture: &F) {
     let wire = fixture.wire(fixture.model());
-    generated_replies(fixture, |spec| {
-        fixture
-            .reply_frames(spec)
-            .and_then(|frames| replies::disagreement(&wire, frames))
-            .into_iter()
-            .collect()
+    let reached = Reached::default();
+    let ran = generated_replies(fixture, |spec| {
+        let Some(frames) = fixture.reply_frames(spec) else {
+            return Vec::new();
+        };
+        reached.hit("compared");
+        replies::disagreement(&wire, frames).into_iter().collect()
     });
+    if ran {
+        reached.assert("H18", &["compared"]);
+    }
 }
 
 /// H19: on generated replies, a stream cut after any frame before the
-/// provider's end folds to a failed turn, which never replays, and no cut
-/// panics.
+/// provider's end folds to a failed turn that holds no provider item, and no
+/// cut panics. The turns runtimes continue from a cut hold no provider item
+/// either, and each encodes by the wire's message rules with its calls
+/// answered: `CompletionResponse::continued` over the partial reply, as
+/// rig-agent rolls a turn back, and `streaming::delivered` over the items
+/// the consumer took, up to each call that ended and in all, as rig-ecs
+/// does.
 pub fn h19_generated_cuts<F: HistoryFixture>(fixture: &F) {
-    let wire = fixture.wire(fixture.model());
-    generated_replies(fixture, |spec| {
+    if let Some(reason) = fixture.no_cuts() {
+        eprintln!("skip H19: {reason}");
+        return;
+    }
+    let reached = Reached::default();
+    let ran = generated_replies(fixture, |spec| {
         if fixture.reply_frames(spec).is_none() {
             return Vec::new();
         }
-        replies::cut_problems(&wire, || {
+        let streamed = || {
             fixture
                 .reply_frames(spec)
                 .map(|frames| frames.streamed)
                 .unwrap_or_default()
-        })
+        };
+        cut_problems(fixture, &streamed, &reached)
     });
+    if ran {
+        let mut checks = vec!["cuts", "continued"];
+        checks.extend(rule_checks(fixture));
+        reached.assert("H19", &checks);
+    }
+}
+
+/// What is wrong with the cuts of `streamed` ([`h19_generated_cuts`]).
+fn cut_problems<F: HistoryFixture>(
+    fixture: &F,
+    streamed: &dyn Fn() -> Vec<<F::Wire as Wire>::Frame>,
+    reached: &Reached,
+) -> Vec<String> {
+    let wire = fixture.wire(fixture.model());
+    let mut problems = Vec::new();
+    let count = streamed().len();
+    for cut in 1..count {
+        let frames = streamed().into_iter().take(cut);
+        let (response, ended, items) = match replies::quiet(|| {
+            rig_core::test_utils::history_conformance::cut(&wire, Mode::Streaming, frames)
+        }) {
+            Ok(folded) => folded,
+            Err(panic) => {
+                problems.push(format!("the cut after {cut} frames panics: {panic}"));
+                continue;
+            }
+        };
+        if ended {
+            continue;
+        }
+        reached.hit("cuts");
+        if let Some(Message::Assistant(turn)) = response.message()
+            && !turn.stop.as_ref().is_some_and(StopReason::is_failure)
+        {
+            problems.push(format!(
+                "the cut after {cut} of {count} frames is a successful turn ({:?}): {}",
+                turn.stop,
+                serde_json::json!(turn)
+            ));
+        }
+        let mut turns = vec![(
+            "continued".to_owned(),
+            response.continued(response.choice.clone()),
+        )];
+        let origin = Some(response.origin.clone());
+        let ended_calls = items
+            .iter()
+            .enumerate()
+            .filter_map(|(at, item)| match item {
+                rig_core::streaming::Item::Event(rig_core::streaming::StreamEvent::End {
+                    content: AssistantContent::ToolCall(_),
+                    ..
+                }) => Some(at + 1),
+                _ => None,
+            });
+        for taken in ended_calls.chain([items.len()]) {
+            let content = rig_core::streaming::delivered(&items[..taken]);
+            turns.push((
+                format!("delivered after {taken} items"),
+                AssistantMessage::rolled_back(origin.clone(), content),
+            ));
+        }
+        for (how, turn) in turns {
+            if turn.content.is_empty() {
+                continue;
+            }
+            reached.hit("continued");
+            problems.extend(
+                continued_problems(fixture, &turn, reached)
+                    .into_iter()
+                    .map(|problem| format!("the cut after {cut} frames, {how}: {problem}")),
+            );
+        }
+    }
+    problems
+}
+
+/// What is wrong with `turn`, a turn a runtime continues from a reply cut
+/// before its end ([`h19_generated_cuts`]): a block that holds a provider
+/// item, a history with its calls answered that does not encode, or a body
+/// that breaks the wire's message rules.
+pub fn continuation_problems<F: HistoryFixture>(
+    fixture: &F,
+    turn: &AssistantMessage,
+) -> Vec<String> {
+    continued_problems(fixture, turn, &Reached::default())
+}
+
+fn continued_problems<F: HistoryFixture>(
+    fixture: &F,
+    turn: &AssistantMessage,
+    reached: &Reached,
+) -> Vec<String> {
+    let mut problems: Vec<String> = turn
+        .content
+        .iter()
+        .filter(|block| holds_item(block))
+        .map(|block| {
+            format!(
+                "a block keeps its provider item: {}",
+                serde_json::json!(block)
+            )
+        })
+        .collect();
+    let results: Vec<UserContent> = turn
+        .tool_calls()
+        .map(|call| UserContent::ToolResult(call.result(vec![ToolResultContent::text("done")])))
+        .collect();
+    let mut history = vec![Message::user("q"), Message::Assistant(turn.clone())];
+    if !results.is_empty() {
+        history.push(Message::User { content: results });
+    }
+    match sent(fixture, fixture.model(), history, Mode::Streaming) {
+        Ok(body) => problems.extend(message_rules(fixture, &body, reached)),
+        Err(error) => problems.push(format!("it does not encode: {error}")),
+    }
+    problems
 }
 
 /// Run `problems` over the fixture's generated replies, shrinking and
-/// reporting the first spec that has any.
+/// reporting the first spec that has any. False when the fixture has no
+/// reply generator, which the row then states.
 fn generated_replies<F: HistoryFixture>(
     fixture: &F,
     problems: impl Fn(&replies::Spec) -> Vec<String>,
-) {
-    let cases: u64 = std::env::var("RIG_HISTORY_CASES")
-        .ok()
-        .and_then(|cases| cases.parse().ok())
-        .unwrap_or(256);
-    for case in 0..cases {
+) -> bool {
+    for case in 0..cases() {
         let mut rng = Rng::new(0x5eed_d0e5 + case);
         let Some(mut spec) = fixture.reply_spec(&mut rng) else {
-            return;
+            eprintln!("skip: the wire has no reply generator");
+            return false;
         };
         spec.seed = rng.next();
         let found = problems(&spec);
@@ -2248,6 +2664,7 @@ fn generated_replies<F: HistoryFixture>(
             );
         }
     }
+    true
 }
 
 fn name(name: &str) -> ToolName {

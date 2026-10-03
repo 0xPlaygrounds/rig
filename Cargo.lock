@@ -10716,6 +10716,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "rig-core",
+ "rig-memory",
  "serde_json",
 ]
 

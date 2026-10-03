@@ -407,6 +407,66 @@ fn a_reply_cut_before_its_terminal_keeps_no_item_and_the_terminal_takes_the_ciph
     );
 }
 
+/// Round 5 generated-history finding 3: a stream that never sends output 0
+/// and is cut before its terminal keeps no item of the call it streamed at
+/// output 1, so the turn a runtime rolls back sends the call without an
+/// item that would need the reasoning that never arrived.
+#[test]
+fn a_call_cut_off_after_a_missing_output_index_goes_back_without_its_item() {
+    let call = json!({"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "f",
+        "arguments": "{}", "status": "completed"});
+    let mut added = call.clone();
+    added["arguments"] = json!("");
+    added["status"] = json!("in_progress");
+    let events = [
+        json!({"type": "response.created", "response": {"id": "resp_1", "status": "in_progress", "output": []}}),
+        json!({"type": "response.output_item.added", "output_index": 1, "item": added}),
+        json!({"type": "response.function_call_arguments.done", "output_index": 1, "item_id": "fc_1", "arguments": "{}"}),
+        json!({"type": "response.output_item.done", "output_index": 1, "item": call}),
+    ];
+    let (response, ended) =
+        crate::test_utils::history_conformance::partial(&wire(), Mode::Streaming, frames(&events));
+    assert!(!ended, "no terminal arrived");
+    assert!(
+        response
+            .choice
+            .iter()
+            .all(|block| block.native_item().is_none()),
+        "{:?}",
+        response.choice
+    );
+    let turn = response.continued(response.choice.clone());
+    let results = turn
+        .tool_calls()
+        .map(|call| {
+            crate::message::UserContent::ToolResult(
+                call.result(vec![ToolResultContent::text("ok")]),
+            )
+        })
+        .collect();
+    let history = vec![
+        Message::user("q"),
+        Message::Assistant(turn),
+        Message::User { content: results },
+    ];
+    let input = input_of(
+        &wire(),
+        CompletionRequest::from(history).tools(vec![tool("f")]),
+    );
+    assert!(
+        input
+            .iter()
+            .any(|item| item["type"] == "function_call" && item["call_id"] == "call_1"),
+        "{input:?}"
+    );
+    assert!(
+        !input
+            .iter()
+            .any(|item| item.get("id") == Some(&json!("fc_1"))),
+        "the call's item replays without output 0: {input:?}"
+    );
+}
+
 /// NEW-H: a completed reply with no output is an empty successful turn, in
 /// both modes, as pi keeps it.
 #[test]

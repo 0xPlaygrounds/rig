@@ -78,6 +78,10 @@ fn finished(reason: FinishReason) -> Vec<MockFrame> {
 impl HistoryFixture for MockHistory {
     type Wire = MockScript;
 
+    fn no_tool_calls(&self) -> Option<&'static str> {
+        Some("the mock's body is Rig's own message JSON, which no wire's walker reads")
+    }
+
     fn wire(&self, model: &str) -> MockScript {
         MockScript::default().with_id(model)
     }

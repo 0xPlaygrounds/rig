@@ -13,5 +13,6 @@ doctest = false
 
 [dependencies]
 rig-core = { path = "../../crates/rig-core", default-features = false, features = ["test-utils"] }
+rig-memory = { path = "../../crates/rig-memory" }
 base64.workspace = true
 serde_json.workspace = true

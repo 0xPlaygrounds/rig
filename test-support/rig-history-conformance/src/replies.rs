@@ -5,19 +5,18 @@
 //!
 //! H18 folds both forms and requires the same turn and stop. H19 cuts the
 //! stream after every frame and requires a cut the provider did not end to
-//! fail, and its turn never to replay.
+//! fail and hold no provider item.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use serde_json::{Value, json};
 
 use rig_core::completion::CompletionRequest;
-use rig_core::message::{Message, StopReason};
 use rig_core::operation::Completion;
 use rig_core::wire::{Mode, Wire};
 
+use crate::decode;
 pub use crate::generated::Rng;
-use crate::{decode, partial};
 
 /// A generated reply: its blocks as wire JSON, its finish, and a seed the
 /// builder draws stream splits and other restatement choices from.
@@ -55,7 +54,8 @@ pub struct Frames<F> {
     pub streamed: Vec<F>,
 }
 
-fn quiet<T>(run: impl FnOnce() -> T) -> Result<T, String> {
+/// `run`'s result, or its panic message.
+pub(crate) fn quiet<T>(run: impl FnOnce() -> T) -> Result<T, String> {
     catch_unwind(AssertUnwindSafe(run)).map_err(|panic| {
         panic
             .downcast_ref::<String>()
@@ -139,60 +139,6 @@ pub fn disagreement<W: Wire<Op = Completion>>(
                 .then(|| format!("whole {unary}, streamed {stream}"))
         }
     }
-}
-
-/// What is wrong with the cuts of `streamed` on `wire` (row H19): a cut the
-/// provider did not end that folds to a successful turn, or whose turn
-/// replays, or a cut whose decode panics.
-pub fn cut_problems<W: Wire<Op = Completion>>(
-    wire: &W,
-    streamed: impl Fn() -> Vec<W::Frame>,
-) -> Vec<String> {
-    let describe = wire.describe();
-    let mut problems = Vec::new();
-    let count = streamed().len();
-    for cut in 1..count {
-        let frames = streamed().into_iter().take(cut);
-        let (response, ended) = match quiet(|| partial(wire, Mode::Streaming, frames)) {
-            Ok(folded) => folded,
-            Err(panic) => {
-                problems.push(format!(
-                    "the cut after {cut} frames panics: {}",
-                    first_line(&panic)
-                ));
-                continue;
-            }
-        };
-        if ended {
-            continue;
-        }
-        let Some(Message::Assistant(turn)) = response.message() else {
-            continue;
-        };
-        if !turn.stop.as_ref().is_some_and(StopReason::is_failure) {
-            problems.push(format!(
-                "the cut after {cut} of {count} frames is a successful turn ({:?}): {}",
-                turn.stop,
-                json!(turn)
-            ));
-            continue;
-        }
-        let history = vec![
-            Message::user("q"),
-            Message::Assistant(turn),
-            Message::user("next"),
-        ];
-        if let Some(target) = describe.replay {
-            let adapted = rig_core::completion::adapt(&history, target);
-            if adapted
-                .iter()
-                .any(|message| matches!(message, Message::Assistant(_)))
-            {
-                problems.push(format!("the cut after {cut} frames replays"));
-            }
-        }
-    }
-    problems
 }
 
 /// The smallest spec that still `fails`: blocks dropped one at a time, then,
@@ -569,21 +515,48 @@ pub fn responses_build(spec: &Spec) -> (Vec<String>, Vec<String>) {
 
 // ------------------------------------------------------------ Chat
 
+/// What a Chat dialect's replies carry beyond content, reasoning and calls.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ChatShapes {
+    /// OpenRouter's `reasoning_details`: a signed text entry with the
+    /// reasoning, a ciphertext ahead of the answer, an entry signing a call,
+    /// and a bare signature after the answer.
+    pub details: bool,
+    /// Mistral's content parts: thinking parts around the text, and
+    /// refusals.
+    pub thinking_parts: bool,
+}
+
 /// The block list is one element: the assistant message. `key` is the
 /// dialect's reasoning field.
-pub fn chat_spec(rng: &mut Rng, key: Option<&str>) -> Spec {
+pub fn chat_spec(rng: &mut Rng, key: Option<&str>, shapes: ChatShapes) -> Spec {
     let mut message = json!({"role": "assistant"});
     message["content"] = match rng.below(10) {
         0 => Value::Null,
         1 => json!(""),
         _ => json!(text(rng)),
     };
+    if shapes.thinking_parts && rng.chance(50) {
+        let thinking = |rng: &mut Rng| json!({"type": "thinking", "thinking": [{"type": "text", "text": text(rng)}]});
+        let mut parts = Vec::new();
+        if rng.chance(70) {
+            parts.push(thinking(rng));
+        }
+        parts.push(json!({"type": "text", "text": text(rng)}));
+        if rng.chance(15) {
+            parts.push(json!({"type": "refusal", "refusal": "no"}));
+        }
+        if rng.chance(30) {
+            parts.push(thinking(rng));
+        }
+        message["content"] = json!(parts);
+    }
     if let Some(key) = key.filter(|_| rng.chance(60)) {
         message[key] = json!(text(rng));
     }
     let calls = rng.range(0, 3);
+    let idless = rng.chance(10);
     if calls > 0 {
-        let idless = rng.chance(10);
         let calls: Vec<Value> = (0..calls)
             .map(|i| {
                 let arguments = if rng.chance(10) { String::new() } else { args(rng).to_string() };
@@ -595,6 +568,32 @@ pub fn chat_spec(rng: &mut Rng, key: Option<&str>) -> Spec {
             })
             .collect();
         message["tool_calls"] = json!(calls);
+    }
+    if shapes.details && rng.chance(60) {
+        let mut details = Vec::new();
+        let reasoning = key.and_then(|key| message.get(key)).and_then(Value::as_str);
+        if let Some(reasoning) = reasoning.filter(|_| rng.chance(60)) {
+            details.push(
+                json!({"type": "reasoning.text", "text": reasoning, "signature": "EsYF",
+                "format": "anthropic-claude-v1", "index": 0}),
+            );
+        }
+        if rng.chance(30) {
+            details.push(
+                json!({"type": "reasoning.encrypted", "data": "enc", "id": "rs_1",
+                "format": "openai-responses-v1", "index": 0}),
+            );
+        }
+        if calls > 0 && !idless && rng.chance(30) {
+            let signed = rng.below(calls);
+            details.push(json!({"type": "reasoning.encrypted", "data": "gsig",
+                "id": format!("abcDEF{signed:03}"), "format": "google-gemini-v1", "index": 0}));
+        }
+        if details.is_empty() || rng.chance(25) {
+            details.push(json!({"type": "reasoning.text", "signature": "AY89",
+                "format": "google-gemini-v1", "index": 0}));
+        }
+        message["reasoning_details"] = json!(details);
     }
     let finish = if calls > 0 && rng.chance(85) {
         "tool_calls".to_owned()
@@ -642,19 +641,77 @@ pub fn chat_build(model: &str, key: Option<&str>, spec: &Spec) -> (Vec<String>, 
         json!("")
     };
     let mut deltas = vec![json!({"role": "assistant", "content": first_content})];
+    // A stream sends each detail where it belongs: a signed text entry with
+    // the reasoning it signs, a ciphertext ahead of the answer, an entry
+    // signing a call with that call, and a bare signature last.
+    let details: Vec<Value> = message
+        .get("reasoning_details")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let of = |kind: &str, signs: bool| -> Vec<Value> {
+        details
+            .iter()
+            .filter(|detail| detail["type"] == kind && detail.get("text").is_some() != signs)
+            .cloned()
+            .collect()
+    };
+    let signed_text = of("reasoning.text", false);
+    let bare = of("reasoning.text", true);
+    let leading: Vec<Value> = details
+        .iter()
+        .filter(|detail| detail["type"] == "reasoning.encrypted" && detail["id"] == "rs_1")
+        .cloned()
+        .collect();
+    let signing: Vec<Value> = details
+        .iter()
+        .filter(|detail| detail["type"] == "reasoning.encrypted" && detail["id"] != "rs_1")
+        .cloned()
+        .collect();
     if let Some(key) = key
         && let Some(text) = message.get(key).and_then(Value::as_str)
     {
-        for piece in rng.split(text) {
-            deltas.push(json!({key: piece}));
+        let pieces = rng.split(text);
+        let last = pieces.len() - 1;
+        for (at, piece) in pieces.into_iter().enumerate() {
+            let mut delta = json!({key: piece});
+            if let Some(detail) = signed_text.first() {
+                let mut detail = detail.clone();
+                detail["text"] = json!(piece);
+                if at != last
+                    && let Some(fields) = detail.as_object_mut()
+                {
+                    fields.shift_remove("signature");
+                }
+                delta["reasoning_details"] = json!([detail]);
+            }
+            deltas.push(delta);
         }
     }
-    if let Some(text) = message.get("content").and_then(Value::as_str) {
-        for piece in rng.split(text) {
-            if !piece.is_empty() {
-                deltas.push(json!({"content": piece}));
+    if !leading.is_empty() {
+        deltas.push(json!({"reasoning_details": leading}));
+    }
+    match message.get("content") {
+        Some(Value::String(text)) => {
+            for piece in rng.split(text) {
+                if !piece.is_empty() {
+                    deltas.push(json!({"content": piece}));
+                }
             }
         }
+        Some(Value::Array(parts)) => {
+            for part in parts {
+                match part["text"].as_str().filter(|_| part["type"] == "text") {
+                    Some(text) => {
+                        for piece in rng.split(text) {
+                            deltas.push(json!({"content": piece}));
+                        }
+                    }
+                    None => deltas.push(json!({"content": [part]})),
+                }
+            }
+        }
+        _ => {}
     }
     let whole_calls = rng.chance(30);
     let indexless = whole_calls && rng.chance(30);
@@ -666,23 +723,37 @@ pub fn chat_build(model: &str, key: Option<&str>, spec: &Spec) -> (Vec<String>, 
         .enumerate()
     {
         let arguments = call["function"]["arguments"].as_str().unwrap_or_default();
+        let signs: Vec<Value> = signing
+            .iter()
+            .filter(|detail| call.get("id") == detail.get("id"))
+            .cloned()
+            .collect();
+        let with_signs = |mut delta: Value| {
+            if !signs.is_empty() {
+                delta["reasoning_details"] = json!(signs);
+            }
+            delta
+        };
         if whole_calls {
             let mut call = call.clone();
             if !indexless {
                 call["index"] = json!(i);
             }
-            deltas.push(json!({"tool_calls": [call]}));
+            deltas.push(with_signs(json!({"tool_calls": [call]})));
         } else {
             let mut opening = json!({"index": i, "type": "function", "function": {"name": "lookup", "arguments": ""}});
             if let Some(id) = call.get("id") {
                 opening["id"] = id.clone();
             }
-            deltas.push(json!({"tool_calls": [opening]}));
+            deltas.push(with_signs(json!({"tool_calls": [opening]})));
             for piece in rng.split(arguments) {
                 deltas
                     .push(json!({"tool_calls": [{"index": i, "function": {"arguments": piece}}]}));
             }
         }
+    }
+    if !bare.is_empty() {
+        deltas.push(json!({"reasoning_details": bare}));
     }
     let chunk = |delta: Value, finish: Value| {
         json!({"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 0, "model": model,

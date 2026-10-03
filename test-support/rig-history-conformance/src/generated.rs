@@ -1,7 +1,8 @@
 //! Generated histories for row H17: a seeded generator of the shapes that
-//! broke replay before (calls sharing ids, orphan and repeated results,
-//! system messages mid-loop, failed turns, other models' turns), a greedy
-//! shrinker, and a walker that finds calls and results in any wire's JSON.
+//! broke replay before (calls sharing ids, orphan, repeated, late and split
+//! results, system messages mid-loop, failed turns, other models' turns
+//! with hosted pairs, windows a memory policy cuts), a greedy shrinker, and
+//! a walker that finds calls and results in any wire's JSON.
 
 use std::collections::HashMap;
 
@@ -198,6 +199,20 @@ fn other_turn(rng: &mut Rng) -> AssistantMessage {
             replay: false,
         }));
     }
+    // A hosted use and its result, which only their own model replays.
+    if rng.chance(8) {
+        for item in [
+            serde_json::json!({"type": "server_tool_use", "id": "srvtoolu_other",
+                "name": "web_search", "input": {"query": "rig"}}),
+            serde_json::json!({"type": "web_search_tool_result", "tool_use_id": "srvtoolu_other",
+                "content": []}),
+        ] {
+            content.push(AssistantContent::Opaque(rig_core::message::Opaque {
+                item,
+                replay: true,
+            }));
+        }
+    }
     if content.is_empty() {
         content.push(AssistantContent::text("ok"));
     }
@@ -252,10 +267,20 @@ fn cut(rng: &mut Rng, turn: &AssistantMessage) -> AssistantMessage {
     }
 }
 
-fn results(rng: &mut Rng, turn: &AssistantMessage) -> Vec<UserContent> {
+/// Results for some of `turn`'s calls, some repeated and one orphan; a
+/// result given a turn late goes to `late` instead.
+fn results(
+    rng: &mut Rng,
+    turn: &AssistantMessage,
+    late: &mut Vec<UserContent>,
+) -> Vec<UserContent> {
     let mut parts = Vec::new();
     for call in turn.tool_calls() {
-        if rng.chance(80) {
+        if rng.chance(8) {
+            late.push(UserContent::ToolResult(
+                call.result(vec![ToolResultContent::text("late")]),
+            ));
+        } else if rng.chance(80) {
             let content = match rng.below(10) {
                 0 => vec![
                     ToolResultContent::text("see the chart"),
@@ -300,17 +325,20 @@ fn results(rng: &mut Rng, turn: &AssistantMessage) -> Vec<UserContent> {
 /// A history of up to a few rounds: user turns with media and documents,
 /// assistant turns from the fixture's own replies (`own`, sometimes edited,
 /// cut short or reduced to their reasoning) or another model, results
-/// answering random subsets of their calls, and system messages at the
-/// start and in random places. It may start with an assistant turn, and
-/// it ends with a user message.
+/// answering random subsets of their calls (some a turn late, some split
+/// across two user messages), and system messages at the start and in
+/// random places. It may start with an assistant turn, and it ends with a
+/// user message. Some histories are a window of a longer one, as a memory
+/// policy cuts it.
 pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
     let mut history = Vec::new();
+    let mut late = Vec::new();
     if rng.chance(20) {
         history.push(Message::system("be brief"));
     }
     if rng.chance(10) {
         let turn = other_turn(rng);
-        let answer = results(rng, &turn);
+        let answer = results(rng, &turn, &mut late);
         history.push(Message::Assistant(turn));
         if !answer.is_empty() {
             history.push(Message::User { content: answer });
@@ -346,7 +374,8 @@ pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
             Some(turn) if rng.chance(50) => turn.clone(),
             _ => other_turn(rng),
         };
-        let mut answer = results(rng, &turn);
+        let mut answer = std::mem::take(&mut late);
+        answer.extend(results(rng, &turn, &mut late));
         history.push(Message::Assistant(turn));
         if rng.chance(15) {
             history.push(Message::system("steer"));
@@ -354,9 +383,39 @@ pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
         if rng.chance(30) || answer.is_empty() {
             answer.push(UserContent::text("and then?"));
         }
-        history.push(Message::User { content: answer });
+        if answer.len() > 1 && rng.chance(15) {
+            let rest = answer.split_off(answer.len() / 2);
+            history.push(Message::User { content: answer });
+            history.push(Message::User { content: rest });
+        } else {
+            history.push(Message::User { content: answer });
+        }
+    }
+    if !late.is_empty() {
+        history.push(Message::User { content: late });
+    }
+    if rng.chance(20) {
+        history = window(rng, history);
     }
     history
+}
+
+/// The last messages of `history`: as rig-memory's sliding window keeps
+/// them, which drops results that lost their calls, or as a policy that
+/// cuts anywhere does, between a call and its result too.
+fn window(rng: &mut Rng, history: Vec<Message>) -> Vec<Message> {
+    use rig_memory::MemoryPolicy;
+    let keep = rng.range(1, history.len());
+    if rng.chance(50) {
+        rig_memory::SlidingWindowMemory::last_messages(keep)
+            .apply(history.clone())
+            .ok()
+            .filter(|window| !window.is_empty())
+            .unwrap_or(history)
+    } else {
+        let from = history.len() - keep;
+        history.into_iter().skip(from).collect()
+    }
 }
 
 /// The smallest prefix-preserving subset of `history` that still fails
@@ -379,7 +438,7 @@ pub(crate) fn shrink(
     history
 }
 
-enum Event {
+pub(crate) enum Event {
     Call(String),
     Result(String),
 }
@@ -396,7 +455,7 @@ fn text_of(value: &Value, key: &str) -> Option<String> {
 /// `function_call`/`function_call_output`, Chat `tool_calls` and `tool`
 /// messages, Gemini `functionCall`/`functionResponse` (by name when they
 /// carry no id), and Converse `toolUse`/`toolResult`.
-fn events(body: &Value) -> Vec<Event> {
+pub(crate) fn events(body: &Value) -> Vec<Event> {
     fn walk(value: &Value, out: &mut Vec<Event>) {
         match value {
             Value::Object(fields) => {
@@ -564,6 +623,109 @@ pub(crate) fn adjacent_users(body: &Value) -> Vec<String> {
         })
         .map(|_| "two user messages in a row".to_owned())
         .collect()
+}
+
+/// Where a call's results do not come right after it, in the shape each
+/// message wire requires: Chat `tool` messages right after the assistant
+/// message, Messages `tool_result` blocks leading the next user message,
+/// Converse results in the next message, and as many Gemini
+/// `functionResponse` parts in the next content as its model turn has
+/// calls.
+pub(crate) fn adjacency(body: &Value) -> Vec<String> {
+    let mut problems = Vec::new();
+    let strs = |value: Option<&Value>, key: &str| -> Vec<String> {
+        value
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|item| text_of(item, key))
+            .collect()
+    };
+    let messages = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    for (at, message) in messages.iter().enumerate() {
+        let next = messages.get(at + 1);
+        if message.get("role").and_then(Value::as_str) != Some("assistant") {
+            continue;
+        }
+        let answered: Vec<String> = messages[at + 1..]
+            .iter()
+            .take_while(|next| next.get("role").and_then(Value::as_str) == Some("tool"))
+            .filter_map(|next| text_of(next, "tool_call_id"))
+            .collect();
+        for id in strs(message.get("tool_calls"), "id") {
+            if !answered.contains(&id) {
+                problems.push(format!(
+                    "chat: the call `{id}` at message {at} has no tool message right after it"
+                ));
+            }
+        }
+        let blocks = message
+            .get("content")
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice);
+        let next_blocks = next
+            .and_then(|next| next.get("content"))
+            .and_then(Value::as_array)
+            .map_or(&[][..], Vec::as_slice);
+        let leading: Vec<String> = next_blocks
+            .iter()
+            .take_while(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
+            .filter_map(|block| text_of(block, "tool_use_id"))
+            .collect();
+        for block in blocks {
+            if block.get("type").and_then(Value::as_str) == Some("tool_use")
+                && let Some(id) = text_of(block, "id")
+                && !leading.contains(&id)
+            {
+                problems.push(format!(
+                    "messages: the tool_use `{id}` at message {at} has no tool_result leading the next message"
+                ));
+            }
+        }
+        let results: Vec<String> = next_blocks
+            .iter()
+            .filter_map(|block| block.get("toolResult"))
+            .filter_map(|result| text_of(result, "toolUseId"))
+            .collect();
+        let calls = blocks
+            .iter()
+            .filter_map(|block| block.get("toolUse"))
+            .filter(|call| call.get("type").and_then(Value::as_str) != Some("server_tool_use"));
+        for call in calls {
+            if let Some(id) = text_of(call, "toolUseId")
+                && !results.contains(&id)
+            {
+                problems.push(format!(
+                    "converse: the toolUse `{id}` at message {at} has no toolResult in the next message"
+                ));
+            }
+        }
+    }
+    let contents = body
+        .get("contents")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    let count = |content: Option<&Value>, key: &str| {
+        content
+            .and_then(|content| content.get("parts"))
+            .and_then(Value::as_array)
+            .map_or(0, |parts| {
+                parts.iter().filter(|part| part.get(key).is_some()).count()
+            })
+    };
+    for (at, content) in contents.iter().enumerate() {
+        let calls = count(Some(content), "functionCall");
+        let responses = count(contents.get(at + 1), "functionResponse");
+        if calls > 0 && responses != calls {
+            problems.push(format!(
+                "gemini: content {at} has {calls} calls and the next has {responses} responses"
+            ));
+        }
+    }
+    problems
 }
 
 /// A short rendering of `history`, for a failure report.

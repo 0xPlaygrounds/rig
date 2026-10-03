@@ -728,3 +728,33 @@ fn a_reply_the_sdk_cannot_read_decodes_from_its_json() {
     assert_eq!(response.raw, unread);
     assert!(response.tool_calls().count() == 1);
 }
+
+/// Round 5 generated-history finding 1: a window cut between a call and
+/// its result leaves a first user message of only an orphan result. The
+/// adapter drops it, and the request still opens with a user message, as
+/// Converse requires ("A conversation must start with a user message").
+#[test]
+fn an_orphan_first_result_still_leaves_a_user_message_first() {
+    use rig_core::message::{
+        AssistantMessage, CallId, Message, ToolName, ToolResult, ToolResultContent, UserContent,
+    };
+    let fixture = BedrockHistory {
+        model: CLAUDE,
+        other_model: CLAUDE,
+        signature: Some("sig"),
+    };
+    let history = vec![
+        Message::User {
+            content: vec![UserContent::ToolResult(ToolResult {
+                call: CallId::from_wire("gone"),
+                name: ToolName::new("lookup").expect("a tool name"),
+                content: vec![ToolResultContent::text("stale")],
+                is_error: false,
+            })],
+        },
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::text("hello")])),
+    ];
+    let body = rig_history_conformance::sent(&fixture, CLAUDE, history, Mode::Unary)
+        .expect("the history encodes");
+    assert_eq!(body["messages"][0]["role"], "user", "{}", body["messages"]);
+}

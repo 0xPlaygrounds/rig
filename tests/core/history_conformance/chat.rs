@@ -6,7 +6,9 @@
 use rig_core::completion::{CompletionRequest, FinishReason};
 use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, AssistantMessage};
-use rig_core::providers::openai::wire::{Chat, DEEPSEEK, Dialect, MISTRAL, OpenAIConfig};
+use rig_core::providers::openai::wire::{
+    Chat, DEEPSEEK, Dialect, MISTRAL, OPENROUTER, OpenAIConfig,
+};
 use rig_core::wire::{Mode, Wire, WireFrame};
 use rig_history_conformance::{
     Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, decode, http_body, replies,
@@ -136,8 +138,17 @@ impl HistoryFixture for ChatHistory {
         }}))
     }
 
+    fn no_tool_calls(&self) -> Option<&'static str> {
+        (!self.dialect.quirks.supports_tools)
+            .then_some("the dialect takes no tools, so calls and results go out as text")
+    }
+
     fn reply_spec(&self, rng: &mut Rng) -> Option<replies::Spec> {
-        Some(replies::chat_spec(rng, self.reasoning_key()))
+        let shapes = replies::ChatShapes {
+            details: self.dialect.name == OPENROUTER.name,
+            thinking_parts: self.dialect.name == MISTRAL.name,
+        };
+        Some(replies::chat_spec(rng, self.reasoning_key(), shapes))
     }
 
     fn reply_frames(&self, spec: &replies::Spec) -> Option<replies::Frames<WireFrame>> {

@@ -153,6 +153,10 @@ impl HistoryFixture for CandleHistory {
     fn keeps_natives(&self) -> bool {
         false
     }
+
+    fn no_tool_calls(&self) -> Option<&'static str> {
+        Some("the body is a rendered prompt string, which holds calls and results as text")
+    }
 }
 
 rig_history_conformance::history_conformance_suite! {

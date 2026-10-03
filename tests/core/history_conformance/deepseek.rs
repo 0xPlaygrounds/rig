@@ -43,7 +43,7 @@ rig_history_conformance::history_conformance_suite! {
 }
 
 /// The rows can fail: H18 reports a stream whose text differs from its
-/// whole form, and H19 a cut stream that ends cleanly.
+/// whole form, and H19 a continued turn that keeps a provider item.
 #[test]
 fn generated_reply_checks_catch_what_they_guard() {
     use rig_history_conformance::{HistoryFixture, Rng, replies};
@@ -69,10 +69,28 @@ fn generated_reply_checks_catch_what_they_guard() {
         },
     );
     assert!(found.is_some_and(|found| found.contains("folds differ")));
-    // A cut that keeps a finish chunk but drops `[DONE]` is still a reply the
-    // provider ended, so a clean fold is not reported; the cut checks only
-    // what the provider did not end.
-    assert!(replies::cut_problems(&wire, || replies::texts(streamed.clone())).is_empty());
+    let full = rig_history_conformance::decode(
+        &wire,
+        &rig_core::completion::CompletionRequest::new("restate"),
+        rig_core::wire::Mode::Streaming,
+        replies::texts(streamed.clone()),
+    )
+    .expect("the stream decodes");
+    let kept = full.continued(full.choice.clone());
+    assert!(
+        rig_history_conformance::continuation_problems(&FIXTURE, &kept)
+            .iter()
+            .any(|problem| problem.contains("keeps its provider item"))
+    );
+    let (cut, ended) = rig_history_conformance::partial(
+        &wire,
+        rig_core::wire::Mode::Streaming,
+        replies::texts(streamed[..2].to_vec()),
+    );
+    assert!(!ended);
+    let continued = cut.continued(cut.choice.clone());
+    assert!(!continued.content.is_empty());
+    assert!(rig_history_conformance::continuation_problems(&FIXTURE, &continued).is_empty());
     assert!(
         replies::disagreement(
             &wire,

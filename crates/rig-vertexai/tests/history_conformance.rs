@@ -95,6 +95,10 @@ impl HistoryFixture for VertexHistory {
         MODEL
     }
 
+    fn no_cuts(&self) -> Option<&'static str> {
+        Some("Vertex re-emits its unary reply when streamed: one frame, no cut")
+    }
+
     fn other_model(&self) -> &'static str {
         "gemini-2.5-flash"
     }
