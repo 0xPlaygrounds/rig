@@ -1311,7 +1311,7 @@ impl ChatDecoder {
         }
         self.wrote = true;
         out.fragment(
-            index,
+            Some(index),
             CallFragment {
                 id: incoming.id.as_deref(),
                 name: incoming.function.name.as_deref().or(custom.as_deref()),

@@ -153,7 +153,7 @@ fn an_opaque_item_closes_as_its_assembled_item() {
 fn a_buffered_call_opens_at_its_first_fragment_and_closes_whole() {
     let decoded = write(|out| {
         out.fragment(
-            0,
+            Some(0),
             CallFragment {
                 arguments: Some("{\"q\":"),
                 ..CallFragment::default()
@@ -161,7 +161,7 @@ fn a_buffered_call_opens_at_its_first_fragment_and_closes_whole() {
         )?;
         out.run(Block::Text, "between")?;
         out.fragment(
-            0,
+            Some(0),
             CallFragment {
                 id: Some("call_1"),
                 name: Some("lookup"),
@@ -188,7 +188,7 @@ fn a_buffered_call_opens_at_its_first_fragment_and_closes_whole() {
 fn a_call_that_never_got_an_id_is_issued_one() {
     let closed = write(|out| {
         out.fragment(
-            3,
+            Some(3),
             CallFragment {
                 name: Some("lookup"),
                 arguments: Some("{}"),
@@ -204,7 +204,7 @@ fn a_call_that_never_got_an_id_is_issued_one() {
 
     let ended = write(|out| {
         out.fragment(
-            3,
+            Some(3),
             CallFragment {
                 name: Some("lookup"),
                 arguments: Some("{}"),
@@ -324,7 +324,7 @@ fn starts_follow_item_order_and_a_dropped_item_leaves_a_gap() {
 fn a_call_closed_without_a_name_is_dropped() {
     let decoded = write(|out| {
         out.fragment(
-            0,
+            Some(0),
             CallFragment {
                 id: Some("call_1"),
                 arguments: Some("{}"),
@@ -395,7 +395,12 @@ fn a_call_left_open_at_a_clean_end_fails_the_turn_but_not_at_the_token_limit() {
 fn blocks_from_the_first_unfinished_item_on_replay_canonically() {
     use crate::completion::FinishReason;
     let decoded = write_on_wire(None, stop(FinishReason::Length), |out| {
-        out.whole(0, Block::Reasoning { redacted: false }, json!({"sig": "a"}), "plan")?;
+        out.whole(
+            0,
+            Block::Reasoning { redacted: false },
+            json!({"sig": "a"}),
+            "plan",
+        )?;
         out.open(1, Block::Reasoning { redacted: false }, json!({"sig": "b"}))?;
         out.push(1, "more")?;
         out.whole(2, Block::Text, json!({"id": "msg_1"}), "answer")
@@ -413,14 +418,16 @@ fn a_call_sent_without_an_id_keeps_its_item_only_where_the_item_has_an_id_slot()
     use crate::completion::FinishReason;
     let idless = |out: &mut Out<'_, Completion>| {
         out.fragment(
-            0,
+            Some(0),
             CallFragment {
                 id: None,
                 name: Some("lookup"),
                 arguments: Some("{}"),
             },
         )?;
-        out.edit(0, |item| *item = json!({"functionCall": {"name": "lookup"}}))?;
+        out.edit(0, |item| {
+            *item = json!({"functionCall": {"name": "lookup"}})
+        })?;
         out.finish(0)
     };
     let slotted = response(write_on_wire(
@@ -431,4 +438,34 @@ fn a_call_sent_without_an_id_keeps_its_item_only_where_the_item_has_an_id_slot()
     assert!(slotted.choice[0].native_item().is_some());
     let unslotted = response(write_on_wire(None, stop(FinishReason::ToolCalls), idless));
     assert!(unslotted.choice[0].native_item().is_none());
+}
+
+#[test]
+fn index_less_fragments_with_new_ids_are_new_calls() {
+    let fragment = |id: Option<&'static str>, arguments: &'static str| CallFragment {
+        id,
+        name: id.map(|_| "weather"),
+        arguments: Some(arguments),
+    };
+    let decoded = write(|out| {
+        out.fragment(None, fragment(Some("a1"), r#"{"city":"#))?;
+        out.fragment(None, fragment(None, r#""Paris"}"#))?;
+        out.fragment(None, fragment(Some("b2"), r#"{"city":"Rome"}"#))?;
+        out.fragment(Some(0), fragment(Some("c3"), r#"{"city":"Oslo"}"#))?;
+        out.fragment(Some(0), fragment(Some("d4"), r#"{"city":"Bern"}"#))?;
+        Ok(())
+    });
+    let calls: Vec<(String, Value)> = response(decoded)
+        .tool_calls()
+        .map(|call| (call.id.wire().into_owned(), call.function.arguments_value()))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            ("a1".to_owned(), json!({"city": "Paris"})),
+            ("b2".to_owned(), json!({"city": "Rome"})),
+            ("c3".to_owned(), json!({"city": "Oslo"})),
+            ("d4".to_owned(), json!({"city": "Bern"})),
+        ]
+    );
 }

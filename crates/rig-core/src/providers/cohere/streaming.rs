@@ -385,7 +385,7 @@ impl ChatDecoder {
         let call = Value::Object(fragment);
         let text = |pointer: &str| call.pointer(pointer).and_then(Value::as_str);
         out.fragment(
-            CALL_INDEX + index,
+            Some(CALL_INDEX + index),
             CallFragment {
                 id: text("/id"),
                 name: text("/function/name"),

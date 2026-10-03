@@ -469,7 +469,7 @@ fn call(
     arguments: Option<&str>,
 ) -> Result<(), ProviderError> {
     out.fragment(
-        index,
+        Some(index),
         CallFragment {
             id,
             name,

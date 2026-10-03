@@ -59,7 +59,7 @@ impl<'id> Decoder<'id, Completion, Frame> for VendorDecoder<'id> {
                 name,
                 arguments,
             } => out.fragment(
-                index as usize,
+                Some(index as usize),
                 CallFragment {
                     id,
                     name,

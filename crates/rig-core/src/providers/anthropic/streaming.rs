@@ -271,7 +271,7 @@ impl MessagesDecoder {
                     )?,
                     // A nameless call: the writer drops it with a warning.
                     Err(_) => out.fragment(
-                        index,
+                        Some(index),
                         CallFragment {
                             id: Some(id),
                             name: None,

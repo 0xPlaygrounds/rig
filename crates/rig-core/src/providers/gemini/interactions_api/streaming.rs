@@ -351,7 +351,7 @@ impl InteractionsDecoder {
                 };
                 arguments.push_str(&fragment);
                 out.fragment(
-                    index,
+                    Some(index),
                     CallFragment {
                         arguments: Some(&fragment),
                         ..CallFragment::default()
@@ -484,7 +484,7 @@ fn call_fields(
 ) -> Result<(), ProviderError> {
     let field = |key: &str| step.get(key).and_then(Value::as_str);
     out.fragment(
-        index,
+        Some(index),
         CallFragment {
             id: field("id"),
             name: field("name"),

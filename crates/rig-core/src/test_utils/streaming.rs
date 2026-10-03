@@ -316,7 +316,7 @@ impl<'id> MockDecoder<'id> {
                     None => out.fresh_index(),
                 };
                 out.fragment(
-                    index,
+                    Some(index),
                     CallFragment {
                         id: call_id.as_deref().or(fixture_provider_id(&id)),
                         name: Some(name.as_str()),
@@ -330,7 +330,7 @@ impl<'id> MockDecoder<'id> {
                 out.end_run()?;
                 let index = self.call_index(&mut out, &id);
                 out.fragment(
-                    index,
+                    Some(index),
                     CallFragment {
                         id: fixture_provider_id(&id),
                         name: Some(name.as_str()),
@@ -342,7 +342,7 @@ impl<'id> MockDecoder<'id> {
                 out.end_run()?;
                 let index = self.call_index(&mut out, &id);
                 out.fragment(
-                    index,
+                    Some(index),
                     CallFragment {
                         id: fixture_provider_id(&id),
                         arguments: Some(arguments.as_str()),

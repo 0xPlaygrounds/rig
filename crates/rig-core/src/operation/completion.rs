@@ -200,6 +200,8 @@ pub struct Turn {
     first_incomplete: Option<usize>,
     /// Whether a call was still open when the provider ended the reply.
     unfinished_call: bool,
+    /// The call the last index-less fragment went to.
+    last_call: Option<usize>,
     /// The index of the block a boundary-less wire is streaming.
     run: Option<usize>,
     next_auto: usize,
@@ -356,6 +358,7 @@ impl Turn {
             call_id_slot: None,
             first_incomplete: None,
             unfinished_call: false,
+            last_call: None,
             run: None,
             next_auto: AUTO_INDEX,
             by_index: None,
@@ -1142,16 +1145,59 @@ impl<'id> Out<'id, Completion> {
         }
     }
 
-    /// Buffer one fragment of the tool call the provider streams under
-    /// `index`, opening it at its first fragment. Its id and name may arrive
-    /// in any fragment; the call becomes visible when it closes.
+    /// Buffer one fragment of a tool call the provider streams, opening the
+    /// call at its first fragment. Its id and name may arrive in any
+    /// fragment; the call becomes visible when it closes. Calls are told
+    /// apart as pi tells them: by `index` when the wire gives one, and a new
+    /// id under an index another call holds starts a new call; without an
+    /// index (`None`, or the wire's `null`), a fragment with an unseen id
+    /// opens a call and any other continues the latest one.
     pub fn fragment(
         &mut self,
-        index: usize,
+        index: Option<usize>,
         fragment: CallFragment<'_>,
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
-        let turn = &mut shared.fold;
+        let Shared {
+            fold: turn, items, ..
+        } = &mut *shared;
+        let new_id = fragment.id.filter(|id| !id.is_empty());
+        let index = match index {
+            Some(index) => {
+                let other = turn.open.get(&index).is_some_and(|draft| {
+                    matches!(&draft.body, Body::Call { id: Some(id), .. }
+                        if new_id.is_some_and(|new| id.wire() != new))
+                });
+                if other {
+                    // Another call took over the index: the one it held ends.
+                    let moved = turn.fresh_index();
+                    if let Some(draft) = turn.open.remove(&index) {
+                        turn.open.insert(moved, draft);
+                    }
+                    turn.close_if_complete(items, moved)?;
+                    if turn.open.contains_key(&moved) {
+                        turn.close_item(items, moved, Closing::Incomplete)?;
+                    }
+                }
+                index
+            }
+            None => {
+                let owner = new_id.and_then(|new| {
+                    turn.open
+                        .iter()
+                        .find_map(|(index, draft)| match &draft.body {
+                            Body::Call { id: Some(id), .. } if id.wire() == new => Some(*index),
+                            _ => None,
+                        })
+                });
+                match (owner, new_id, turn.last_call) {
+                    (Some(index), _, _) => index,
+                    (None, None, Some(last)) if turn.open.contains_key(&last) => last,
+                    _ => turn.fresh_index(),
+                }
+            }
+        };
+        turn.last_call = Some(index);
         if !turn.open.contains_key(&index) {
             let body = Body::Call {
                 id: None,

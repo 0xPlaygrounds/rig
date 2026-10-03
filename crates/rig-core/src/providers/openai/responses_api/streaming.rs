@@ -436,7 +436,7 @@ impl ResponsesDecoder {
                 let arguments =
                     (kind_of(&item) == Some("function_call")).then(|| arguments_of(&item));
                 out.fragment(
-                    index,
+                    Some(index),
                     CallFragment {
                         id: string(&item, "call_id"),
                         name: string(&item, "name"),
@@ -642,7 +642,7 @@ impl ResponsesDecoder {
             }
             let arguments = arguments_of(&item);
             out.fragment(
-                index,
+                Some(index),
                 CallFragment {
                     id: string(&item, "call_id"),
                     name: string(&item, "name"),

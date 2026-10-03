@@ -509,7 +509,7 @@ impl OllamaDecoder {
                 };
                 let index = CALL_INDEX + self.tool_calls.len();
                 out.fragment(
-                    index,
+                    Some(index),
                     CallFragment {
                         id: text("/id"),
                         name: text("/function/name"),
