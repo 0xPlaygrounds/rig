@@ -227,6 +227,9 @@ pub struct Turn {
     /// The index of the block a boundary-less wire is streaming.
     run: Option<usize>,
     next_auto: usize,
+    /// The wire index of each position, for a wire whose choice follows
+    /// its indices ([`Out::order_by_index`]).
+    by_index: Option<BTreeMap<usize, usize>>,
     // The fold.
     choice: Vec<Option<AssistantContent>>,
     /// The text the consumer took of parts still open, by position.
@@ -343,6 +346,12 @@ impl Arguments {
     }
 }
 
+/// Whether `id` names a call: some providers send `""` or `"null"` for a
+/// call they gave no id.
+fn stated(id: &str) -> bool {
+    !id.is_empty() && id != "null"
+}
+
 /// What one fragment of a buffered tool call carries.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CallFragment<'a> {
@@ -381,6 +390,7 @@ impl Turn {
             last_call: None,
             run: None,
             next_auto: AUTO_INDEX,
+            by_index: None,
             choice: Vec::new(),
             open_text: BTreeMap::new(),
         }
@@ -448,6 +458,9 @@ impl Turn {
     fn insert(&mut self, index: usize, body: Body, item: serde_json::Value) {
         self.ended.remove(&index);
         let part = self.next();
+        if let Some(by_index) = &mut self.by_index {
+            by_index.insert(part.index(), index);
+        }
         let started = false;
         self.open.insert(
             index,
@@ -859,8 +872,9 @@ impl Turn {
     }
 
     /// The ordering state of this turn, which a partial view cuts further.
-    fn clone_cut(&self) -> Cut {
+    fn clone_cut(&self) -> Cut<'_> {
         Cut {
+            by_index: self.by_index.as_ref(),
             first_incomplete: self.first_incomplete,
         }
     }
@@ -916,13 +930,14 @@ pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
     }
 }
 
-/// A turn's first incomplete position, for a partial view that cuts it
-/// further.
-struct Cut {
+/// A turn's ordering and its first incomplete position, for a partial view
+/// that cuts it further.
+struct Cut<'a> {
+    by_index: Option<&'a BTreeMap<usize, usize>>,
     first_incomplete: Option<usize>,
 }
 
-impl Cut {
+impl Cut<'_> {
     fn cut_at(&mut self, position: usize) {
         self.first_incomplete = Some(
             self.first_incomplete
@@ -931,16 +946,25 @@ impl Cut {
     }
 
     fn ordered(&self, parts: Vec<(usize, Option<AssistantContent>)>) -> Vec<AssistantContent> {
-        parts
+        let mut parts: Vec<(usize, AssistantContent)> = parts
             .into_iter()
             .filter_map(|(position, part)| {
                 let part = part?;
                 Some(match self.first_incomplete {
-                    Some(first) if position >= first => canonical(part),
-                    _ => part,
+                    Some(first) if position >= first => (position, canonical(part)),
+                    _ => (position, part),
                 })
             })
-            .collect()
+            .collect();
+        if let Some(by_index) = self.by_index {
+            parts.sort_by_key(|(position, _)| {
+                (
+                    by_index.get(position).copied().unwrap_or(usize::MAX),
+                    *position,
+                )
+            });
+        }
+        parts.into_iter().map(|(_, part)| part).collect()
     }
 }
 
@@ -1143,12 +1167,36 @@ impl<'id> Out<'id, Completion> {
         self.finish(index)
     }
 
+    /// Order the response's blocks by wire index rather than by when they
+    /// opened, for a wire whose indices are the provider's item order and
+    /// whose end may state items it never streamed. Call it before the
+    /// first item opens; blocks with no wire index go last.
+    pub fn order_by_index(&mut self) {
+        let mut shared = self.lock();
+        if shared.fold.by_index.is_none() {
+            shared.fold.by_index = Some(BTreeMap::new());
+        }
+    }
+
+    /// Replace the text or reasoning of the open item at `index` with
+    /// `text`, the whole of it as the provider restates it at its end. The
+    /// fragments already streamed stand; the block ends holding `text`.
+    pub fn restate(&mut self, index: usize, text: &str) -> Result<(), ProviderError> {
+        if let Body::Text(body) | Body::Reasoning { text: body, .. } =
+            &mut self.lock().fold.draft(index)?.body
+        {
+            text.clone_into(body);
+        }
+        Ok(())
+    }
+
     /// Buffer one fragment of a tool call the provider streams, opening the
     /// call at its first fragment. Its id and name may arrive in any
     /// fragment; the call becomes visible when it closes. Calls are told
-    /// apart as pi tells them: by `index` when the wire gives one, and a new
-    /// id under an index another call holds starts a new call; without an
-    /// index (`None`, or the wire's `null`), a fragment with an unseen id
+    /// apart by `index` when the wire gives one. A new id under an index
+    /// starts a new call only once the held call's arguments are a complete
+    /// object, since some providers send a fresh id with every chunk. Without
+    /// an index (`None`, or the wire's `null`), a fragment with an unseen id
     /// opens a call and any other continues the latest one.
     pub fn fragment(
         &mut self,
@@ -1159,28 +1207,19 @@ impl<'id> Out<'id, Completion> {
         let Shared {
             fold: turn, items, ..
         } = &mut *shared;
-        let new_id = fragment.id.filter(|id| !id.is_empty());
+        let new_id = fragment.id.filter(|id| stated(id));
         let index = match index {
             Some(index) => {
                 let other = turn.open.get(&index).is_some_and(|draft| {
-                    matches!(&draft.body, Body::Call { id: Some(id), .. }
-                        if new_id.is_some_and(|new| id.wire() != new))
+                    matches!(&draft.body, Body::Call { id: Some(id), arguments, .. }
+                        if new_id.is_some_and(|new| id.wire() != new) && arguments.complete())
                 });
                 if other {
-                    // Another call took over the index: the one it held ends.
                     let moved = turn.fresh_index();
                     if let Some(draft) = turn.open.remove(&index) {
                         turn.open.insert(moved, draft);
                     }
-                    let complete = turn.open.get(&moved).is_some_and(|draft| {
-                        matches!(&draft.body, Body::Call { arguments, .. } if arguments.complete())
-                    });
-                    let closing = if complete {
-                        Closing::Complete
-                    } else {
-                        Closing::Incomplete
-                    };
-                    turn.close_item(items, moved, closing)?;
+                    turn.close_item(items, moved, Closing::Complete)?;
                 }
                 index
             }
@@ -1219,7 +1258,7 @@ impl<'id> Out<'id, Completion> {
                 "the reply sent a call fragment for item {index}, which is not a call"
             )));
         };
-        if let Some(call_id) = fragment.id.filter(|id| !id.is_empty()) {
+        if let Some(call_id) = fragment.id.filter(|id| stated(id)) {
             *id = Some(CallId::from_wire(call_id));
         }
         if let Some(fragment) = fragment.name.filter(|name| !name.is_empty()) {

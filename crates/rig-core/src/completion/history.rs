@@ -176,11 +176,12 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         false
     }
 
-    /// Whether `request` declares tools the model may call, by itself or
-    /// through tools the wire adds. A request that declares none gets its
-    /// history's calls and results as text.
+    /// Whether `request` declares tools the model may call, in `tools`, in
+    /// the `tools` of its `additional_params`, or through tools the wire
+    /// adds. A request that declares none gets its history's calls and
+    /// results as text.
     fn declares_tools(&self, request: &crate::completion::CompletionRequest) -> bool {
-        !request.tools.is_empty()
+        declares_tools(request)
     }
 
     /// The keys of a provider item that survive an edit of its block: an
@@ -365,6 +366,7 @@ pub(crate) fn context_of(
 ) -> crate::message::Fingerprint {
     let mut tools: Vec<_> = request.tools.iter().collect();
     tools.sort_by(|left, right| left.name.cmp(&right.name));
+    let raw = raw_tools(request);
     let system: Vec<&str> = request
         .chat_history
         .iter()
@@ -373,7 +375,28 @@ pub(crate) fn context_of(
             Message::User { .. } | Message::Assistant(_) => None,
         })
         .collect();
-    crate::message::Fingerprint::of(&serde_json::json!(["context", tools, system]))
+    let mut fields = vec![serde_json::json!("context"), serde_json::json!(tools)];
+    fields.push(serde_json::json!(system));
+    if !raw.is_empty() {
+        fields.push(serde_json::json!(raw));
+    }
+    crate::message::Fingerprint::of(&serde_json::Value::Array(fields))
+}
+
+/// Whether `request` declares tools in `tools` or in the `tools` of its
+/// `additional_params`.
+pub(crate) fn declares_tools(request: &crate::completion::CompletionRequest) -> bool {
+    !request.tools.is_empty() || !raw_tools(request).is_empty()
+}
+
+/// The tools `request` passes as is in the `tools` of its
+/// `additional_params`, such as a provider's hosted tools.
+pub(crate) fn raw_tools(request: &crate::completion::CompletionRequest) -> &[serde_json::Value] {
+    use crate::json_utils::Lenient;
+    request
+        .additional_params
+        .as_ref()
+        .map_or(&[][..], |params| params.arr("tools"))
 }
 
 /// [`adapt`] for `request`.

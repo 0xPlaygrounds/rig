@@ -1685,12 +1685,19 @@ impl ChatDecoder {
         })
     }
 
-    /// Close every open call, with its item as its native. A custom call's
+    /// Close the open calls, with their items as natives: every one at the
+    /// end (`all`), only those whose arguments are whole at a finish chunk,
+    /// since a provider may still send fragments after it. A custom call's
     /// arguments are its `{"input"}`. A call the output budget cut before
     /// its arguments were a whole object closes with no native: the
     /// provider never stated it complete.
-    fn close_calls(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+    fn close_calls(
+        &mut self,
+        out: &mut Out<'_, Completion>,
+        all: bool,
+    ) -> Result<(), ProviderError> {
         let cut = self.finish == Some(FinishReason::Length);
+        let mut waiting = Vec::new();
         for call in std::mem::take(&mut self.calls) {
             if call.opaque {
                 out.finish(call.at)?;
@@ -1711,6 +1718,10 @@ impl ChatDecoder {
                     None => input.is_some(),
                 };
             })?;
+            if !all && !complete {
+                waiting.push(call);
+                continue;
+            }
             if let Some(input) = input {
                 out.announce(call.at, json!({ "input": input }))?;
             }
@@ -1720,6 +1731,7 @@ impl ChatDecoder {
                 out.finish(call.at)?;
             }
         }
+        self.calls = waiting;
         Ok(())
     }
 
@@ -1736,7 +1748,7 @@ impl ChatDecoder {
             self.close_writing(out)?;
         }
         if self.finish == Some(FinishReason::ToolCalls) {
-            self.close_calls(out)?;
+            self.close_calls(out, false)?;
         }
         Ok(())
     }
@@ -1767,7 +1779,7 @@ impl ChatDecoder {
             }
         }
         self.delta(&message, &mut out)?;
-        self.close_calls(&mut out)?;
+        self.close_calls(&mut out, true)?;
         self.end(out, false)
     }
 
@@ -1818,7 +1830,7 @@ impl ChatDecoder {
         if !self.ended {
             return Err(ProviderError::Truncated);
         }
-        self.close_calls(&mut out)?;
+        self.close_calls(&mut out, true)?;
         self.end(out, true)
     }
 }

@@ -2274,10 +2274,10 @@ fn a_call_added_but_never_done_fails_the_turn() {
     );
 }
 
-/// An item only the terminal response states follows the items the stream
-/// carried, which keep their place.
+/// An item only the terminal response states takes its place by output
+/// index, so a streamed turn matches the whole reply.
 #[test]
-fn a_terminal_only_item_follows_the_streamed_items() {
+fn a_terminal_only_item_takes_its_output_index() {
     let events = [
         json!({"type": "response.output_text.delta", "output_index": 1, "delta": "Hi"}),
         completed_with(
@@ -2295,10 +2295,10 @@ fn a_terminal_only_item_follows_the_streamed_items() {
             _ => "other",
         })
         .collect();
-    assert_eq!(kinds, ["text", "reasoning"]);
+    assert_eq!(kinds, ["reasoning", "text"]);
     assert_eq!(
         natives(&response),
-        [message("msg_1", "Hi"), reasoning("rs_1", &["Why."])]
+        [reasoning("rs_1", &["Why."]), message("msg_1", "Hi")]
     );
 }
 
@@ -2415,7 +2415,7 @@ fn reasoning_done_without_ciphertext_keeps_its_item_in_a_stream_without_indices(
 
 /// Text streamed with no index and no item events, then a terminal that
 /// states reasoning before that message: the text is said once, and both
-/// blocks hold the provider's items in the order they arrived.
+/// blocks hold the provider's items in the terminal's order.
 #[test]
 fn a_terminal_only_item_does_not_repeat_text_streamed_without_indices() {
     let events = [
@@ -2430,15 +2430,14 @@ fn a_terminal_only_item_does_not_repeat_text_streamed_without_indices() {
     assert_eq!(response.text(), "Hello");
     assert_eq!(
         natives(&response),
-        [message("msg_1", "Hello"), reasoning("rs_1", &["Why."])]
+        [reasoning("rs_1", &["Why."]), message("msg_1", "Hello")]
     );
 }
 
-/// A done item that agrees with what streamed completes it; one that
-/// contradicts it cannot be its native, so the streamed text stands and the
-/// turn replays canonically from that block on.
+/// A done item that contradicts what streamed states the block's whole
+/// text and stays its native, as pi takes the done item.
 #[test]
-fn a_done_item_that_contradicts_its_deltas_is_not_kept() {
+fn a_done_item_that_contradicts_its_deltas_states_the_block() {
     let output = [reasoning("rs_1", &["Plan B."]), message("msg_1", "Hello")];
     let mut events = restated(&output);
     for event in &mut events {
@@ -2449,16 +2448,9 @@ fn a_done_item_that_contradicts_its_deltas_is_not_kept() {
         }
     }
     let response = decode(Mode::Streaming, frames(&events));
-    assert_eq!(response.text(), "ByeBye");
-    assert_eq!(response.reasoning(), "Plan APlan A");
-    assert!(
-        response
-            .choice
-            .iter()
-            .all(|block| block.native_item().is_none()),
-        "{:?}",
-        response.choice
-    );
+    assert_eq!(response.text(), "Hello");
+    assert_eq!(response.reasoning(), "Plan B.");
+    assert_eq!(natives(&response), output);
 }
 
 /// An item that names no `type` is kept in history and never sent back,

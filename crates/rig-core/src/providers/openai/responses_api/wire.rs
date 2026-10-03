@@ -184,15 +184,9 @@ impl crate::completion::ReplayTarget for Responses {
         &self.model
     }
 
-    /// The wire's own tools and the `tools` of `additional_params` are
-    /// declared beside the request's.
+    /// The wire's own tools are declared beside the request's.
     fn declares_tools(&self, request: &completion::CompletionRequest) -> bool {
-        !request.tools.is_empty()
-            || !self.tools.is_empty()
-            || request
-                .additional_params
-                .as_ref()
-                .is_some_and(|params| !params.arr("tools").is_empty())
+        !self.tools.is_empty() || crate::completion::history::declares_tools(request)
     }
 
     /// A call item names its id in `call_id`.

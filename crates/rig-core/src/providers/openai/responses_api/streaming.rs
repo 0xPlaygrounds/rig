@@ -561,10 +561,8 @@ impl ResponsesDecoder {
                 } else if let Some(rest) = text.strip_prefix(done.text.as_str()) {
                     out.push(at, rest)?;
                 } else {
-                    // The stream said otherwise: its text stands, and the
-                    // item that disagrees with it is not kept.
-                    out.close(at)?;
-                    return self.release(false, out);
+                    // The done item states the whole text, as pi takes it.
+                    out.restate(at, &text)?;
                 }
             }
             Kind::Opaque => {}
@@ -681,9 +679,10 @@ impl ResponsesDecoder {
             && !output.iter().any(|item| Kind::of(item) == Kind::Reasoning)
             && let Some(reasoning) = response.str("reasoning").filter(|text| !text.is_empty())
         {
-            let at = out.fresh_index();
+            // Index 0 orders it before the output; it closes at once, so the
+            // output's first item may open there after it.
             out.whole(
-                at,
+                0,
                 Block::Reasoning { redacted: false },
                 Value::Null,
                 reasoning,
@@ -796,6 +795,9 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
         event: ResponsesEvent,
         mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
+        // A terminal may state items the stream never announced; they take
+        // their place by output index.
+        out.order_by_index();
         match event {
             ResponsesEvent::Frame { kind, frame, raw } => match kind.as_str() {
                 // `response.incomplete` is a genuine terminal that keeps the
