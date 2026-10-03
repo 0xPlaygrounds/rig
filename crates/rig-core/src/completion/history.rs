@@ -175,6 +175,120 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         let _ = request;
         false
     }
+
+    /// The keys of a provider item that survive an edit of its block: an
+    /// encoder rebuilding the edited block keeps them ([`Replay::Identity`]).
+    /// By default none do.
+    fn identity(&self, item: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+        let _ = item;
+        serde_json::Map::new()
+    }
+
+    /// Where a tool call's id sits in this wire's call item, as a JSON
+    /// pointer, when it has one. Replay writes the call's wire id there, so
+    /// a replayed item and its result always agree, and a call the provider
+    /// sent without an id keeps its item only on a wire with a slot.
+    fn call_id_slot(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Whether `model` binds its provider items to the request's tools and
+    /// system prompt, so a turn made under another context replays as if
+    /// from another model.
+    fn binds_context(&self, model: &str) -> bool {
+        let _ = model;
+        false
+    }
+
+    /// Whether this provider item requires the item after it in its turn
+    /// (Responses reasoning): when that one is not replayed, neither is
+    /// this.
+    fn needs_next(&self, item: &serde_json::Value) -> bool {
+        let _ = item;
+        false
+    }
+
+    /// The hosted-tool pair this opaque item belongs to: whether it is the
+    /// use or the result, and the id they share. A use and its result
+    /// replay only together.
+    fn hosted_pair(&self, item: &serde_json::Value) -> Option<(Pairing, String)> {
+        let _ = item;
+        None
+    }
+}
+
+/// Which side of a hosted-tool pair an opaque item is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pairing {
+    /// The hosted tool's use.
+    Use,
+    /// Its result.
+    Result,
+}
+
+/// What an encoder sends for one assistant block.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Replay<'a> {
+    /// The provider item, still current, with a call's id slot spelled.
+    Item(std::borrow::Cow<'a, serde_json::Value>),
+    /// The block was edited: rebuild it from its canonical fields, keeping
+    /// these keys of its stale item.
+    Identity(serde_json::Map<String, serde_json::Value>),
+    /// Rebuild it from its canonical fields.
+    Rebuild,
+}
+
+impl AssistantContent {
+    /// What `target`'s encoder sends for this block, with call ids spelled
+    /// by `ids`. Encoders read provider items only through this.
+    pub fn replay(
+        &self,
+        target: &dyn ReplayTarget,
+        ids: &crate::providers::internal::wire_ids::WireIds,
+    ) -> Replay<'_> {
+        if let Some(item) = self.native_item() {
+            return match (self, target.call_id_slot()) {
+                (AssistantContent::ToolCall(call), Some(slot)) => {
+                    let mut item = item.clone();
+                    if let Some(id) = ids.of(&call.id) {
+                        set_pointer(&mut item, slot, serde_json::Value::String(id.to_owned()));
+                    }
+                    Replay::Item(std::borrow::Cow::Owned(item))
+                }
+                _ => Replay::Item(std::borrow::Cow::Borrowed(item)),
+            };
+        }
+        let identity = self
+            .stale_item()
+            .map(|item| target.identity(item))
+            .unwrap_or_default();
+        if identity.is_empty() {
+            Replay::Rebuild
+        } else {
+            Replay::Identity(identity)
+        }
+    }
+}
+
+/// Set the value at `pointer` in `item`, creating objects on the way.
+fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::Value) {
+    let mut at = item;
+    let mut keys = pointer.split('/').skip(1).peekable();
+    while let Some(key) = keys.next() {
+        if !at.is_object() {
+            *at = serde_json::Value::Object(serde_json::Map::new());
+        }
+        let serde_json::Value::Object(fields) = at else {
+            return;
+        };
+        if keys.peek().is_none() {
+            fields.insert(key.to_owned(), value);
+            return;
+        }
+        at = fields
+            .entry(key.to_owned())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+    }
 }
 
 /// `history` shaped for `target`.

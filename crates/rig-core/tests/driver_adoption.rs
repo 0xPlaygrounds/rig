@@ -1392,3 +1392,67 @@ fn runtime_turns_come_from_folds() {
         "runtime code builds assistant turns by hand: {offenders:?}"
     );
 }
+
+/// Provider files that still read provider items directly. Each family
+/// moves its encoder onto `AssistantContent::replay` and deletes its entry;
+/// the list only shrinks.
+const PENDING_REPLAY_ADOPTION: &[&str] = &[
+    "rig-bedrock/src/types/assistant_content.rs",
+    "rig-core/src/providers/anthropic/completion.rs",
+    "rig-core/src/providers/gemini/completion.rs",
+    "rig-core/src/providers/gemini/interactions_api/mod.rs",
+    "rig-core/src/providers/internal/rebuild.rs",
+    "rig-core/src/providers/openai/responses_api/mod.rs",
+];
+
+/// Encoders read provider items only through `AssistantContent::replay`, so
+/// the core alone decides what a current, edited or foreign item becomes.
+#[test]
+fn encoders_read_provider_items_only_through_replay() {
+    let roots = [
+        "/rig-core/src/providers/",
+        "/rig-bedrock/src/",
+        "/rig-vertexai/src/",
+        "/rig-gemini-grpc/src/",
+        "/rig-candle/src/",
+    ];
+    let mut offenders = Vec::new();
+    for_each_shipped_source(|path, shipped| {
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        if !roots.iter().any(|root| normalized.contains(root)) {
+            return;
+        }
+        let masked = mask_literals_and_comments(shipped);
+        let reads = masked.contains("native_item(")
+            || masked.contains("stale_item(")
+            || masked.match_indices(".native").any(|(at, _)| {
+                let rest = &masked[at + ".native".len()..];
+                !rest.starts_with('_')
+                    && !rest.trim_start().starts_with('=')
+                    && !rest.starts_with("::")
+            });
+        if reads {
+            offenders.push(normalized);
+        }
+    });
+    let unlisted: Vec<&String> = offenders
+        .iter()
+        .filter(|path| {
+            !PENDING_REPLAY_ADOPTION
+                .iter()
+                .any(|entry| path.ends_with(entry))
+        })
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "encoders read provider items directly instead of through `replay`: {unlisted:?}"
+    );
+    let stale: Vec<&&str> = PENDING_REPLAY_ADOPTION
+        .iter()
+        .filter(|entry| !offenders.iter().any(|path| path.ends_with(*entry)))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "these files no longer read provider items; delete their entries: {stale:?}"
+    );
+}

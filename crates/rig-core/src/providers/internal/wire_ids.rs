@@ -22,9 +22,10 @@ use crate::message::{AssistantContent, CallId, LocalCallId, Message, UserContent
 
 /// The wire spelling of every tool call and result of one request's
 /// history, by message and content position.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct WireIds {
     ids: BTreeMap<(usize, usize), String>,
+    by_call: HashMap<CallId, String>,
 }
 
 /// Converted messages carried a different number of tool calls and results
@@ -43,9 +44,36 @@ impl WireIds {
         Self::with_reserved(history, std::iter::empty())
     }
 
+    /// The spelling of every call and result in `history` for `model` on
+    /// `target`: a provider id as it stands, and an id rig issued as its
+    /// `tool-<n>` alias passed through the target's id rules, so every id a
+    /// request sends is one the wire accepts.
+    pub fn for_target(
+        history: &[Message],
+        target: &dyn crate::completion::ReplayTarget,
+        model: &str,
+    ) -> Self {
+        Self::spelled(history, std::iter::empty(), |alias| {
+            target.normalize_tool_call_id(alias, model, None)
+        })
+    }
+
+    /// The wire spelling of `call`, when it is in the history.
+    pub fn of(&self, call: &CallId) -> Option<&str> {
+        self.by_call.get(call).map(String::as_str)
+    }
+
     /// [`Self::new`], with provider handles carried outside tool calls (such
     /// as Anthropic server tools) that no alias may take.
     pub fn with_reserved(history: &[Message], reserved: impl IntoIterator<Item = String>) -> Self {
+        Self::spelled(history, reserved, str::to_owned)
+    }
+
+    fn spelled(
+        history: &[Message],
+        reserved: impl IntoIterator<Item = String>,
+        normalize: impl Fn(&str) -> String,
+    ) -> Self {
         let occurrences: Vec<((usize, usize), &CallId)> = history
             .iter()
             .enumerate()
@@ -82,6 +110,7 @@ impl WireIds {
         let mut aliases: HashMap<&LocalCallId, String> = HashMap::new();
         let mut next = 0usize;
         let mut ids = BTreeMap::new();
+        let mut by_call = HashMap::new();
         for (position, id) in occurrences {
             let spelled = match id {
                 CallId::Provider(provider) => provider.as_str().to_owned(),
@@ -89,7 +118,7 @@ impl WireIds {
                     .entry(local)
                     .or_insert_with(|| {
                         loop {
-                            let candidate = format!("tool-{next}");
+                            let candidate = normalize(&format!("tool-{next}"));
                             next += 1;
                             if used.insert(candidate.clone()) {
                                 break candidate;
@@ -98,9 +127,10 @@ impl WireIds {
                     })
                     .clone(),
             };
+            by_call.insert(id.clone(), spelled.clone());
             ids.insert(position, spelled);
         }
-        Self { ids }
+        Self { ids, by_call }
     }
 
     /// Convert each message of `history` with `convert` and spell the tool

@@ -227,6 +227,19 @@ impl AssistantContent {
         self
     }
 
+    /// The provider item of an edited block: no longer current, but its
+    /// identity keys still name the item it was.
+    pub(crate) fn stale_item(&self) -> Option<&serde_json::Value> {
+        let native = match self {
+            Self::Text(text) => text.native.as_ref(),
+            Self::ToolCall(call) => call.native.as_ref(),
+            Self::Reasoning(reasoning) => reasoning.native.as_ref(),
+            Self::Image(image) => image.native.as_ref(),
+            Self::Opaque(_) => None,
+        }?;
+        (native.fingerprint != self.fingerprint()).then_some(&native.item)
+    }
+
     /// The provider item, while the block is still what it was decoded
     /// from. An edited block has none: encoders rebuild it.
     pub fn native_item(&self) -> Option<&serde_json::Value> {

@@ -861,3 +861,87 @@ fn a_store_that_reorders_keys_keeps_the_native() {
     let loaded: AssistantContent = serde_json::from_value(stored).expect("loads");
     assert!(loaded.native_item().is_some(), "{loaded:?}");
 }
+
+/// A target whose calls carry their id at `/id`, and whose items keep `id`
+/// through an edit.
+#[derive(Debug)]
+struct Slotted;
+
+impl ReplayTarget for Slotted {
+    fn api(&self) -> Api {
+        Api::from_static("test.api")
+    }
+
+    fn provider(&self) -> &str {
+        "test"
+    }
+
+    fn model(&self) -> &str {
+        "model-a"
+    }
+
+    fn accepts(&self, _model: &str) -> Accepts {
+        Accepts::ALL
+    }
+
+    fn identity(&self, item: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+        item.as_object()
+            .and_then(|fields| fields.get("id"))
+            .map(|id| serde_json::Map::from_iter([("id".to_owned(), id.clone())]))
+            .unwrap_or_default()
+    }
+
+    fn call_id_slot(&self) -> Option<&'static str> {
+        Some("/id")
+    }
+}
+
+#[test]
+fn a_current_call_item_carries_the_wire_id_its_result_gets() {
+    let call = AssistantContent::ToolCall(ToolCall::new(
+        CallId::Local(crate::message::LocalCallId::new()),
+        ToolFunction::new(ToolName::new("lookup").expect("a name"), json!({})),
+    ))
+    .with_native(json!({"type": "call", "name": "lookup"}));
+    let AssistantContent::ToolCall(tool_call) = &call else {
+        panic!("a call");
+    };
+    let history = vec![
+        turn(Some(same()), vec![call.clone()]),
+        Message::User {
+            content: vec![UserContent::ToolResult(
+                tool_call.result(vec![ToolResultContent::text("ok")]),
+            )],
+        },
+    ];
+    let ids =
+        crate::providers::internal::wire_ids::WireIds::for_target(&history, &Slotted, "model-a");
+    assert_eq!(ids.of(&tool_call.id), Some("tool-0"));
+    assert_eq!(
+        call.replay(&Slotted, &ids),
+        Replay::Item(std::borrow::Cow::Owned(
+            json!({"type": "call", "name": "lookup", "id": "tool-0"})
+        ))
+    );
+}
+
+#[test]
+fn an_edited_block_rebuilds_keeping_its_identity() {
+    let ids = crate::providers::internal::wire_ids::WireIds::default();
+    let mut text = AssistantContent::text("a").with_native(json!({"id": "msg_1", "text": "a"}));
+    assert!(matches!(text.replay(&Slotted, &ids), Replay::Item(_)));
+    if let AssistantContent::Text(inner) = &mut text {
+        inner.text.push('!');
+    }
+    assert_eq!(
+        text.replay(&Slotted, &ids),
+        Replay::Identity(serde_json::Map::from_iter([(
+            "id".to_owned(),
+            json!("msg_1")
+        )]))
+    );
+    assert_eq!(
+        AssistantContent::text("plain").replay(&Slotted, &ids),
+        Replay::Rebuild
+    );
+}

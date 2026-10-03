@@ -2136,7 +2136,10 @@ fn candidate_metadata_reaches_raw() {
     let response =
         crate::test_utils::history::decode(&wire("gemini-2.5-flash"), Mode::Unary, [frame])
             .expect("the reply decodes");
-    let candidate = response.raw.pointer("/candidates/0").expect("the candidate");
+    let candidate = response
+        .raw
+        .pointer("/candidates/0")
+        .expect("the candidate");
     for (key, value) in metadata.as_object().expect("metadata is an object") {
         assert_eq!(candidate.get(key), Some(value), "{key}");
     }

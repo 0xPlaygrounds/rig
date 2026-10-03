@@ -3327,26 +3327,24 @@ fn the_last_turn_container_is_replayed_unless_the_request_names_one() {
 
     let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
     let turn = |model: &str, container: &str| {
-        message::Message::Assistant(
-            message::AssistantMessage {
-                content: vec![
-                    message::AssistantContent::text("ran it"),
-                    message::AssistantContent::Opaque(message::Opaque {
-                        item: json!({
-                            "type": "container",
-                            "container": {"id": container, "expires_at": "2026-10-02T00:00:00Z"},
-                        }),
-                        replay: true,
+        message::Message::Assistant(message::AssistantMessage {
+            content: vec![
+                message::AssistantContent::text("ran it"),
+                message::AssistantContent::Opaque(message::Opaque {
+                    item: json!({
+                        "type": "container",
+                        "container": {"id": container, "expires_at": "2026-10-02T00:00:00Z"},
                     }),
-                ],
-                origin: Some(message::Origin::new(
-                    "anthropic.messages",
-                    "anthropic",
-                    model,
-                )),
-                stop: Some(message::StopReason::Stop),
-            },
-        )
+                    replay: true,
+                }),
+            ],
+            origin: Some(message::Origin::new(
+                "anthropic.messages",
+                "anthropic",
+                model,
+            )),
+            stop: Some(message::StopReason::Stop),
+        })
     };
     let body = |history: Vec<message::Message>, params: Option<serde_json::Value>| {
         let mut request = completion_request_with_history(history, None);
