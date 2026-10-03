@@ -37,6 +37,7 @@ pub(crate) fn to_aws(
             for part in turn.content {
                 blocks.extend(assistant_content::to_aws(part, family)?);
             }
+            paired(&mut blocks);
             if blocks.is_empty() {
                 return Ok(None);
             }
@@ -49,6 +50,19 @@ pub(crate) fn to_aws(
         .build()
         .map(Some)
         .map_err(ProviderError::request)
+}
+
+/// `blocks` with each hosted tool's use and result kept only when both
+/// are: Converse rejects one without the other.
+fn paired(blocks: &mut Vec<aws_bedrock::ContentBlock>) {
+    use aws_bedrock::ContentBlock as Block;
+    let hosted = |block: &Block| match block {
+        Block::ToolUse(call) if call.r#type.is_some() => Some((true, call.tool_use_id.clone())),
+        Block::ToolResult(result) => Some((false, result.tool_use_id.clone())),
+        _ => None,
+    };
+    let parts: Vec<(bool, String)> = blocks.iter().filter_map(hosted).collect();
+    blocks.retain(|block| hosted(block).is_none_or(|(used, id)| parts.contains(&(!used, id))));
 }
 
 #[cfg(test)]

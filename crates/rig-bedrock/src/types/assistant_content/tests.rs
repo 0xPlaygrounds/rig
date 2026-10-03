@@ -64,6 +64,13 @@ fn reply() -> Vec<aws_bedrock::ContentBlock> {
             json!({ "q": "harbor" }),
             Some(aws_bedrock::ToolUseType::ServerToolUse),
         ),
+        aws_bedrock::ContentBlock::ToolResult(
+            aws_bedrock::ToolResultBlock::builder()
+                .tool_use_id("srv_1")
+                .content(aws_bedrock::ToolResultContentBlock::Text("nine".to_owned()))
+                .build()
+                .unwrap(),
+        ),
         tool_use("tooluse_1", "lookup", json!({ "q": "harbor" }), None),
     ]
 }

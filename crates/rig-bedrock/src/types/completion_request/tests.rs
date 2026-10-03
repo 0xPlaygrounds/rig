@@ -722,3 +722,52 @@ fn hosted_tool_ids_are_reserved() {
         .collect();
     assert_eq!(ids, ["tool-0", "tool-0", "tool-1", "tool-1"]);
 }
+
+/// A hosted tool's use and its result replay together or not at all: a
+/// use whose result cannot replay, or a result whose use is gone, is not
+/// sent.
+#[test]
+fn a_hosted_use_replays_only_with_its_result() {
+    use rig_core::message::{AssistantContent, Opaque};
+    let opaque = |item, replay| AssistantContent::Opaque(Opaque { item, replay });
+    let used = || {
+        opaque(
+            serde_json::json!({ "toolUse": {
+                "toolUseId": "srv_1", "name": "nova_grounding", "input": {}, "type": "server_tool_use",
+            } }),
+            true,
+        )
+    };
+    let result = || {
+        opaque(
+            serde_json::json!({ "toolResult": {
+                "toolUseId": "srv_1", "content": [{ "text": "found" }],
+            } }),
+            true,
+        )
+    };
+    let marker = || opaque(serde_json::json!({ "type": "tool_result" }), false);
+    for (turn, hosted) in [
+        (vec![used(), result()], 2),
+        (vec![used(), marker()], 0),
+        (vec![result()], 0),
+    ] {
+        let mut request = minimal_request();
+        let mut content = turn;
+        content.push(AssistantContent::text("done"));
+        request.chat_history = vec![Message::user("q"), Message::from(content)];
+        let messages = aws_request(request, false).messages().expect("messages");
+        let sent = messages[1]
+            .content
+            .iter()
+            .filter(|block| {
+                matches!(
+                    block,
+                    aws_bedrock::ContentBlock::ToolUse(_)
+                        | aws_bedrock::ContentBlock::ToolResult(_)
+                )
+            })
+            .count();
+        assert_eq!(sent, hosted, "{:?}", messages[1].content);
+    }
+}
