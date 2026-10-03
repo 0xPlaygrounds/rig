@@ -5,6 +5,8 @@
 //! assert!(by_name("deepseek").is_some());
 //! ```
 
+use crate::completion::FinishReason;
+
 use super::{
     AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
     ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing,
@@ -73,9 +75,11 @@ pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
         // DeepSeek accepts json_object through additional_params, not json_schema.
         supports_response_format: false,
-        emits_complete_single_chunk_tool_calls: true,
         verify_path: "/user/balance",
         rewrite: BodyRewrite::DeepSeek,
+        // Its thinking models take `reasoning_content` back on every
+        // assistant message (pi).
+        reasoning_field: Some("reasoning_content"),
         ..Quirks::openai()
     },
     ..Dialect::gateway("deepseek", "https://api.deepseek.com", "DEEPSEEK_API_KEY")
@@ -85,7 +89,6 @@ pub const DEEPSEEK: Dialect = Dialect {
 pub const GROQ: Dialect = Dialect {
     request_id_header: Some("x-request-id"),
     quirks: Quirks {
-        emits_complete_single_chunk_tool_calls: true,
         rewrite: BodyRewrite::GroqCompoundTools,
         ..Quirks::openai()
     },
@@ -160,6 +163,8 @@ pub const TOGETHER: Dialect = Dialect {
         // Structured-output support is per model on Together, so the schema
         // is dropped with a warning rather than sent and rejected.
         supports_response_format: false,
+        // Its API reference lists `eos` for a model that ended its answer.
+        finishes: &[("eos", FinishReason::Stop)],
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",
@@ -296,7 +301,6 @@ pub const MISTRAL: Dialect = Dialect {
         // Mistral rejects `stream_options` and reports usage on its final
         // chunk regardless.
         stream_include_usage: false,
-        emits_complete_single_chunk_tool_calls: true,
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",

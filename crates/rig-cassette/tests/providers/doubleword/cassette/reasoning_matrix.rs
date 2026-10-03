@@ -14,9 +14,8 @@
 //! | DeepSeek | reasoning block | reasoning deltas | `stop` / `stop` |
 
 use rig::message::AssistantContent;
-use rig::providers::{doubleword, openai};
+use rig::providers::doubleword;
 use rig_test_support::cassette_models::OpenAiModels;
-use serde::Deserialize as _;
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_raw_stream_observation;
@@ -34,14 +33,16 @@ async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
 
     // The wire premise, read off the captured document in the provider's own
     // vocabulary: the backend put hidden thinking in `reasoning_content`.
-    let reply = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is the shared chat-completions response");
-    let has_wire_reasoning = reply.choices.iter().any(|choice| {
-        matches!(
-            &choice.message,
-            openai::completion::Message::Assistant { reasoning: Some(reasoning), .. } if !reasoning.is_empty()
-        )
-    });
+    let reply = response.raw.clone();
+    let has_wire_reasoning = reply["choices"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|choice| {
+            choice["message"]["reasoning_content"]
+                .as_str()
+                .is_some_and(|reasoning| !reasoning.is_empty())
+        });
     assert!(
         has_wire_reasoning,
         "the live backend should emit hidden reasoning"

@@ -6,20 +6,20 @@
 //! miss), and that what Venice sends back — the resolved echo, including web
 //! search citations — survives onto
 //! [`rig::completion::CompletionResponse::raw`] instead of being dropped by
-//! the OpenAI-shaped decode. `raw` is the provider's verbatim reply document,
-//! so [`venice::CompletionResponse`] reads back out of it; the echo and the
-//! per-request `cost` have no slot on the normalized response, which makes
-//! that the only route to them.
+//! the OpenAI-shaped decode. `raw` is the provider's verbatim reply document;
+//! the echo and the per-request `cost` have no slot on the normalized
+//! response, which makes it the only route to them.
 
-use rig::providers::venice::{self, VeniceParameters, WebSearchMode};
-use serde::Deserialize as _;
+use rig::providers::venice::{VeniceParameters, WebSearchMode};
 
 use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
 use rig::completion::CompletionRequest;
 
-/// Venice's own reply, read back out of the captured document.
-fn venice_reply(raw: &serde_json::Value) -> venice::CompletionResponse {
-    venice::CompletionResponse::deserialize(raw).expect("raw is Venice's own CompletionResponse")
+/// The parameters Venice echoes as resolved, read out of the captured
+/// document.
+fn venice_echo(raw: &serde_json::Value) -> VeniceParameters {
+    serde_json::from_value(raw["venice_parameters"].clone())
+        .expect("Venice echoes its resolved parameters")
 }
 
 #[tokio::test]
@@ -41,26 +41,24 @@ async fn web_search_on_returns_citations() {
             .call(request)
             .await
             .expect("web-search completion should succeed");
-        let reply = venice_reply(&response.raw);
-
-        let parameters = reply
-            .venice_parameters
-            .as_ref()
-            .expect("Venice echoes its resolved parameters");
+        let parameters = venice_echo(&response.raw);
         assert_eq!(
-            parameters.parameters.enable_web_search,
+            parameters.enable_web_search,
             Some(WebSearchMode::On),
             "Venice should report the web-search mode it applied"
         );
+        let citations = response.raw["venice_parameters"]["web_search_citations"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         assert!(
-            !reply.web_search_citations().is_empty(),
+            !citations.is_empty(),
             "web search with citations enabled should return sources"
         );
-        let citation = &reply.web_search_citations()[0];
+        let url = citations[0]["url"].as_str().unwrap_or_default();
         assert!(
-            citation.url.starts_with("http"),
-            "citation should carry a source URL, got {:?}",
-            citation.url
+            url.starts_with("http"),
+            "citation should carry a source URL, got {url:?}"
         );
     })
     .await;
@@ -85,11 +83,7 @@ async fn web_search_auto_is_echoed() {
             .expect("auto web-search completion should succeed");
 
         assert_eq!(
-            venice_reply(&response.raw)
-                .venice_parameters
-                .expect("venice parameters echo")
-                .parameters
-                .enable_web_search,
+            venice_echo(&response.raw).enable_web_search,
             Some(WebSearchMode::Auto)
         );
     })
@@ -116,10 +110,7 @@ async fn disable_thinking_is_applied() {
             .await
             .expect("completion should succeed");
 
-        let echo = venice_reply(&response.raw)
-            .venice_parameters
-            .expect("venice parameters echo")
-            .parameters;
+        let echo = venice_echo(&response.raw);
         assert_eq!(echo.disable_thinking, Some(true));
         assert_eq!(echo.strip_thinking_response, Some(true));
     })
@@ -147,18 +138,12 @@ async fn venice_system_prompt_can_be_disabled() {
                 .call(request)
                 .await
                 .expect("completion should succeed");
-            let reply = venice_reply(&response.raw);
-
             assert_eq!(
-                reply
-                    .venice_parameters
-                    .expect("venice parameters echo")
-                    .parameters
-                    .include_venice_system_prompt,
+                venice_echo(&response.raw).include_venice_system_prompt,
                 Some(false)
             );
             assert!(
-                reply.cost.is_some(),
+                response.raw["cost"].is_object(),
                 "Venice reports per-request cost alongside usage"
             );
         },
@@ -187,12 +172,7 @@ async fn character_slug_selects_a_persona() {
             .expect("character completion should succeed");
 
         assert_eq!(
-            venice_reply(&response.raw)
-                .venice_parameters
-                .expect("venice parameters echo")
-                .parameters
-                .character_slug
-                .as_deref(),
+            venice_echo(&response.raw).character_slug.as_deref(),
             Some("alan-watts")
         );
     })

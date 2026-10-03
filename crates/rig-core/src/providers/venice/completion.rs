@@ -1,4 +1,4 @@
-//! Venice chat model identifiers, request extensions, and response metadata.
+//! Venice chat model identifiers and request extensions.
 //!
 //! ```
 //! use rig_core::providers::venice::{VeniceParameters, WebSearchMode};
@@ -9,8 +9,6 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-
-use crate::providers::openai;
 
 /// Identifier for `zai-org-glm-4.7`.
 pub const GLM_4_7: &str = "zai-org-glm-4.7";
@@ -182,76 +180,6 @@ impl VeniceParameters {
     /// into the request body through `additional_params`.
     pub fn into_additional_params(self) -> serde_json::Value {
         serde_json::json!({ "venice_parameters": self })
-    }
-}
-
-/// A web-search source Venice consulted for a completion.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct WebSearchCitation {
-    /// Page title.
-    #[serde(default)]
-    pub title: String,
-    /// Source URL.
-    #[serde(default)]
-    pub url: String,
-    /// Extracted page content, as Venice returned it.
-    #[serde(default)]
-    pub content: String,
-    /// Publication date, empty when Venice could not determine one.
-    #[serde(default)]
-    pub date: String,
-}
-
-/// Venice's resolved `venice_parameters` block, echoed on every response.
-///
-/// The requested fields come back with the values Venice actually applied,
-/// alongside the response-only fields below.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct VeniceParametersEcho {
-    /// The parameters Venice resolved for this request.
-    #[serde(flatten)]
-    pub parameters: VeniceParameters,
-    /// Whether end-to-end encryption applied to this request.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enable_e2ee: Option<bool>,
-    /// Sources consulted when web search ran; empty otherwise.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub web_search_citations: Vec<WebSearchCitation>,
-}
-
-/// What Venice charged for a request.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-pub struct Cost {
-    /// Cost in USD credits.
-    #[serde(default)]
-    pub usd: f64,
-    /// Cost in DIEM.
-    #[serde(default)]
-    pub diem: f64,
-}
-
-/// Typed chat payload including resolved parameters and request cost. Deserialize
-/// from [`crate::completion::CompletionResponse::raw`] to inspect these fields.
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CompletionResponse {
-    /// The OpenAI-compatible portion of the payload.
-    #[serde(flatten)]
-    pub openai: openai::CompletionResponse,
-    /// Venice's resolved parameter block, including web-search citations.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub venice_parameters: Option<VeniceParametersEcho>,
-    /// What Venice charged for this request.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cost: Option<Cost>,
-}
-
-impl CompletionResponse {
-    /// The web-search sources Venice consulted, empty when search did not run.
-    pub fn web_search_citations(&self) -> &[WebSearchCitation] {
-        self.venice_parameters
-            .as_ref()
-            .map(|parameters| parameters.web_search_citations.as_slice())
-            .unwrap_or_default()
     }
 }
 

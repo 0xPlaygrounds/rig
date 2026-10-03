@@ -4,8 +4,9 @@ use crate::error::ProviderError;
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 
-/// An empty conversation, message or tool result parses, and the request
-/// boundary rejects it by role and index.
+/// An empty conversation or message parses, and the request boundary
+/// rejects it by role and index. An empty tool result is the adapter's to
+/// fill, as pi says `(no tool output)`.
 mod empty_lists_parse_and_are_rejected_when_sent {
     use crate::message::Message;
     use crate::test_utils::{MockCompletionModel, MockTurn};
@@ -28,18 +29,6 @@ mod empty_lists_parse_and_are_rejected_when_sent {
             (
                 with(json!({"role": "assistant", "content": []})),
                 "assistant message at index 0 has no content",
-            ),
-            (
-                with(json!({
-                    "role": "user",
-                    "content": [{
-                        "type": "toolresult",
-                        "call": {"provider": "call_1"},
-                        "name": "lookup",
-                        "content": [],
-                    }],
-                })),
-                "tool result for `lookup` at index 0 of the user message at index 0 has no content",
             ),
         ]
     }

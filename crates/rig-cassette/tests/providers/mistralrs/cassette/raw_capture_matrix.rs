@@ -43,8 +43,6 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_capture_matrix/`.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
@@ -110,20 +108,17 @@ async fn raw_is_the_reply_document() {
     .await;
 
     let response = captured.take();
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into openai::CompletionResponse");
+    let typed = response.raw.clone();
     // The typed view agrees with the normalized one on what the model said,
     // so raw is a superset, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), response.model());
-    assert_eq!(Some(typed.id.as_str()), response.response_id());
+    assert_eq!(typed["model"].as_str(), response.model());
+    assert_eq!(typed["id"].as_str(), response.response_id());
     assert_eq!(response.provider(), NORMALIZED_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let raw = &response.raw;
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
-    openai::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be a chat-completions response");
     // The document, key for key: whatever mistral.rs sent — including the
     // `usage` throughput fields no shared type models — is what a caller
     // reads off `raw`.
@@ -168,12 +163,11 @@ async fn raw_exposes_envelope_fields() {
     for field in ["created", "id"] {
         assert_wire_value_matches(raw, &body, field);
     }
-    let typed = openai::CompletionResponse::deserialize(raw).expect("raw must deserialize");
     assert_eq!(
-        typed.system_fingerprint.as_deref(),
+        raw["system_fingerprint"].as_str(),
         body["system_fingerprint"].as_str()
     );
-    assert_eq!(Some(typed.object.as_str()), body["object"].as_str());
+    assert_eq!(raw["object"].as_str(), body["object"].as_str());
 }
 
 // ---------------------------------------------------------------------------
@@ -201,29 +195,23 @@ async fn normalized_fields_equal_raw_renormalized() {
     .await;
 
     let response = captured.take();
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into openai::CompletionResponse");
+    let typed = response.raw.clone();
     assert_eq!(response.provider(), NORMALIZED_PROVIDER);
-    assert_eq!(Some(typed.model.as_str()), response.model());
-    assert_eq!(Some(typed.id.as_str()), response.response_id());
-    let choice = typed
-        .choices
-        .first()
-        .expect("the reply must carry a choice");
+    assert_eq!(typed["model"].as_str(), response.model());
+    assert_eq!(typed["id"].as_str(), response.response_id());
+    let finish = typed["choices"][0]["finish_reason"]
+        .as_str()
+        .unwrap_or_default();
     // Deliberately weaker than the shared body contract: mistral.rs's finish
     // vocabulary is unrecorded here, so this claims only that a native reason
     // was reported and that one reached the normalized response.
     assert!(
-        !choice.finish_reason.is_empty() && response.finish_reason().is_some(),
-        "the native finish reason `{}` must reach the normalized response",
-        choice.finish_reason
+        !finish.is_empty() && response.finish_reason().is_some(),
+        "the native finish reason `{finish}` must reach the normalized response"
     );
-    let usage = typed.usage.expect("mistral.rs reports usage");
-    assert_eq!(
-        Some(usage.prompt_tokens as u64),
-        response.usage.input_tokens
-    );
-    assert_eq!(Some(usage.total_tokens as u64), response.usage.total_tokens);
+    let usage = &typed["usage"];
+    assert_eq!(usage["prompt_tokens"].as_u64(), response.usage.input_tokens);
+    assert_eq!(usage["total_tokens"].as_u64(), response.usage.total_tokens);
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);

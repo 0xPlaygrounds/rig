@@ -66,8 +66,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_capture_matrix -- --test-threads=1`
 
 use rig::completion::CompletionRequest;
-use rig::providers::{llamacpp, openai};
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::cassette_support::*;
@@ -153,15 +151,9 @@ async fn raw_reads_back_as_the_provider_type() {
         }
     }
 
-    // And the document reads back through llama.cpp's own response type,
-    // which is the typed escape hatch `raw`'s documentation points at.
-    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into llamacpp::CompletionResponse");
-    assert_eq!(Some(typed.openai.model.as_str()), response.model());
+    assert_eq!(response.raw["model"].as_str(), response.model());
     assert_eq!(response.provider(), LLAMACPP_PROVIDER);
     assert!(!response.choice.is_empty());
-    llamacpp::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be a chat-completions response");
 }
 
 // ---------------------------------------------------------------------------
@@ -199,12 +191,13 @@ async fn raw_exposes_envelope_fields() {
     for field in ["created", "id"] {
         assert_wire_value_matches(&raw, &body, field);
     }
-    let typed = llamacpp::CompletionResponse::deserialize(&raw)
-        .expect("raw must deserialize into llamacpp::CompletionResponse");
-    assert_eq!(Some(typed.openai.object.as_str()), body["object"].as_str());
-    assert!(typed.openai.created > 0 || matches!(CassetteMode::current(), CassetteMode::Replay));
+    assert_eq!(raw["object"].as_str(), body["object"].as_str());
+    assert!(
+        raw["created"].as_u64().is_some_and(|created| created > 0)
+            || matches!(CassetteMode::current(), CassetteMode::Replay)
+    );
     assert_eq!(
-        typed.openai.system_fingerprint.as_deref(),
+        raw["system_fingerprint"].as_str(),
         body["system_fingerprint"].as_str()
     );
 }
@@ -232,16 +225,14 @@ async fn normalized_fields_match_the_typed_raw() {
     .expect("normalized_fields_equal_raw_renormalized should replay from its cassette");
     let response = sink.take();
 
-    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into llamacpp::CompletionResponse");
-    let native = &typed.openai;
+    let native = &response.raw;
 
     assert_eq!(response.provider(), LLAMACPP_PROVIDER);
     chat::assert_native_matches_normalized(&response, native, "the typed view of raw");
     // Both sides of this one come from the live document, so the id compares
     // exactly in either mode — the format contract's token-aware form is the
     // weaker claim, and there is nothing here for a scrubber to displace.
-    assert_eq!(response.response_id(), Some(native.id.as_str()));
+    assert_eq!(response.response_id(), native["id"].as_str());
     // llama.cpp reports no request-id response header, so the driver has
     // nothing to attach — a documented outcome rather than a gap.
     assert_no_request_id(response.provider_request_id.as_deref(), "llama.cpp");
@@ -296,25 +287,23 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
     .expect("raw_preserves_timings should replay from its cassette");
     let response = sink.take();
 
-    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into llamacpp::CompletionResponse");
-    let timings = typed
-        .timings
-        .clone()
-        .expect("llama.cpp reports timings on every chat completion");
+    let timings = &response.raw["timings"];
     assert!(
-        timings.predicted_n.is_some_and(|n| n > 0),
-        "the turn generated tokens, so predicted_n must be positive: {timings:?}"
+        timings["predicted_n"].as_u64().is_some_and(|n| n > 0),
+        "the turn generated tokens, so predicted_n must be positive: {timings}"
     );
     assert!(
-        timings.predicted_per_second.is_some_and(|rate| rate > 0.0),
-        "tokens-per-second is the accounting this field exists for: {timings:?}"
+        timings["predicted_per_second"]
+            .as_f64()
+            .is_some_and(|rate| rate > 0.0),
+        "tokens-per-second is the accounting this field exists for: {timings}"
     );
 
     // `cache_n` and the normalized cached-token count are populated
     // independently by the server; they must agree.
     assert_eq!(
-        timings.cache_n, response.usage.cached_input_tokens,
+        timings["cache_n"].as_u64(),
+        response.usage.cached_input_tokens,
         "timings.cache_n and usage.prompt_tokens_details.cached_tokens \
          describe the same thing"
     );
@@ -324,20 +313,5 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
         response.raw.get("timings"),
         body.get("timings"),
         "raw.timings must be the recorded wire value verbatim"
-    );
-
-    // The negative half: the shared OpenAI type reads these same bytes and
-    // silently drops the field.
-    let as_openai = openai::CompletionResponse::deserialize(&body)
-        .expect("the recorded body is still a valid chat-completions response");
-    let reserialized = serde_json::to_value(&as_openai).expect("the OpenAI type should serialize");
-    assert!(
-        body.get("timings").is_some(),
-        "the fixture must carry timings for this cell to mean anything"
-    );
-    assert!(
-        reserialized.get("timings").is_none(),
-        "openai::CompletionResponse has no home for `timings`; if it grew one, \
-         llamacpp::CompletionResponse may no longer be needed"
     );
 }

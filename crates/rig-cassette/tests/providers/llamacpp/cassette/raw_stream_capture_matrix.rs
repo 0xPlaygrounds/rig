@@ -56,7 +56,6 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::cassette_support::*;
@@ -159,15 +158,8 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    // [`ChatUsage`](rig::providers::openai::wire::ChatUsage) in the terminal
-    // record's `U` slot reads the OpenAI-compatible counters *and* the
-    // dialect's extras, which is how llama.cpp's accounting reaches the
-    // caller on this path without any provider-specific type.
-    let typed = chat::Terminal::deserialize(&raw)
-        .expect("raw must deserialize into the wire's terminal record");
-    let typed_params = typed
-        .additional_params
-        .expect("typed terminal must carry additional_params");
+    // The terminal record keeps the envelope fields the chunks carried.
+    let typed_params = &raw["additional_params"];
     assert_eq!(
         typed_params.get("system_fingerprint"),
         frames[0].get("system_fingerprint")
@@ -212,12 +204,10 @@ async fn stream_raw_preserves_llamacpp_timings() {
         carried, recorded_timings,
         "the terminal frame's timings must survive verbatim"
     );
-
-    // And it really is the same shape the blocking path's typed field reads.
-    let typed: rig::providers::llamacpp::Timings =
-        serde_json::from_value(carried.clone()).expect("timings must decode into the typed form");
     assert!(
-        typed.predicted_per_second.is_some_and(|rate| rate > 0.0),
-        "{typed:?}"
+        carried["predicted_per_second"]
+            .as_f64()
+            .is_some_and(|rate| rate > 0.0),
+        "{carried}"
     );
 }

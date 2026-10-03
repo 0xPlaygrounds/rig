@@ -328,11 +328,7 @@ async fn a_late_signature_is_reasoning_after_the_answer() {
         content: response.choice.clone(),
         ..response.head()
     };
-    let Some(crate::providers::openai::completion::Message::Native(sent)) =
-        crate::providers::openai::completion::assistant_message(turn)
-    else {
-        panic!("a rebuilt message");
-    };
+    let sent = super::tests::replayed(&wire(&OPENROUTER), turn);
     assert_eq!(sent["reasoning"], "thinking");
     assert_eq!(sent["reasoning_details"], signed);
 }

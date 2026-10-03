@@ -653,26 +653,6 @@ impl CompletionRequest {
                     if content.is_empty() {
                         return Err(empty_message("user", index));
                     }
-                    for (position, item) in content.iter().enumerate() {
-                        // Exhaustive, so a new variant with its own block
-                        // list decides here whether its emptiness is checked.
-                        match item {
-                            UserContent::ToolResult(result) if result.content.is_empty() => {
-                                let name = &result.name;
-                                return Err(ProviderError::request(format!(
-                                    "tool result for `{name}` at index {position} of the user \
-                                     message at index {index} has no content; providers \
-                                     reject empty content blocks"
-                                )));
-                            }
-                            UserContent::ToolResult(_)
-                            | UserContent::Text(_)
-                            | UserContent::Image(_)
-                            | UserContent::Audio(_)
-                            | UserContent::Video(_)
-                            | UserContent::Document(_) => {}
-                        }
-                    }
                 }
             }
         }

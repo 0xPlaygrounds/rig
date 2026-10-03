@@ -38,7 +38,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::providers::openai;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_terminal_metadata_cassette_result};
@@ -131,13 +130,8 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
 
     let raw = match cell.transport {
         Transport::Blocking => {
-            // The provider-native chat-completions reply rides serialized on
-            // `CompletionResponse::raw`; decode it to prove the shape, then
-            // read the serialized form the way the old raw surface did.
-            let response = model.call(request).await?;
-            let response =
-                serde_json::from_value::<openai::completion::CompletionResponse>(response.raw)?;
-            serde_json::to_value(response)?
+            // The provider's chat-completions reply is `CompletionResponse::raw`.
+            model.call(request).await?.raw
         }
         Transport::Streaming => {
             let mut stream = model.stream(request)?;
@@ -148,13 +142,8 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
                 .finish()
                 .await
                 .context("stream should carry a terminal record")?;
-            // The provider-native chat-completions terminal rides serialized
-            // on `CompletionResponse::raw`; decode it to prove the shape, then read
-            // the serialized form the way the old raw surface did.
-            let terminal = serde_json::from_value::<
-                openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
-            >(terminal.raw)?;
-            serde_json::to_value(terminal)?
+            // The chat-completions terminal record is `CompletionResponse::raw`.
+            terminal.raw
         }
     };
 

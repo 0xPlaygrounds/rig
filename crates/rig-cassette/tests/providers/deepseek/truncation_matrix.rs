@@ -40,9 +40,8 @@
 use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
-use rig::providers::{deepseek, openai};
+use rig::providers::deepseek;
 use rig_test_support::cassette_models::OpenAiModels;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::support::{
@@ -264,23 +263,9 @@ async fn assert_blocking_truncation_survives(client: &OpenAiModels, max_tokens: 
 
     // The premise, read off DeepSeek's own view of the very reply the
     // normalized response was decoded from: `raw` is that reply's document.
-    let wire = deepseek::CompletionResponse::deserialize(&response.raw)
-        .expect("raw reads back as DeepSeek's own CompletionResponse");
-    let choice = wire.choices.first().expect("a reply carries a choice");
     assert_eq!(
-        choice.finish_reason, "length",
+        response.raw["choices"][0]["finish_reason"], "length",
         "premise: the recorded turn must have been cut by the budget"
-    );
-    let openai::completion::Message::Assistant {
-        tool_calls: wire_calls,
-        ..
-    } = &choice.message
-    else {
-        panic!("a completion choice carries an assistant message");
-    };
-    assert!(
-        wire_calls.is_empty(),
-        "the unusable call is dropped at decode rather than surfaced: {wire_calls:?}"
     );
 
     assert_eq!(
@@ -1214,59 +1199,3 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
 // ================================================================
 // G. Provider-type decode, no recording needed
 // ================================================================
-
-/// The typed escape hatch's own decode, exercised against the exact bytes
-/// DeepSeek returned at the 24-token budget. A live recording cannot force a
-/// *shape* the model does not happen to produce, and this cell is about the
-/// type a caller reaches `response.raw` through rather than about a turn, so
-/// it is a unit cell in the matrix.
-#[test]
-fn a_truncated_call_is_dropped_at_decode_and_the_turn_survives() {
-    let body = r#"{
-        "id": "chatcmpl-truncated",
-        "object": "chat.completion",
-        "model": "deepseek-v4-flash",
-        "choices": [{
-            "index": 0,
-            "logprobs": null,
-            "finish_reason": "length",
-            "message": {
-                "role": "assistant",
-                "content": "Acknowledged.",
-                "tool_calls": [
-                    {"index": 0, "id": "call_0", "type": "function", "function": {"name": "page_oncall", "arguments": "{\"team\": \"platform\"}"}},
-                    {"index": 1, "id": "call_1", "type": "function", "function": {"name": "file_report", "arguments": "{\"summary\": "}}
-                ]
-            }
-        }],
-        "usage": {"prompt_tokens": 372, "completion_tokens": 24, "total_tokens": 396, "prompt_cache_hit_tokens": 256, "prompt_cache_miss_tokens": 116}
-    }"#;
-
-    let response: deepseek::CompletionResponse =
-        serde_json::from_str(body).expect("a truncated turn must still decode");
-    let openai::completion::Message::Assistant {
-        tool_calls: wire_calls,
-        ..
-    } = &response.choices[0].message
-    else {
-        panic!("a completion choice carries an assistant message");
-    };
-    assert_eq!(
-        wire_calls.len(),
-        1,
-        "only the truncated call is dropped: {wire_calls:?}"
-    );
-    assert_eq!(wire_calls[0].function.name, "page_oncall");
-    assert_eq!(
-        wire_calls[0].function.arguments,
-        json!({"team": "platform"})
-    );
-
-    // The counters survive the cut: the truncated call still cost its
-    // tokens, and DeepSeek's cache split is on the type in full.
-    let usage = response.usage.expect("the reply reports usage");
-    assert_eq!(usage.openai.total_tokens, 396);
-    assert_eq!(usage.prompt_cache_hit_tokens, 256);
-    assert_eq!(usage.prompt_cache_miss_tokens, 116);
-    assert_eq!(response.choices[0].finish_reason, "length");
-}

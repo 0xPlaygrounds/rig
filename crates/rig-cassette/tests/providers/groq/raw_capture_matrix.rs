@@ -37,8 +37,6 @@
 //! nothing.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
@@ -99,24 +97,15 @@ async fn raw_is_the_verbatim_response_body() {
 
     // And it is still the shared chat-completions shape: the typed escape
     // hatch reads it back, and agrees with the normalized identity.
-    let typed = openai::CompletionResponse::deserialize(raw)
-        .expect("raw is the shared OpenAI chat-completions reply Groq sends");
+    let typed = raw.clone();
     assert_matches_recorded_token(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         response.response_id(),
         "typed response id",
     );
-    assert_eq!(Some(typed.model.as_str()), response.model());
-    // `x_groq` is Groq's own envelope and no shared type models it — which is
-    // exactly why `raw` being the document rather than the parse is the
-    // difference between a caller reaching it and losing it.
-    assert!(
-        serde_json::to_value(&typed)
-            .expect("typed serializes")
-            .get("x_groq")
-            .is_none(),
-        "no shared chat-completions type models Groq's envelope"
-    );
+    assert_eq!(typed["model"].as_str(), response.model());
+    // `x_groq` is Groq's own envelope: `raw` being the document rather than
+    // a parse is what lets a caller reach it.
     assert_eq!(
         raw.get("x_groq"),
         body.get("x_groq"),
@@ -162,12 +151,10 @@ async fn raw_exposes_queue_time() {
         Some(recorded_fingerprint),
         "system fingerprint",
     );
-    // The typed view models Groq's timings, so the escape hatch is typed
-    // rather than a hand-indexed JSON walk.
-    let typed = openai::CompletionResponse::deserialize(raw).expect("raw reads back typed");
-    let usage = typed.usage.expect("the recorded turn reports usage");
-    assert_eq!(usage.queue_time, Some(recorded_queue_time));
-    assert_eq!(usage.prompt_time, Some(recorded_prompt_time));
+    // The reply document carries Groq's timings.
+    let usage = &raw["usage"];
+    assert_eq!(usage["queue_time"].as_f64(), Some(recorded_queue_time));
+    assert_eq!(usage["prompt_time"].as_f64(), Some(recorded_prompt_time));
 
     // And the normalized view has no slot for any of them.
     let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
@@ -219,15 +206,11 @@ async fn normalized_fields_match_raw_renormalized() {
 
     // The provider-native view of the same reply, through the typed escape
     // hatch: its own fields are what the decoder mapped from.
-    let typed = openai::CompletionResponse::deserialize(&raw).expect("raw reads back typed");
-    chat::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
+    chat::assert_native_matches_normalized(&response, &raw, "the reply document");
     assert_eq!(
-        typed
-            .choices
-            .first()
-            .expect("the reply carries a choice")
-            .finish_reason
-            .as_str(),
+        raw["choices"][0]["finish_reason"]
+            .as_str()
+            .expect("the reply carries a finish reason"),
         body["choices"][0]["finish_reason"]
             .as_str()
             .expect("recorded finish reason"),

@@ -41,9 +41,7 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
-use rig::providers::openrouter;
 use rig::streaming::StreamEvent;
-use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_history_roundtrip_cassette_result;
@@ -207,15 +205,18 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             // is "provider document vs decoder's choice" rather than two
             // normalizers that could drift.
             let response = model.call(request(cell)).await?;
-            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
-                .expect("raw is OpenRouter's own completion response");
+            let wire = response.raw.clone();
             Observation {
                 text: content_text(&response.raw["choices"][0]["message"]["content"]),
-                saw_terminal: wire
-                    .openai
-                    .choices
-                    .iter()
-                    .all(|choice| !choice.openai.finish_reason.is_empty()),
+                saw_terminal: wire["choices"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .all(|choice| {
+                        choice["finish_reason"]
+                            .as_str()
+                            .is_some_and(|reason| !reason.is_empty())
+                    }),
             }
         }
         (Transport::Blocking, Surface::Normalized) => {

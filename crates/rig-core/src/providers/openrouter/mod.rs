@@ -1,8 +1,7 @@
-//! OpenRouter model identifiers, routing preferences, and typed chat responses.
+//! OpenRouter model identifiers and routing preferences.
 //!
 //! [`from_env`] and [`new`] build a client on the [`OPENROUTER`](crate::providers::openai::wire::OPENROUTER) dialect.
-//! [`ProviderPreferences`] supplies the request's `provider` extension;
-//! [`CompletionResponse`] reads provider-specific fields from `raw`.
+//! [`ProviderPreferences`] supplies the request's `provider` extension.
 //!
 //! ```no_run
 //! use rig_core::completion::CompletionRequest;

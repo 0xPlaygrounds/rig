@@ -22,14 +22,13 @@ use super::responses_api::wire::Responses;
 
 mod chat;
 mod dialects;
-/// Shared Chat Completions response shapes.
+/// The merge that assembles a streamed provider object from its fragments.
 pub(crate) mod dto;
 mod modality;
 mod route;
 
 pub use chat::Chat;
 pub use dialects::*;
-pub use dto::{ChatUsage, FinishReason, StreamingCompletionResponse};
 pub use modality::{
     Embeddings, EmbeddingsDecoder, ModelEntry, Models, ModelsDecoder, ModelsReply, Rerank,
     RerankDecoder, RerankReply, RerankResultEntry, RerankUsage, Transcriptions,
@@ -546,12 +545,23 @@ pub struct Quirks {
     /// Whether a streaming request asks for the usage chunk through
     /// `stream_options`.
     pub stream_include_usage: bool,
-    /// Whether the backend can emit a whole tool call in one chunk.
-    pub emits_complete_single_chunk_tool_calls: bool,
     /// How the dialect spells the output-token cap.
     pub output_cap: OutputCap,
     /// Whether to consult upstream-native finish reasons when normalized ones are absent.
     pub native_finish_reason: bool,
+    /// The finish reasons the dialect documents beyond the ones every Chat
+    /// dialect shares (`stop`, `length`, `tool_calls`, `content_filter` and
+    /// their compatible spellings). Any other reason fails the turn.
+    pub finishes: &'static [(&'static str, crate::completion::FinishReason)],
+    /// Whether every reply states why it stopped (pi's
+    /// `supportsFinishReason`). A dialect whose server never sends a reason
+    /// says `false`, and its replies then end as a stop.
+    pub states_finish_reason: bool,
+    /// The field rebuilt reasoning goes under, which every assistant message
+    /// then carries, empty when the turn has none (pi's
+    /// `requiresReasoningContentOnAssistantMessages`). `None` sends
+    /// reasoning only under the field it arrived in.
+    pub reasoning_field: Option<&'static str>,
     /// Whether `completion_tokens_details.reasoning_tokens` can be trusted as
     /// a part of `completion_tokens`, as OpenAI documents it. A dialect whose
     /// replies report more reasoning than completion leaves the count
@@ -618,9 +628,11 @@ impl Quirks {
             response_format_with_tools: false,
             supports_image_tool_results: false,
             stream_include_usage: true,
-            emits_complete_single_chunk_tool_calls: false,
             output_cap: OutputCap::Legacy,
             native_finish_reason: false,
+            finishes: &[],
+            states_finish_reason: true,
+            reasoning_field: None,
             reliable_reasoning_count: true,
             accepts_bare_string_reply: false,
             accepts_file_ids: true,

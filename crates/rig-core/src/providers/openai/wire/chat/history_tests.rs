@@ -45,14 +45,56 @@ fn turn_of(response: &crate::completion::CompletionResponse) -> AssistantMessage
     }
 }
 
-/// The body `history` sends on `wire`, prepared as the driver prepares it.
+/// The body `history` sends on `wire`, prepared as the driver prepares it,
+/// declaring every tool the history calls as a tool loop does.
 fn sent(wire: &Chat, history: Vec<Message>) -> Value {
-    let mut request = CompletionRequest::new("next");
+    sent_with(wire, CompletionRequest::new("next"), history)
+}
+
+/// [`sent`] for `request`, whose other fields stand.
+fn sent_with(wire: &Chat, mut request: CompletionRequest, history: Vec<Message>) -> Value {
+    request.tools.extend(tools_of(&history));
     request.chat_history = history;
     request.chat_history.push(Message::user("next"));
     let request = crate::operation::Completion::prepare(request, &wire.describe())
         .expect("the request prepares");
     json_body(&wire.encode(request, Mode::Unary).expect("encodes").request)
+}
+
+/// A definition for every tool `history` calls or answers.
+fn tools_of(history: &[Message]) -> Vec<crate::completion::ToolDefinition> {
+    let mut names: Vec<ToolName> = Vec::new();
+    for message in history {
+        let found: Vec<ToolName> = match message {
+            Message::Assistant(turn) => turn
+                .tool_calls()
+                .map(|call| call.function.name.clone())
+                .collect(),
+            Message::User { content } => content
+                .iter()
+                .filter_map(|part| match part {
+                    UserContent::ToolResult(result) => Some(result.name.clone()),
+                    _ => None,
+                })
+                .collect(),
+            Message::System { .. } => Vec::new(),
+        };
+        for name in found {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    names
+        .into_iter()
+        .map(|name| {
+            crate::completion::ToolDefinition::new(
+                name,
+                "a tool the history calls",
+                json!({"type": "object", "properties": {}}),
+            )
+        })
+        .collect()
 }
 
 fn name(name: &str) -> ToolName {
@@ -710,4 +752,349 @@ fn an_answers_audio_transcript_is_text() {
             "{mode:?}"
         );
     }
+}
+
+/// A Mistral id: nine alphanumerics.
+fn is_mistral_id(id: &str) -> bool {
+    id.len() == 9 && id.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// chat NEW-3, chat_new NEW-4: a call rig issued an id for (the second of
+/// two calls a reply named alike, or one an agent built) reaches Mistral as
+/// nine alphanumerics on the call and its result, same model or not. One
+/// `WireIds` spells every id through the target's normalizer.
+#[test]
+fn a_rig_issued_id_reaches_mistral_as_nine_alphanumerics() {
+    let mistral = wire(&MISTRAL, "mistral-large-latest");
+    let frames = vec![whole(
+        json!({"role": "assistant", "content": "", "tool_calls": [
+            {"id": "abcDEF123", "type": "function", "function": {"name": "f", "arguments": "{}"}},
+            {"id": "abcDEF123", "type": "function", "function": {"name": "g", "arguments": "{}"}}]}),
+        "tool_calls",
+    )];
+    let reply = decode(&mistral, Mode::Unary, frames).expect("the reply decodes");
+    let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
+    let results = |calls: &[ToolCall]| Message::User {
+        content: calls
+            .iter()
+            .map(|call| UserContent::ToolResult(call.result(vec![ToolResultContent::text("r")])))
+            .collect(),
+    };
+    let hand_built = ToolCall::new(
+        CallId::Local(crate::message::LocalCallId::new()),
+        ToolFunction::new(name("h"), json!({})),
+    );
+    let hand_turn = AssistantMessage {
+        content: vec![AssistantContent::ToolCall(hand_built.clone())],
+        origin: Some(Origin::new(
+            "openai.chat",
+            "mistral",
+            "mistral-large-latest",
+        )),
+        stop: Some(StopReason::ToolUse),
+    };
+    let body = sent(
+        &mistral,
+        vec![
+            Message::user("q"),
+            Message::Assistant(turn_of(&reply)),
+            results(&calls),
+            Message::Assistant(hand_turn),
+            results(std::slice::from_ref(&hand_built)),
+        ],
+    );
+    let messages = body["messages"].as_array().expect("messages");
+    let ids: Vec<&str> = messages
+        .iter()
+        .flat_map(|message| message["tool_calls"].as_array().into_iter().flatten())
+        .filter_map(|call| call["id"].as_str())
+        .collect();
+    let answers: Vec<&str> = messages
+        .iter()
+        .filter_map(|message| message["tool_call_id"].as_str())
+        .collect();
+    assert_eq!(ids.len(), 3, "{body}");
+    assert!(ids.iter().all(|id| is_mistral_id(id)), "{body}");
+    assert_eq!(ids, answers, "each result names its own call: {body}");
+}
+
+/// chat NEW-4: Together ends a successful turn with `eos`, which its API
+/// reference lists; the turn is a stop and stays in history.
+#[test]
+fn together_eos_is_a_stop() {
+    use crate::providers::openai::wire::TOGETHER;
+    let together = wire(&TOGETHER, "meta-llama/Llama-3.3-70B-Instruct-Turbo");
+    let frames = vec![whole(
+        json!({"role": "assistant", "content": "Paris is the capital."}),
+        "eos",
+    )];
+    let reply = decode(&together, Mode::Unary, frames).expect("the reply decodes");
+    assert_eq!(reply.stop(), StopReason::Stop);
+    let body = sent(
+        &together,
+        vec![
+            Message::user("capital?"),
+            Message::Assistant(turn_of(&reply)),
+        ],
+    );
+    assert_eq!(
+        body["messages"][1]["content"], "Paris is the capital.",
+        "{body}"
+    );
+}
+
+/// chat NEW-5, chat_new NEW-7, #1266, #1333: an edited same-model reasoning
+/// block goes back under the field it arrived in, as pi keeps
+/// `thinkingSignature`: DeepSeek and Kimi read their reasoning back on a
+/// tool-call turn.
+#[test]
+fn an_edited_reasoning_block_keeps_its_field() {
+    use crate::providers::openai::wire::MOONSHOT;
+    for (dialect, model, id) in [
+        (&DEEPSEEK, "deepseek-reasoner", "call_0"),
+        (&MOONSHOT, "kimi-k2-thinking", "functions.f:0"),
+    ] {
+        let chat = wire(dialect, model);
+        let frames = vec![whole(
+            json!({"role": "assistant", "content": "", "reasoning_content": "plan",
+                "tool_calls": [{"id": id, "type": "function",
+                    "function": {"name": "f", "arguments": "{}"}}]}),
+            "tool_calls",
+        )];
+        let reply = decode(&chat, Mode::Unary, frames).expect("the reply decodes");
+        let mut turn = turn_of(&reply);
+        for block in &mut turn.content {
+            if let AssistantContent::Reasoning(reasoning) = block {
+                reasoning.text = "plan (edited)".to_owned();
+            }
+        }
+        let body = sent(
+            &chat,
+            vec![
+                Message::user("q"),
+                Message::Assistant(turn),
+                Message::tool_result(CallId::from_wire(id), name("f"), "ok"),
+            ],
+        );
+        assert_eq!(
+            body["messages"][1]["reasoning_content"], "plan (edited)",
+            "{}: {body}",
+            dialect.name
+        );
+    }
+}
+
+/// #1317: a dialect that reads reasoning back on every assistant message
+/// (DeepSeek) states its field, so a same-model reasoning block with no
+/// item goes under it and a turn with none sends it empty.
+#[test]
+fn deepseek_states_its_reasoning_field() {
+    let deepseek = wire(&DEEPSEEK, "deepseek-reasoner");
+    let origin = Origin::new("openai.chat", "deepseek", "deepseek-reasoner");
+    let turn = |content| {
+        Message::Assistant(AssistantMessage {
+            content,
+            origin: Some(origin.clone()),
+            stop: Some(StopReason::Stop),
+        })
+    };
+    let body = sent(
+        &deepseek,
+        vec![
+            Message::user("q"),
+            turn(vec![
+                AssistantContent::reasoning("weighed it"),
+                AssistantContent::text("a"),
+            ]),
+            Message::user("again"),
+            turn(vec![AssistantContent::text("b")]),
+        ],
+    );
+    assert_eq!(
+        body["messages"][1]["reasoning_content"], "weighed it",
+        "{body}"
+    );
+    assert_eq!(body["messages"][3]["reasoning_content"], "", "{body}");
+}
+
+/// chat NEW-7: late `reasoning_details` (Gemini through OpenRouter) fold to
+/// the same blocks from a whole message as from its stream: a detail that
+/// signs one of the message's calls follows the answer, as a stream sends
+/// it with the call.
+#[test]
+fn late_reasoning_details_fold_alike_whole_and_streamed() {
+    let openrouter = wire(&OPENROUTER, "google/gemini-3-pro-preview");
+    let detail = json!({"type": "reasoning.encrypted", "data": "ENC", "id": "tool_1",
+        "format": "google-gemini-v1", "index": 0});
+    let call = json!({"index": 0, "id": "tool_1", "type": "function",
+        "function": {"name": "f", "arguments": "{}"}});
+    let unary = decode(
+        &openrouter,
+        Mode::Unary,
+        vec![whole(
+            json!({"role": "assistant", "content": "Let me check.",
+                "reasoning_details": [detail], "tool_calls": [call]}),
+            "tool_calls",
+        )],
+    )
+    .expect("the whole reply decodes");
+    let streamed = decode(
+        &openrouter,
+        Mode::Streaming,
+        vec![
+            chunk(
+                json!({"role": "assistant", "content": "Let me check."}),
+                None,
+            ),
+            chunk(
+                json!({"reasoning_details": [detail], "tool_calls": [call]}),
+                Some("tool_calls"),
+            ),
+            WireFrame::Text("[DONE]".to_owned()),
+        ],
+    )
+    .expect("the stream decodes");
+    let canonical = |response: &crate::completion::CompletionResponse| {
+        response
+            .choice
+            .iter()
+            .map(AssistantContent::canonical)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(canonical(&unary), canonical(&streamed));
+    assert!(matches!(
+        unary.choice.as_slice(),
+        [
+            AssistantContent::Text(_),
+            AssistantContent::Reasoning(_),
+            AssistantContent::ToolCall(_)
+        ]
+    ));
+}
+
+/// chat NEW-8, chat_new NEW-8: a custom call stays custom when its input is
+/// edited (its kind survives as identity) and when another model replays it
+/// to a request that declares the custom tool (pi decides by the declared
+/// tools).
+#[test]
+fn a_custom_call_stays_custom_after_an_edit_and_across_models() {
+    let frames = vec![whole(
+        json!({"role": "assistant", "tool_calls": [{"id": "call_c",
+            "type": "custom", "custom": {"name": "grep", "input": "rig"}}]}),
+        "tool_calls",
+    )];
+    let reply = decode(&wire(&OPENAI, "gpt-5.2"), Mode::Unary, frames).expect("decodes");
+    let mut edited = turn_of(&reply);
+    for block in &mut edited.content {
+        if let AssistantContent::ToolCall(call) = block {
+            call.function
+                .arguments
+                .insert("input".into(), json!("rig2"));
+        }
+    }
+    let result = Message::tool_result(CallId::from_wire("call_c"), name("grep"), "found");
+    let same = sent(
+        &wire(&OPENAI, "gpt-5.2"),
+        vec![
+            Message::user("q"),
+            Message::Assistant(edited),
+            result.clone(),
+        ],
+    );
+    assert_eq!(
+        same["messages"][1]["tool_calls"][0],
+        json!({"type": "custom", "id": "call_c", "custom": {"name": "grep", "input": "rig2"}}),
+        "{same}"
+    );
+    let declared = CompletionRequest::new("next").additional_params(json!({"tools": [
+        {"type": "custom", "custom": {"name": "grep", "description": "search"}}]}));
+    let other = sent_with(
+        &wire(&OPENAI, "gpt-5.4"),
+        declared,
+        vec![
+            Message::user("q"),
+            Message::Assistant(turn_of(&reply)),
+            result,
+        ],
+    );
+    assert_eq!(
+        other["messages"][1]["tool_calls"][0],
+        json!({"type": "custom", "id": "call_c", "custom": {"name": "grep", "input": "rig"}}),
+        "{other}"
+    );
+}
+
+/// chat NEW-9: a result with no content, or only blank text, says so as pi
+/// does, rather than failing the request or sending an empty string.
+#[test]
+fn an_empty_tool_result_says_it_has_no_output() {
+    let openai = wire(&OPENAI, "gpt-4o");
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name("f"), json!({})));
+    for content in [vec![], vec![ToolResultContent::text(" ")]] {
+        let body = sent(
+            &openai,
+            vec![
+                Message::user("q"),
+                Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+                    call.clone(),
+                )])),
+                Message::User {
+                    content: vec![UserContent::ToolResult(call.result(content))],
+                },
+            ],
+        );
+        assert_eq!(
+            body["messages"][2],
+            json!({"role": "tool", "tool_call_id": "c1",
+                "content": crate::completion::history::NO_TOOL_OUTPUT}),
+            "{body}"
+        );
+    }
+}
+
+/// chat_new NEW-2: Moonshot reports usage on the choice rather than the
+/// chunk; pi reads it there.
+#[test]
+fn usage_on_the_choice_is_read() {
+    use crate::providers::openai::wire::MOONSHOT;
+    let frames = vec![
+        chunk(json!({"role": "assistant", "content": "hi"}), None),
+        WireFrame::Text(
+            json!({"id": "c", "object": "chat.completion.chunk", "model": "m",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop",
+                    "usage": {"prompt_tokens": 7, "completion_tokens": 2, "total_tokens": 9}}]})
+            .to_string(),
+        ),
+        WireFrame::Text("[DONE]".to_owned()),
+    ];
+    let reply = decode(
+        &wire(&MOONSHOT, "kimi-k2-0905-preview"),
+        Mode::Streaming,
+        frames,
+    )
+    .expect("the stream decodes");
+    assert_eq!(reply.usage.input_tokens, Some(7));
+    assert_eq!(reply.usage.total_tokens, Some(9));
+}
+
+/// chat NEW-2, chat_new NEW-6: a whole reply's calls are delimited by the
+/// list, so calls that state one index, even without ids, stay apart.
+#[test]
+fn whole_reply_calls_are_delimited_by_the_list() {
+    let frames = vec![whole(
+        json!({"role": "assistant", "tool_calls": [
+            {"index": 0, "type": "function",
+                "function": {"name": "weather", "arguments": "{\"city\":\"Paris\"}"}},
+            {"index": 0, "type": "function",
+                "function": {"name": "weather", "arguments": "{\"city\":\"Rome\"}"}}]}),
+        "tool_calls",
+    )];
+    let reply = decode(&wire(&OPENROUTER, "x/y"), Mode::Unary, frames).expect("decodes");
+    let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
+    let [paris, rome] = calls.as_slice() else {
+        panic!("two calls: {:?}", reply.choice);
+    };
+    assert_eq!(paris.function.arguments_value(), json!({"city": "Paris"}));
+    assert_eq!(rome.function.arguments_value(), json!({"city": "Rome"}));
+    assert_ne!(paris.id, rome.id);
 }

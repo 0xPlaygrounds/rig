@@ -50,8 +50,6 @@
 
 use rig::providers::copilot;
 use rig::providers::openai::wire::OpenAiWire;
-use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::CassetteMode;
@@ -222,11 +220,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(raw)
-        .expect("chat-route raw must read back as the chat terminal record");
-    let typed_params = typed
-        .additional_params
-        .expect("typed terminal must carry additional_params");
+    let typed_params = &raw["additional_params"];
     assert_eq!(
         typed_params
             .get("copilot_usage")

@@ -45,9 +45,7 @@
 
 use rig::completion::FinishReason;
 use rig::providers::copilot;
-use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_interaction_bodies, recorded_response_header};
@@ -113,8 +111,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     // mapping now, so the typed parse is compared field by field against the
     // folded response rather than re-derived through a second implementation
     // of it.
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the chat route's own reply body");
+    let typed = response.raw.clone();
     chat::assert_native_matches_normalized(&response, &typed, "the chat route's own body");
     assert_eq!(response.provider(), COPILOT_PROVIDER);
     // The native comparison pins the reason to the body's word; this cell
@@ -123,7 +120,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     // Both ids come from the same live reply, so this compares exactly in
     // either cassette mode.
     assert_eq!(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         response.identity().response_id.as_deref()
     );
 

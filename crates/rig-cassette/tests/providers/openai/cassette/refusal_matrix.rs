@@ -72,7 +72,6 @@
 
 use rig::message::Message;
 use rig::providers::openai;
-use rig::providers::openai::completion::CompletionResponse as ChatReply;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -203,16 +202,10 @@ async fn chat_blocking_raw_and_normalized_agree() {
                 CompletionRequest::new(REFUSED_PROMPT).additional_params(chat_response_format());
 
             let response = model.call(request).await.expect("refusal turn");
-            let reply = ChatReply::deserialize(&response.raw)
-                .expect("`raw` is the serialized openai::completion::CompletionResponse");
-            let raw_refusal = reply
-                .choices
-                .first()
-                .and_then(|choice| match &choice.message {
-                    openai::Message::Assistant { refusal, .. } => refusal.clone(),
-                    _ => None,
-                })
-                .expect("the recorded turn must carry a top-level refusal");
+            let raw_refusal = response.raw["choices"][0]["message"]["refusal"]
+                .as_str()
+                .expect("the recorded turn must carry a top-level refusal")
+                .to_owned();
 
             let normalized_text =
                 assistant_text_response(&response.choice).expect("normalized text");

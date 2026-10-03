@@ -438,8 +438,6 @@ fn openrouter_gets_a_placeholder_for_a_file_id_document() {
 /// the escape hatch for every provider field this wire does not normalize.
 #[tokio::test]
 async fn the_streamed_terminal_reads_back_as_the_provider_record() {
-    use crate::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-
     let mut response = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
@@ -457,28 +455,17 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
         .await
         .expect("the stream produced a terminal record");
 
-    // `serde_json::from_value`, not `Type::deserialize` — the latter needs
-    // `serde::Deserialize` in scope at the call site, which is the trait-bound
-    // error this spelling avoids.
-    let record: StreamingCompletionResponse<ChatUsage> =
-        serde_json::from_value(folded.raw.clone()).expect("the terminal record reads back");
-
-    let usage = record.usage.expect("the stream carried usage");
-    assert_eq!(usage.openai.prompt_tokens, 15);
-    assert_eq!(usage.openai.completion_tokens, Some(1));
-    assert_eq!(usage.openai.total_tokens, 16);
-    assert_eq!(record.model.as_deref(), Some("gpt-4.1-nano-2025-04-14"));
-    assert_eq!(
-        record.response_id.as_deref(),
-        Some(recorded_chunk_field("id").as_str())
-    );
+    let record = &folded.raw;
+    let usage = &record["usage"];
+    assert_eq!(usage["prompt_tokens"], 15);
+    assert_eq!(usage["completion_tokens"], 1);
+    assert_eq!(usage["total_tokens"], 16);
+    assert_eq!(record["model"], "gpt-4.1-nano-2025-04-14");
+    assert_eq!(record["response_id"], recorded_chunk_field("id"));
 
     // The provider-native fields the wire does not normalize reach the caller
     // here, which is why `raw` is the record and not the parse.
-    let additional = record
-        .additional_params
-        .expect("the chunks carried provider metadata");
-    let additional = serde_json::Value::Object(additional);
+    let additional = record["additional_params"].clone();
     assert_eq!(additional["service_tier"], "default");
     assert_eq!(
         additional["system_fingerprint"],
@@ -566,8 +553,6 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
 /// its neighbours survived.
 #[tokio::test]
 async fn the_streamed_terminal_keeps_every_envelope_field() {
-    use crate::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-
     let mut response = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
@@ -585,13 +570,7 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
         .await
         .expect("the stream produced a terminal record");
 
-    let record: StreamingCompletionResponse<ChatUsage> =
-        serde_json::from_value(folded.raw.clone()).expect("the terminal record reads back");
-    let additional = serde_json::Value::Object(
-        record
-            .additional_params
-            .expect("the chunks carried provider metadata"),
-    );
+    let additional = folded.raw["additional_params"].clone();
     assert_eq!(
         additional["object"], "chat.completion.chunk",
         "`object` is on every chunk of the fixture and must survive: {additional}"
@@ -614,7 +593,7 @@ async fn the_streamed_terminal_keeps_every_envelope_field() {
 /// accumulated envelope was frame one's.
 #[tokio::test]
 async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
-    use crate::providers::openai::wire::{ChatUsage, PERPLEXITY, StreamingCompletionResponse};
+    use crate::providers::openai::wire::PERPLEXITY;
 
     const BODY: &str = concat!(
         "data: {\"object\":\"chat.completion.chunk\",\"id\":\"78385058-uuid\",\"model\":\"sonar\",",
@@ -659,18 +638,12 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
 
     // The terminator's envelope is the one the record carries: last frame
     // wins, which is what `AdditionalParams::merge` does for a scalar.
-    let record: StreamingCompletionResponse<ChatUsage> =
-        serde_json::from_value(folded.raw.clone()).expect("the terminal record reads back");
-    let additional = serde_json::Value::Object(
-        record
-            .additional_params
-            .expect("the chunks carried provider metadata"),
-    );
+    let additional = folded.raw["additional_params"].clone();
     assert_eq!(
         additional["object"], "chat.completion.done",
         "the terminator's value, not the first chunk's: {additional}"
     );
-    assert_eq!(record.response_id.as_deref(), Some("78385058-uuid"));
+    assert_eq!(folded.raw["response_id"], "78385058-uuid");
 }
 
 /// A tool call the output-token budget cut mid-arguments must not take the
@@ -829,8 +802,9 @@ async fn a_gateway_may_answer_with_a_bare_string() {
         response.choice.first().map(AssistantContent::canonical),
         Some(AssistantContent::text("the whole answer"))
     );
-    // No metadata and no terminal reason: that is what the gateway sent.
-    assert_eq!(response.finish_reason(), None);
+    // No metadata and no terminal reason: the whole answer is a stop, as
+    // pi ends a reply on a wire that states none.
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
     assert_eq!(response.usage, crate::completion::Usage::default());
     assert_eq!(response.response_id(), None);
 
@@ -907,32 +881,29 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
     }
 }
 
-/// An empty turn that RAN TO COMPLETION is a provider defect, and so is one
-/// that named no terminal at all.
-///
-/// The rejecting half of the same predicate. `stop` is the case worth
-/// naming twice: a provider that says the model finished and hands back
-/// nothing has misbehaved, so `stop` must stay out of the legal set even
-/// though a stop sequence can consume a whole answer — which is exactly
-/// what `crates/rig-cassette/tests/providers/llamacpp/cassette/content_matrix.rs`'s
-/// stop-sequence cell records.
+/// An empty turn that ran to completion is an empty turn, in both modes,
+/// as pi keeps it: emptiness is the core's to judge, not the decoder's. A
+/// reason outside the vocabulary, or none at all, fails it.
 #[tokio::test]
-async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
-    for reason in [
-        Some("stop"),
-        Some("tool_calls"),
-        Some("bespoke_reason"),
-        None,
+async fn an_empty_turn_that_ran_to_completion_is_an_empty_turn() {
+    for (reason, failed) in [
+        (Some("stop"), false),
+        (Some("tool_calls"), false),
+        (Some("bespoke_reason"), true),
+        (None, true),
     ] {
         let folded =
             crate::driver::Model::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
                 .call(prompt("ask"))
-                .await;
-
-        let Err(ProviderError::Response(message)) = &folded else {
-            panic!("`{reason:?}` does not license an empty turn: {folded:?}");
-        };
-        assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR, "{reason:?}");
+                .await
+                .unwrap_or_else(|error| panic!("{reason:?}: {error}"));
+        assert!(folded.choice.is_empty(), "{reason:?}: {:?}", folded.choice);
+        assert_eq!(
+            folded.stop().is_failure(),
+            failed,
+            "{reason:?}: {:?}",
+            folded.stop()
+        );
     }
 }
 
@@ -1356,10 +1327,7 @@ fn streamed_annotations_and_audio_survive() {
         content: response.choice.clone(),
         ..response.head()
     };
-    let replayed = crate::providers::openai::completion::assistant_message(turn);
-    let Some(crate::providers::openai::completion::Message::Native(replayed)) = replayed else {
-        panic!("a rebuilt message");
-    };
+    let replayed = replayed(&wire(), turn);
     assert_eq!(
         replayed,
         serde_json::json!({"role": "assistant", "content": "See rig.rs", "audio": {"id": "audio_1"}})
@@ -1570,4 +1538,20 @@ fn an_audio_only_reply_keeps_its_audio() {
             response.choice
         );
     }
+}
+
+/// The assistant message `wire` sends back for `turn`: the second message
+/// of a request that continues it, prepared as the driver prepares it.
+pub(super) fn replayed(wire: &Chat, turn: crate::message::AssistantMessage) -> serde_json::Value {
+    use crate::message::Message;
+    use crate::wire::Operation;
+    let request = CompletionRequest::from(vec![
+        Message::user("q"),
+        Message::Assistant(turn),
+        Message::user("next"),
+    ]);
+    let request = crate::operation::Completion::prepare(request, &wire.describe())
+        .expect("the request prepares");
+    let body = json_body(&wire.encode(request, Mode::Unary).expect("encodes").request);
+    body["messages"][1].clone()
 }

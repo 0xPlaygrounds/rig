@@ -53,7 +53,6 @@ use rig::completion::{
 };
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::support::{recorded_request_id_headers, with_openai_cassette_result};
@@ -247,28 +246,21 @@ fn assert_parity(
 /// mapping now (the decoder's), so re-running it would compare it to a copy
 /// of itself. The transport id is deliberately absent here — it is an
 /// `x-request-id` header, not a body field, which is cell 3's whole subject.
-fn assert_chat_views_agree(
-    scenario: &str,
-    reply: &openai::CompletionResponse,
-    response: &CompletionResponse,
-) {
+fn assert_chat_views_agree(scenario: &str, reply: &Value, response: &CompletionResponse) {
     assert_eq!(
         response.response_id(),
-        Some(reply.id.as_str()),
+        reply["id"].as_str(),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
         response.model(),
-        Some(reply.model.as_str()),
+        reply["model"].as_str(),
         "{scenario}: model"
     );
-    let usage = reply
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{scenario}: the recorded chat body reports usage"));
+    let usage = &reply["usage"];
     assert_eq!(
         response.usage.input_tokens,
-        Some(usage.prompt_tokens as u64),
+        usage["prompt_tokens"].as_u64(),
         "{scenario}: input tokens are the provider's `prompt_tokens`"
     );
     assert!(
@@ -308,8 +300,7 @@ fn assert_chat_parity(
     }
     // The first reply, read both ways: the provider's own type out of `raw`,
     // then rig's normalized view of the same reply.
-    let reply = openai::CompletionResponse::deserialize(&typed.raw)
-        .unwrap_or_else(|err| panic!("{scenario}: raw must be the chat wire type: {err}"));
+    let reply = typed.raw.clone();
     assert_chat_views_agree(scenario, &reply, &typed);
     assert_side_matches_fixture(
         scenario,
@@ -411,8 +402,7 @@ async fn chat_plain_raw_completion_lacks_request_id() {
         REQUEST_ID_HEADER,
     );
     // Everything else rig reports still matches the reply document.
-    let reply = openai::CompletionResponse::deserialize(&plain.raw)
-        .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat wire type: {err}"));
+    let reply = plain.raw.clone();
     chat::assert_native_matches_normalized(&plain, &reply, SCENARIO);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let first: Value = serde_json::from_str(&bodies[0].1).expect("recorded body should be JSON");

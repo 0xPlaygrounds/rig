@@ -77,7 +77,6 @@
 //! dialect's extra usage fields so `completion_tokens_details` reaches both
 //! the normalized `Usage` and the reply document on `raw`.
 
-use rig::providers::openrouter;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -670,13 +669,9 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
                 .additional_params(openai_reasoning("medium"));
 
             let normalized = model.call(request).await.expect("the turn");
-            let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
-                .expect("raw is OpenRouter's own completion response");
-            let raw_reasoning = document
-                .openai
-                .usage
-                .and_then(|usage| usage.openai.completion_tokens_details)
-                .and_then(|details| u64::try_from(details.reasoning_tokens).ok())
+            let document = normalized.raw.clone();
+            let raw_reasoning = document["usage"]["completion_tokens_details"]["reasoning_tokens"]
+                .as_u64()
                 .expect("the document's usage must model the breakdown");
 
             assert!(raw_reasoning > 0);
@@ -712,27 +707,19 @@ async fn blocking_cost_and_cache_details_still_map() {
                 .additional_params(openai_reasoning("medium"));
 
             let normalized = model.call(request).await.expect("the turn");
-            let usage = openrouter::CompletionResponse::deserialize(&normalized.raw)
-                .expect("raw is OpenRouter's own completion response")
-                .openai
-                .usage
-                .expect("usage");
+            let usage = normalized.raw["usage"].clone();
 
-            assert!(usage.cost > 0.0, "{usage:?}");
-            assert!(usage.openai.prompt_tokens_details.is_some(), "{usage:?}");
             assert!(
-                usage.openai.completion_tokens_details.is_some(),
-                "{usage:?}"
+                usage["cost"].as_f64().is_some_and(|cost| cost > 0.0),
+                "{usage}"
             );
+            assert!(usage["prompt_tokens_details"].is_object(), "{usage}");
+            assert!(usage["completion_tokens_details"].is_object(), "{usage}");
 
             // Shape check only — see the scope note above.
             assert_eq!(
                 normalized.usage.cached_input_tokens,
-                usage
-                    .openai
-                    .prompt_tokens_details
-                    .as_ref()
-                    .and_then(|details| u64::try_from(details.cached_tokens).ok())
+                usage["prompt_tokens_details"]["cached_tokens"].as_u64()
             );
             // These two do carry weight: the new field must not have displaced
             // the cost mapping, and the reasoning share must still arrive.
@@ -743,10 +730,7 @@ async fn blocking_cost_and_cache_details_still_map() {
             );
             assert_eq!(
                 normalized.usage.output_tokens,
-                usage
-                    .openai
-                    .completion_tokens
-                    .and_then(|n| u64::try_from(n).ok())
+                usage["completion_tokens"].as_u64()
             );
         },
     )

@@ -197,28 +197,25 @@ async fn chat_stream_raw_round_trips_typed() {
     let typed = chat::assert_terminal_round_trips(&terminal);
     // The captured value is *this* stream's terminal.
     assert_matches_recorded_token(
-        typed.response_id.as_deref(),
+        typed["response_id"].as_str(),
         last_chunk_field(&frames, "id").as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        typed.model.as_deref(),
+        typed["model"].as_str(),
         last_chunk_field(&frames, "model").as_str(),
         "{SCENARIO}: terminal model"
     );
-    assert_eq!(typed.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(typed["finish_reason"], serde_json::json!("stop"));
     let recorded_usage = last_chunk_field(&frames, "usage");
-    let usage = typed
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: the terminal record carries the accounting"));
+    let usage = &typed["usage"];
     assert_eq!(
-        Some(usage.openai.prompt_tokens as u64),
+        usage["prompt_tokens"].as_u64(),
         recorded_usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );
     assert_eq!(
-        usage.openai.completion_tokens.map(|tokens| tokens as u64),
+        usage["completion_tokens"].as_u64(),
         recorded_usage["completion_tokens"].as_u64(),
         "{SCENARIO}: terminal completion tokens"
     );
@@ -515,7 +512,7 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     // nothing to change and the round trip's comparison stays exact.
     let typed = chat::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        typed.response_id.as_deref(),
+        typed["response_id"].as_str(),
         last_chunk_field(&frames, "id").as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
@@ -523,19 +520,16 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
         raw["finish_reason"], recorded_finish,
         "{SCENARIO}: raw keeps OpenAI's own finish-reason spelling"
     );
-    assert_eq!(typed.finish_reason, Some(FinishReason::ToolCalls));
+    assert_eq!(typed["finish_reason"], serde_json::json!("tool_calls"));
     assert_eq!(
         terminal.finish_reason(),
         Some(FinishReason::ToolCalls),
         "{SCENARIO}: the normalized terminal reports the tool call"
     );
     let recorded_usage = last_chunk_field(&frames, "usage");
-    let usage = typed
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: the terminal record carries the accounting"));
+    let usage = &typed["usage"];
     assert_eq!(
-        Some(usage.openai.prompt_tokens as u64),
+        usage["prompt_tokens"].as_u64(),
         recorded_usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );

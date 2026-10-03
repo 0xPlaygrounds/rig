@@ -34,9 +34,7 @@
 //! alone". This cell is that claim, measured.
 
 use rig::message::AssistantContent;
-use rig::providers::llamacpp;
 use rig::streaming::Item;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cassettes::{
@@ -341,12 +339,11 @@ async fn logprobs_survive_into_the_raw_response() {
 
         // `raw` is the reply document, so the typed escape hatch reads the
         // per-token array straight off it.
-        let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
-            .expect("raw is llama.cpp's own response type");
-        let logprobs = typed.openai.choices[0]
-            .logprobs
-            .clone()
-            .expect("llama.cpp returns logprobs when asked");
+        let logprobs = response.raw["choices"][0]["logprobs"].clone();
+        assert!(
+            logprobs.is_object(),
+            "llama.cpp returns logprobs when asked"
+        );
         assert!(
             logprobs["content"]
                 .as_array()

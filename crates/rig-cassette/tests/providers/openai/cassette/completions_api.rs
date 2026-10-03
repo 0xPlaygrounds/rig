@@ -54,23 +54,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
                 .call(request)
                 .await
                 .expect("completions api request should succeed");
-            let reply: openai::completion::CompletionResponse =
-                serde_json::from_value(response.raw.clone())
-                    .expect("`raw` is the serialized openai::completion::CompletionResponse");
-            let raw_text = reply
-                .choices
-                .iter()
-                .filter_map(|choice| match &choice.message {
-                    openai::completion::Message::Assistant { content, .. } => Some(content),
-                    _ => None,
-                })
-                .flatten()
-                .filter_map(|content| match content {
-                    openai::completion::AssistantContent::Text { text } => Some(text.as_str()),
-                    openai::completion::AssistantContent::Refusal { .. } => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
+            let raw_text = crate::raw_capture::chat::native_text(&response.raw);
 
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized completions api response should contain assistant text");

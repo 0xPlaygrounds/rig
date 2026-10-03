@@ -62,7 +62,6 @@ use rig::completion::{
 use rig::message::ToolChoice;
 use rig::providers::openai;
 use schemars::JsonSchema;
-use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette_result;
@@ -198,33 +197,30 @@ fn captured_raw<'a>(scenario: &str, response: &'a CompletionResponse) -> &'a Val
 /// on `tool_calls` needs the rest of the claim without that one, which is
 /// why this stays here rather than passing a word the shared mapping would
 /// reject.
-fn assert_chat_raw_agrees(
-    scenario: &str,
-    typed: &openai::CompletionResponse,
-    response: &CompletionResponse,
-) {
+fn assert_chat_raw_agrees(scenario: &str, typed: &Value, response: &CompletionResponse) {
     assert_eq!(
         response.response_id(),
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         "{scenario}: the response id is the provider's `id`"
     );
     assert_eq!(
         response.model(),
-        Some(typed.model.as_str()),
+        typed["model"].as_str(),
         "{scenario}: model"
     );
-    let usage = typed
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{scenario}: the recorded chat body reports usage"));
+    let usage = &typed["usage"];
+    assert!(
+        usage.is_object(),
+        "{scenario}: the recorded chat body reports usage"
+    );
     assert_eq!(
         response.usage.input_tokens,
-        Some(usage.prompt_tokens as u64),
+        usage["prompt_tokens"].as_u64(),
         "{scenario}: input tokens are the provider's `prompt_tokens`"
     );
     assert_eq!(
         response.usage.total_tokens,
-        Some(usage.total_tokens as u64),
+        usage["total_tokens"].as_u64(),
         "{scenario}: total tokens"
     );
     assert_transport_id_is_header_only(scenario, response);
@@ -261,15 +257,14 @@ async fn chat_raw_round_trips_typed() {
     assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
 
     let raw = captured_raw(SCENARIO, &response);
-    let typed = openai::CompletionResponse::deserialize(raw)
-        .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat wire type: {err}"));
+    let typed = raw;
     // The captured value is *this* response: id, model, content, usage.
     assert_matches_recorded_token(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         body["id"].as_str(),
         &format!("{SCENARIO}: raw id"),
     );
-    assert_eq!(Some(typed.model.as_str()), body["model"].as_str());
+    assert_eq!(typed["model"].as_str(), body["model"].as_str());
     assert_eq!(
         raw["choices"][0]["finish_reason"],
         body["choices"][0]["finish_reason"]
@@ -289,7 +284,7 @@ async fn chat_raw_round_trips_typed() {
         body["usage"]["completion_tokens"]
     );
     // Two views of one reply: the provider's field names, then rig's.
-    chat::assert_native_matches_normalized(&response, &typed, SCENARIO);
+    chat::assert_native_matches_normalized(&response, typed, SCENARIO);
     assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
@@ -585,8 +580,7 @@ async fn chat_tool_call_raw_round_trips_typed() {
     assert_eq!(recorded_calls[0]["function"]["name"], "ping");
 
     let raw = captured_raw(SCENARIO, &response);
-    let typed = openai::CompletionResponse::deserialize(raw)
-        .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat wire type: {err}"));
+    let typed = raw;
     // The wire's tool-call representation survives on raw: arguments as a
     // JSON string (equal to the fixture's, as JSON), the provider's own
     // finish-reason spelling.
@@ -636,7 +630,7 @@ async fn chat_tool_call_raw_round_trips_typed() {
         "{SCENARIO}: the normalized tool call is raw's, parsed"
     );
     // Two views of one reply: the provider's field names, then rig's.
-    assert_chat_raw_agrees(SCENARIO, &typed, &response);
+    assert_chat_raw_agrees(SCENARIO, typed, &response);
 }
 
 /// A Chat structured-output turn (`response_format: json_schema` via the
@@ -698,8 +692,7 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
     });
 
     let raw = captured_raw(SCENARIO, &response);
-    let typed = openai::CompletionResponse::deserialize(raw)
-        .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat wire type: {err}"));
+    let typed = raw;
     assert_eq!(
         raw["choices"][0]["message"]["refusal"],
         Value::Null,
@@ -733,6 +726,6 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
         "{SCENARIO}: the schema's `word` field is filled"
     );
     // Two views of one reply: the provider's field names, then rig's.
-    chat::assert_native_matches_normalized(&response, &typed, SCENARIO);
+    chat::assert_native_matches_normalized(&response, typed, SCENARIO);
     assert_transport_id_is_header_only(SCENARIO, &response);
 }

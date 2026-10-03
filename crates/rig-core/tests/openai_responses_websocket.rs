@@ -769,18 +769,6 @@ async fn an_empty_turn_is_rejected_before_anything_is_sent() {
             with(json!({"role": "assistant", "id": null, "content": []})),
             "assistant message at index 0 has no content",
         ),
-        (
-            with(json!({
-                "role": "user",
-                "content": [{
-                    "type": "toolresult",
-                    "call": {"provider": "call_1"},
-                    "name": "lookup",
-                    "content": [],
-                }],
-            })),
-            "tool result for `lookup` at index 0",
-        ),
     ];
 
     let client = test_client();

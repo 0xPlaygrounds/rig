@@ -1,4 +1,4 @@
-//! OpenRouter routing preferences, model identifiers, and typed completion metadata.
+//! OpenRouter routing preferences and model identifiers.
 //!
 //! ```
 //! use rig_core::providers::openrouter::ProviderPreferences;
@@ -7,8 +7,6 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-
-use crate::providers::openai;
 
 /// The `qwen/qwq-32b` model. Find more models at <https://openrouter.ai/models>.
 pub const QWEN_QWQ_32B: &str = "qwen/qwq-32b";
@@ -515,42 +513,6 @@ impl ProviderPreferences {
             "provider": self
         })
     }
-}
-
-/// Typed OpenRouter completion response, read back from
-/// [`crate::completion::CompletionResponse::raw`].
-///
-/// For more information, see the
-/// [OpenRouter Chat Completions reference](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CompletionResponse {
-    /// The OpenAI-compatible reply.
-    #[serde(flatten)]
-    pub openai: openai::completion::ChatCompletionResponse<Usage, Choice>,
-    /// Upstream provider selected by OpenRouter for this response.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
-}
-
-/// An OpenAI-compatible choice plus the routed upstream's own finish reason.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Choice {
-    /// The OpenAI-compatible choice.
-    #[serde(flatten)]
-    pub openai: openai::completion::Choice,
-    /// The upstream's finish reason, reported beside the normalized one.
-    pub native_finish_reason: Option<String>,
-}
-
-/// OpenRouter's accounting: the OpenAI-compatible counters plus the billed cost.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
-pub struct Usage {
-    /// The OpenAI-compatible counters.
-    #[serde(flatten)]
-    pub openai: openai::Usage,
-    /// Credits OpenRouter billed for the request.
-    #[serde(default)]
-    pub cost: f64,
 }
 
 #[cfg(test)]

@@ -11,16 +11,9 @@
 //! Those stay at the call site.
 
 use rig_core::completion::{CompletionResponse, FinishReason};
-use rig_core::providers::openai::wire::ChatUsage;
-use rig_core::providers::{deepseek, mistral, openai};
-use serde::Deserialize as _;
 use serde_json::Value;
 
 use crate::support::{assert_matches_recorded_token, assistant_text};
-
-/// The provider-native terminal record a chat-completions stream's
-/// `raw` holds, over the dialect-tolerant accounting.
-pub type Terminal = openai::wire::StreamingCompletionResponse<ChatUsage>;
 
 /// The finish reason a recorded chat-completions body reports.
 ///
@@ -37,8 +30,8 @@ pub fn recorded_chat_finish_reason(body: &Value) -> FinishReason {
 /// The finish reason a chat-completions `finish_reason` word names.
 ///
 /// The same hand-written mapping as [`recorded_chat_finish_reason`], for the
-/// cells that read the word off a provider-native typed view rather than out
-/// of the fixture.
+/// cells that read the word off the provider's reply rather than out of the
+/// fixture.
 pub fn native_finish_reason(word: &str) -> FinishReason {
     match word {
         "stop" => FinishReason::Stop,
@@ -95,44 +88,33 @@ pub fn assert_reproduces_body(
     );
 }
 
-/// The provider-native view of the captured reply, beside the normalized
-/// fields the decoder mapped from it.
-///
-/// `native` is read out of the response's own `raw` by the cell, which is why
-/// this pins the mapping one decoder performed rather than comparing the
-/// normalized response with a second copy of the same mapping. Dialects
-/// wrapping the shared type (Venice) pass their inner
-/// [`openai::CompletionResponse`]; dialects with their own accounting
-/// (DeepSeek, Mistral) pass theirs.
-pub fn assert_native_matches_normalized<U: OpenAiCounters>(
+/// The provider's reply, read back from the response's `raw`, beside the
+/// normalized fields the decoder mapped from it: its id, model, finish
+/// reason and counters.
+pub fn assert_native_matches_normalized(
     response: &CompletionResponse,
-    native: &openai::completion::ChatCompletionResponse<U>,
+    native: &Value,
     context: &str,
 ) {
     assert_eq!(
         response.response_id(),
-        Some(native.id.as_str()),
+        native["id"].as_str(),
         "{context}: native response id"
     );
     assert_eq!(
         response.model(),
-        Some(native.model.as_str()),
+        native["model"].as_str(),
         "{context}: native model"
     );
-    let native_choice = native
-        .choices
-        .first()
-        .expect("the reply carries at least one choice");
+    let reason = native["choices"][0]["finish_reason"]
+        .as_str()
+        .expect("the reply carries a finish reason");
     assert_eq!(
         response.finish_reason(),
-        Some(native_finish_reason(native_choice.finish_reason.as_str())),
+        Some(native_finish_reason(reason)),
         "{context}: the normalized reason is the native one"
     );
-    let native_usage = native
-        .usage
-        .as_ref()
-        .expect("the reply reports usage")
-        .counters();
+    let usage = &native["usage"];
     assert_eq!(
         (
             response.usage.input_tokens,
@@ -140,53 +122,26 @@ pub fn assert_native_matches_normalized<U: OpenAiCounters>(
             response.usage.total_tokens
         ),
         (
-            Some(native_usage.prompt_tokens as u64),
-            native_usage.completion_tokens.map(|tokens| tokens as u64),
-            Some(native_usage.total_tokens as u64),
+            usage["prompt_tokens"].as_u64(),
+            usage["completion_tokens"].as_u64(),
+            usage["total_tokens"].as_u64(),
         ),
         "{context}: the normalized counters are the native ones"
     );
 }
 
-/// The OpenAI-compatible counters inside a dialect's own accounting.
-pub trait OpenAiCounters {
-    fn counters(&self) -> &openai::Usage;
-}
-
-impl OpenAiCounters for openai::Usage {
-    fn counters(&self) -> &openai::Usage {
-        self
+/// The text of a native reply's first choice: its `content` string, or its
+/// text parts concatenated.
+pub fn native_text(native: &Value) -> String {
+    match &native["choices"][0]["message"]["content"] {
+        Value::String(text) => text.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter(|part| part["type"] == "text")
+            .filter_map(|part| part["text"].as_str())
+            .collect(),
+        _ => String::new(),
     }
-}
-
-impl OpenAiCounters for deepseek::Usage {
-    fn counters(&self) -> &openai::Usage {
-        &self.openai
-    }
-}
-
-impl OpenAiCounters for mistral::Usage {
-    fn counters(&self) -> &openai::Usage {
-        &self.openai
-    }
-}
-
-/// The text parts of a native reply's first choice, concatenated.
-pub fn native_text<U>(native: &openai::completion::ChatCompletionResponse<U>) -> String {
-    let choice = native
-        .choices
-        .first()
-        .expect("the reply carries at least one choice");
-    let openai::completion::Message::Assistant { content, .. } = &choice.message else {
-        panic!("a completion choice carries an assistant message");
-    };
-    content
-        .iter()
-        .filter_map(|part| match part {
-            openai::completion::AssistantContent::Text { text } => Some(text.as_str()),
-            openai::completion::AssistantContent::Refusal { .. } => None,
-        })
-        .collect()
 }
 
 /// The normalized terminal record's fields, checked against the recorded
@@ -226,51 +181,56 @@ pub fn assert_terminal_reproduces_frame(
     );
 }
 
-/// The terminal record `raw` holds, read back and required to be exactly the
-/// decoder's record serialized, its usage the provider's own object.
-///
-/// A streamed reply is many frames and no single one of them is the answer,
-/// so what rides along is the record the decoder reassembled, which makes an
-/// exact typed round trip the right claim here, unlike the blocking path
-/// where `raw` is the reply *document*. The usage stays as the provider sent
-/// it, so it reads back typed but is compared as the record holds it. The
-/// returned typed record is the cell's handle on whatever its dialect keeps
-/// beside the shared fields.
-pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
-    let raw = &terminal.raw;
-    let typed = Terminal::deserialize(raw)
-        .expect("raw is the chat-completions terminal record, serialized");
-    let mut serialized = serde_json::to_value(&typed).expect("typed serializes");
-    if let (Some(usage), Some(fields)) = (raw.get("usage"), serialized.as_object_mut()) {
-        fields.insert("usage".to_owned(), usage.clone());
-    }
-    assert_eq!(
-        serialized, *raw,
-        "the captured value is the typed terminal serialized, nothing more"
+/// The terminal record `raw` holds: the reply's id, model and finish reason
+/// as the response reports them, and the provider's own usage object, whose
+/// counters are the normalized ones. Returned for the cell to read whatever
+/// its dialect keeps beside the shared fields.
+pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Value {
+    let raw = terminal.raw.clone();
+    let keys = [
+        "usage",
+        "finish_reason",
+        "response_id",
+        "model",
+        "logprobs",
+        "additional_params",
+    ];
+    assert!(
+        raw.as_object()
+            .is_some_and(|record| record.keys().all(|key| keys.contains(&key.as_str()))),
+        "the captured value is the terminal record, nothing more: {raw}"
     );
     assert_eq!(
-        typed.response_id.as_deref(),
+        raw["response_id"].as_str(),
         terminal.response_id(),
         "response id"
     );
-    assert_eq!(typed.model.as_deref(), terminal.model(), "model");
+    assert_eq!(raw["model"].as_str(), terminal.model(), "model");
     assert_eq!(
-        typed.finish_reason,
+        serde_json::from_value::<Option<FinishReason>>(raw["finish_reason"].clone())
+            .expect("a finish reason"),
         terminal.finish_reason(),
         "finish reason"
     );
-    let usage = typed
-        .usage
-        .as_ref()
-        .expect("the terminal record carries the reply's accounting");
-    let dialect = openai::wire::by_name(terminal.provider())
-        .expect("the terminal names a registered chat dialect");
-    assert_eq!(
-        usage.to_normalized_for(&dialect.quirks),
-        terminal.usage,
-        "the normalized usage is that accounting, normalized for its dialect"
+    let usage = &raw["usage"];
+    assert!(
+        usage.is_object(),
+        "the terminal record carries the reply's accounting"
     );
-    typed
+    assert_eq!(
+        (
+            terminal.usage.input_tokens,
+            terminal.usage.output_tokens,
+            terminal.usage.total_tokens
+        ),
+        (
+            usage["prompt_tokens"].as_u64(),
+            usage["completion_tokens"].as_u64(),
+            usage["total_tokens"].as_u64(),
+        ),
+        "the normalized counters are the accounting's"
+    );
+    raw
 }
 
 /// The one usage-bearing SSE frame of a recorded chat-completions stream.

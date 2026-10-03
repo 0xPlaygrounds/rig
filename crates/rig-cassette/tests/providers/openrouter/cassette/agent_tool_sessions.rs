@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice, UserContent};
-use rig::providers::openrouter;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -609,8 +608,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             // read off OpenRouter's own response type rather than from a
             // second call.
             let response = model.call(request).await?;
-            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
-                .expect("raw is OpenRouter's own completion response");
+            let wire = response.raw.clone();
             let text = response
                 .choice
                 .iter()
@@ -627,10 +625,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                wire.openai
-                    .choices
-                    .iter()
-                    .all(|choice| !choice.openai.finish_reason.is_empty()),
+                wire["choices"].as_array().into_iter().flatten().all(|choice| choice["finish_reason"].as_str().is_some_and(|reason| !reason.is_empty())),
                 "the gateway's document should preserve every choice's finish reason"
             );
             anyhow::ensure!(
@@ -638,7 +633,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "normalized response should preserve the finish reason: {:?}",
                 response.finish_reason()
             );
-            assert_nonempty_response(&wire.openai.model);
+            assert_nonempty_response(wire["model"].as_str().unwrap_or_default());
 
             Ok(())
         },

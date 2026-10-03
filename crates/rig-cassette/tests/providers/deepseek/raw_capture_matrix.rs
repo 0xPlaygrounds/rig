@@ -39,9 +39,8 @@
 
 use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::message::AssistantContent;
-use rig::providers::{deepseek, openai};
-use serde::Deserialize;
-use serde_json::json;
+use rig::providers::deepseek;
+use serde_json::{Value, json};
 
 use super::support::with_deepseek_cassette_result;
 use crate::cassettes::recorded_json_turn;
@@ -84,11 +83,11 @@ fn reasoning_text_of(choice: &[AssistantContent]) -> String {
 /// DeepSeek's own view of a reply, checked against the normalized response it
 /// rode on: the shared chat fields, the cache-hit half of DeepSeek's split,
 /// and the choice text.
-fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &CompletionResponse) {
+fn assert_typed_view_matches(typed: &Value, response: &CompletionResponse) {
     chat::assert_native_matches_normalized(response, typed, "the typed view of raw");
-    let usage = typed.usage.as_ref().expect("the reply reports usage");
+    let usage = &typed["usage"];
     assert_eq!(
-        Some(u64::from(usage.prompt_cache_hit_tokens)),
+        usage["prompt_cache_hit_tokens"].as_u64(),
         response.usage.cached_input_tokens,
         "the hit count is the half of the split that gets normalized"
     );
@@ -115,8 +114,7 @@ async fn raw_round_trips_deepseek_type() {
     .expect("raw_round_trips_deepseek_type should replay from its cassette");
     let response = sink.take();
 
-    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
-        .expect("raw reads back as DeepSeek's own CompletionResponse");
+    let typed = response.raw.clone();
     assert_typed_view_matches(&typed, &response);
     // And `raw` is the reply document rather than a re-serialization
     // of that parse, so it keeps what neither view models.
@@ -211,8 +209,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // One seam, two views: the typed read of the response's own `raw` is the
     // same reply the normalized fields describe. Capture adds a view; there
     // is only one mapping left, and this is what pins it.
-    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
-        .expect("raw reads back as DeepSeek's own type");
+    let typed = response.raw.clone();
     assert_typed_view_matches(&typed, &response);
 }
 
@@ -253,19 +250,10 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
 
     // The typed view of `raw` carries the wire's own spelling of the
     // reasoning block, and agrees with the normalized response beside it.
-    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
-        .expect("raw reads back as DeepSeek's own CompletionResponse");
+    let typed = response.raw.clone();
     assert_typed_view_matches(&typed, &response);
-    let openai::completion::Message::Assistant { reasoning, .. } = &typed
-        .choices
-        .first()
-        .expect("a reply carries a choice")
-        .message
-    else {
-        panic!("a completion choice carries an assistant message");
-    };
     assert_eq!(
-        reasoning.as_deref(),
+        typed["choices"][0]["message"]["reasoning_content"].as_str(),
         Some(recorded_reasoning),
         "the typed view carries the fixture's reasoning_content verbatim"
     );

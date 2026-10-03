@@ -36,10 +36,7 @@
 //! what the cells now assert.
 
 use rig::completion::{CompletionRequest, CompletionResponse};
-use rig::providers::openai;
 use rig::providers::openai::wire::OPENROUTER;
-use rig::providers::openrouter;
-use serde::Deserialize as _;
 use serde_json::Value;
 
 use super::super::DEFAULT_MODEL;
@@ -99,17 +96,15 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     // Same response, two views: the document `raw` carries, read back as the
     // chat-completions reply the decoder mapped from, reports the fields the
     // decoder reported.
-    let native = openai::CompletionResponse::deserialize(&second.raw)
-        .expect("raw is the chat-completions reply OpenRouter serves");
+    let native = second.raw.clone();
     chat::assert_native_matches_normalized(&second, &native, "the typed view of raw");
 
     // OpenRouter's own type is the gateway-aware escape hatch over the same
     // document, and it is where the upstream's native finish-reason spelling
     // survives; the normalized response maps it away.
-    let typed = openrouter::CompletionResponse::deserialize(&second.raw)
-        .expect("raw is OpenRouter's own completion response");
+    let typed = second.raw.clone();
     assert_eq!(
-        typed.openai.choices[0].native_finish_reason.as_deref(),
+        typed["choices"][0]["native_finish_reason"].as_str(),
         interactions[1].1["choices"][0]["native_finish_reason"].as_str(),
         "the document keeps the upstream's own finish-reason spelling"
     );

@@ -1,5 +1,5 @@
-//! Chat Completions request encoding, and one decoder for a whole reply and
-//! a stream of chunks.
+//! Chat Completions: the request built as JSON, and one lenient decoder for
+//! a whole reply and a stream of chunks.
 //!
 //! ```
 //! use rig_core::providers::openai::OpenAI;
@@ -7,29 +7,30 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
 
-use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities};
-use crate::error::EncodeError;
-use crate::error::ProviderError;
+use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities, Replay};
+use crate::error::{EncodeError, ProviderError};
+use crate::json_utils::Lenient;
+use crate::message::{
+    AssistantContent, AssistantMessage, DocumentMediaType, DocumentSourceKind as Source, Message,
+    MimeType, ToolCall, ToolResult, ToolResultContent, UserContent,
+};
 use crate::observe::ObservedError;
-use crate::operation::{Block, CallFragment, Completion};
+use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    map_native_finish_reason, map_openai_finish_reason, provider_error_envelope,
+    finish_reason, native_finish_reason, provider_error_envelope,
 };
 use crate::providers::internal::wire::classify_chat_completions_frame;
-use crate::providers::openai::completion::{
-    self as unary, Message, ToolChoice, is_openai_reasoning_model, request_body,
-};
+use crate::providers::internal::wire_ids::WireIds;
+use crate::providers::openai::completion as models;
 use crate::wire::{
     AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Decoder, Descriptor, Encoded,
     Flow, Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
-use super::dto::{
-    ChatChoice, ChatFrame, StreamingCompletionResponse, StreamingToolCall, UsageCounts, delta_text,
-    merge_fields,
-};
-use super::{BodyRewrite, OpenAIConfig, OutputCap};
+use super::dto::merge_fields;
+use super::{BodyRewrite, OpenAIConfig, OutputCap, Quirks};
 
 /// The chat-completions wire: a provider configuration, a model, and the
 /// per-turn options the endpoint takes.
@@ -48,6 +49,120 @@ pub struct Chat {
     /// Whether the request asks for provider-side prompt caching
     /// (OpenRouter's ephemeral `cache_control` on the system prompt).
     pub prompt_caching: bool,
+}
+
+/// The error for media in a form Chat Completions cannot carry, which the
+/// adapter replaces before a request is encoded
+/// ([`ReplayTarget::encodes`](crate::completion::ReplayTarget::encodes)).
+fn unsendable(what: &str) -> EncodeError {
+    EncodeError::request(format!("Chat Completions cannot carry {what} in this form"))
+}
+
+/// `data` as a URL a content part names: a URL, or typed base64 data as a
+/// data URI.
+fn media_url(data: &Source, mime: Option<&str>) -> Option<String> {
+    match (data, mime) {
+        (Source::Url(url), _) => Some(url.clone()),
+        (Source::Base64(data), Some(mime)) => Some(format!("data:{mime};base64,{data}")),
+        _ => None,
+    }
+}
+
+/// The `image_url` part an image is sent as; a user image always names a
+/// detail level, `auto` by default.
+fn image_url(image: &crate::message::Image, user: bool) -> Result<Value, EncodeError> {
+    let mime = image.media_type.as_ref().map(MimeType::to_mime_type);
+    let url = media_url(&image.data, mime).ok_or_else(|| unsendable("an image"))?;
+    let mut part = Map::from_iter([("url".to_owned(), Value::String(url))]);
+    let detail = match &image.detail {
+        Some(detail) => Some(detail.clone()),
+        None => user.then(Default::default),
+    };
+    if let Some(detail) = detail {
+        part.insert("detail".to_owned(), serde_json::to_value(detail)?);
+    }
+    Ok(json!({"type": "image_url", "image_url": part}))
+}
+
+/// One user content part as Chat Completions carries it.
+fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
+    let file = |file: Value| json!({"type": "file", "file": file});
+    Ok(match part {
+        UserContent::Text(text) => json!({"type": "text", "text": text.text}),
+        UserContent::Image(image) => image_url(image, true)?,
+        UserContent::Document(document) => {
+            let pdf = document.media_type == Some(DocumentMediaType::PDF);
+            match &document.data {
+                Source::FileId(id) => file(json!({ "file_id": id })),
+                Source::Base64(data) if pdf => file(json!({
+                    "file_data": format!("data:application/pdf;base64,{data}"),
+                    "filename": "document.pdf",
+                })),
+                // OpenRouter and Mistral fetch a PDF a URL names.
+                Source::Url(url) if pdf => {
+                    file(json!({"file_data": url, "filename": "document.pdf"}))
+                }
+                Source::String(text) if !pdf => json!({"type": "text", "text": text}),
+                _ => return Err(unsendable("a document")),
+            }
+        }
+        UserContent::Audio(audio) => match &audio.data {
+            Source::Base64(data) => json!({"type": "input_audio", "input_audio": {
+                "data": data,
+                "format": audio.media_type.clone().unwrap_or(crate::message::AudioMediaType::MP3),
+            }}),
+            _ => return Err(unsendable("audio")),
+        },
+        UserContent::Video(video) => {
+            let mime = video.media_type.as_ref().map(MimeType::to_mime_type);
+            let url = media_url(&video.data, mime).ok_or_else(|| unsendable("a video"))?;
+            json!({"type": "video_url", "video_url": {"url": url}})
+        }
+        UserContent::ToolResult(_) => return Err(unsendable("a tool result as a content part")),
+    })
+}
+
+/// A result as the `tool` message that answers its call: its text joined
+/// into one string, or its parts as an array when the wire asks for one or
+/// it holds an image, which has no string form.
+fn tool_message(result: &ToolResult, ids: &WireIds, array: bool) -> Result<Value, EncodeError> {
+    let parts = result
+        .content
+        .iter()
+        .map(|part| match part {
+            ToolResultContent::Text(text) => Ok(json!({"type": "text", "text": text.text})),
+            ToolResultContent::Json { value } => {
+                Ok(json!({"type": "text", "text": value.to_string()}))
+            }
+            ToolResultContent::Image(image) => image_url(image, false),
+        })
+        .collect::<Result<Vec<_>, EncodeError>>()?;
+    let content = if array
+        || parts
+            .iter()
+            .any(|part| part.str("type") == Some("image_url"))
+    {
+        Value::Array(parts)
+    } else {
+        let texts: Vec<&str> = parts.iter().filter_map(|part| part.str("text")).collect();
+        Value::String(texts.join("\n"))
+    };
+    let id = ids
+        .of(&result.call)
+        .map_or_else(|| result.call.wire().into_owned(), str::to_owned);
+    Ok(json!({"role": "tool", "tool_call_id": id, "content": content}))
+}
+
+/// Push the user parts gathered so far as one message: a lone text part as
+/// a plain string.
+fn user_message(messages: &mut Vec<Value>, parts: &mut Vec<Value>) {
+    let content = match parts.as_slice() {
+        [] => return,
+        [part] if part.str("type") == Some("text") => part.get("text").cloned().unwrap_or_default(),
+        _ => Value::Array(std::mem::take(parts)),
+    };
+    parts.clear();
+    messages.push(json!({"role": "user", "content": content}));
 }
 
 impl Chat {
@@ -72,55 +187,27 @@ impl Chat {
             &request,
             http::Request::post(uri).header("Content-Type", "application/json"),
         );
-        let mut typed = unary::CompletionRequest::try_from(unary::OpenAIRequestParams {
-            model: self.model.clone(),
-            request,
-            strict_tools: self.strict_tools,
-            tool_result_array_content: self.tool_result_array_content,
-            supports_response_format: quirks.supports_response_format,
-            response_format_with_tools: quirks.response_format_with_tools,
-            supports_tools: quirks.supports_tools,
-        })?;
-        self.prepare(&mut typed)?;
-
-        // The resolved model, not the handle's: a per-request override
-        // changes which endpoint answers, so it decides the spelling too.
-        let modern_output_cap = match quirks.output_cap {
-            OutputCap::Legacy => false,
-            OutputCap::OpenAiReasoningFamilies => is_openai_reasoning_model(&typed.model),
-        };
-        let mut body = request_body(&typed, modern_output_cap)?;
-
+        let mut body = self.body(request)?;
         if mode == Mode::Streaming {
-            if quirks.stream_include_usage {
-                // Preserve caller stream options, including an explicit include_usage value.
-                match body.get_mut("stream_options") {
-                    Some(serde_json::Value::Object(options)) => {
-                        options
-                            .entry("include_usage")
-                            .or_insert(serde_json::Value::Bool(true));
-                    }
-                    Some(_) => {}
-                    None => {
-                        body = crate::json_utils::merge(
-                            body,
-                            serde_json::json!({"stream_options": {"include_usage": true}}),
-                        );
-                    }
-                }
+            // A caller's own stream options, `include_usage` among them, stand.
+            if quirks.stream_include_usage
+                && let Some(options) = body
+                    .entry("stream_options")
+                    .or_insert_with(|| json!({}))
+                    .as_object_mut()
+            {
+                options.entry("include_usage").or_insert(Value::Bool(true));
             }
-            body = crate::json_utils::merge(body, serde_json::json!({"stream": true}));
+            body.insert("stream".to_owned(), Value::Bool(true));
         }
         self.finalize(&mut body);
-
+        let body = Value::Object(body);
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "OpenAI Chat Completions request",
             &body,
         );
-
         let request = builder.body(Body::Bytes(serde_json::to_vec(&body)?))?;
-
         let framing = match mode {
             Mode::Streaming => Framing::Sse,
             Mode::Unary => Framing::Whole,
@@ -128,7 +215,7 @@ impl Chat {
         Ok(Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header)
             .with_projection(ChatDecoder::project)
-            .with_route(Some(self.provider.dialect.quirks.completion_path)))
+            .with_route(Some(quirks.completion_path)))
     }
 
     /// The wire for `model` on `provider`, with every option off.
@@ -161,59 +248,373 @@ impl Chat {
         self
     }
 
-    /// Apply typed dialect rewrites, rejecting unsupported tool choices or parameters.
-    fn prepare(&self, request: &mut unary::CompletionRequest) -> Result<(), EncodeError> {
+    /// The request body, before the stream options and the dialect's final
+    /// rewrite. `additional_params` is flattened in last, so its keys
+    /// override the typed ones.
+    fn body(&self, request: CompletionRequest) -> Result<Map<String, Value>, EncodeError> {
+        let quirks = &self.provider.dialect.quirks;
+        let mut model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        if quirks.rewrite == BodyRewrite::HuggingFaceRouter {
+            // Some sub-providers (Fireworks) address models by a qualified id.
+            model = self.provider.route().model_identifier(&model);
+        }
+        let mut params = match request.additional_params {
+            None | Some(Value::Null) => Map::new(),
+            Some(Value::Object(params)) => params,
+            Some(_) => {
+                return Err(EncodeError::request(
+                    "Chat Completions `additional_params` must be a JSON object",
+                ));
+            }
+        };
+        if quirks.rewrite == BodyRewrite::Mira && !params.is_empty() {
+            // The gateway rejects pass-through parameters.
+            tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
+            params.clear();
+        }
+        // A call to a custom tool the request declares is a custom call (pi).
+        let custom: Vec<String> = params
+            .get("tools")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|tool| tool.str("type") == Some("custom"))
+            .filter_map(|tool| tool.at("/custom/name").and_then(Value::as_str))
+            .map(str::to_owned)
+            .collect();
+        let mut messages = self.messages(&request.chat_history, &model, &custom)?;
+
+        let mut tools: Vec<Value> = Vec::new();
+        let mut tool_choice = None;
+        if quirks.supports_tools {
+            for tool in &request.tools {
+                let mut function = Map::from_iter([
+                    ("name".to_owned(), Value::from(tool.name.as_str())),
+                    (
+                        "description".to_owned(),
+                        Value::from(tool.description.as_str()),
+                    ),
+                    ("parameters".to_owned(), tool.parameters.clone()),
+                ]);
+                if self.strict_tools {
+                    if let Some(parameters) = function.get_mut("parameters") {
+                        crate::providers::openai::sanitize_schema(parameters);
+                    }
+                    function.insert("strict".to_owned(), Value::Bool(true));
+                }
+                tools.push(json!({"type": "function", "function": function}));
+            }
+            // Function tools in the passthrough join the typed ones, which a
+            // flattened `tools` key would replace; the rest stay behind.
+            if let Some(passthrough) = params.shift_remove("tools") {
+                let Value::Array(passthrough) = passthrough else {
+                    return Err(EncodeError::request(
+                        "Invalid OpenAI Chat Completions `additional_params.tools` payload: \
+                         expected an array",
+                    ));
+                };
+                let (function, native): (Vec<Value>, Vec<Value>) = passthrough
+                    .into_iter()
+                    .partition(|tool| tool.str("type") == Some("function"));
+                tools.extend(function);
+                if quirks.rewrite == BodyRewrite::GroqCompoundTools {
+                    fold_groq_native_tools(&mut params, native);
+                } else if !native.is_empty() {
+                    params.insert("tools".to_owned(), Value::Array(native));
+                }
+            }
+            tool_choice = request
+                .tool_choice
+                .clone()
+                .map(tool_choice_value)
+                .transpose()?
+                .filter(|_| !tools.is_empty());
+        } else {
+            if !request.tools.is_empty() {
+                tracing::warn!("Tool use is not supported by this provider; tools will be ignored");
+            }
+            if request.tool_choice.is_some() {
+                tracing::warn!("Tool choice is not supported by this provider and will be ignored");
+            }
+        }
+        self.refuse_or_steer(&model, &tools, &mut tool_choice, &params, &mut messages)?;
+
+        if request.output_schema.is_some() && !quirks.supports_response_format {
+            tracing::warn!(
+                "Structured outputs are not supported by this provider; ignoring output_schema"
+            );
+        }
+        // Defer schemas until a tool result exists unless the dialect supports both at once.
+        let answered = messages
+            .iter()
+            .any(|message| message.str("role") == Some("tool"));
+        if let Some(schema) = request.output_schema
+            && quirks.supports_response_format
+            && (quirks.response_format_with_tools || tools.is_empty() || answered)
+        {
+            let (name, schema) = crate::providers::openai::structured_output_schema(schema);
+            params.insert(
+                "response_format".to_owned(),
+                json!({"type": "json_schema",
+                    "json_schema": {"name": name, "strict": true, "schema": schema}}),
+            );
+        }
+
+        let mut body = Map::from_iter([
+            ("model".to_owned(), Value::String(model)),
+            ("messages".to_owned(), Value::Array(messages)),
+        ]);
+        if !tools.is_empty() {
+            body.insert("tools".to_owned(), Value::Array(tools));
+        }
+        if let Some(choice) = tool_choice {
+            body.insert("tool_choice".to_owned(), choice);
+        }
+        if let Some(temperature) = request.temperature {
+            body.insert("temperature".to_owned(), json!(temperature));
+        }
+        if let Some(max_tokens) = request.max_tokens {
+            body.insert("max_tokens".to_owned(), json!(max_tokens));
+        }
+        body.extend(params);
+        // The resolved model, not the handle's: a per-request override
+        // changes which endpoint answers, so it decides the spelling too.
+        let model = body
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies
+            && models::is_openai_reasoning_model(model)
+            && let Some(max_tokens) = body.shift_remove("max_tokens")
+        {
+            body.entry("max_completion_tokens").or_insert(max_tokens);
+        }
+        Ok(body)
+    }
+
+    /// The history as Chat messages, each call and result spelled by one
+    /// [`WireIds`].
+    fn messages(
+        &self,
+        history: &[Message],
+        model: &str,
+        custom: &[String],
+    ) -> Result<Vec<Value>, EncodeError> {
+        let ids = WireIds::for_target(history, self, model);
+        let mut messages = Vec::new();
+        for message in history {
+            match message {
+                Message::System { content } => messages.push(json!({"role": "system",
+                    "content": [{"type": "text", "text": content}]})),
+                Message::User { content } => {
+                    let mut parts = Vec::new();
+                    for part in content {
+                        if let UserContent::ToolResult(result) = part {
+                            user_message(&mut messages, &mut parts);
+                            let array = self.tool_result_array_content;
+                            messages.push(tool_message(result, &ids, array)?);
+                        } else {
+                            parts.push(user_part(part)?);
+                        }
+                    }
+                    user_message(&mut messages, &mut parts);
+                }
+                Message::Assistant(turn) => messages.extend(self.assistant(turn, &ids, custom)),
+            }
+        }
+        if messages.is_empty() {
+            return Err(EncodeError::request(
+                "OpenAI Chat Completions request has no provider-compatible messages after \
+                 conversion",
+            ));
+        }
+        Ok(messages)
+    }
+
+    /// One assistant turn as pi's `openai-completions` rebuilds it: text
+    /// joined into a `content` string, or a part array when a block is a
+    /// content part (Mistral's thinking); reasoning under the field it
+    /// arrived in, or the dialect's; an item's other fields beside it; and
+    /// each call with its canonical name and arguments. A message with
+    /// neither content nor calls is `None`, as pi skips it.
+    fn assistant(
+        &self,
+        turn: &AssistantMessage,
+        ids: &WireIds,
+        custom: &[String],
+    ) -> Option<Value> {
+        let quirks = &self.provider.dialect.quirks;
+        let (mut text, mut parts, mut has_parts) = (String::new(), Vec::new(), false);
+        let mut reasoning: Vec<(String, String)> = Vec::new();
+        let (mut fields, mut calls) = (Map::new(), Vec::new());
+        for block in &turn.content {
+            let replay = block.replay(self, ids);
+            match block {
+                AssistantContent::Text(block) => {
+                    text.push_str(&block.text);
+                    parts.push(json!({"type": "text", "text": block.text}));
+                    // A text item is message fields: an answer's audio.
+                    if let Replay::Item(item) = replay
+                        && let Value::Object(item) = item.into_owned()
+                    {
+                        fields.extend(item);
+                    }
+                }
+                AssistantContent::Reasoning(block) => {
+                    let field = match replay {
+                        Replay::Item(item) if item.get("type").is_some() => {
+                            has_parts = true;
+                            parts.push(item.into_owned());
+                            None
+                        }
+                        Replay::Item(item) => {
+                            let mut field = None;
+                            for (key, value) in item.as_object().into_iter().flatten() {
+                                if value.is_string() {
+                                    field.get_or_insert_with(|| key.clone());
+                                } else {
+                                    let detail = Map::from_iter([(key.clone(), value.clone())]);
+                                    merge_fields(&mut fields, &detail);
+                                }
+                            }
+                            field
+                        }
+                        Replay::Identity(identity)
+                            if identity.get("type").and_then(Value::as_str) == Some("thinking") =>
+                        {
+                            has_parts = true;
+                            parts.push(json!({"type": "thinking",
+                                "thinking": [{"type": "text", "text": block.text}]}));
+                            None
+                        }
+                        Replay::Identity(identity) => identity.keys().next().cloned(),
+                        Replay::Rebuild => quirks.reasoning_field.map(str::to_owned),
+                    };
+                    if let Some(field) = field {
+                        match reasoning.iter_mut().find(|(name, _)| *name == field) {
+                            Some((_, joined)) => {
+                                joined.push('\n');
+                                joined.push_str(&block.text);
+                            }
+                            None => reasoning.push((field, block.text.clone())),
+                        }
+                    }
+                }
+                AssistantContent::ToolCall(call) => {
+                    calls.push(call_item(call, replay, ids, custom));
+                }
+                AssistantContent::Opaque(opaque) if opaque.replay => match &opaque.item {
+                    item if item.get("type").is_some() => {
+                        has_parts = true;
+                        parts.push(item.clone());
+                    }
+                    Value::Object(item) => fields.extend(item.clone()),
+                    _ => {}
+                },
+                AssistantContent::Opaque(_) | AssistantContent::Image(_) => {}
+            }
+        }
+        let mut message = Map::from_iter([("role".to_owned(), Value::from("assistant"))]);
+        if has_parts {
+            message.insert("content".to_owned(), Value::Array(parts));
+        } else if !text.is_empty() {
+            message.insert("content".to_owned(), Value::String(text));
+        }
+        for (field, text) in reasoning {
+            message.insert(field, Value::String(text));
+        }
+        message.extend(fields);
+        if !calls.is_empty() {
+            message.insert("tool_calls".to_owned(), Value::Array(calls));
+        }
+        let has_content = message.contains_key("audio")
+            || message.contains_key("tool_calls")
+            || match message.get("content") {
+                Some(Value::String(text)) => !text.is_empty(),
+                Some(Value::Array(parts)) => !parts.is_empty(),
+                _ => false,
+            };
+        if let Some(field) = quirks.reasoning_field {
+            message
+                .entry(field)
+                .or_insert_with(|| Value::String(String::new()));
+        }
+        has_content.then_some(Value::Object(message))
+    }
+
+    /// The dialect's checks on the request's tools: a refusal where the
+    /// provider would answer with an error or silently do something else,
+    /// and Moonshot's steering for `required`.
+    fn refuse_or_steer(
+        &self,
+        model: &str,
+        tools: &[Value],
+        choice: &mut Option<Value>,
+        params: &Map<String, Value>,
+        messages: &mut Vec<Value>,
+    ) -> Result<(), EncodeError> {
+        let quirks = &self.provider.dialect.quirks;
         // Only OpenAI's own endpoint serves its reasoning families.
-        if matches!(
-            self.provider.dialect.quirks.output_cap,
-            OutputCap::OpenAiReasoningFamilies
-        ) {
-            refuse_tools_while_reasoning(request)?;
+        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies && !tools.is_empty() {
+            let effort_none =
+                params.get("reasoning_effort").and_then(Value::as_str) == Some("none");
+            if NO_TOOLS_ON_CHAT.iter().any(|id| is_model(model, id)) {
+                return Err(EncodeError::request(format!(
+                    "{model} cannot call function tools on Chat Completions: it takes them there \
+                     only at reasoning_effort \"none\", which it does not support. Use the \
+                     Responses wire."
+                )));
+            }
+            if TOOLS_ONLY_WITHOUT_REASONING
+                .iter()
+                .any(|id| is_model(model, id))
+                && !effort_none
+            {
+                return Err(EncodeError::request(format!(
+                    "{model} calls function tools on Chat Completions only at reasoning_effort \
+                     \"none\": send `\"reasoning_effort\": \"none\"` in additional_params, or use \
+                     the Responses wire."
+                )));
+            }
         }
-        match self.provider.dialect.quirks.rewrite {
-            BodyRewrite::GroqCompoundTools => fold_groq_native_tools(request)?,
-            BodyRewrite::LlamaCpp => {
-                if let Some(ToolChoice::Function { name }) = &request.tool_choice {
-                    return Err(EncodeError::request(format!(
-                        "llama.cpp cannot force a specific tool: `llama-server` accepts only \
-                         `auto`, `none` or `required` for tool_choice and silently treats \
-                         anything else as `auto`, so requesting `{name}` would return whichever \
-                         tool the model picked. Use `ToolChoice::Required` to force a call, or \
-                         advertise only `{name}` in `tools`."
-                    )));
-                }
+        let forced = choice
+            .as_ref()
+            .and_then(|choice| choice.at("/function/name"));
+        match (quirks.rewrite, forced) {
+            (BodyRewrite::LlamaCpp, Some(name)) => {
+                let name = name.as_str().unwrap_or_default();
+                Err(EncodeError::request(format!(
+                    "llama.cpp cannot force a specific tool: `llama-server` accepts only \
+                     `auto`, `none` or `required` for tool_choice and silently treats \
+                     anything else as `auto`, so requesting `{name}` would return whichever \
+                     tool the model picked. Use `ToolChoice::Required` to force a call, or \
+                     advertise only `{name}` in `tools`."
+                )))
             }
-            BodyRewrite::Moonshot => steer_moonshot_tool_choice(request)?,
-            BodyRewrite::Mira => {
-                // The gateway rejects pass-through parameters.
-                if request.additional_params.take().is_some() {
-                    tracing::warn!(
-                        "Additional parameters are not supported by Mira and will be ignored"
-                    );
-                }
+            (BodyRewrite::Moonshot, Some(_)) => Err(EncodeError::request(
+                "Moonshot does not support forcing a specific tool",
+            )),
+            (BodyRewrite::Moonshot, None)
+                if choice.as_ref().and_then(Value::as_str) == Some("required") =>
+            {
+                tracing::warn!(
+                    "Moonshot does not support tool_choice=required; coercing to auto with an \
+                     additional steering message"
+                );
+                *choice = Some(Value::from("auto"));
+                messages.push(json!({"role": "user",
+                    "content": "Please select a tool to handle the current issue."}));
+                Ok(())
             }
-            BodyRewrite::HuggingFaceRouter => {
-                // Some sub-providers (Fireworks) address models through a
-                // qualified identifier in the request body.
-                request.model = self.provider.route().model_identifier(&request.model);
-            }
-            BodyRewrite::None
-            | BodyRewrite::DeepSeek
-            | BodyRewrite::Perplexity
-            | BodyRewrite::Mistral
-            | BodyRewrite::OpenRouter => {}
+            _ => Ok(()),
         }
-        Ok(())
     }
 
     /// Apply dialect body rewrites after merging streaming parameters.
-    fn finalize(&self, body: &mut serde_json::Value) {
-        let Some(map) = body.as_object_mut() else {
-            return;
-        };
+    fn finalize(&self, map: &mut Map<String, Value>) {
         match self.provider.dialect.quirks.rewrite {
             BodyRewrite::Perplexity => {
-                if let Some(messages) = map.get_mut("messages").and_then(as_array_mut) {
+                if let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) {
                     finalize_perplexity(messages);
                 }
             }
@@ -221,23 +622,20 @@ impl Chat {
                 // The gateway takes every message's content as one string.
                 for message in map
                     .get_mut("messages")
-                    .and_then(as_array_mut)
+                    .and_then(Value::as_array_mut)
                     .into_iter()
                     .flatten()
                 {
                     if let Some(content) = message.get_mut("content") {
-                        unary::flatten_text_content_parts(content, "\n", false);
+                        flatten_text_content_parts(content, "\n", false);
                     }
                 }
             }
             BodyRewrite::DeepSeek => finalize_deepseek(map),
             BodyRewrite::Mistral => finalize_mistral(map),
-            BodyRewrite::OpenRouter => {
-                if self.prompt_caching {
-                    apply_openrouter_prompt_caching(map);
-                }
-            }
+            BodyRewrite::OpenRouter if self.prompt_caching => apply_openrouter_prompt_caching(map),
             BodyRewrite::None
+            | BodyRewrite::OpenRouter
             | BodyRewrite::GroqCompoundTools
             | BodyRewrite::HuggingFaceRouter
             | BodyRewrite::LlamaCpp
@@ -246,22 +644,91 @@ impl Chat {
     }
 }
 
+/// `call` as the item the wire sends, from what replay hands the encoder:
+/// the current item, an edited one's kind, or nothing. A call is `custom`
+/// when its item or kept kind says so, or when it is rebuilt and the request
+/// declares a custom tool by its name (pi); its arguments' `input` is then
+/// its input. Any other is a function call with its arguments as JSON text.
+fn call_item(call: &ToolCall, replay: Replay<'_>, ids: &WireIds, custom: &[String]) -> Value {
+    let mut item = match replay {
+        Replay::Item(item) => match item.into_owned() {
+            Value::Object(item) => item,
+            _ => Map::new(),
+        },
+        Replay::Identity(identity) => identity,
+        Replay::Rebuild => Map::new(),
+    };
+    let name = call.function.name.as_str();
+    let custom = match item.get("type").and_then(Value::as_str) {
+        Some(kind) => kind == "custom",
+        None => {
+            let declared = custom.iter().any(|tool| tool == name);
+            let kind = if declared { "custom" } else { "function" };
+            item.insert("type".to_owned(), Value::from(kind));
+            declared
+        }
+    };
+    let id = ids
+        .of(&call.id)
+        .map_or_else(|| call.id.wire().into_owned(), str::to_owned);
+    item.insert("id".to_owned(), Value::String(id));
+    let (slot, key, value) = if custom {
+        let input = match call.function.arguments.get("input") {
+            Some(Value::String(input)) => input.clone(),
+            Some(input) => input.to_string(),
+            None => String::new(),
+        };
+        ("custom", "input", input)
+    } else {
+        let arguments = Value::Object(call.function.arguments.clone()).to_string();
+        ("function", "arguments", arguments)
+    };
+    let slot = item
+        .entry(slot)
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !slot.is_object() {
+        *slot = Value::Object(Map::new());
+    }
+    if let Value::Object(fields) = slot {
+        fields.insert("name".to_owned(), Value::from(name));
+        fields.insert(key.to_owned(), Value::String(value));
+    }
+    Value::Object(item)
+}
+
+/// The Chat `tool_choice` for a canonical one.
+fn tool_choice_value(choice: crate::message::ToolChoice) -> Result<Value, EncodeError> {
+    use crate::message::ToolChoice;
+    Ok(match choice {
+        ToolChoice::Auto => Value::from("auto"),
+        ToolChoice::None => Value::from("none"),
+        ToolChoice::Required => Value::from("required"),
+        ToolChoice::Specific { function_names } => {
+            let [name] = function_names.as_slice() else {
+                return Err(EncodeError::request(
+                    "Provider only supports forcing exactly one specific tool",
+                ));
+            };
+            json!({"type": "function", "function": {"name": name}})
+        }
+    })
+}
+
 /// Perplexity accepts only system, user and assistant roles in strict
 /// user/assistant alternation: text-only content-part arrays flatten (arrays
 /// with other parts are left for its sonar models), and adjacent text
 /// messages of one role become one.
-fn finalize_perplexity(messages: &mut Vec<serde_json::Value>) {
-    let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+fn finalize_perplexity(messages: &mut Vec<Value>) {
+    let mut merged: Vec<Value> = Vec::with_capacity(messages.len());
     for mut message in std::mem::take(messages) {
         if let Some(content) = message.get_mut("content") {
-            unary::flatten_text_content_parts(content, "\n", true);
+            flatten_text_content_parts(content, "\n", true);
         }
-        let role = message.get("role").and_then(serde_json::Value::as_str);
-        let text = message.get("content").and_then(serde_json::Value::as_str);
-        if let (Some(role @ ("user" | "assistant")), Some(text)) = (role, text)
+        if let (Some(role @ ("user" | "assistant")), Some(text)) =
+            (message.str("role"), message.str("content"))
             && let Some(previous) = merged.last_mut()
-            && previous.get("role").and_then(serde_json::Value::as_str) == Some(role)
-            && let Some(serde_json::Value::String(previous)) = previous.get_mut("content")
+            && previous.str("role") == Some(role)
+            && let Some(Value::String(previous)) = previous.get_mut("content")
         {
             previous.push('\n');
             previous.push_str(text);
@@ -275,8 +742,8 @@ fn finalize_perplexity(messages: &mut Vec<serde_json::Value>) {
 /// GPT-6 models that call function tools on Chat Completions only at
 /// `reasoning_effort: "none"` (their model pages), and those that do not
 /// support `"none"` at all, so never call tools there.
-const TOOLS_ONLY_WITHOUT_REASONING: [&str; 2] = [unary::GPT_6_SOL, unary::GPT_6_LUNA];
-const NO_TOOLS_ON_CHAT: [&str; 2] = [unary::GPT_6_ASTRA, unary::GPT_6_1_SOL];
+const TOOLS_ONLY_WITHOUT_REASONING: [&str; 2] = [models::GPT_6_SOL, models::GPT_6_LUNA];
+const NO_TOOLS_ON_CHAT: [&str; 2] = [models::GPT_6_ASTRA, models::GPT_6_1_SOL];
 
 /// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYY-MM-DD`).
 fn is_model(model: &str, id: &str) -> bool {
@@ -285,216 +752,114 @@ fn is_model(model: &str, id: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with("-20"))
 }
 
-/// Refuse a Chat Completions request with function tools on a GPT-6 model
-/// that would answer it with a 400, naming the fix. A caller who already
-/// sends `reasoning_effort: "none"` where the model takes it is not refused.
-fn refuse_tools_while_reasoning(request: &unary::CompletionRequest) -> Result<(), EncodeError> {
-    if request.tools.is_empty() {
-        return Ok(());
-    }
-    let model = request.model.as_str();
-    if NO_TOOLS_ON_CHAT.iter().any(|id| is_model(model, id)) {
-        return Err(EncodeError::request(format!(
-            "{model} cannot call function tools on Chat Completions: it takes them there only \
-             at reasoning_effort \"none\", which it does not support. Use the Responses wire."
-        )));
-    }
-    let effort_none = request
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.get("reasoning_effort"))
-        .and_then(serde_json::Value::as_str)
-        == Some("none");
-    if TOOLS_ONLY_WITHOUT_REASONING
-        .iter()
-        .any(|id| is_model(model, id))
-        && !effort_none
-    {
-        return Err(EncodeError::request(format!(
-            "{model} calls function tools on Chat Completions only at reasoning_effort \"none\": \
-             send `\"reasoning_effort\": \"none\"` in additional_params, or use the Responses wire."
-        )));
-    }
-    Ok(())
-}
-
-fn as_array_mut(value: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
-    value.as_array_mut()
-}
-
 /// Groq's compound-system native tools (`browser_search`, `code_interpreter`,
-/// …) arrive through `additional_params.tools`. Left there they would clobber
-/// the function-tool array on serialization, because `additional_params` is
-/// flattened into the body and the flattened key wins.
-fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), EncodeError> {
-    let Some(map) = request
-        .additional_params
-        .as_mut()
-        .and_then(serde_json::Value::as_object_mut)
-    else {
-        return Ok(());
-    };
-    let Some(raw_tools) = map.shift_remove("tools") else {
-        return Ok(());
-    };
-    let serde_json::Value::Array(native_tools) = raw_tools else {
-        return Err(EncodeError::request(
-            "Groq `additional_params.tools` must be an array of native tool objects",
-        ));
-    };
-
-    // `compound_custom.enabled_tools` is a set keyed by tool type, so a
-    // caller who names the same tool twice enables it once.
-    let enabled = map
+/// …) go in `compound_custom.enabled_tools`, a set keyed by tool type, so a
+/// caller who names the same tool twice enables it once.
+fn fold_groq_native_tools(params: &mut Map<String, Value>, native: Vec<Value>) {
+    if native.is_empty() {
+        return;
+    }
+    let enabled = params
         .entry("compound_custom")
-        .or_insert_with(|| serde_json::json!({}))
+        .or_insert_with(|| json!({}))
         .as_object_mut()
         .map(|custom| {
             custom
                 .entry("enabled_tools")
-                .or_insert_with(|| serde_json::Value::Array(Vec::new()))
+                .or_insert_with(|| Value::Array(Vec::new()))
         });
-    let Some(serde_json::Value::Array(enabled)) = enabled else {
-        return Ok(());
+    let Some(Value::Array(enabled)) = enabled else {
+        return;
     };
-    for tool in native_tools {
-        let kind = tool.get("type").and_then(serde_json::Value::as_str);
-        let already_enabled = enabled
+    for tool in native {
+        if !enabled
             .iter()
-            .any(|existing| existing.get("type").and_then(serde_json::Value::as_str) == kind);
-        if !already_enabled {
+            .any(|existing| existing.str("type") == tool.str("type"))
+        {
             enabled.push(tool);
         }
     }
-    Ok(())
 }
 
-/// Moonshot supports only `auto`/`none`: forcing one specific tool has no
-/// workaround, and `required` is steered with an extra user message.
-fn steer_moonshot_tool_choice(request: &mut unary::CompletionRequest) -> Result<(), EncodeError> {
-    if matches!(request.tool_choice, Some(ToolChoice::Function { .. })) {
-        return Err(EncodeError::request(
-            "Moonshot does not support forcing a specific tool".to_owned(),
-        ));
-    }
-    if matches!(request.tool_choice, Some(ToolChoice::Required)) {
-        tracing::warn!(
-            "Moonshot does not support tool_choice=required; coercing to auto with an \
-             additional steering message"
-        );
-        request.tool_choice = Some(ToolChoice::Auto);
-        request.messages.push(Message::User {
-            content: vec![unary::UserContent::Text {
-                text: "Please select a tool to handle the current issue.".to_owned(),
-            }],
-            name: None,
-        });
-    }
-    Ok(())
-}
-
-/// DeepSeek takes message `content` as a plain string and needs an explicit
-/// empty `content` on a tool-call-only assistant turn. Its thinking models take `reasoning_content` back on every
-/// assistant message, so a turn that carries none sends it empty (pi's rule).
-fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
-    if let Some(messages) = map.get_mut("messages").and_then(as_array_mut) {
-        for message in messages {
-            let Some(message) = message.as_object_mut() else {
-                continue;
-            };
-            let is_assistant =
-                message.get("role").and_then(serde_json::Value::as_str) == Some("assistant");
-
-            if let Some(content) = message.get_mut("content") {
-                let separator = if is_assistant { "" } else { "\n" };
-                // Preserve nontext parts so unsupported attachments are rejected
-                // rather than silently omitted from the prompt.
-                unary::flatten_text_content_parts(content, separator, true);
-            } else if is_assistant {
-                message.insert(
-                    "content".to_owned(),
-                    serde_json::Value::String(String::new()),
-                );
+/// DeepSeek takes message `content` as a plain string, needs an explicit
+/// empty `content` on a tool-call-only assistant turn, and rejects forced
+/// tool choices unless thinking is explicitly disabled.
+fn finalize_deepseek(map: &mut Map<String, Value>) {
+    for message in map
+        .get_mut("messages")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object_mut)
+    {
+        let assistant = message.get("role").and_then(Value::as_str) == Some("assistant");
+        match message.get_mut("content") {
+            // Nontext parts stay, so an unsupported attachment is refused
+            // rather than silently left out of the prompt.
+            Some(content) => {
+                flatten_text_content_parts(content, if assistant { "" } else { "\n" }, true);
             }
-            if is_assistant {
-                message
-                    .entry("reasoning_content")
-                    .or_insert_with(|| serde_json::Value::String(String::new()));
+            None if assistant => {
+                message.insert("content".to_owned(), Value::String(String::new()));
             }
+            None => {}
         }
     }
-
-    // DeepSeek rejects forced tool choices unless thinking is explicitly
-    // disabled; suppress them to an explicit `null` otherwise.
     let thinking_disabled = map
         .get("thinking")
-        .and_then(|thinking| thinking.get("type"))
-        .and_then(serde_json::Value::as_str)
+        .and_then(|thinking| thinking.str("type"))
         .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"));
     if !thinking_disabled
         && let Some(tool_choice) = map.get_mut("tool_choice")
         && (tool_choice.is_object() || tool_choice.as_str() == Some("required"))
     {
-        *tool_choice = serde_json::Value::Null;
+        *tool_choice = Value::Null;
     }
 }
 
 /// Mistral's wire-level differences: its own spelling for a forced tool
 /// choice, the relaxation that lets a structured format ride beside tools,
 /// its content chunks, and `content` on every assistant message.
-///
-/// Its multimodal content mapping is [`mistral_content`].
-fn finalize_mistral(map: &mut serde_json::Map<String, serde_json::Value>) {
+fn finalize_mistral(map: &mut Map<String, Value>) {
     // Mistral spells the "must call some tool" mode `any`, not `required`.
     if let Some(tool_choice) = map.get_mut("tool_choice")
         && tool_choice.as_str() == Some("required")
     {
-        *tool_choice = serde_json::Value::String("any".to_owned());
+        *tool_choice = Value::from("any");
     }
-
-    // Mistral rejects forced tool calls beside JSON response formats.
-    // Relax the choice rather than discard the requested schema; text formats are exempt.
+    // Mistral rejects forced tool calls beside JSON response formats: the
+    // choice is relaxed rather than the schema discarded.
     let forces_a_tool_call = map
         .get("tool_choice")
         .is_some_and(|choice| !matches!(choice.as_str(), Some("auto" | "none")));
     let has_tools = map
         .get("tools")
-        .and_then(serde_json::Value::as_array)
+        .and_then(Value::as_array)
         .is_some_and(|tools| !tools.is_empty());
-    let has_structured_format = map
+    let structured = map
         .get("response_format")
-        .and_then(|format| format.get("type"))
-        .and_then(serde_json::Value::as_str)
+        .and_then(|format| format.str("type"))
         .is_some_and(|kind| matches!(kind, "json_schema" | "json_object"));
-    if forces_a_tool_call && has_tools && has_structured_format {
+    if forces_a_tool_call && has_tools && structured {
         tracing::debug!(
             "relaxing tool_choice to `auto`: Mistral rejects a forced tool choice \
              alongside a response format"
         );
-        map.insert(
-            "tool_choice".to_owned(),
-            serde_json::Value::String("auto".to_owned()),
-        );
+        map.insert("tool_choice".to_owned(), Value::from("auto"));
     }
-
-    let Some(messages) = map.get_mut("messages").and_then(as_array_mut) else {
-        return;
-    };
-    for message in messages {
-        let Some(message) = message.as_object_mut() else {
-            continue;
-        };
-        // An assistant message is Mistral's own reply or one rebuilt with
-        // string content; only its missing `content` needs filling in.
-        if message.get("role").and_then(serde_json::Value::as_str) == Some("assistant") {
+    for message in map
+        .get_mut("messages")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_object_mut)
+    {
+        // An assistant message only needs its missing `content` filled in.
+        if message.get("role").and_then(Value::as_str) == Some("assistant") {
             message
                 .entry("content")
-                .or_insert_with(|| serde_json::Value::String(String::new()));
-            continue;
-        }
-        // Mistral takes text-only message `content` as a plain string and
-        // carries images, audio and documents as its own chunk array.
-        if let Some(content) = message.get_mut("content") {
+                .or_insert_with(|| Value::String(String::new()));
+        } else if let Some(content) = message.get_mut("content") {
             mistral_content(content);
         }
     }
@@ -514,37 +879,21 @@ const MISTRAL_FILE: &str = "file";
 /// has no field for, so it is re-tagged rather than forwarded.
 const MISTRAL_REFUSAL: &str = "refusal";
 
-/// The text a part carries, under either key the shared conversion uses.
-fn mistral_part_text(part: &serde_json::Value) -> Option<&str> {
-    part.get(MISTRAL_TEXT)
-        .and_then(serde_json::Value::as_str)
-        .or_else(|| {
-            part.get(MISTRAL_REFUSAL)
-                .and_then(serde_json::Value::as_str)
-        })
-}
-
-/// Identify text and refusal parts by tag, falling back to payload keys without a tag.
-/// An explicit nontext tag prevents flattening even when a text key is present.
-fn is_mistral_text_part(part: &serde_json::Value) -> bool {
-    match part.get("type").and_then(serde_json::Value::as_str) {
-        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => true,
-        Some(_) => false,
-        None => mistral_part_text(part).is_some(),
-    }
+/// The text a part carries, under either key the conversion uses.
+fn part_text(part: &Value) -> Option<&str> {
+    part.str(MISTRAL_TEXT).or_else(|| part.str(MISTRAL_REFUSAL))
 }
 
 /// One content part as the Mistral chunk that carries it, by its `type`:
 /// text and refusal parts are `text` chunks, a file's data is a
 /// `document_url` and its id a `file` chunk, audio is its base64 string,
 /// and an image keeps only its `image_url`, for every chunk forbids unknown
-/// keys. A part the shared conversion does not emit stays as it is.
-fn mistral_chunk(part: &serde_json::Value) -> serde_json::Value {
-    use serde_json::json;
-    let field = |pointer: &str| part.pointer(pointer).and_then(serde_json::Value::as_str);
-    match part.get("type").and_then(serde_json::Value::as_str) {
+/// keys. A part the conversion does not emit stays as it is.
+fn mistral_chunk(part: &Value) -> Value {
+    let field = |pointer: &str| part.at(pointer).and_then(Value::as_str);
+    match part.str("type") {
         Some(MISTRAL_TEXT | MISTRAL_REFUSAL) | None => {
-            json!({"type": MISTRAL_TEXT, MISTRAL_TEXT: mistral_part_text(part).unwrap_or_default()})
+            json!({"type": MISTRAL_TEXT, MISTRAL_TEXT: part_text(part).unwrap_or_default()})
         }
         Some(MISTRAL_IMAGE) => {
             json!({"type": MISTRAL_IMAGE, MISTRAL_IMAGE: part.get(MISTRAL_IMAGE)})
@@ -565,12 +914,17 @@ fn mistral_chunk(part: &serde_json::Value) -> serde_json::Value {
 
 /// Flatten a text-only part array to a string, and convert a mixed one to
 /// Mistral content chunks. Anything else stays as it is.
-fn mistral_content(content: &mut serde_json::Value) {
+fn mistral_content(content: &mut Value) {
     let Some(parts) = content.as_array_mut() else {
         return;
     };
-    if parts.iter().all(is_mistral_text_part) {
-        unary::flatten_text_content_parts(content, "", false);
+    let textual = |part: &Value| match part.str("type") {
+        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => true,
+        Some(_) => false,
+        None => part_text(part).is_some(),
+    };
+    if parts.iter().all(textual) {
+        flatten_text_content_parts(content, "", false);
         return;
     }
     for part in parts {
@@ -578,46 +932,49 @@ fn mistral_content(content: &mut serde_json::Value) {
     }
 }
 
-/// OpenRouter's ephemeral `cache_control` on the system prompt.
-fn apply_openrouter_prompt_caching(map: &mut serde_json::Map<String, serde_json::Value>) {
-    let Some(messages) = map.get_mut("messages").and_then(as_array_mut) else {
+/// Flatten a content-part array to its text parts (refusals are text),
+/// joined by `separator`. With `only_if_all_text`, an array with a nontext
+/// part is left as it is; otherwise nontext parts are dropped.
+fn flatten_text_content_parts(content: &mut Value, separator: &str, only_if_all_text: bool) {
+    let Some(parts) = content.as_array() else {
         return;
     };
-    let Some(system) = messages
-        .iter_mut()
-        .find(|message| message.get("role").and_then(serde_json::Value::as_str) == Some("system"))
+    if only_if_all_text && !parts.iter().all(|part| part_text(part).is_some()) {
+        return;
+    }
+    let texts: Vec<&str> = parts.iter().filter_map(part_text).collect();
+    *content = Value::String(texts.join(separator));
+}
+
+/// OpenRouter's ephemeral `cache_control` on the system prompt: on its
+/// text, or on the last of its parts.
+fn apply_openrouter_prompt_caching(map: &mut Map<String, Value>) {
+    let Some(system) = map
+        .get_mut("messages")
+        .and_then(Value::as_array_mut)
+        .and_then(|messages| {
+            messages
+                .iter_mut()
+                .find(|message| message.str("role") == Some("system"))
+        })
+        .and_then(Value::as_object_mut)
     else {
         return;
     };
-    match system.get("content").cloned() {
-        Some(serde_json::Value::String(text)) => {
-            if let Some(object) = system.as_object_mut() {
-                object.insert(
-                    "content".to_owned(),
-                    serde_json::json!([{
-                        "type": "text",
-                        "text": text,
-                        "cache_control": { "type": "ephemeral" }
-                    }]),
-                );
-            }
+    let ephemeral = json!({"type": "ephemeral"});
+    let content = match system.get_mut("content") {
+        Some(Value::String(text)) => {
+            json!([{"type": "text", "text": text, "cache_control": ephemeral}])
         }
-        Some(serde_json::Value::Array(mut parts)) => {
-            // The last block marks the cache boundary without altering earlier content.
-            if let Some(last) = parts.last_mut()
-                && let Some(object) = last.as_object_mut()
-            {
-                object.insert(
-                    "cache_control".to_owned(),
-                    serde_json::json!({ "type": "ephemeral" }),
-                );
+        Some(Value::Array(parts)) => {
+            if let Some(Value::Object(last)) = parts.last_mut() {
+                last.insert("cache_control".to_owned(), ephemeral);
             }
-            if let Some(object) = system.as_object_mut() {
-                object.insert("content".to_owned(), serde_json::Value::Array(parts));
-            }
+            return;
         }
-        _ => {}
-    }
+        _ => return,
+    };
+    system.insert("content".to_owned(), content);
 }
 
 impl Wire for Chat {
@@ -684,7 +1041,6 @@ impl crate::completion::ReplayTarget for Chat {
     /// Cohere take no media but images, and Ollama only images as data.
     fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::Media;
-        use crate::message::{DocumentMediaType, DocumentSourceKind as Source};
         let dialect = &self.provider.dialect;
         let rewrite = dialect.quirks.rewrite;
         let parts = !matches!(rewrite, BodyRewrite::DeepSeek | BodyRewrite::Mira);
@@ -774,20 +1130,43 @@ impl crate::completion::ReplayTarget for Chat {
         }
         id.to_owned()
     }
+
+    /// What an edited block keeps of its item: a custom call's kind and
+    /// Mistral's thinking part (`type`), or the field reasoning arrived in,
+    /// as pi keeps `thinkingSignature`. Signed data such as
+    /// `reasoning_details` never survives an edit.
+    fn identity(&self, item: &Value) -> Map<String, Value> {
+        if let Some(kind @ ("custom" | "thinking")) = item.str("type") {
+            return Map::from_iter([("type".to_owned(), Value::from(kind))]);
+        }
+        REASONING_TEXT_KEYS
+            .iter()
+            .find(|key| item.get(**key).is_some_and(Value::is_string))
+            .map(|key| Map::from_iter([((*key).to_owned(), Value::String(String::new()))]))
+            .unwrap_or_default()
+    }
+
+    fn call_id_slot(&self) -> Option<&'static str> {
+        Some("/id")
+    }
+
+    fn states_finish_reason(&self) -> bool {
+        self.provider.dialect.quirks.states_finish_reason
+    }
 }
 
 /// OpenAI's Chat models that read no images.
 const OPENAI_TEXT_ONLY: [&str; 10] = [
-    unary::GPT_4,
-    unary::GPT_4_0613,
-    unary::GPT_4_32K,
-    unary::GPT_4_32K_0613,
-    unary::GPT_4_0125_PREVIEW,
-    unary::GPT_4_1106_PREVIEW,
-    unary::GPT_4_TURBO_PREVIEW,
-    unary::O1_MINI,
-    unary::O1_PREVIEW,
-    unary::O3_MINI,
+    models::GPT_4,
+    models::GPT_4_0613,
+    models::GPT_4_32K,
+    models::GPT_4_32K_0613,
+    models::GPT_4_0125_PREVIEW,
+    models::GPT_4_1106_PREVIEW,
+    models::GPT_4_TURBO_PREVIEW,
+    models::O1_MINI,
+    models::O1_PREVIEW,
+    models::O3_MINI,
 ];
 
 /// Whether `model` reads user images from `vendor`, a dialect's name or the
@@ -878,9 +1257,9 @@ fn short_hash(text: &str) -> String {
 /// Classified Chat Completions frame, including whole replies and terminal signals.
 pub enum ChatEvent {
     /// A `chat.completion.chunk`: one step of a streamed turn.
-    Chunk(ChatFrame),
+    Chunk(Value),
     /// A `chat.completion`: the whole turn in one frame.
-    Whole(ChatFrame),
+    Whole(Value),
     /// The `[DONE]` sentinel: the provider ended the stream.
     Done,
     /// The wire's in-band error envelope, delivered with a 200 status.
@@ -913,20 +1292,15 @@ pub(crate) enum Part {
 
 impl Part {
     /// The part `part` is, by its `type`.
-    pub(crate) fn of(part: &serde_json::Value) -> Self {
-        let text = |key: &str| {
-            part.get(key)
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_owned()
-        };
-        match part.get("type").and_then(serde_json::Value::as_str) {
+    pub(crate) fn of(part: &Value) -> Self {
+        let text = |key: &str| part.str(key).unwrap_or_default().to_owned();
+        match part.str("type") {
             Some("text") => Self::Text(text("text")),
             Some("refusal") => Self::Text(text("refusal")),
             Some("thinking") => Self::Thinking(match part.get("thinking") {
-                Some(serde_json::Value::Array(chunks)) => chunks
+                Some(Value::Array(chunks)) => chunks
                     .iter()
-                    .filter_map(|chunk| chunk.get("text").and_then(serde_json::Value::as_str))
+                    .filter_map(|chunk| chunk.str("text"))
                     .collect(),
                 _ => text("thinking"),
             }),
@@ -948,10 +1322,10 @@ pub(crate) enum CallKind {
 }
 
 impl CallKind {
-    /// The kind of the assembled `call`, by its `type`; a call without one
-    /// is a function call.
-    pub(crate) fn of(call: &serde_json::Value) -> Self {
-        match call.get("type").and_then(serde_json::Value::as_str) {
+    /// The kind of `call`, by its `type`; a call without one is a function
+    /// call.
+    pub(crate) fn of(call: &Value) -> Self {
+        match call.str("type") {
             None | Some("function") => Self::Function,
             Some("custom") => Self::Custom,
             Some(_) => Self::Unknown,
@@ -966,24 +1340,24 @@ enum Writing {
     Reasoning,
 }
 
+/// A tool call the reply has open: its writer index, the id it states, and
+/// whether its kind is one rig cannot answer (an opaque item).
+struct OpenCall {
+    at: usize,
+    id: Option<String>,
+    opaque: bool,
+}
+
 /// The chat-completions decoder: one state machine for a whole reply and a
-/// stream of chunks. A whole reply is restated as the one chunk carrying
-/// its message. As pi's `openai-completions` decodes a message, a run of
-/// reasoning is a block, a run of text a block, and each tool call, image
-/// and unknown content part a block of its own. A block closes when the
-/// next one starts. An answer's audio transcript is its text when it has
-/// no other, and its first text block holds the audio's id. Each block
-/// holds only its own item, and the assembled message is the turn's native,
-/// for display.
+/// stream of chunks, reading every frame leniently as JSON. A whole reply
+/// is the one chunk carrying its message. As pi's `openai-completions`
+/// decodes a message, a run of reasoning is a block, a run of text a block,
+/// and each tool call, image and unknown content part a block of its own;
+/// a block closes when the next one starts. An answer's audio transcript
+/// is its text when it has no other, and its first text block holds the
+/// audio's id.
 pub struct ChatDecoder {
-    quirks: super::Quirks,
-    /// The assistant message as assembled so far, without its tool calls.
-    message: serde_json::Map<String, serde_json::Value>,
-    /// Each tool call as assembled so far, in the order they opened; `None`
-    /// once it left the message.
-    calls: Vec<Option<serde_json::Value>>,
-    /// The position in `calls` of the call open at each wire index.
-    open_calls: std::collections::BTreeMap<usize, usize>,
+    quirks: Quirks,
     /// The block being written, and its writer index.
     writing: Option<(Writing, usize)>,
     /// The reasoning block's item as it will hold it: the field its text
@@ -992,165 +1366,187 @@ pub struct ChatDecoder {
     reasoning_field: Option<&'static str>,
     thinking_part: bool,
     reasoning_text: String,
-    reasoning_details: serde_json::Map<String, serde_json::Value>,
+    reasoning_details: Map<String, Value>,
     /// The id of the answer's audio.
-    audio_id: Option<serde_json::Value>,
-    /// Whether any block opened.
-    wrote: bool,
-    final_usage: Option<serde_json::Value>,
-    final_finish_reason: Option<FinishReason>,
+    audio_id: Option<Value>,
+    /// The calls still open, in the order they opened.
+    calls: Vec<OpenCall>,
+    usage: Option<Value>,
+    finish: Option<FinishReason>,
     response_id: Option<String>,
     response_model: Option<String>,
     /// Accumulated primary-choice token metadata, in the wire's token order.
-    logprobs: Option<serde_json::Map<String, serde_json::Value>>,
-    /// Accumulated provider-specific top-level chunk metadata.
-    additional_params: serde_json::Map<String, serde_json::Value>,
-    /// Whether a finish reason established the turn complete.
-    saw_terminal: bool,
+    logprobs: Option<Map<String, Value>>,
+    /// Provider-specific top-level fields of every frame.
+    fields: Map<String, Value>,
+    /// Whether a finish reason or a whole reply ended the turn.
+    ended: bool,
 }
 
 impl ChatDecoder {
-    fn new(quirks: super::Quirks) -> Self {
+    fn new(quirks: Quirks) -> Self {
         Self {
             quirks,
-            message: serde_json::Map::new(),
-            calls: Vec::new(),
-            open_calls: std::collections::BTreeMap::new(),
             writing: None,
             reasoning_field: None,
             thinking_part: false,
             reasoning_text: String::new(),
-            reasoning_details: serde_json::Map::new(),
+            reasoning_details: Map::new(),
             audio_id: None,
-            wrote: false,
-            final_usage: None,
-            final_finish_reason: None,
+            calls: Vec::new(),
+            usage: None,
+            finish: None,
             response_id: None,
             response_model: None,
             logprobs: None,
-            additional_params: serde_json::Map::new(),
-            saw_terminal: false,
+            fields: Map::new(),
+            ended: false,
         }
-    }
-
-    /// The normalized finish reason a choice reported, `None` when the
-    /// chunk carried no `finish_reason`.
-    ///
-    /// A gateway's upstream-native reason is consulted only when the
-    /// normalized field is absent or empty, which is OpenRouter's documented
-    /// precedence; a direct provider has no native field to consult.
-    fn finish_reason(&self, choice: &ChatChoice) -> Option<FinishReason> {
-        if let Some(reason) = choice
-            .finish_reason
-            .as_ref()
-            .map(super::dto::FinishReason::as_wire)
-            .filter(|reason| !reason.is_empty())
-        {
-            return Some(map_openai_finish_reason(reason));
-        }
-        if self.quirks.native_finish_reason
-            && let Some(native) = choice
-                .native_finish_reason
-                .as_deref()
-                .filter(|reason| !reason.is_empty())
-        {
-            return Some(map_native_finish_reason(native));
-        }
-        None
     }
 
     /// Absorb the metadata every frame carries, and take its primary choice.
-    fn absorb(&mut self, frame: ChatFrame) -> Option<ChatChoice> {
-        let ChatFrame {
-            id,
-            model,
-            choices,
-            usage,
-            additional_params,
-        } = frame;
-        self.response_id = id.or(self.response_id.take());
-        self.response_model = model.or(self.response_model.take());
-        self.final_usage = usage
-            .filter(|usage| !usage.is_null())
-            .or(self.final_usage.take());
-        merge_fields(&mut self.additional_params, &additional_params);
+    /// Usage is the frame's, or its choice's where Moonshot reports it (pi).
+    fn absorb(&mut self, frame: &Value) -> Option<Value> {
+        if let Some(id) = frame.str("id") {
+            self.response_id = Some(id.to_owned());
+        }
+        if let Some(model) = frame.str("model") {
+            self.response_model = Some(model.to_owned());
+        }
+        for (key, value) in frame.as_object().into_iter().flatten() {
+            if !matches!(key.as_str(), "id" | "model" | "choices" | "usage") {
+                let field = Map::from_iter([(key.clone(), value.clone())]);
+                merge_fields(&mut self.fields, &field);
+            }
+        }
         // `n > 1` streams interleave candidates told apart only by
         // `choices[].index`; candidate 0 is the turn, as in a whole reply.
-        let choice = choices
-            .into_iter()
-            .find(|choice| choice.index.is_none_or(|index| index == 0))?;
-        if let Some(reason) = self.finish_reason(&choice) {
-            self.final_finish_reason = Some(reason);
-            self.saw_terminal = true;
+        let choice = frame
+            .arr("choices")
+            .iter()
+            .find(|choice| {
+                let index = choice.get("index").and_then(Value::as_u64);
+                index.is_none_or(|index| index == 0)
+            })
+            .cloned();
+        if let Some(usage) = frame
+            .at("/usage")
+            .or_else(|| choice.as_ref().and_then(|choice| choice.at("/usage")))
+        {
+            self.usage = Some(usage.clone());
         }
-        if let Some(serde_json::Value::Object(logprobs)) = &choice.logprobs {
+        let choice = choice?;
+        // A gateway's upstream-native reason is consulted only when the
+        // normalized field is absent or empty (OpenRouter's precedence).
+        let reason = match choice
+            .str("finish_reason")
+            .filter(|reason| !reason.is_empty())
+        {
+            Some(reason) => Some(finish_reason(reason, &self.quirks)),
+            None => choice
+                .str("native_finish_reason")
+                .filter(|reason| self.quirks.native_finish_reason && !reason.is_empty())
+                .map(native_finish_reason),
+        };
+        if let Some(reason) = reason {
+            self.finish = Some(reason);
+            self.ended = true;
+        }
+        if let Some(logprobs) = choice.obj("logprobs") {
             merge_fields(self.logprobs.get_or_insert_default(), logprobs);
         }
         Some(choice)
     }
 
-    /// One delta of the assistant message: its reasoning, its text, its
-    /// content parts, its audio transcript, images and tool calls reach
-    /// their blocks, and every field reaches the message.
+    /// One delta of the assistant message, in the order a stream sends it:
+    /// reasoning and the details that come with it, the content, the
+    /// details that sign one of the delta's calls (Gemini's, which arrive
+    /// with the call), images and calls.
     fn delta(
         &mut self,
-        mut delta: serde_json::Map<String, serde_json::Value>,
+        delta: &Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
         let reasoning = REASONING_TEXT_KEYS.iter().find_map(|key| {
             delta
                 .get(*key)
-                .and_then(serde_json::Value::as_str)
+                .and_then(Value::as_str)
                 .filter(|text| !text.is_empty())
-                .map(|text| (*key, text.to_owned()))
+                .map(|text| (*key, text))
         });
         if let Some((key, text)) = reasoning {
-            self.write(Writing::Reasoning, &text, out)?;
+            self.write(Writing::Reasoning, text, out)?;
             self.reasoning_field.get_or_insert(key);
         }
-        if let Some(serde_json::Value::Array(details)) = delta.shift_remove(REASONING_DETAILS)
-            && !details.is_empty()
-        {
-            self.write(Writing::Reasoning, "", out)?;
-            merge_details(&mut self.reasoning_details, details.clone());
-            merge_details(&mut self.message, details);
-        }
+        let calls = delta.get("tool_calls").and_then(Value::as_array);
+        let signs = |detail: &Value| {
+            detail.str("id").is_some_and(|id| {
+                calls
+                    .into_iter()
+                    .flatten()
+                    .any(|call| call.str("id") == Some(id))
+            })
+        };
+        let (signing, leading): (Vec<Value>, Vec<Value>) = delta
+            .get(REASONING_DETAILS)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .cloned()
+            .partition(signs);
+        self.details(leading, out)?;
         let audio = delta.get("audio");
-        if let Some(id) = audio
-            .and_then(|audio| audio.get("id"))
-            .filter(|id| !id.is_null())
-        {
+        if let Some(id) = audio.and_then(|audio| audio.at("/id")) {
             self.audio_id = Some(id.clone());
         }
-        let transcript = audio
-            .and_then(|audio| audio.get("transcript"))
-            .and_then(serde_json::Value::as_str)
-            .filter(|text| !text.is_empty())
-            .map(str::to_owned);
         match delta.get("content") {
-            Some(serde_json::Value::Array(parts)) => {
-                for part in parts.clone() {
+            Some(Value::Array(parts)) => {
+                for part in parts {
                     self.part(part, out)?;
                 }
             }
-            Some(part @ serde_json::Value::Object(_)) => self.part(part.clone(), out)?,
+            Some(part @ Value::Object(_)) => self.part(part, out)?,
             _ => {
-                if let Some(text) = delta_text(&delta).or(transcript) {
-                    self.write(Writing::Text, &text, out)?;
+                let text = ["content", "refusal"]
+                    .iter()
+                    .find_map(|key| {
+                        delta
+                            .get(*key)
+                            .and_then(Value::as_str)
+                            .filter(|text| !text.is_empty())
+                    })
+                    .or_else(|| audio.and_then(|audio| audio.str("transcript")))
+                    .filter(|text| !text.is_empty());
+                if let Some(text) = text {
+                    self.write(Writing::Text, text, out)?;
                 }
             }
         }
-        if let Some(serde_json::Value::Array(images)) = delta.get("images") {
-            for image in images.clone() {
-                self.image(image, out)?;
-            }
+        self.details(signing, out)?;
+        for image in delta
+            .get("images")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            self.image(image, out)?;
         }
-        if let Some(serde_json::Value::Array(calls)) = delta.shift_remove("tool_calls") {
-            for call in calls {
-                self.call(call, out)?;
-            }
+        for call in calls.into_iter().flatten() {
+            self.call(call, out)?;
         }
-        merge_fields(&mut self.message, &delta);
+        Ok(())
+    }
+
+    /// Reasoning `details`, into the reasoning block.
+    fn details(
+        &mut self,
+        details: Vec<Value>,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
+        if !details.is_empty() {
+            self.write(Writing::Reasoning, "", out)?;
+            merge_details(&mut self.reasoning_details, details);
+        }
         Ok(())
     }
 
@@ -1171,12 +1567,11 @@ impl ChatDecoder {
                     Writing::Reasoning => Block::Reasoning { redacted: false },
                     Writing::Text => Block::Text,
                 };
-                out.open(index, block, serde_json::Value::Null)?;
+                out.open(index, block, Value::Null)?;
                 self.writing = Some((writing, index));
                 index
             }
         };
-        self.wrote = true;
         if writing == Writing::Reasoning {
             self.reasoning_text.push_str(text);
         }
@@ -1186,38 +1581,40 @@ impl ChatDecoder {
     /// Close the block being written, holding its item: the reasoning's
     /// field or thinking part and its details, or the audio's id.
     fn close_writing(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        match self.writing.take() {
-            None => Ok(()),
-            Some((Writing::Text, index)) => match self.audio_id.take() {
-                Some(id) => out.finish_with(index, serde_json::json!({ "audio": { "id": id } })),
-                None => out.finish(index),
-            },
+        let (index, item) = match self.writing.take() {
+            None => return Ok(()),
+            Some((Writing::Text, index)) => (
+                index,
+                self.audio_id
+                    .take()
+                    .map(|id| json!({ "audio": { "id": id } })),
+            ),
             Some((Writing::Reasoning, index)) => {
                 let text = std::mem::take(&mut self.reasoning_text);
-                let mut item = serde_json::Map::new();
+                let mut item = Map::new();
                 if std::mem::take(&mut self.thinking_part) {
                     item.insert("type".to_owned(), "thinking".into());
                     item.insert(
                         "thinking".to_owned(),
-                        serde_json::json!([{"type": "text", "text": text}]),
+                        json!([{"type": "text", "text": text}]),
                     );
                 } else if let Some(field) = self.reasoning_field.take() {
                     item.insert(field.to_owned(), text.into());
                 }
                 item.append(&mut self.reasoning_details);
-                out.finish_with(index, serde_json::Value::Object(item))
+                (index, Some(Value::Object(item)))
             }
+        };
+        if let Some(item) = item {
+            out.edit(index, |slot| *slot = item)?;
         }
+        out.finish(index)
     }
 
     /// One content part, through [`Part::of`].
     #[deny(clippy::wildcard_enum_match_arm)]
-    fn part(
-        &mut self,
-        part: serde_json::Value,
-        out: &mut Out<'_, Completion>,
-    ) -> Result<(), ProviderError> {
-        match Part::of(&part) {
+    fn part(&mut self, part: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        match Part::of(part) {
             Part::Text(text) => self.write(Writing::Text, &text, out),
             Part::Thinking(text) => {
                 self.write(Writing::Reasoning, &text, out)?;
@@ -1227,210 +1624,181 @@ impl ChatDecoder {
             Part::Image => self.image(part, out),
             Part::Unknown => {
                 self.close_writing(out)?;
-                self.wrote = true;
                 let index = out.fresh_index();
-                out.whole(index, Block::Opaque { replay: true }, part, "")
+                out.whole(index, Block::Opaque { replay: true }, part.clone(), "")
             }
         }
     }
 
     /// One image the model produced, an `image_url` part, whole: a data URL
     /// becomes base64 data, any other URL stays a URL.
-    fn image(
-        &mut self,
-        part: serde_json::Value,
-        out: &mut Out<'_, Completion>,
-    ) -> Result<(), ProviderError> {
-        use crate::message::{DocumentSourceKind, Image, ImageMediaType, MimeType};
+    fn image(&mut self, part: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+        use crate::message::{Image, ImageMediaType};
         let url = part
-            .pointer("/image_url/url")
+            .at("/image_url/url")
             .or_else(|| part.get("image_url"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        let (image, data) = match url
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let inline = url
             .strip_prefix("data:")
-            .and_then(|rest| rest.split_once(";base64,"))
-        {
+            .and_then(|rest| rest.split_once(";base64,"));
+        let (image, data) = match inline {
             Some((mime, data)) => (
                 Image {
-                    data: DocumentSourceKind::Base64(String::new()),
+                    data: Source::Base64(String::new()),
                     media_type: ImageMediaType::from_mime_type(mime),
                     ..Image::default()
                 },
-                data.to_owned(),
+                data,
             ),
             None => (
                 Image {
-                    data: DocumentSourceKind::Url(url),
+                    data: Source::Url(url.to_owned()),
                     ..Image::default()
                 },
-                String::new(),
+                "",
             ),
         };
         self.close_writing(out)?;
-        self.wrote = true;
         let index = out.fresh_index();
-        out.whole(index, Block::Image(image), part, &data)
+        out.whole(index, Block::Image(image), part.clone(), data)
     }
 
-    /// One tool-call fragment, buffered at its wire index.
-    fn call(
-        &mut self,
-        mut call: serde_json::Value,
-        out: &mut Out<'_, Completion>,
-    ) -> Result<(), ProviderError> {
+    /// One tool-call fragment. It goes to the call at its wire index, where
+    /// the writer tells a new id under it from the call it held; without an
+    /// index (or with `null`), to the open call that states its id, or the
+    /// latest when it states none (pi). Its fields merge into the call's
+    /// item.
+    fn call(&mut self, call: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         self.close_writing(out)?;
-        let incoming = StreamingToolCall::read(&call);
-        let index = incoming.index;
-        let custom = call
-            .pointer("/custom/name")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-        if let Some(existing) = self.open_call(index) {
-            let id = existing.get("id").and_then(serde_json::Value::as_str);
-            let name = existing
-                .pointer("/function/name")
-                .and_then(serde_json::Value::as_str);
-            if incoming.evicts(id.unwrap_or_default(), name.unwrap_or_default()) {
-                // The wire reused this call's index: the call it held is
-                // delivered even when its arguments never parse.
-                self.close_call(index, false, out)?;
-            }
-        }
-        let at = *self.open_calls.entry(index).or_insert_with(|| {
-            self.calls
-                .push(Some(serde_json::Value::Object(serde_json::Map::new())));
-            self.calls.len() - 1
-        });
-        // The index orders the stream; the call it assembles has none, as
-        // in a whole reply.
-        if let (
-            Some(serde_json::Value::Object(fields)),
-            Some(Some(serde_json::Value::Object(existing))),
-        ) = (
-            call.as_object_mut().map(|fields| {
-                fields.shift_remove("index");
-                serde_json::Value::Object(std::mem::take(fields))
-            }),
-            self.calls.get_mut(at),
-        ) {
-            merge_fields(existing, &fields);
-        }
-        self.wrote = true;
-        out.fragment(
-            Some(index),
-            CallFragment {
-                id: incoming.id.as_deref(),
-                name: incoming.function.name.as_deref().or(custom.as_deref()),
-                arguments: incoming.function.arguments.as_deref(),
-            },
-        )?;
-        if self.quirks.emits_complete_single_chunk_tool_calls && incoming.is_complete_single_chunk()
-        {
-            // A probe: the call closes if its input parses, and stays open
-            // for more fragments otherwise.
-            self.close_call(index, true, out)?;
-        }
-        Ok(())
-    }
-
-    /// The call assembled at wire `index`, while it is open.
-    fn open_call(&self, index: usize) -> Option<&serde_json::Value> {
-        self.calls.get(*self.open_calls.get(&index)?)?.as_ref()
-    }
-
-    /// Finish the call at wire `index`, through [`CallKind::of`], with the
-    /// call as its native; with `probe`, only when its arguments are already
-    /// a complete object. A call the output budget cut short before its
-    /// arguments were a whole object closes with no native: the provider
-    /// never stated it complete. A custom call's
-    /// arguments are its `{"input"}`; a call of a kind rig cannot answer is
-    /// kept as an item that is never sent back.
-    #[deny(clippy::wildcard_enum_match_arm)]
-    fn close_call(
-        &mut self,
-        index: usize,
-        probe: bool,
-        out: &mut Out<'_, Completion>,
-    ) -> Result<(), ProviderError> {
-        let cut = matches!(self.final_finish_reason, Some(FinishReason::Length));
-        let call = self.open_call(index).cloned().unwrap_or_default();
-        match CallKind::of(&call) {
-            CallKind::Function => {}
-            CallKind::Custom => {
-                let input = call
-                    .pointer("/custom/input")
-                    .cloned()
-                    .unwrap_or_else(|| serde_json::Value::String(String::new()));
-                out.announce(index, serde_json::json!({ "input": input }))?;
-            }
-            CallKind::Unknown => {
-                out.discard(index);
-                if let Some(at) = self.open_calls.remove(&index)
-                    && let Some(slot) = self.calls.get_mut(at)
-                {
-                    *slot = None;
-                }
-                let at = out.fresh_index();
-                return out.whole(at, Block::Opaque { replay: false }, call, "");
-            }
-        }
-        out.edit(index, |item| *item = call)?;
-        let closed = if probe {
-            out.close_if_complete(index)?
-        } else if cut {
-            // Arguments that are already a whole object were stated whole,
-            // budget or not; only a call the cut left unfinished has no item.
-            if !out.close_if_complete(index)? {
-                out.close(index)?;
-            }
-            true
-        } else {
-            out.finish(index)?;
-            true
+        let id = match call.get("id") {
+            Some(Value::String(id)) if !id.is_empty() => Some(id.clone()),
+            Some(id @ Value::Number(_)) => Some(id.to_string()),
+            _ => None,
         };
-        if closed {
-            self.open_calls.remove(&index);
+        let index = call
+            .get("index")
+            .and_then(Value::as_u64)
+            .and_then(|index| usize::try_from(index).ok());
+        let at = match index {
+            Some(index) => index,
+            None => match id.as_deref() {
+                Some(id) => self
+                    .calls
+                    .iter()
+                    .find(|open| open.id.as_deref() == Some(id)),
+                None => self.calls.last(),
+            }
+            .map_or_else(|| out.fresh_index(), |open| open.at),
+        };
+        let opaque = match self.calls.iter_mut().find(|open| open.at == at) {
+            Some(open) => {
+                if id.is_some() {
+                    open.id.clone_from(&id);
+                }
+                open.opaque
+            }
+            None => {
+                let opaque = CallKind::of(call) == CallKind::Unknown;
+                if opaque {
+                    out.open(at, Block::Opaque { replay: false }, Value::Null)?;
+                }
+                let id = id.clone();
+                self.calls.push(OpenCall { at, id, opaque });
+                opaque
+            }
+        };
+        if !opaque {
+            let arguments = call
+                .at("/function/arguments")
+                .map(crate::json_utils::value_to_json_string);
+            let name = call
+                .at("/function/name")
+                .or_else(|| call.at("/custom/name"))
+                .and_then(Value::as_str);
+            out.fragment(
+                Some(at),
+                CallFragment {
+                    id: id.as_deref(),
+                    name,
+                    arguments: arguments.as_deref(),
+                },
+            )?;
         }
-        Ok(())
+        let mut fields = call.as_object().cloned().unwrap_or_default();
+        // The index orders the stream; the call it assembles has none.
+        fields.shift_remove("index");
+        out.edit(at, |item| {
+            if !item.is_object() {
+                *item = Value::Object(Map::new());
+            }
+            if let Value::Object(item) = item {
+                merge_fields(item, &fields);
+            }
+        })
     }
 
-    /// Close every open call. Arguments the output-token budget cut short
-    /// keep what they state.
+    /// Close every open call, with its item as its native. A custom call's
+    /// arguments are its `{"input"}`. A call the output budget cut before
+    /// its arguments were a whole object closes with no native: the
+    /// provider never stated it complete.
     fn close_calls(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        let open: Vec<usize> = self.open_calls.keys().copied().collect();
-        for index in open {
-            self.close_call(index, false, out)?;
+        let cut = self.finish == Some(FinishReason::Length);
+        for call in std::mem::take(&mut self.calls) {
+            if call.opaque {
+                out.finish(call.at)?;
+                continue;
+            }
+            let (mut input, mut complete) = (None, false);
+            out.edit(call.at, |item| {
+                if CallKind::of(item) == CallKind::Custom {
+                    let custom = item.at("/custom/input").cloned();
+                    input = Some(custom.unwrap_or_else(|| Value::from("")));
+                }
+                complete = match item.at("/function/arguments") {
+                    Some(Value::String(text)) => matches!(
+                        crate::json_utils::parse_tool_arguments(text),
+                        Ok(Value::Object(_))
+                    ),
+                    Some(arguments) => arguments.is_object(),
+                    None => input.is_some(),
+                };
+            })?;
+            if let Some(input) = input {
+                out.announce(call.at, json!({ "input": input }))?;
+            }
+            if cut && !complete {
+                out.close(call.at)?;
+            } else {
+                out.finish(call.at)?;
+            }
         }
         Ok(())
     }
 
     /// One `chat.completion.chunk`.
-    fn interpret_chunk(
-        &mut self,
-        frame: ChatFrame,
-        out: &mut Out<'_, Completion>,
-    ) -> Result<(), ProviderError> {
+    fn chunk(&mut self, frame: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         let Some(choice) = self.absorb(frame) else {
             return Ok(());
         };
-        self.delta(choice.delta, out)?;
+        if let Some(delta) = choice.obj("delta") {
+            self.delta(delta, out)?;
+        }
         // A finish states the message complete.
-        if self.final_finish_reason.is_some() {
+        if self.finish.is_some() {
             self.close_writing(out)?;
         }
-        if matches!(self.final_finish_reason, Some(FinishReason::ToolCalls)) {
+        if self.finish == Some(FinishReason::ToolCalls) {
             self.close_calls(out)?;
         }
         Ok(())
     }
 
-    /// The `chat.completion` body, restated as the one chunk whose delta is
-    /// its whole message, then the end.
-    fn restate_whole(
+    /// The `chat.completion` body: the one chunk whose delta is its whole
+    /// message, each call at its position in the list, then the end.
+    fn whole(
         &mut self,
-        frame: ChatFrame,
+        frame: &Value,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
         let Some(choice) = self.absorb(frame) else {
@@ -1438,80 +1806,69 @@ impl ChatDecoder {
                 "Response contained no choices".to_owned(),
             ));
         };
-        let Some(mut message) = choice.message else {
+        let Some(mut message) = choice.obj("message").cloned() else {
             return Err(ProviderError::Response(
                 "Response did not contain a valid message or tool call".to_owned(),
             ));
         };
-        self.saw_terminal = true;
-        // Each call is buffered at its own index, so separate id-less calls
-        // stay distinct.
-        if let Some(serde_json::Value::Array(calls)) = message.get_mut("tool_calls") {
+        self.ended = true;
+        if let Some(Value::Array(calls)) = message.get_mut("tool_calls") {
             for (index, call) in calls.iter_mut().enumerate() {
                 if let Some(call) = call.as_object_mut() {
-                    call.entry("index").or_insert(index.into());
+                    call.insert("index".to_owned(), index.into());
                 }
             }
         }
-        self.delta(message, &mut out)?;
+        self.delta(&message, &mut out)?;
         self.close_calls(&mut out)?;
-        // Truncation or filtering can leave no visible content; retain its
-        // reason and usage. Empty replies without such a reason are errors.
-        let cut_short = self
-            .final_finish_reason
-            .as_ref()
-            .is_some_and(FinishReason::truncated_output);
-        if !self.wrote && !cut_short {
-            return Err(ProviderError::Response(
-                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
-            ));
-        }
         self.end(out, false)
     }
 
-    /// Write the provider's end of the reply: the block being written
-    /// closes, and the message becomes the turn's native. A stream's
-    /// `raw` is the native terminal record the chunks built; a whole body's
-    /// is the body itself, which the transport keeps.
+    /// Write the provider's end of the reply. A stream's `raw` is the
+    /// terminal record the chunks built; a whole body's is the body itself,
+    /// which the transport keeps.
     fn end(&mut self, mut out: Out<'_, Completion>, streamed: bool) -> Result<Flow, ProviderError> {
         self.close_writing(&mut out)?;
-        let mut message = std::mem::take(&mut self.message);
-        let calls: Vec<_> = self.calls.drain(..).flatten().collect();
-        if !calls.is_empty() {
-            message.insert("tool_calls".to_owned(), serde_json::Value::Array(calls));
-        }
         let usage = self
-            .final_usage
+            .usage
             .as_ref()
-            .map(|usage| UsageCounts::read(usage).normalized(&self.quirks))
+            .map(|usage| normalized_usage(usage, &self.quirks))
             .unwrap_or_default();
-        let native = StreamingCompletionResponse {
-            usage: self.final_usage.take(),
-            finish_reason: self.final_finish_reason.take(),
+        if streamed {
+            let fields = std::mem::take(&mut self.fields);
+            let record = [
+                ("usage", self.usage.clone()),
+                (
+                    "finish_reason",
+                    self.finish.as_ref().map(serde_json::to_value).transpose()?,
+                ),
+                ("response_id", self.response_id.clone().map(Value::String)),
+                ("model", self.response_model.clone().map(Value::String)),
+                ("logprobs", self.logprobs.take().map(Value::Object)),
+                (
+                    "additional_params",
+                    (!fields.is_empty()).then_some(Value::Object(fields)),
+                ),
+            ];
+            let record = record
+                .into_iter()
+                .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+                .collect();
+            out.raw(Value::Object(record));
+        }
+        Ok(out.end(Finish {
+            usage,
+            reason: self.finish.take(),
             response_id: self.response_id.take(),
             model: self.response_model.take(),
-            logprobs: self.logprobs.take().map(serde_json::Value::Object),
-            additional_params: Some(std::mem::take(&mut self.additional_params))
-                .filter(|params| !params.is_empty()),
-        };
-        if streamed {
-            out.raw(serde_json::to_value(&native)?);
-        }
-        Ok(out.end(crate::operation::Finish {
-            usage,
-            reason: native.finish_reason,
-            response_id: native.response_id,
-            model: native.model,
-            ..crate::operation::Finish::default()
+            ..Finish::default()
         }))
     }
 
     /// The stream ended: flush the calls the provider delivered, then end
-    /// the reply. Tool calls the provider fully delivered are content, so
-    /// a length cut still flushes them.
+    /// the reply. A stream no finish reason ended was cut short.
     fn finish(&mut self, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
-        // A stream no finish reason ended was cut short.
-        if !self.saw_terminal {
+        if !self.ended {
             return Err(ProviderError::Truncated);
         }
         self.close_calls(&mut out)?;
@@ -1519,41 +1876,33 @@ impl ChatDecoder {
     }
 }
 
-/// Append streamed reasoning details to the message's, by pi's merge: a
+/// Append streamed reasoning details to the block's, by pi's merge: a
 /// text or summary fragment continues the last entry of its type and
 /// index, appending its text and filling the fields that entry lacks, and an
 /// encrypted entry stays whole.
-fn merge_details(
-    message: &mut serde_json::Map<String, serde_json::Value>,
-    details: Vec<serde_json::Value>,
-) {
-    if details.is_empty() {
-        return;
-    }
-    let serde_json::Value::Array(merged) = message
+fn merge_details(block: &mut Map<String, Value>, details: Vec<Value>) {
+    let Value::Array(merged) = block
         .entry(REASONING_DETAILS)
-        .or_insert_with(|| serde_json::Value::Array(Vec::new()))
+        .or_insert_with(|| Value::Array(Vec::new()))
     else {
         return;
     };
     for detail in details {
-        let kind = detail.get("type").and_then(serde_json::Value::as_str);
+        let kind = detail.str("type");
         let continues = matches!(kind, Some("reasoning.text" | "reasoning.summary"))
             && merged.last().is_some_and(|last| {
-                last.get("type").and_then(serde_json::Value::as_str) == kind
-                    && last.get("index") == detail.get("index")
+                last.str("type") == kind && last.get("index") == detail.get("index")
             });
         match (continues, merged.last_mut(), detail) {
-            (true, Some(serde_json::Value::Object(last)), serde_json::Value::Object(fields)) => {
+            (true, Some(Value::Object(last)), Value::Object(fields)) => {
                 for (key, value) in fields {
                     let missing = last
                         .get(&key)
                         .is_none_or(|existing| existing.is_null() || existing.as_str() == Some(""));
                     match (last.get_mut(&key), value) {
-                        (
-                            Some(serde_json::Value::String(text)),
-                            serde_json::Value::String(more),
-                        ) if matches!(key.as_str(), "text" | "summary") => {
+                        (Some(Value::String(text)), Value::String(more))
+                            if matches!(key.as_str(), "text" | "summary") =>
+                        {
                             text.push_str(&more);
                         }
                         (_, value) if missing => {
@@ -1574,26 +1923,31 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<ChatEvent> {
         let data = frame.as_str();
-        // `[DONE]` is the wire's terminal sentinel, not JSON; it is Known by
-        // definition and its decode ends the reply.
+        // `[DONE]` is the wire's terminal sentinel, not JSON.
         if data == "[DONE]" {
             return WireEvent::Known(ChatEvent::Done);
         }
-        // The wire's in-band error envelope arrives with a 200 status and is
-        // this wire's own terminal failure, so it is a modeled event rather
-        // than a transport-level filter.
+        // The in-band error envelope arrives with a 200 status and is this
+        // wire's own terminal failure.
         if let Some(error) = provider_error_envelope(&data) {
             return WireEvent::Known(ChatEvent::Failure(error));
         }
-        // Supported bare-string replies must be recognized before object classification.
         if self.quirks.accepts_bare_string_reply
-            && let Ok(serde_json::Value::String(text)) =
-                serde_json::from_str::<serde_json::Value>(&data)
+            && let Ok(Value::String(text)) = serde_json::from_str::<serde_json::Value>(&data)
         {
             return WireEvent::Known(ChatEvent::BareText(text));
         }
-        classify_chat_completions_frame::<ChatFrame>(&data).map(|frame| {
-            if frame.is_whole() {
+        classify_chat_completions_frame::<Value>(&data).map(|frame| {
+            // The `object` tag decides when the dialect sends one: stream
+            // chunks may carry whole messages. Several gateways omit it.
+            let whole = match frame.str("object") {
+                Some(object) => object == "chat.completion",
+                None => frame
+                    .arr("choices")
+                    .iter()
+                    .any(|choice| choice.obj("message").is_some()),
+            };
+            if whole {
                 ChatEvent::Whole(frame)
             } else {
                 ChatEvent::Chunk(frame)
@@ -1608,17 +1962,17 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
     ) -> Result<Flow, ProviderError> {
         match event {
             ChatEvent::Chunk(frame) => {
-                self.interpret_chunk(frame, &mut out)?;
+                self.chunk(&frame, &mut out)?;
                 Ok(Flow::More)
             }
-            ChatEvent::Whole(frame) => self.restate_whole(frame, out),
+            ChatEvent::Whole(frame) => self.whole(&frame, out),
             ChatEvent::Done => self.finish(out),
+            // A bare string is the whole answer, ended: pi's stop for a
+            // reply that names no reason.
             ChatEvent::BareText(text) => {
-                self.saw_terminal = true;
-                let mut message = serde_json::Map::new();
-                message.insert("role".to_owned(), "assistant".into());
-                message.insert("content".to_owned(), text.into());
-                self.delta(message, &mut out)?;
+                self.ended = true;
+                self.finish = Some(FinishReason::Stop);
+                self.write(Writing::Text, &text, &mut out)?;
                 self.end(out, false)
             }
             ChatEvent::Failure(error) => Err(error),
@@ -1632,65 +1986,94 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
     }
 }
 
+/// A Chat usage object, normalized for a dialect with `quirks` and read
+/// leniently, so no usage shape fails a reply: a counter that is absent,
+/// `null` or not a non-negative integer is unreported, and one inside a
+/// details object the usage has is zero. Cached input falls back to
+/// Mistral's `num_cached_tokens` and then DeepSeek's
+/// `prompt_cache_hit_tokens`; audio input counts as input when the total
+/// says it sits beside the prompt; output is the remainder of the total when
+/// unreported; and the reasoning count is left out where the dialect's
+/// cannot be trusted ([`Quirks::reliable_reasoning_count`]).
+fn normalized_usage(usage: &Value, quirks: &Quirks) -> crate::completion::Usage {
+    let count = |pointer: &str| usage.at(pointer).and_then(Value::as_u64);
+    let detail = |object: &str, key: &str| {
+        count(&format!("/{object}/{key}")).or(usage.obj(object).map(|_| 0))
+    };
+    let (prompt, completion, total) = (
+        count("/prompt_tokens"),
+        count("/completion_tokens"),
+        count("/total_tokens"),
+    );
+    let audio = count("/prompt_tokens_details/audio_tokens").unwrap_or(0);
+    let input = prompt.map(|prompt| {
+        let beside = prompt.saturating_add(audio);
+        let accounted = beside.saturating_add(completion.unwrap_or(0));
+        if audio != 0 && Some(accounted) == total {
+            beside
+        } else {
+            prompt
+        }
+    });
+    crate::completion::Usage {
+        input_tokens: input,
+        output_tokens: completion
+            .or_else(|| total.map(|total| total.saturating_sub(input.unwrap_or(0)))),
+        total_tokens: total,
+        cached_input_tokens: detail("prompt_tokens_details", "cached_tokens")
+            .or(count("/num_cached_tokens"))
+            .or(count("/prompt_cache_hit_tokens")),
+        cache_creation_input_tokens: count("/prompt_tokens_details/cache_write_tokens"),
+        reasoning_tokens: detail("completion_tokens_details", "reasoning_tokens")
+            .filter(|_| quirks.reliable_reasoning_count),
+        ..Default::default()
+    }
+}
+
 impl ChatDecoder {
     /// Verdict, model, response id, usage and error envelope, read off a raw
     /// payload before normalization discards them. The driver calls it for
-    /// the unary reply and for every stream frame without anyone having to
-    /// attach it.
+    /// the unary reply and for every stream frame.
     pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(payload) = serde_json::from_slice::<ObservedPayload>(payload) else {
+        let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
             return;
         };
-        if let Some(usage) = payload.usage.filter(|usage| !usage.is_null()) {
-            let counts = UsageCounts::read(&usage);
+        if let Some(usage) = payload.at("/usage") {
+            let count = |pointer: &str| usage.at(pointer).and_then(Value::as_u64);
             sink.emit(AdapterEvent::Usage {
                 usage: AdapterUsage {
-                    input_tokens: counts.prompt,
-                    output_tokens: counts.completion,
-                    total_tokens: counts.total,
-                    cached_input_tokens: counts.cached,
-                    reasoning_tokens: counts.reasoning,
+                    input_tokens: count("/prompt_tokens"),
+                    output_tokens: count("/completion_tokens"),
+                    total_tokens: count("/total_tokens"),
+                    cached_input_tokens: count("/prompt_tokens_details/cached_tokens"),
+                    reasoning_tokens: count("/completion_tokens_details/reasoning_tokens"),
                     tool_input_tokens: None,
                 },
             });
         }
-        // Every chunk names the model; only the chunk that carries the finish
-        // reason is a verdict, so the model rides with it rather than on each
-        // delta. The id still lands on the terminal verdict or the closure.
-        let choice = payload.choices.into_iter().next().unwrap_or_default();
-        let verdict = match choice.finish_reason {
+        // Only the chunk that carries the finish reason is a verdict, so the
+        // model rides with it rather than on each delta.
+        let verdict = match payload
+            .at("/choices/0/finish_reason")
+            .and_then(Value::as_str)
+        {
             Some(reason) => AdapterVerdict {
-                finish_reason: Some(sink.scrub(&reason)),
+                finish_reason: Some(sink.scrub(reason)),
                 block_reason: None,
                 detail: None,
-                model: payload.model.map(|value| sink.scrub(&value)),
+                model: payload.str("model").map(|value| sink.scrub(value)),
             },
             None => AdapterVerdict::default(),
         };
-        let response_id = payload.id.map(|value| sink.scrub(&value));
+        let response_id = payload.str("id").map(|value| sink.scrub(value));
         sink.provider(verdict, response_id);
-        if let Some(error) = payload.error {
+        if let Some(error) = payload
+            .get("error")
+            .and_then(|error| ObservedError::deserialize(error).ok())
+        {
             error.emit(sink);
         }
     }
-}
-
-/// One object for the unary reply and each stream chunk `project` above
-/// sees. Every field is optional: a chunk carries a delta, the last chunk
-/// (or the reply) carries the usage, and `[DONE]` is not JSON at all.
-#[derive(Deserialize)]
-struct ObservedPayload {
-    id: Option<String>,
-    model: Option<String>,
-    usage: Option<serde_json::Value>,
-    #[serde(default)]
-    choices: Vec<ObservedChoice>,
-    error: Option<ObservedError>,
-}
-
-#[derive(Default, Deserialize)]
-struct ObservedChoice {
-    finish_reason: Option<String>,
 }
 
 #[cfg(test)]
@@ -1701,3 +2084,6 @@ mod hard_case_tests;
 
 #[cfg(test)]
 mod history_tests;
+
+#[cfg(test)]
+mod request_tests;

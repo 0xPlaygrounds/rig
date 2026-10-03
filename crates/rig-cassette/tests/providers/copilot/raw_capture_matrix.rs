@@ -48,9 +48,7 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_capture_matrix/`.
 
 use rig::providers::copilot;
-use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::recorded_json_turn;
@@ -170,8 +168,6 @@ async fn chat_raw_round_trips_provider_type() {
         raw.get("api").is_none(),
         "raw is the route's own reply document, not a rig-tagged envelope"
     );
-    openai::CompletionResponse::deserialize(raw)
-        .expect("raw must read back as the chat route's own response type");
     assert!(
         raw.get("copilot_usage").is_some(),
         "raw carries Copilot's `copilot_usage` block, which the shared \
@@ -183,8 +179,6 @@ async fn chat_raw_round_trips_provider_type() {
 
     let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_chat_body(&body, scenario);
-    openai::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be a chat-completions response");
     assert_is_reply_document(raw, &body, scenario);
     assert_eq!(
         raw.get("copilot_usage"),
@@ -218,11 +212,9 @@ async fn chat_raw_exposes_system_fingerprint() {
     // A live recording may see a different fingerprint than the fixture.
     assert_wire_value_matches(raw, &body, "system_fingerprint");
     assert_eq!(raw["model"], body["model"]);
-    let typed = openai::CompletionResponse::deserialize(raw)
-        .expect("raw must read back as the chat route's own response type");
     assert!(
-        typed.system_fingerprint.is_some(),
-        "the typed raw carries the fingerprint the wire sent"
+        raw["system_fingerprint"].is_string(),
+        "raw carries the fingerprint the wire sent"
     );
 }
 
@@ -246,21 +238,16 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
     .expect("chat_normalized_fields_equal_raw_renormalized should replay from its cassette");
 
     let response = captured.take();
-    let reply = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must read back as the chat route's own response type");
+    let reply = response.raw.clone();
     chat::assert_native_matches_normalized(&response, &reply, "the typed view of raw");
     assert_eq!(response.provider(), COPILOT_PROVIDER);
     // Both sides of this comparison come from the same live reply, so the id
     // compares exactly in either cassette mode — stricter than the token
     // comparator the fixture-side check has to use.
-    assert_eq!(
-        response.response_id(),
-        Some(reply.id.as_str()),
-        "response id"
-    );
-    let usage = reply.usage.as_ref().expect("the turn must report usage");
+    assert_eq!(response.response_id(), reply["id"].as_str(), "response id");
+    let usage = &reply["usage"];
     assert!(
-        usage.completion_tokens.is_some(),
+        usage["completion_tokens"].is_u64(),
         "Copilot's chat route reports completion tokens"
     );
     assert!(!response.choice.is_empty());

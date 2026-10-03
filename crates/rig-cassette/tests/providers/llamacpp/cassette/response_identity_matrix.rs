@@ -42,8 +42,6 @@
 //! different lifetimes: one is a transport correlator a proxy can add, the
 //! other is the provider's own handle for the turn.
 
-use rig::providers::llamacpp;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::{
@@ -277,19 +275,14 @@ async fn the_typed_route_reproduces_the_normalized_one() {
                 "the same prompt bills the same either way"
             );
 
-            // Same reply, two views: the captured document read back through
-            // llama.cpp's own type reproduces the normalized fields.
-            let typed = llamacpp::CompletionResponse::deserialize(&second.raw)
-                .expect("raw is llama.cpp's own response type");
-            assert_eq!(second.response_id(), Some(typed.openai.id.as_str()));
-            assert_eq!(second.model(), Some(typed.openai.model.as_str()));
+            // Same reply, two views: the captured document reproduces the
+            // normalized fields.
+            let typed = &second.raw;
+            assert_eq!(second.response_id(), typed["id"].as_str());
+            assert_eq!(second.model(), typed["model"].as_str());
             assert_eq!(
                 second.usage.input_tokens,
-                typed
-                    .openai
-                    .usage
-                    .as_ref()
-                    .map(|usage| usage.prompt_tokens as u64),
+                typed["usage"]["prompt_tokens"].as_u64(),
             );
         },
     )

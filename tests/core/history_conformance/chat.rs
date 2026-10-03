@@ -3,12 +3,14 @@
 //! invented shapes, every documented finish, and the projection pi's
 //! `openai-completions` rebuild sends for a turn.
 
-use rig_core::completion::CompletionRequest;
+use rig_core::completion::{CompletionRequest, FinishReason};
 use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, AssistantMessage};
 use rig_core::providers::openai::wire::{Chat, DEEPSEEK, Dialect, MISTRAL, OpenAIConfig};
 use rig_core::wire::{Mode, Wire, WireFrame};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape, http_body};
+use rig_history_conformance::{
+    Ablation, CallShape, Ending, HistoryFixture, Shape, decode, http_body,
+};
 use serde_json::{Map, Value, json};
 
 /// One Chat dialect's side of the suite.
@@ -198,8 +200,18 @@ impl HistoryFixture for ChatHistory {
     }
 
     /// Chat's documented finishes, OpenRouter's `error` and `network_error`
-    /// and Mistral's `model_length` among them, and an invented one.
+    /// and Mistral's `model_length` among them, every reason the dialect
+    /// states beyond them (Together's `eos`), and an invented one.
     fn finishes(&self) -> Vec<(&'static str, Vec<WireFrame>, Ending)> {
+        let stated = self.dialect.quirks.finishes.iter().map(|(name, reason)| {
+            let ending = match reason {
+                FinishReason::Stop | FinishReason::Length | FinishReason::ToolCalls => {
+                    Ending::Success
+                }
+                FinishReason::ContentFilter | FinishReason::Other(_) => Ending::Failure,
+            };
+            (*name, ending)
+        });
         [
             ("stop", Ending::Success),
             ("end", Ending::Success),
@@ -213,6 +225,7 @@ impl HistoryFixture for ChatHistory {
             ("x_rig_invented", Ending::Failure),
         ]
         .into_iter()
+        .chain(stated)
         .map(|(finish, ending)| {
             let message = json!({"role": "assistant", "content": "done"});
             (finish, frames(self.document(message, finish)), ending)
@@ -247,11 +260,97 @@ impl HistoryFixture for ChatHistory {
     fn replayed(&self, turn: &AssistantMessage) -> Vec<Value> {
         vec![projection(turn, self.dialect)]
     }
+
+    /// The block's item as the one item of a whole message: a reasoning
+    /// item's fields, a content part, an image, or a call.
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let item = block.native_item()?.clone();
+        let (message, finish) = match block {
+            AssistantContent::Reasoning(_) if item.get("type").is_some() => {
+                (json!({"role": "assistant", "content": [item]}), "stop")
+            }
+            AssistantContent::Reasoning(_) => {
+                let mut message = item;
+                message["role"] = json!("assistant");
+                (message, "stop")
+            }
+            AssistantContent::ToolCall(_) => (
+                json!({"role": "assistant", "tool_calls": [item]}),
+                "tool_calls",
+            ),
+            AssistantContent::Image(_) => (json!({"role": "assistant", "images": [item]}), "stop"),
+            // A text block's item is the audio beside its transcript, and an
+            // opaque item has no block to decode to.
+            AssistantContent::Text(_) | AssistantContent::Opaque(_) => return None,
+        };
+        let wire = self.wire(self.model);
+        let response = decode(
+            &wire,
+            &CompletionRequest::new("restate"),
+            Mode::Unary,
+            frames(self.document(message, finish)),
+        )
+        .ok()?;
+        response.choice.into_iter().next()
+    }
+
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<WireFrame>> {
+        let call = |id: &str, city: &str, index: Option<Value>| {
+            let mut call = json!({"id": id, "type": "function", "function": {"name": "weather",
+                "arguments": format!("{{\"city\":\"{city}\"}}")}});
+            if let Some(index) = index {
+                call["index"] = index;
+            }
+            call
+        };
+        let index = match shape {
+            CallShape::Indexless => None,
+            CallShape::NullIndex => Some(Value::Null),
+            CallShape::ReusedIndex | CallShape::WholeList => Some(json!(0)),
+        };
+        let (paris, rome) = (
+            call("a1", "Paris", index.clone()),
+            call("b2", "Rome", index),
+        );
+        match (shape, mode) {
+            (CallShape::WholeList, Mode::Streaming) => None,
+            (_, Mode::Unary) => {
+                let message = json!({"role": "assistant", "tool_calls": [paris, rome]});
+                Some(frames(self.document(message, "tool_calls")))
+            }
+            (_, Mode::Streaming) => Some(self.stream(
+                vec![
+                    json!({"role": "assistant", "tool_calls": [paris]}),
+                    json!({"tool_calls": [rome]}),
+                ],
+                "tool_calls",
+            )),
+        }
+    }
+
+    fn empty_reply(&self, mode: Mode) -> Option<Vec<WireFrame>> {
+        let message = json!({"role": "assistant", "content": ""});
+        Some(match mode {
+            Mode::Unary => frames(self.document(message, "stop")),
+            Mode::Streaming => self.stream(vec![message], "stop"),
+        })
+    }
+
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        Some("/choices/0/finish_reason")
+    }
+
+    fn error_frame(&self) -> Option<WireFrame> {
+        Some(WireFrame::Text(
+            json!({"error": {"message": "overloaded", "type": "server_error"}}).to_string(),
+        ))
+    }
 }
 
 /// The assistant message pi's rebuild sends for `turn` on `dialect`: the
 /// text joined into `content` (a part array when a block is a content
-/// part), reasoning under the field its item names, the fields beside it,
+/// part; the adapter has already left out blank text), reasoning under the
+/// field its item names, the fields beside it,
 /// an opaque item's fields, and each call's item with its canonical name
 /// and arguments as JSON text. A text block whose item is message fields
 /// (an answer's audio) sends them beside the text. Images are never sent
@@ -266,10 +365,8 @@ pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
         let native = content.native_item();
         match content {
             AssistantContent::Text(block) => {
-                if !block.text.trim().is_empty() {
-                    text.push_str(&block.text);
-                    parts.push(json!({"type": "text", "text": block.text}));
-                }
+                text.push_str(&block.text);
+                parts.push(json!({"type": "text", "text": block.text}));
                 if let Some(Value::Object(item)) = native.filter(|item| item.get("type").is_none())
                 {
                     fields.extend(item.clone());
@@ -289,7 +386,7 @@ pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
                             fields.insert(key.clone(), value.clone());
                         }
                     }
-                    if let Some(field) = field.filter(|_| !block.text.trim().is_empty()) {
+                    if let Some(field) = field {
                         match reasoning.iter_mut().find(|(name, _)| *name == field) {
                             Some((_, joined)) => {
                                 joined.push('\n');
@@ -333,12 +430,10 @@ pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
     if !calls.is_empty() {
         message.insert("tool_calls".to_owned(), calls.into());
     }
-    // DeepSeek takes `reasoning_content` and `content` on every assistant
-    // turn, Mistral `content`.
-    if dialect.name == DEEPSEEK.name {
-        message
-            .entry("reasoning_content")
-            .or_insert_with(|| json!(""));
+    // A dialect that states its reasoning field (DeepSeek) takes it on every
+    // assistant turn; DeepSeek and Mistral take `content` on every one.
+    if let Some(field) = dialect.quirks.reasoning_field {
+        message.entry(field).or_insert_with(|| json!(""));
     }
     if dialect.name == DEEPSEEK.name || dialect.name == MISTRAL.name {
         message.entry("content").or_insert_with(|| json!(""));

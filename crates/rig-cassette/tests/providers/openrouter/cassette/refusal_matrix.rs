@@ -78,8 +78,6 @@
 //! (`assistant_refusal_fallback`).
 
 use rig::message::Message;
-use rig::providers::openai::completion::Message as OpenAiMessage;
-use rig::providers::openrouter;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -218,17 +216,11 @@ async fn blocking_raw_and_normalized_agree() {
                 .additional_params(refusal_request_params("OpenAI"));
 
             let normalized = model.call(request).await.expect("the turn");
-            let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
-                .expect("raw is OpenRouter's own completion response");
-            let raw_refusal = document
-                .openai
-                .choices
-                .first()
-                .and_then(|choice| match &choice.openai.message {
-                    OpenAiMessage::Assistant { refusal, .. } => refusal.clone(),
-                    _ => None,
-                })
-                .expect("the recorded turn must carry a top-level refusal");
+            let document = normalized.raw.clone();
+            let raw_refusal = document["choices"][0]["message"]["refusal"]
+                .as_str()
+                .expect("the recorded turn must carry a top-level refusal")
+                .to_owned();
             let normalized_text =
                 assistant_text_response(&normalized.choice).expect("normalized text");
 

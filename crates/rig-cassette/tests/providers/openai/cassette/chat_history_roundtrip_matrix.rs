@@ -36,7 +36,6 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
-use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
@@ -183,20 +182,7 @@ fn normalized_text(choice: &[AssistantContent]) -> String {
 /// [`rig::completion::CompletionResponse::raw`] — the value the deleted raw
 /// surface returned, serialized.
 fn provider_text(raw: &Value) -> Result<String> {
-    let reply = serde_json::from_value::<openai::completion::CompletionResponse>(raw.clone())?;
-    Ok(reply
-        .choices
-        .iter()
-        .filter_map(|choice| match &choice.message {
-            openai::completion::Message::Assistant { content, .. } => Some(content),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|content| match content {
-            openai::completion::AssistantContent::Text { text } => Some(text.as_str()),
-            openai::completion::AssistantContent::Refusal { .. } => None,
-        })
-        .collect())
+    Ok(crate::raw_capture::chat::native_text(raw))
 }
 
 fn model_name(model: ModelVariant) -> &'static str {
@@ -239,9 +225,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
                 }
             }
             let record = stream.finish().await?;
-            serde_json::from_value::<
-                openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
-            >(record.raw)?;
+            anyhow::ensure!(record.raw.is_object(), "the terminal record is a document");
             Observation {
                 text,
                 saw_terminal: true,

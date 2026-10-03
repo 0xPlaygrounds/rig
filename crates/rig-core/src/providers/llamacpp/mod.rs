@@ -1,4 +1,4 @@
-//! llama.cpp model identifiers and typed response timings.
+//! llama.cpp model identifiers.
 //!
 //! [`from_env`] and [`new`] build a client on the
 //! [`LLAMACPP`](crate::providers::openai::wire::LLAMACPP) dialect, which defaults to
@@ -13,6 +13,6 @@
 
 pub mod completion;
 
-pub use completion::{CompletionResponse, LLAMA_CPP, Timings};
+pub use completion::LLAMA_CPP;
 
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::LLAMACPP, "llama.cpp");

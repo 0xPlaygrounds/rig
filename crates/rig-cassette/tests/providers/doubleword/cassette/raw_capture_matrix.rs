@@ -39,8 +39,6 @@
 //! answer.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai;
-use serde::Deserialize as _;
 use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
@@ -79,9 +77,8 @@ async fn raw_round_trips_openai_type() {
     let response = sink.take();
 
     let raw = &response.raw;
-    let typed = openai::CompletionResponse::deserialize(raw)
-        .expect("raw is the shared OpenAI CompletionResponse Doubleword parses into");
-    assert_eq!(Some(typed.id.as_str()), response.response_id());
+    let typed = raw.clone();
+    assert_eq!(typed["id"].as_str(), response.response_id());
 
     // `raw` is the document Doubleword sent, not a re-serialization of
     // `typed`: these usage fields have no home on the shared type and reach
@@ -171,7 +168,6 @@ async fn normalized_fields_match_raw_renormalized() {
     // the ones the decoder normalized. There is one mapping now, so this pins
     // it against the wire's own vocabulary rather than against a copy of
     // itself.
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is the shared OpenAI type");
+    let typed = response.raw.clone();
     chat::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
 }

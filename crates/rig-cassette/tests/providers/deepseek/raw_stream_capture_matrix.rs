@@ -42,7 +42,6 @@ use futures::StreamExt as _;
 use rig::completion::CompletionRequest;
 use rig::providers::deepseek;
 use rig::streaming::StreamEvent;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::support::with_deepseek_cassette_result;
@@ -181,25 +180,18 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     let raw = &terminal.raw;
     // Typed, through the wire's own accounting shape: the OpenAI-compatible
     // counters are modeled and DeepSeek's split rides in `extra`.
-    let usage = chat::Terminal::deserialize(raw)
-        .expect("raw is the chat-completions terminal over the wire's own usage")
-        .usage
-        .expect("the recorded terminal carries usage");
+    let usage = &raw["usage"];
     assert_eq!(
-        usage.extra.get("prompt_cache_miss_tokens"),
+        usage.get("prompt_cache_miss_tokens"),
         Some(&json!(recorded_miss))
     );
     assert_eq!(
-        usage.extra.get("prompt_cache_hit_tokens"),
+        usage.get("prompt_cache_hit_tokens"),
         Some(&json!(recorded_hit))
     );
     // The normalized terminal keeps the hit count (as cached input) and has
     // no slot for the miss count: `to_normalized` is where exactly half of
     // the split crosses over.
-    assert_eq!(
-        usage.to_normalized().cached_input_tokens,
-        Some(recorded_hit)
-    );
     assert_eq!(terminal.usage.cached_input_tokens, Some(recorded_hit));
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
     assert!(

@@ -41,9 +41,7 @@
 //! responses carry the `x-request-id` header at all.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai;
 use rig::providers::openai::wire::GROQ;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::RAW_CAPTURE_MODEL;
@@ -211,16 +209,13 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
     );
     assert!(response.response_id().is_some());
 
-    // The shared typed view of the document has no slot for a transport id —
-    // which is why reading it off the header is the only way to have it.
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is the shared OpenAI chat-completions reply Groq sends");
-    let typed_document = serde_json::to_value(&typed).expect("typed serializes");
+    // The document has no top-level slot for a transport id, which is why
+    // reading it off the header is the only way to have it.
     assert!(
-        typed_document.get("x-request-id").is_none()
-            && typed_document.get("provider_request_id").is_none()
-            && typed_document.get("x_groq").is_none(),
-        "no shared chat-completions field carries the transport id: {typed_document}"
+        response.raw.get("x-request-id").is_none()
+            && response.raw.get("provider_request_id").is_none(),
+        "no chat-completions field carries the transport id: {}",
+        response.raw
     );
     // The document itself carries it only in Groq's own envelope, and that
     // reaches the caller because `raw` is the body rather than the parse.
