@@ -23,7 +23,7 @@ pub(crate) fn to_aws(
         Message::User { content } => {
             let mut blocks = Vec::new();
             for part in content {
-                blocks.extend(user_content::to_aws(part)?);
+                blocks.extend(user_content::to_aws(part, family)?);
             }
             if blocks.is_empty() {
                 blocks.push(aws_bedrock::ContentBlock::Text(

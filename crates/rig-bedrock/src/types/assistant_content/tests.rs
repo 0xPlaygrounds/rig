@@ -191,7 +191,9 @@ fn the_family_is_the_provider_the_id_names() {
         Family::of("arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-7-v1:0"),
         Family::Claude
     );
-    assert_eq!(Family::of(AMAZON_NOVA_LITE), Family::Other);
+    assert_eq!(Family::of(AMAZON_NOVA_LITE), Family::Nova);
+    assert_eq!(Family::of("us.amazon.nova-2-lite-v1:0"), Family::Nova);
+    assert_eq!(Family::of("amazon.titan-text-express-v1"), Family::Other);
     assert_eq!(Family::of(PROFILE), Family::Other);
     // A model that only mentions Claude in its name is not Claude.
     assert_eq!(
@@ -200,7 +202,7 @@ fn the_family_is_the_provider_the_id_names() {
     );
     let wire = Converse::new(PROFILE).with_family(Family::Claude);
     assert_eq!(wire.family(PROFILE), Family::Claude);
-    assert_eq!(wire.family(AMAZON_NOVA_LITE), Family::Other);
+    assert_eq!(wire.family(AMAZON_NOVA_LITE), Family::Nova);
 }
 
 /// A call another provider made gets an id Converse accepts, and its result

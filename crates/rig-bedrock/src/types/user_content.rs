@@ -4,15 +4,17 @@ use rig_core::error::ProviderError;
 use rig_core::message::UserContent;
 
 use super::{document, image, tool};
+use crate::completion::Family;
 
 /// What stands in for content left empty once blank text is skipped:
 /// Converse rejects blank text and empty content.
 pub(crate) const EMPTY_TEXT: &str = "<empty>";
 
-/// The Converse content blocks for one piece of user content. Blank text has
-/// none.
+/// The Converse content blocks for one piece of user content sent to a
+/// model of `family`. Blank text has none.
 pub(crate) fn to_aws(
     content: UserContent,
+    family: Family,
 ) -> Result<Vec<aws_bedrock::ContentBlock>, ProviderError> {
     match content {
         UserContent::Text(text) if text.text.trim().is_empty() => Ok(Vec::new()),
@@ -27,9 +29,9 @@ pub(crate) fn to_aws(
                     EMPTY_TEXT.to_owned(),
                 ));
             }
-            // Converse reads a result with no status as a success.
-            let status = tool_result
-                .is_error
+            // Converse reads a result with no status as a success, and
+            // documents the field for Nova and Claude only.
+            let status = (tool_result.is_error && family != Family::Other)
                 .then_some(aws_bedrock::ToolResultStatus::Error);
             let builder = aws_bedrock::ToolResultBlock::builder()
                 .tool_use_id(tool_result.call.wire().into_owned())

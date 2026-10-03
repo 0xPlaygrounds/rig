@@ -124,11 +124,14 @@ pub const WRITER_PALMYRA_X5: &str = "us.writer.palmyra-x5-v1:0";
 
 /// The model family behind a Converse model id. It decides what history a
 /// model reads back: Claude reads reasoning signatures, rejects unsigned
-/// reasoning, and reads images.
+/// reasoning, and reads images; Nova reads S3 objects and video; both read
+/// a tool result's status.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Family {
     /// Anthropic Claude.
     Claude,
+    /// Amazon Nova.
+    Nova,
     /// Any other model.
     Other,
 }
@@ -142,9 +145,10 @@ impl Family {
     /// family with [`Converse::with_family`].
     ///
     /// ```
-    /// use rig_bedrock::completion::{ANTHROPIC_CLAUDE_SONNET_4_5, Family};
+    /// use rig_bedrock::completion::{AMAZON_NOVA_PRO, ANTHROPIC_CLAUDE_SONNET_4_5, Family};
     ///
     /// assert_eq!(Family::of(ANTHROPIC_CLAUDE_SONNET_4_5), Family::Claude);
+    /// assert_eq!(Family::of(AMAZON_NOVA_PRO), Family::Nova);
     /// assert_eq!(
     ///     Family::of("arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3"),
     ///     Family::Other
@@ -152,8 +156,10 @@ impl Family {
     /// ```
     pub fn of(model: &str) -> Self {
         let id = model.rsplit('/').next().unwrap_or(model);
-        match id.rsplit('.').nth(1) {
-            Some("anthropic") => Self::Claude,
+        let mut parts = id.rsplit('.');
+        match (parts.next(), parts.next()) {
+            (_, Some("anthropic")) => Self::Claude,
+            (Some(name), Some("amazon")) if name.starts_with("nova") => Self::Nova,
             _ => Self::Other,
         }
     }

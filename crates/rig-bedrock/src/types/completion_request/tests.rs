@@ -611,8 +611,11 @@ fn document_names_are_deterministic_and_unique_within_a_request() {
 
 /// A failed, refused or synthetic result goes back with `status: error`;
 /// any other has no status, which Converse reads as a success.
+/// Converse documents a result's `status` only for Nova and Claude, so a
+/// failed result states it to those families alone.
 #[test]
-fn failed_results_replay_as_errors() {
+fn only_nova_and_claude_get_a_result_status() {
+    use crate::completion::{AMAZON_NOVA_PRO, ANTHROPIC_CLAUDE_SONNET_4_5, LLAMA_3_1_70B_INSTRUCT};
     use rig_core::message::{CallId, ToolResult, ToolResultContent};
     let result = |id: &str, is_error| {
         UserContent::ToolResult(ToolResult {
@@ -622,20 +625,29 @@ fn failed_results_replay_as_errors() {
             is_error,
         })
     };
-    let mut request = minimal_request();
-    request.chat_history = vec![Message::User {
-        content: vec![result("failed", true), result("fine", false)],
-    }];
-    let messages = aws_request(request, false).messages().expect("messages");
-    let statuses: Vec<_> = messages[0]
-        .content
-        .iter()
-        .map(|block| match block {
-            aws_bedrock::ContentBlock::ToolResult(result) => result.status.clone(),
-            other => panic!("{other:?}"),
-        })
-        .collect();
-    assert_eq!(statuses, [Some(aws_bedrock::ToolResultStatus::Error), None]);
+    let error = Some(aws_bedrock::ToolResultStatus::Error);
+    for (model, failed) in [
+        (AMAZON_NOVA_PRO, error.clone()),
+        (ANTHROPIC_CLAUDE_SONNET_4_5, error),
+        (LLAMA_3_1_70B_INSTRUCT, None),
+    ] {
+        let mut request = minimal_request();
+        request.chat_history = vec![Message::User {
+            content: vec![result("failed", true), result("fine", false)],
+        }];
+        let messages = AwsCompletionRequest::new(request, Family::of(model), false)
+            .messages()
+            .expect("messages");
+        let statuses: Vec<_> = messages[0]
+            .content
+            .iter()
+            .map(|block| match block {
+                aws_bedrock::ContentBlock::ToolResult(result) => result.status.clone(),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(statuses, [failed, None], "{model}");
+    }
 }
 
 /// Only the leading system messages are system blocks. A later one stays

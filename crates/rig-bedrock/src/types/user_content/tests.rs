@@ -5,7 +5,8 @@ use rig_core::message::UserContent;
 #[test]
 fn user_content_to_aws_content_block() {
     let uc = UserContent::Text("txt".into());
-    let aws_content_blocks: Result<Vec<aws_bedrock::ContentBlock>, _> = user_content::to_aws(uc);
+    let aws_content_blocks: Result<Vec<aws_bedrock::ContentBlock>, _> =
+        user_content::to_aws(uc, crate::completion::Family::Other);
     assert!(aws_content_blocks.is_ok());
     let aws_content_blocks = aws_content_blocks.unwrap();
     assert_eq!(
