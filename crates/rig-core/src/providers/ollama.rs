@@ -554,7 +554,6 @@ impl OllamaDecoder {
                 Value::Array(std::mem::take(&mut self.tool_calls)),
             );
         }
-        out.message_native(Value::Object(message));
         let native = StreamingCompletionResponse {
             model: response.model,
             total_duration: response.total_duration,

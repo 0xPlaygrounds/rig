@@ -1476,7 +1476,6 @@ fn turn_from(model: &str, content: Vec<message::AssistantContent>) -> completion
         content,
         origin: Some(message::Origin::new("openai.responses", "openai", model)),
         stop: Some(message::StopReason::ToolUse),
-        native: None,
     })
 }
 
@@ -1586,7 +1585,6 @@ fn another_models_turn_is_rebuilt_from_its_fields() {
             "claude-sonnet-4-5",
         )),
         stop: Some(message::StopReason::ToolUse),
-        native: None,
     });
     let history = vec![
         completion::Message::user("hello"),

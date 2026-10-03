@@ -1472,7 +1472,6 @@ impl ChatDecoder {
         if !calls.is_empty() {
             message.insert("tool_calls".to_owned(), serde_json::Value::Array(calls));
         }
-        out.message_native(serde_json::Value::Object(message));
         let usage = self
             .final_usage
             .as_ref()

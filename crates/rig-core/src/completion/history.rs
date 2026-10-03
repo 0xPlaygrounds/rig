@@ -367,7 +367,6 @@ fn assistant(
         content,
         origin: turn.origin.clone(),
         stop: turn.stop.clone(),
-        native: if same { turn.native.clone() } else { None },
     }
 }
 

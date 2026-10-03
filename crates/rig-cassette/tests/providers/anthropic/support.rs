@@ -784,6 +784,5 @@ pub(super) fn canonical_without_raw(
         .iter()
         .map(rig::message::AssistantContent::canonical)
         .collect();
-    response.native = None;
     crate::support::normalized_without_raw(response)
 }

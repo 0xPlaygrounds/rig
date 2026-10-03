@@ -10,7 +10,7 @@
 //! ```
 
 use super::message::{
-    AssistantContent, AssistantMessage, DocumentMediaType, Native, Origin, StopReason, ToolCall,
+    AssistantContent, AssistantMessage, DocumentMediaType, Origin, StopReason, ToolCall,
 };
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
@@ -188,9 +188,6 @@ pub struct CompletionResponse {
     /// The wire, provider and requested model that produced the response,
     /// with the model and response id the provider reported.
     pub origin: Origin,
-    /// The provider's whole message, for message-shaped wires.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native: Option<Native>,
     /// The provider's report that the turn failed, such as a refusal's
     /// explanation. The turn's message then ends in [`StopReason::Error`]
     /// and is never replayed.
@@ -241,7 +238,6 @@ impl CompletionResponse {
             choice,
             usage,
             origin,
-            native: None,
             error: None,
             aborted: None,
             provider_request_id: None,
@@ -336,7 +332,7 @@ impl CompletionResponse {
     }
 
     /// The assistant turn to append to the conversation: [`Self::choice`] in
-    /// order with its origin, stop and provider message, or `None` for an
+    /// order with its origin and stop, or `None` for an
     /// empty choice.
     pub fn message(&self) -> Option<Message> {
         if self.choice.is_empty() {
@@ -358,18 +354,16 @@ impl CompletionResponse {
             content,
             origin: Some(self.origin.clone()),
             stop: Some(StopReason::ToolUse),
-            native: None,
         }
     }
 
-    /// The turn's origin, stop and provider message with no content, for a
+    /// The turn's origin and stop with no content, for a
     /// runtime that carries the content separately.
     pub fn head(&self) -> AssistantMessage {
         AssistantMessage {
             content: Vec::new(),
             origin: Some(self.origin.clone()),
             stop: Some(self.stop()),
-            native: self.native.clone(),
         }
     }
 
@@ -401,8 +395,6 @@ struct CompletionResponseRepr {
     usage: Usage,
     origin: Origin,
     #[serde(default)]
-    native: Option<Native>,
-    #[serde(default)]
     error: Option<String>,
     #[serde(default)]
     aborted: Option<String>,
@@ -419,7 +411,6 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             choice,
             usage,
             mut origin,
-            native,
             error,
             aborted,
             provider_request_id,
@@ -431,7 +422,6 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         origin.response_model = reported(origin.response_model);
         let mut response =
             Self::new(choice, usage, origin, raw).with_optional_finish_reason(finish_reason);
-        response.native = native;
         response.error = error;
         response.aborted = aborted;
         response.provider_request_id = reported(provider_request_id);

@@ -408,7 +408,10 @@ impl MessagesDecoder {
         mut out: Out<'_, Completion>,
     ) -> Flow {
         if let Some(container) = &self.container {
-            out.message_native(serde_json::json!({ "container": container }));
+            let index = out.fresh_index();
+            let item = serde_json::json!({ "type": "container", "container": container });
+            // A fresh index is never open, so writing it whole cannot fail.
+            let _ = out.whole(index, Block::Opaque { replay: true }, item, "");
         }
         let (reason, error) = match stop_reason {
             Some(reason) => {

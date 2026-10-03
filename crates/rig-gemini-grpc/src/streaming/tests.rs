@@ -482,10 +482,10 @@ async fn a_trailing_signed_part_continues_the_text_it_follows() {
     );
 }
 
-/// Safety ratings and citations reach the turn's message-level native in
-/// their REST spelling.
+/// Safety ratings and citations reach the response's `raw`, since a turn
+/// keeps provider data on its blocks only.
 #[tokio::test]
-async fn safety_ratings_and_citations_are_the_turns_native() {
+async fn safety_ratings_and_citations_reach_raw() {
     let mut frame = terminal_frame();
     if let Some(candidate) = frame.candidates.first_mut() {
         candidate.safety_ratings = vec![proto::SafetyRating {
@@ -503,7 +503,11 @@ async fn safety_ratings_and_citations_are_the_turns_native() {
         });
     }
     let terminal = normalized_terminal(vec![frame]).await;
-    let native = terminal.native.map(|native| native.item).expect("a native");
+    let native = terminal
+        .raw
+        .pointer("/candidates/0")
+        .cloned()
+        .expect("the terminal candidate");
     assert_eq!(
         native.get("safetyRatings"),
         Some(&json!([{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE" }]))

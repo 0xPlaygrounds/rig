@@ -888,7 +888,6 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
         ],
         origin: Some(other),
         stop: Some(StopReason::ToolUse),
-        native: None,
     };
     let answered = turn.content.first().and_then(|block| match block {
         AssistantContent::ToolCall(call) => Some(call.result(vec![ToolResultContent::text("ok")])),
@@ -1088,7 +1087,6 @@ fn media_history() -> Vec<Message> {
             ],
             origin: Some(Origin::new("other.api", "other", "other-model")),
             stop: Some(StopReason::ToolUse),
-            native: None,
         }),
         Message::User {
             content: vec![UserContent::ToolResult(call.result(vec![

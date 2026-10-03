@@ -517,7 +517,6 @@ fn the_xai_dialect_replays_its_own_reasoning_item_verbatim() {
         ],
         origin: Some(message::Origin::new("openai.responses", "xai", xai().model)),
         stop: Some(message::StopReason::ToolUse),
-        native: None,
     };
     let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
         turn(vec![

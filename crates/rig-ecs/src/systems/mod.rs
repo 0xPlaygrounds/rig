@@ -2056,7 +2056,6 @@ fn fail_unknown_call(
             "the run failed on the unknown tool call `{}`",
             call.name
         ))),
-        native: None,
     };
     if let Ok(assistant) = MessageParts::assistant(prefix) {
         spawn_deferred(commands, assets, run, assistant)?;
@@ -2100,7 +2099,6 @@ fn abandon_turn(
             content: content.clone(),
             origin: call.origin.clone(),
             stop: Some(rig_core::message::StopReason::ToolUse),
-            native: None,
         }
     };
     let assistant = MessageParts::assistant(message)?;

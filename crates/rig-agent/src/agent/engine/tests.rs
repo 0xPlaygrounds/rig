@@ -9608,7 +9608,6 @@ fn mock_reply(text: &str) -> Message {
             rig_core::test_utils::MOCK_MODEL,
         )),
         stop: Some(rig_core::message::StopReason::Stop),
-        native: None,
     })
 }
 

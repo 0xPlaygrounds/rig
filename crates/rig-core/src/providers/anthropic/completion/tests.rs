@@ -3329,18 +3329,23 @@ fn the_last_turn_container_is_replayed_unless_the_request_names_one() {
     let turn = |model: &str, container: &str| {
         message::Message::Assistant(
             message::AssistantMessage {
-                content: vec![message::AssistantContent::text("ran it")],
+                content: vec![
+                    message::AssistantContent::text("ran it"),
+                    message::AssistantContent::Opaque(message::Opaque {
+                        item: json!({
+                            "type": "container",
+                            "container": {"id": container, "expires_at": "2026-10-02T00:00:00Z"},
+                        }),
+                        replay: true,
+                    }),
+                ],
                 origin: Some(message::Origin::new(
                     "anthropic.messages",
                     "anthropic",
                     model,
                 )),
                 stop: Some(message::StopReason::Stop),
-                native: None,
-            }
-            .with_native(
-                json!({"container": {"id": container, "expires_at": "2026-10-02T00:00:00Z"}}),
-            ),
+            },
         )
     };
     let body = |history: Vec<message::Message>, params: Option<serde_json::Value>| {

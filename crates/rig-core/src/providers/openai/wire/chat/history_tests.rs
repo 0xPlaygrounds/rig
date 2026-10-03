@@ -176,12 +176,6 @@ fn mistral_thinking_parts_are_reasoning() {
         };
         assert_eq!(reasoning.text, "plan it", "{mode:?}");
         assert_eq!(text.text, "Hi", "{mode:?}");
-        let message = response.head().native.expect("the message").item;
-        assert_eq!(
-            message["content"],
-            json!([thinking("plan it"), {"type": "text", "text": "Hi"}]),
-            "{mode:?}"
-        );
         let body = sent(
             &wire,
             vec![Message::user("q"), Message::Assistant(turn_of(&response))],
@@ -359,7 +353,6 @@ fn arguments_are_always_an_object() {
         ))],
         origin: Some(Origin::new("openai.chat", "openai", "gpt-4.1-nano")),
         stop: Some(StopReason::ToolUse),
-        native: None,
     };
     let body = sent(&wire, vec![Message::user("q"), Message::Assistant(turn)]);
     assert_eq!(
@@ -393,7 +386,6 @@ fn the_adapter_downgrades_what_a_dialect_does_not_read() {
             ],
             origin: Some(Origin::new("gemini.generate_content", "gemini", "gemini-3")),
             stop: Some(StopReason::ToolUse),
-            native: None,
         }),
         Message::User {
             content: vec![UserContent::ToolResult(
@@ -436,7 +428,6 @@ fn perplexity_reads_a_tool_exchange_as_text() {
             content: vec![AssistantContent::ToolCall(call.clone())],
             origin: Some(Origin::new("openai.chat", "openai", "gpt-4.1")),
             stop: Some(StopReason::ToolUse),
-            native: None,
         }),
         Message::User {
             content: vec![UserContent::ToolResult(
@@ -478,7 +469,6 @@ fn mistral_call_ids_stay_distinct() {
                 .collect(),
             origin: Some(Origin::new("openai.chat", "openai", "gpt-4.1")),
             stop: Some(StopReason::ToolUse),
-            native: None,
         }),
         Message::User {
             content: calls

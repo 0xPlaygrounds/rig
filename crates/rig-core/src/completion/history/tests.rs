@@ -57,7 +57,6 @@ fn turn(origin: Option<Origin>, content: Vec<AssistantContent>) -> Message {
         content,
         origin,
         stop: Some(StopReason::Stop),
-        native: None,
     })
 }
 
@@ -167,7 +166,6 @@ fn another_model_replays_canonical_fields_only() {
             call("c_1"),
         ]
     );
-    assert!(turn.native.is_none());
 }
 
 #[test]
@@ -220,7 +218,6 @@ fn failed_turns_are_skipped_with_the_results_answering_them() {
             content: vec![call("c1")],
             origin: Some(same()),
             stop: Some(stop),
-            native: None,
         });
         let history = vec![
             Message::user("q"),
@@ -536,19 +533,6 @@ fn a_request_model_override_is_the_model_compared() {
 }
 
 #[test]
-fn the_message_level_item_follows_sameness() {
-    let mut message = AssistantMessage::new(vec![AssistantContent::text("a")])
-        .with_native(json!({"role": "assistant", "content": "a"}));
-    message.origin = Some(same());
-    let adapted = adapt(&[Message::Assistant(message.clone())], &TARGET);
-    assert!(assistant(&adapted[0]).native_item().is_some());
-
-    message.origin = Some(other());
-    let adapted = adapt(&[Message::Assistant(message)], &TARGET);
-    assert!(assistant(&adapted[0]).native.is_none());
-}
-
-#[test]
 fn a_request_model_override_decides_image_input() {
     let history = vec![Message::User {
         content: vec![UserContent::Image(Image {
@@ -572,7 +556,6 @@ fn a_skipped_turns_ids_do_not_drop_a_later_turns_results() {
         content: vec![call("functions.f:0")],
         origin: Some(same()),
         stop: Some(StopReason::Error("refused".into())),
-        native: None,
     });
     let history = vec![
         Message::user("q"),

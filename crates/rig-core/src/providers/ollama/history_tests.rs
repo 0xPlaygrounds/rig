@@ -37,7 +37,6 @@ fn same_model(content: Vec<AssistantContent>) -> AssistantMessage {
         content,
         origin: Some(Origin::new("ollama.chat", "ollama", "qwen3:4b")),
         stop: Some(StopReason::Stop),
-        native: None,
     }
 }
 
@@ -123,7 +122,6 @@ fn images_ollama_does_not_read_are_downgraded() {
             ],
             origin: Some(Origin::new("gemini.generate_content", "gemini", "gemini-3")),
             stop: Some(StopReason::ToolUse),
-            native: None,
         }),
         Message::User {
             content: vec![UserContent::ToolResult(

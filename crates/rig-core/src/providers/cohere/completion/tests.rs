@@ -465,8 +465,8 @@ fn a_replayed_message_is_rebuilt_from_its_blocks() {
         "tool_calls": [],
         "tool_plan": "",
     });
-    let turn = message::AssistantMessage::new(vec![message::AssistantContent::text("done")])
-        .with_native(streamed);
+    let _ = streamed;
+    let turn = message::AssistantMessage::new(vec![message::AssistantContent::text("done")]);
     let converted = Vec::<Message>::try_from(message::Message::Assistant(turn)).expect("converts");
     let Some(Message::Native(sent)) = converted.first() else {
         panic!("the rebuilt message: {converted:?}");

@@ -826,7 +826,7 @@ fn a_refusal_ends_the_turn_in_an_error_with_its_explanation() {
 
 /// The reply-level `container` is the turn's message-level provider item.
 #[test]
-fn the_reply_container_is_the_message_item() {
+fn the_reply_container_is_an_opaque_block() {
     let container = json!({"id": "container_1", "expires_at": "2026-10-01T00:00:00Z"});
     let mut frames = reply(
         vec![block(0, json!({"type": "text", "text": "done"}), &[])],
@@ -839,7 +839,16 @@ fn the_reply_container_is_the_message_item() {
     let Some(RigMessage::Assistant(turn)) = response.message() else {
         panic!("an assistant turn");
     };
-    assert_eq!(turn.native_item(), Some(&json!({ "container": container })));
+    assert!(
+        matches!(
+            turn.content.last(),
+            Some(crate::message::AssistantContent::Opaque(opaque))
+                if opaque.item == json!({ "type": "container", "container": container })
+                    && opaque.replay
+        ),
+        "{:?}",
+        turn.content
+    );
 }
 
 /// A `tool_use` without an id is a call rig issues an id for, and one

@@ -282,7 +282,6 @@ impl GenerateContentDecoder {
             }
         };
         out.raw(raw);
-        out.message_native(Value::Object(std::mem::take(&mut self.candidate)));
         Ok(out.end(Finish {
             usage,
             reason: Some(finish_reason),

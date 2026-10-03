@@ -122,10 +122,25 @@ impl StopReason {
 /// A 64-bit FNV-1a hash of a value's JSON serialization with every object's
 /// keys in sorted order and every whole number written as an integer, so a
 /// store that reorders keys (Postgres `jsonb`, sorted-key dumps) or writes
-/// `20.0` as `20` never changes it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+/// `20.0` as `20` never changes it. It is stored as 16 hex digits, since a
+/// store that reads JSON numbers as doubles would round a 64-bit number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Fingerprint(u64);
+
+impl Serialize for Fingerprint {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{:016x}", self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for Fingerprint {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = std::borrow::Cow::<'de, str>::deserialize(deserializer)?;
+        u64::from_str_radix(&text, 16)
+            .map(Self)
+            .map_err(|_| serde::de::Error::custom("a fingerprint is 16 hex digits"))
+    }
+}
 
 impl Fingerprint {
     /// The fingerprint of `value`'s JSON bytes, keys sorted and whole

@@ -271,24 +271,6 @@ fn a_boundaryless_run_continues_while_the_kind_stays_the_same() {
 }
 
 #[test]
-fn a_message_native_covers_the_whole_choice() {
-    let decoded = write(|out| {
-        out.run(Block::Text, "hi")?;
-        out.message_native(json!({"role": "assistant", "content": "hi"}));
-        Ok(())
-    });
-    let response = response(decoded);
-    let message = match response.message() {
-        Some(crate::message::Message::Assistant(message)) => message,
-        other => panic!("expected an assistant message, got {other:?}"),
-    };
-    assert_eq!(
-        message.native_item(),
-        Some(&json!({"role": "assistant", "content": "hi"}))
-    );
-}
-
-#[test]
 fn a_restated_response_streams_the_same_blocks() {
     let decoded = write(|out| {
         out.open(0, Block::Text, json!({"type": "text", "text": ""}))?;

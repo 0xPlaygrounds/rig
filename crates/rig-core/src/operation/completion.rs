@@ -22,8 +22,8 @@ use std::collections::{BTreeMap, HashSet};
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::ProviderError;
 use crate::message::{
-    Api, AssistantContent, AssistantMessage, CallId, Image, LocalCallId, Opaque, Origin, Reasoning,
-    Text, ToolCall, ToolFunction, ToolName,
+    Api, AssistantContent, CallId, Image, LocalCallId, Opaque, Origin, Reasoning, Text, ToolCall,
+    ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
@@ -182,7 +182,6 @@ pub struct Turn {
     open: BTreeMap<usize, Draft>,
     next_part: u32,
     call_ids: HashSet<CallId>,
-    native: Option<serde_json::Value>,
     /// The index of the block a boundary-less wire is streaming.
     run: Option<usize>,
     next_auto: usize,
@@ -335,7 +334,6 @@ impl Turn {
             open: BTreeMap::new(),
             next_part: 0,
             call_ids: HashSet::new(),
-            native: None,
             run: None,
             next_auto: AUTO_INDEX,
             by_index: None,
@@ -811,15 +809,8 @@ impl Turn {
             origin.model.clone_from(model);
         }
         origin.response_id = reported(response_id);
-        let choice = self.snapshot();
-        let native = self.native.clone().and_then(|item| {
-            AssistantMessage::new(choice.clone())
-                .with_native(item)
-                .native
-        });
-        let mut response = CompletionResponse::new(choice, usage, origin, reply.raw)
+        let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
             .with_optional_finish_reason(reason);
-        response.native = native;
         response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response
@@ -1144,12 +1135,6 @@ impl<'id> Out<'id, Completion> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
         fold.write_content(items, content)
-    }
-
-    /// The provider's whole assistant message, for a wire whose output item
-    /// is the message. It becomes the turn's message-level native.
-    pub fn message_native(&mut self, item: serde_json::Value) {
-        self.lock().fold.native = Some(item);
     }
 }
 

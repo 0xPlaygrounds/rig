@@ -598,7 +598,7 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
     assert!(is_empty_assistant_turn(&restored));
 
     let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
-        {"type": "text", "text": "", "native": {"item": {"signature": "sig"}, "fingerprint": 0}}
+        {"type": "text", "text": "", "native": {"item": {"signature": "sig"}, "fingerprint": "0000000000000000"}}
     ]))
     .expect("deserialize annotated");
     assert!(

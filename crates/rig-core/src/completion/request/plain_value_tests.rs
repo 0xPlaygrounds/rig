@@ -322,7 +322,6 @@ fn a_response_is_the_assistant_turn() {
             content: choice,
             origin: Some(crate::message::Origin::new("test.api", "test", "")),
             stop: Some(crate::message::StopReason::ToolUse),
-            native: None,
         })
     );
 }

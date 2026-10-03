@@ -514,7 +514,6 @@ impl ChatDecoder {
                 message.insert(key.to_owned(), Value::Array(items));
             }
         }
-        out.message_native(Value::Object(message));
         let recorded_usage = usage.as_ref().map(usage_of).unwrap_or_default();
         let native = StreamingCompletionResponse {
             usage,

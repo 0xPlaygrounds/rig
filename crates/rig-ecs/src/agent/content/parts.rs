@@ -80,8 +80,8 @@ pub struct EditTarget(pub Entity);
 #[reflect(Component)]
 pub struct EditedBy(Vec<Entity>);
 
-/// An assistant utterance's origin, how it ended, and the provider's whole
-/// message for message-shaped wires. Its content is the utterance's parts.
+/// An assistant utterance's origin and how it ended. Its content is the
+/// utterance's parts.
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct AssistantHead {
@@ -91,9 +91,6 @@ pub struct AssistantHead {
     /// How the turn ended.
     #[reflect(remote = super::reflect::StopReflect)]
     pub stop: Option<message::StopReason>,
-    /// The provider's message.
-    #[reflect(remote = super::reflect::NativeReflect)]
-    pub native: Option<message::Native>,
 }
 
 impl AssistantHead {
@@ -102,7 +99,6 @@ impl AssistantHead {
         Self {
             origin: message.origin.clone(),
             stop: message.stop.clone(),
-            native: message.native.clone(),
         }
     }
 
@@ -112,7 +108,6 @@ impl AssistantHead {
             content,
             origin: self.origin.clone(),
             stop: self.stop.clone(),
-            native: self.native.clone(),
         }
     }
 }

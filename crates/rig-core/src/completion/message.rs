@@ -35,8 +35,7 @@ pub use native::{Api, Fingerprint, Native, Opaque, Origin, StopReason};
 /// `content` holds one block per provider output item, in the order the
 /// provider produced them. `origin` names the wire, provider and model that
 /// produced the turn; a hand-built turn has none and always replays from its
-/// canonical fields. `native` is the provider's whole message for wires whose
-/// output item is the message itself.
+/// canonical fields.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct AssistantMessage {
     /// The blocks, in provider order.
@@ -47,47 +46,15 @@ pub struct AssistantMessage {
     /// How the turn ended.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop: Option<StopReason>,
-    /// The provider's message, for message-shaped wires.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub native: Option<Native>,
 }
 
 impl AssistantMessage {
-    /// A hand-built turn of `content`: no origin, stop or provider message.
+    /// A hand-built turn of `content`: no origin or stop.
     pub fn new(content: Vec<AssistantContent>) -> Self {
         Self {
             content,
             ..Self::default()
         }
-    }
-
-    /// The fingerprint of the turn's canonical content, every block's
-    /// provider item left out.
-    pub fn fingerprint(&self) -> Fingerprint {
-        Fingerprint::of(
-            &self
-                .content
-                .iter()
-                .map(AssistantContent::fingerprinted)
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    /// This turn, holding `item` as the provider's message for its current
-    /// content.
-    pub fn with_native(mut self, item: serde_json::Value) -> Self {
-        let fingerprint = self.fingerprint();
-        self.native = Some(Native { item, fingerprint });
-        self
-    }
-
-    /// The provider's message, while the content is still what it was
-    /// decoded from.
-    pub fn native_item(&self) -> Option<&serde_json::Value> {
-        self.native
-            .as_ref()
-            .filter(|native| native.fingerprint == self.fingerprint())
-            .map(|native| &native.item)
     }
 
     /// The tool calls, in order.
@@ -202,23 +169,42 @@ impl AssistantContent {
         block
     }
 
-    /// The fingerprint of [`Self::canonical`], with a rig-issued call id
-    /// counted as one placeholder: rig issues a fresh id each time it
+    /// The fingerprint of the block's canonical fields, through a fixed,
+    /// versioned projection rather than the block's serde layout, so a field
+    /// added to a canonical type never stales stored items. A rig-issued
+    /// call id counts as one placeholder: rig issues a fresh id each time it
     /// decodes a call the provider sent without one.
     pub fn fingerprint(&self) -> Fingerprint {
-        Fingerprint::of(&self.fingerprinted())
+        Fingerprint::of(&self.projection())
     }
 
-    /// [`Self::canonical`] with a rig-issued call id replaced by the
-    /// placeholder.
-    fn fingerprinted(&self) -> Self {
-        let mut block = self.canonical();
-        if let Self::ToolCall(call) = &mut block
-            && call.id.is_local()
-        {
-            call.id = CallId::Local(LocalCallId::placeholder());
+    /// Projection v1 of the canonical fields.
+    fn projection(&self) -> serde_json::Value {
+        use serde_json::json;
+        match self {
+            Self::Text(text) => json!(["v1", "text", text.text]),
+            Self::Reasoning(reasoning) => {
+                json!(["v1", "reasoning", reasoning.text, reasoning.redacted])
+            }
+            Self::ToolCall(call) => {
+                let id = match &call.id {
+                    CallId::Provider(id) => id.as_str().to_owned(),
+                    CallId::Local(_) => "~local".to_owned(),
+                };
+                json!([
+                    "v1",
+                    "call",
+                    id,
+                    call.function.name.as_str(),
+                    call.function.arguments,
+                    call.function.invalid_arguments,
+                ])
+            }
+            Self::Image(image) => {
+                json!(["v1", "image", image.media_type, image.detail, image.data,])
+            }
+            Self::Opaque(_) => json!(["v1", "opaque"]),
         }
-        block
     }
 
     fn native_slot(&mut self) -> Option<&mut Option<Native>> {

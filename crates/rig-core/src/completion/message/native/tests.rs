@@ -57,23 +57,11 @@ fn opaque_items_carry_no_separate_native() {
 }
 
 #[test]
-fn a_message_native_tracks_its_whole_content() {
-    let turn = AssistantMessage::new(vec![AssistantContent::text("a"), call(json!({}))])
-        .with_native(json!({"role": "assistant", "content": "a"}));
-    assert!(turn.native_item().is_some());
-
-    let mut edited = turn.clone();
-    edited.content.pop();
-    assert_eq!(edited.native_item(), None);
-}
-
-#[test]
 fn an_assistant_message_serializes_flat_under_its_role() {
     let turn = AssistantMessage {
         content: vec![AssistantContent::Text(Text::new("hi"))],
         origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
         stop: Some(StopReason::Error("refused".into())),
-        native: None,
     };
     let value = serde_json::to_value(Message::Assistant(turn.clone())).expect("serialize");
     assert_eq!(

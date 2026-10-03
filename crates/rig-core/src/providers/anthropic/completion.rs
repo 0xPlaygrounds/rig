@@ -691,6 +691,9 @@ fn assistant_content(block: message::AssistantContent, id: Option<&str>) -> Opti
             name: call.function.name.into(),
             input: serde_json::Value::Object(call.function.arguments),
         }),
+        // The reply's container is conversation state, sent as the
+        // request's `container`, never as content.
+        Block::Opaque(opaque) if opaque.kind() == Some("container") => None,
         Block::Opaque(opaque) => Some(Content::Native(opaque.item)),
         // Assistant turns take no images; `adapt` downgrades every one, so
         // only a turn sent without it reaches here.
@@ -1887,18 +1890,23 @@ fn assistant_ends_in_server_tool_block(message: &message::Message) -> bool {
 
 /// The id of the container the last turn holding one ran in. Anthropic
 /// requires it on a request that answers a programmatic tool call, and it
-/// keeps a code-execution session's state. It is conversation state, so it
-/// holds however the turn's content changed since; after `adapt`, only a
-/// turn of the same model still holds its message item.
+/// keeps a code-execution session's state. The decoder keeps it as an
+/// opaque `container` block, which `adapt` leaves only on turns of the
+/// same model.
 fn replayed_container(history: &[message::Message]) -> Option<String> {
     history.iter().rev().find_map(|message| match message {
-        message::Message::Assistant(turn) => turn
-            .native
-            .as_ref()?
-            .item
-            .pointer("/container/id")?
-            .as_str()
-            .map(str::to_owned),
+        message::Message::Assistant(turn) => {
+            turn.content.iter().rev().find_map(|block| match block {
+                message::AssistantContent::Opaque(opaque) if opaque.kind() == Some("container") => {
+                    opaque
+                        .item
+                        .pointer("/container/id")?
+                        .as_str()
+                        .map(str::to_owned)
+                }
+                _ => None,
+            })
+        }
         message::Message::User { .. } | message::Message::System { .. } => None,
     })
 }

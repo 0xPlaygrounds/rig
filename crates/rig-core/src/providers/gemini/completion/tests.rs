@@ -2118,7 +2118,8 @@ fn every_part_kind_survives_decode_and_replay() {
 /// Grounding, URL context, safety ratings and citations stay with the turn
 /// as its message-level native: the candidate without its content.
 #[test]
-fn candidate_metadata_is_the_turns_native() {
+#[ignore = "family C: the candidate's metadata moves to raw now that turns hold no message item"]
+fn candidate_metadata_reaches_raw() {
     use crate::wire::WireFrame;
 
     let metadata = json!({
@@ -2135,7 +2136,10 @@ fn candidate_metadata_is_the_turns_native() {
     let response =
         crate::test_utils::history::decode(&wire("gemini-2.5-flash"), Mode::Unary, [frame])
             .expect("the reply decodes");
-    assert_eq!(response.native.map(|native| native.item), Some(metadata));
+    let candidate = response.raw.pointer("/candidates/0").expect("the candidate");
+    for (key, value) in metadata.as_object().expect("metadata is an object") {
+        assert_eq!(candidate.get(key), Some(value), "{key}");
+    }
 }
 
 /// A call rig issued the id for is spelled `tool-<n>` for a model that

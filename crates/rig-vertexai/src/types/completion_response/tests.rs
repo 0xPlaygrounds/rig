@@ -391,8 +391,8 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
     assert_eq!(back, raw);
 
     let original: CompletionResponse = raw.clone().complete().expect("original converts");
-    // The candidate's metadata stays with the turn.
-    let native = original.native.as_ref().map(|native| &native.item);
+    // The candidate's metadata stays in the response's raw document.
+    let native = original.raw.pointer("/candidates/0");
     assert_eq!(
         native.map(|native| &native["avgLogprobs"]),
         Some(&json!(-0.25))

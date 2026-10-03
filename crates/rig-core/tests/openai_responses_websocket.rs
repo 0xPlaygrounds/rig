@@ -821,13 +821,11 @@ async fn the_session_shapes_history_for_its_model() {
         ],
         origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
         stop: Some(StopReason::Stop),
-        native: None,
     });
     let failed = Message::Assistant(AssistantMessage {
         content: vec![AssistantContent::Text(Text::new("cut short"))],
         origin: Some(Origin::new("openai.responses", "openai", "gpt-5.4")),
         stop: Some(StopReason::Error("boom".to_owned())),
-        native: None,
     });
     let request = CompletionRequest::new("next").messages([
         Message::user("first"),

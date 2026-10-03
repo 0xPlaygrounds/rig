@@ -134,8 +134,7 @@ fn assistant_provider_items_opaque_items_and_origin_round_trip() {
             data: DocumentSourceKind::Raw(vec![1, 2, 3]),
             ..Default::default()
         }),
-    ])
-    .with_native(serde_json::json!({"role": "assistant"}));
+    ]);
     message.origin = Some(Origin::new("test.api", "test", "model-a"));
     message.stop = Some(StopReason::ToolUse);
     let parts = MessageParts::Assistant(message);

@@ -1236,12 +1236,13 @@ fn an_invented_call_field_replays_and_an_invented_message_field_does_not() {
             content: response.choice.clone(),
             ..response.head()
         };
-        let native = turn.native_item().expect("the turn holds its message");
-        assert_eq!(native["x_message_probe"][0]["kind"], "invented", "{mode:?}");
-        assert_eq!(
-            native["tool_calls"][0]["x_call_probe"]["kept"], true,
-            "{mode:?}"
-        );
+        let call = turn
+            .content
+            .iter()
+            .find_map(AssistantContent::native_item)
+            .filter(|item| item.get("x_call_probe").is_some())
+            .expect("the call keeps its item");
+        assert_eq!(call["x_call_probe"]["kept"], true, "{mode:?}");
 
         let mut request = prompt("and then?");
         request.chat_history = crate::completion::history::adapt(
@@ -1349,16 +1350,6 @@ fn streamed_annotations_and_audio_survive() {
     assert_eq!(
         AssistantContent::Text(text.clone()).native_item(),
         Some(&serde_json::json!({"audio": {"id": "audio_1"}}))
-    );
-    // The message keeps every field for display.
-    let message = response.head().native.expect("the message");
-    assert_eq!(
-        message.item["audio"],
-        serde_json::json!({"id": "audio_1", "transcript": "See rig.rs", "data": "UklG"})
-    );
-    assert_eq!(
-        message.item["annotations"][0]["url_citation"]["url"],
-        "https://rig.rs"
     );
     // Replay sends what OpenAI takes back: the text and the audio's id.
     let turn = crate::message::AssistantMessage {

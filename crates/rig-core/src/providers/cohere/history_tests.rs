@@ -56,7 +56,6 @@ fn images_are_downgraded_for_what_each_model_reads() {
             ],
             origin: Some(Origin::new("gemini.generate_content", "gemini", "gemini-3")),
             stop: Some(StopReason::ToolUse),
-            native: None,
         }),
         Message::User {
             content: vec![UserContent::ToolResult(

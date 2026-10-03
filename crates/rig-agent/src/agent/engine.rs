@@ -1222,7 +1222,6 @@ pub(crate) async fn settle_model_turn(
         response.raw.clone(),
     )
     .with_optional_finish_reason(finish_reason.clone());
-    folded.native = response.native.clone();
     folded.error = response.error.clone();
     folded.provider_request_id = identity.provider_request_id.clone();
     let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));

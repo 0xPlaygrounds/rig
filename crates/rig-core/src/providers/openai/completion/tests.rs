@@ -445,8 +445,7 @@ fn an_unedited_reasoning_block_replays_its_own_field_beside_a_rebuilt_call() {
             crate::message::ToolName::new("subtract").expect("tool name"),
             serde_json::json!({"x": 2, "y": 1}),
         ),
-    ])
-    .with_native(serde_json::json!({"role": "assistant", "content": "stale"}));
+    ]);
     let mut turn = turn;
     turn.content.pop();
 

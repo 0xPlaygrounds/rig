@@ -411,9 +411,6 @@ impl<'id> MockDecoder<'id> {
         for content in response.choice.iter().cloned() {
             out.content(content)?;
         }
-        if let Some(native) = &response.native {
-            out.message_native(native.item.clone());
-        }
         out.raw(response.raw.clone());
         Ok(out.end(Finish {
             usage: response.usage,
