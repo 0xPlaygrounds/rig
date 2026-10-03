@@ -350,15 +350,164 @@ fn images_become_placeholders_for_a_model_without_image_input() {
         adapted[1..],
         vec![Message::User {
             content: vec![
-                UserContent::text(USER_IMAGE_OMITTED),
-                UserContent::text("look"),
                 UserContent::ToolResult(ToolResult {
                     is_error: false,
                     call: CallId::from_wire("c1"),
                     name: ToolName::new("lookup").expect("a name"),
                     content: vec![ToolResultContent::text(TOOL_IMAGE_OMITTED)],
                 }),
+                UserContent::text(USER_IMAGE_OMITTED),
+                UserContent::text("look"),
             ],
+        }]
+    );
+}
+
+/// A target whose encoder takes inline images only, and no audio, video or
+/// documents.
+#[derive(Debug)]
+struct InlineOnly;
+
+impl ReplayTarget for InlineOnly {
+    fn api(&self) -> Api {
+        Api::from_static("test.api")
+    }
+
+    fn provider(&self) -> &str {
+        "test"
+    }
+
+    fn model(&self) -> &str {
+        "model-a"
+    }
+
+    fn accepts(&self, _model: &str) -> Accepts {
+        Accepts::ALL
+    }
+
+    fn encodes(&self, _model: &str, media: Media<'_>) -> bool {
+        match media {
+            Media::Image(image, _) => {
+                matches!(image.data, DocumentSourceKind::Base64(_)) && image.media_type.is_some()
+            }
+            Media::Audio(_) | Media::Video(_) | Media::Document(_) => false,
+        }
+    }
+}
+
+#[test]
+fn media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text() {
+    use crate::message::{Audio, Document, DocumentMediaType, Video};
+    let url = || Image {
+        data: DocumentSourceKind::url("https://example.invalid/a.png"),
+        ..Image::default()
+    };
+    let history = vec![
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![
+                UserContent::Image(url()),
+                UserContent::Image(Image {
+                    data: DocumentSourceKind::Unknown,
+                    ..Image::default()
+                }),
+                UserContent::Audio(Audio {
+                    data: DocumentSourceKind::base64("SUQz"),
+                    media_type: None,
+                }),
+                UserContent::Video(Video {
+                    data: DocumentSourceKind::url("https://example.invalid/a.mp4"),
+                    media_type: None,
+                    additional_params: None,
+                }),
+                UserContent::Document(Document {
+                    data: DocumentSourceKind::base64("YSxiCjEsMgo="),
+                    media_type: Some(DocumentMediaType::CSV),
+                    additional_params: None,
+                }),
+                UserContent::Document(Document {
+                    data: DocumentSourceKind::base64("JVBERi0="),
+                    media_type: Some(DocumentMediaType::PDF),
+                    additional_params: None,
+                }),
+                UserContent::ToolResult(ToolResult {
+                    is_error: false,
+                    call: CallId::from_wire("c1"),
+                    name: ToolName::new("lookup").expect("a name"),
+                    content: vec![ToolResultContent::Image(url())],
+                }),
+            ],
+        },
+    ];
+    assert_eq!(
+        adapt(&history, &InlineOnly)[1..],
+        vec![Message::User {
+            content: vec![
+                UserContent::ToolResult(ToolResult {
+                    is_error: false,
+                    call: CallId::from_wire("c1"),
+                    name: ToolName::new("lookup").expect("a name"),
+                    content: vec![ToolResultContent::text(TOOL_IMAGE_OMITTED)],
+                }),
+                UserContent::text(IMAGE_UNSENDABLE),
+                UserContent::text(AUDIO_UNSENDABLE),
+                UserContent::text(VIDEO_UNSENDABLE),
+                UserContent::text("a,b\n1,2\n"),
+                UserContent::text(DOCUMENT_UNSENDABLE),
+            ],
+        }]
+    );
+}
+
+#[test]
+fn inline_images_are_base64_with_the_type_their_bytes_name() {
+    let raw_jpeg = Image {
+        data: DocumentSourceKind::Raw(vec![0xFF, 0xD8, 0xFF, 0xE0]),
+        ..Image::default()
+    };
+    let untyped_png = Image {
+        data: DocumentSourceKind::base64("iVBORw0KGgoAAAANSUhEUg=="),
+        ..Image::default()
+    };
+    let history = vec![Message::User {
+        content: vec![
+            UserContent::Image(raw_jpeg),
+            UserContent::Image(untyped_png),
+        ],
+    }];
+    assert_eq!(
+        adapt(&history, &InlineOnly),
+        vec![Message::User {
+            content: vec![
+                UserContent::Image(Image {
+                    data: DocumentSourceKind::base64("/9j/4A=="),
+                    media_type: Some(ImageMediaType::JPEG),
+                    ..Image::default()
+                }),
+                UserContent::Image(Image {
+                    data: DocumentSourceKind::base64("iVBORw0KGgoAAAANSUhEUg=="),
+                    media_type: Some(ImageMediaType::PNG),
+                    ..Image::default()
+                }),
+            ],
+        }]
+    );
+}
+
+#[test]
+fn results_come_before_the_text_of_the_message_they_merge_into() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call("c1")]),
+        Message::user("and also"),
+        Message::User {
+            content: vec![result("c1", "done")],
+        },
+    ];
+    assert_eq!(
+        adapt(&history, &TARGET)[2..],
+        vec![Message::User {
+            content: vec![result("c1", "done"), UserContent::text("and also")],
         }]
     );
 }

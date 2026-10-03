@@ -31,9 +31,12 @@
 
 use std::collections::{HashMap, HashSet};
 
+use base64::Engine as _;
+use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD};
+
 use crate::message::{
-    Api, AssistantContent, AssistantMessage, CallId, Message, Origin, Text, ToolCall, ToolResult,
-    ToolResultContent, UserContent,
+    Api, AssistantContent, AssistantMessage, CallId, DocumentMediaType, DocumentSourceKind,
+    ImageMediaType, Message, Origin, Text, ToolCall, ToolResult, ToolResultContent, UserContent,
 };
 use crate::wasm_compat::WasmCompatSync;
 
@@ -49,6 +52,20 @@ pub const ASSISTANT_IMAGE_OMITTED: &str = "(image omitted: model does not suppor
 
 /// What replaces a tool-result image for a model without image input.
 pub const TOOL_IMAGE_OMITTED: &str = "(tool image omitted: model does not support images)";
+
+/// What replaces an image the provider cannot receive in its form.
+pub const IMAGE_UNSENDABLE: &str = "(image omitted: the provider cannot receive it in this form)";
+
+/// What replaces audio the provider cannot receive.
+pub const AUDIO_UNSENDABLE: &str = "(audio omitted: the provider cannot receive it in this form)";
+
+/// What replaces video the provider cannot receive.
+pub const VIDEO_UNSENDABLE: &str = "(video omitted: the provider cannot receive it in this form)";
+
+/// What replaces a document the provider cannot receive, when it holds no
+/// text to send instead.
+pub const DOCUMENT_UNSENDABLE: &str =
+    "(document omitted: the provider cannot receive it in this form)";
 
 /// What a tool-result image becomes in the result when the image moves to
 /// the user message that follows.
@@ -88,6 +105,32 @@ impl Accepts {
     };
 }
 
+/// Where an image sits in a history.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Place {
+    /// In a user message.
+    User,
+    /// Inside a tool result.
+    ToolResult,
+    /// In an assistant turn another model produced.
+    Assistant,
+}
+
+/// One media part, as [`ReplayTarget::encodes`] sees it. Raw bytes are
+/// already base64, and an inline image already has the media type its bytes
+/// name.
+#[derive(Debug, Clone, Copy)]
+pub enum Media<'a> {
+    /// An image, and where it sits.
+    Image(&'a crate::message::Image, Place),
+    /// Audio in a user message.
+    Audio(&'a crate::message::Audio),
+    /// Video in a user message.
+    Video(&'a crate::message::Video),
+    /// A document in a user message.
+    Document(&'a crate::message::Document),
+}
+
 /// The model a request is sent to, as replay sees it. Every completion wire
 /// implements it.
 pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
@@ -103,6 +146,17 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     /// What `model`, the model a request addresses on this wire, reads.
     /// [`adapt`] downgrades everything else, so the encoder never sees it.
     fn accepts(&self, model: &str) -> Accepts;
+
+    /// Whether the encoder carries `media` to `model`: its source (data,
+    /// URL, file id or string), its media type, and where it sits. [`adapt`]
+    /// replaces every part this refuses with a placeholder, or a text
+    /// document with its text, so the encoder never refuses canonical
+    /// content. Row H9 of the history conformance suite holds every wire to
+    /// it. By default every form is carried.
+    fn encodes(&self, model: &str, media: Media<'_>) -> bool {
+        let _ = (model, media);
+        true
+    }
 
     /// The id `id` takes when a call another model made is sent to `model`
     /// on this wire. `source` is the call's origin, `None` for a hand-built
@@ -172,10 +226,36 @@ pub(crate) fn adapt_for_model(
                 }
             }
             Message::User { content } => {
-                shaped.extend(user(content, &ids, accepts).into_iter().map(Some));
+                let form = Form {
+                    target,
+                    model,
+                    accepts,
+                };
+                shaped.extend(user(content, &ids, &form).into_iter().map(Some));
             }
             Message::Assistant(turn) => {
                 let adapted = assistant(turn, target, &same, accepts, &mut ids);
+                let adapted = AssistantMessage {
+                    content: adapted
+                        .content
+                        .into_iter()
+                        .map(|block| match block {
+                            AssistantContent::Image(image) if image.native.is_none() => {
+                                let image = sendable_image(image);
+                                if matches!(image.data, DocumentSourceKind::Unknown)
+                                    || !target
+                                        .encodes(model, Media::Image(&image, Place::Assistant))
+                                {
+                                    AssistantContent::Text(Text::new(IMAGE_UNSENDABLE))
+                                } else {
+                                    AssistantContent::Image(image)
+                                }
+                            }
+                            block => block,
+                        })
+                        .collect(),
+                    ..adapted
+                };
                 let emptied = adapted.content.is_empty() && !turn.content.is_empty();
                 shaped.push((!emptied).then_some(Message::Assistant(adapted)));
             }
@@ -307,38 +387,107 @@ fn kept(block: &AssistantContent) -> bool {
     }
 }
 
-/// The user message `content` shaped for a model that reads `accepts`: one
-/// message, or two when tool-result images move to a message of their own.
-fn user(content: &[UserContent], ids: &Renamed, accepts: Accepts) -> Vec<Message> {
+/// The target a user message is shaped for.
+struct Form<'a> {
+    target: &'a dyn ReplayTarget,
+    model: &'a str,
+    accepts: Accepts,
+}
+
+impl Form<'_> {
+    /// Whether an image the model reads at `place` can be sent there.
+    fn sends(&self, image: &crate::message::Image, place: Place) -> bool {
+        let reads = match place {
+            Place::User => self.accepts.user_images,
+            Place::ToolResult => self.accepts.tool_result_images,
+            Place::Assistant => self.accepts.assistant_images,
+        };
+        reads
+            && !matches!(image.data, DocumentSourceKind::Unknown)
+            && self.target.encodes(self.model, Media::Image(image, place))
+    }
+}
+
+/// The user message `content` shaped for `form`: one message, or two when
+/// tool-result images move to a message of their own.
+fn user(content: &[UserContent], ids: &Renamed, form: &Form<'_>) -> Vec<Message> {
     let mut shaped: Vec<UserContent> = Vec::with_capacity(content.len());
     let mut attached = Vec::new();
     for part in content {
-        match part {
-            UserContent::Image(_) if !accepts.user_images => {
-                let omitted = matches!(
-                    shaped.last(),
-                    Some(UserContent::Text(text)) if text.text == USER_IMAGE_OMITTED
-                );
-                if !omitted {
-                    shaped.push(UserContent::text(USER_IMAGE_OMITTED));
+        let placeholder = match part {
+            UserContent::Image(image) => {
+                let image = sendable_image(image.clone());
+                if form.sends(&image, Place::User) {
+                    shaped.push(UserContent::Image(image));
+                    continue;
                 }
+                if form.accepts.user_images {
+                    IMAGE_UNSENDABLE
+                } else {
+                    USER_IMAGE_OMITTED
+                }
+            }
+            UserContent::Audio(audio) => {
+                let mut audio = audio.clone();
+                audio.data = sendable(audio.data);
+                if !matches!(audio.data, DocumentSourceKind::Unknown)
+                    && form.target.encodes(form.model, Media::Audio(&audio))
+                {
+                    shaped.push(UserContent::Audio(audio));
+                    continue;
+                }
+                AUDIO_UNSENDABLE
+            }
+            UserContent::Video(video) => {
+                let mut video = video.clone();
+                video.data = sendable(video.data);
+                if !matches!(video.data, DocumentSourceKind::Unknown)
+                    && form.target.encodes(form.model, Media::Video(&video))
+                {
+                    shaped.push(UserContent::Video(video));
+                    continue;
+                }
+                VIDEO_UNSENDABLE
+            }
+            UserContent::Document(document) => {
+                let mut document = document.clone();
+                document.data = sendable(document.data);
+                if !matches!(document.data, DocumentSourceKind::Unknown)
+                    && form.target.encodes(form.model, Media::Document(&document))
+                {
+                    shaped.push(UserContent::Document(document));
+                    continue;
+                }
+                if let Some(text) = document_text(&document) {
+                    shaped.push(UserContent::text(text));
+                    continue;
+                }
+                DOCUMENT_UNSENDABLE
             }
             UserContent::ToolResult(result) => {
                 let mut result = result.clone();
                 if let Some(id) = ids.to.get(&result.call) {
                     result.call = id.clone();
                 }
-                if !accepts.tool_result_images {
-                    result.content =
-                        without_images(result.content, accepts.user_images, &mut attached);
-                }
-                if accepts.tools {
+                result.content = result_images(result.content, form, &mut attached);
+                if form.accepts.tools {
                     shaped.push(UserContent::ToolResult(result));
                 } else {
                     shaped.push(UserContent::text(result_text(&result)));
                 }
+                continue;
             }
-            part => shaped.push(part.clone()),
+            UserContent::Text(_) => {
+                shaped.push(part.clone());
+                continue;
+            }
+        };
+        let repeated = matches!(
+            shaped.last(),
+            Some(UserContent::Text(text)) if text.text == placeholder
+        );
+        if !repeated {
+            shaped.push(UserContent::text(placeholder));
         }
     }
     let mut messages = vec![Message::User { content: shaped }];
@@ -365,19 +514,24 @@ fn result_text(result: &ToolResult) -> String {
     format!("[tool {} {kind}] {}", result.name, text.join("\n"))
 }
 
-/// `content` without images: each becomes [`TOOL_IMAGE_ATTACHED`] and moves
-/// to `attached` when the model reads user images, else
-/// [`TOOL_IMAGE_OMITTED`].
-fn without_images(
+/// `content` with each image the result cannot carry replaced: it becomes
+/// [`TOOL_IMAGE_ATTACHED`] and moves to `attached` when it can go in a user
+/// message, else [`TOOL_IMAGE_OMITTED`].
+fn result_images(
     content: Vec<ToolResultContent>,
-    user_images: bool,
+    form: &Form<'_>,
     attached: &mut Vec<crate::message::Image>,
 ) -> Vec<ToolResultContent> {
     let mut shaped: Vec<ToolResultContent> = Vec::with_capacity(content.len());
     for part in content {
         match part {
             ToolResultContent::Image(image) => {
-                let placeholder = if user_images {
+                let image = sendable_image(image);
+                if form.sends(&image, Place::ToolResult) {
+                    shaped.push(ToolResultContent::Image(image));
+                    continue;
+                }
+                let placeholder = if form.sends(&image, Place::User) {
                     attached.push(image);
                     TOOL_IMAGE_ATTACHED
                 } else {
@@ -391,6 +545,75 @@ fn without_images(
         }
     }
     shaped
+}
+
+/// `source` with raw bytes given as base64, which every wire that takes
+/// inline data reads.
+fn sendable(source: DocumentSourceKind) -> DocumentSourceKind {
+    match source {
+        DocumentSourceKind::Raw(bytes) => DocumentSourceKind::Base64(BASE64_STANDARD.encode(bytes)),
+        source => source,
+    }
+}
+
+/// `image` with raw bytes as base64, and, when it is inline data without a
+/// media type, the type its bytes name.
+fn sendable_image(mut image: crate::message::Image) -> crate::message::Image {
+    image.data = sendable(image.data);
+    if image.media_type.is_none()
+        && let DocumentSourceKind::Base64(data) = &image.data
+    {
+        image.media_type = sniffed(data);
+    }
+    image
+}
+
+/// The image type the base64 `data` starts with.
+fn sniffed(data: &str) -> Option<ImageMediaType> {
+    let head: String = data.chars().take(24).collect();
+    let bytes = BASE64_STANDARD
+        .decode(head.as_bytes())
+        .or_else(|_| BASE64_STANDARD_NO_PAD.decode(head.as_bytes()))
+        .ok()?;
+    match bytes.as_slice() {
+        [0x89, b'P', b'N', b'G', ..] => Some(ImageMediaType::PNG),
+        [0xFF, 0xD8, 0xFF, ..] => Some(ImageMediaType::JPEG),
+        [b'G', b'I', b'F', b'8', ..] => Some(ImageMediaType::GIF),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some(ImageMediaType::WEBP),
+        _ => None,
+    }
+}
+
+/// The text of a document that holds text: a string, or base64 data of a
+/// media type other than PDF that decodes as UTF-8.
+fn document_text(document: &crate::message::Document) -> Option<String> {
+    match &document.data {
+        DocumentSourceKind::String(text) => Some(text.clone()),
+        DocumentSourceKind::Base64(data)
+            if document
+                .media_type
+                .as_ref()
+                .is_some_and(|media_type| *media_type != DocumentMediaType::PDF) =>
+        {
+            let bytes = BASE64_STANDARD.decode(data.as_bytes()).ok()?;
+            String::from_utf8(bytes).ok()
+        }
+        _ => None,
+    }
 }
 
 /// `history` with each run of adjacent user messages made one: a wire that
@@ -532,6 +755,9 @@ fn close(
         .position(|part| !matches!(part, UserContent::ToolResult(_)))
         .unwrap_or(content.len());
     content.splice(at..at, missing);
+    // Results come first: Anthropic requires it, and Chat sends them as tool
+    // messages that must follow the turn directly.
+    content.sort_by_key(|part| !matches!(part, UserContent::ToolResult(_)));
     if !content.is_empty() {
         match shaped.last_mut() {
             Some(Message::User { content: previous }) if merge => previous.extend(content),

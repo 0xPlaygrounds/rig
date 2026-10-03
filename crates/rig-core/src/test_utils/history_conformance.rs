@@ -550,8 +550,9 @@ pub fn h04_unknown_kept<F: HistoryFixture>(fixture: &F) {
     }
 }
 
-/// H5. Removing any one field no block or the finish is built from still
-/// decodes the whole reply.
+/// H5. Removing any one field no block or the finish is built from, making
+/// it `null`, or giving it a value of another type still decodes the whole
+/// reply.
 pub fn h05_field_ablation<F: HistoryFixture>(fixture: &F) {
     let Some(ablation) = fixture.ablation() else {
         eprintln!("skip: the wire's replies are not JSON documents");
@@ -579,6 +580,30 @@ pub fn h05_field_ablation<F: HistoryFixture>(fixture: &F) {
         if let Err(error) = decode(&wire, &request, Mode::Unary, (ablation.frames)(document)) {
             panic!("the reply without `{pointer}` still decodes: {error}");
         }
+        let Some(value) = ablation.document.pointer(&pointer) else {
+            continue;
+        };
+        for (change, replacement) in [("null", Value::Null), ("retyped", retyped(value))] {
+            let mut document = ablation.document.clone();
+            if let Some(field) = document.pointer_mut(&pointer) {
+                *field = replacement;
+            }
+            if let Err(error) = decode(&wire, &request, Mode::Unary, (ablation.frames)(document)) {
+                panic!("the reply with `{pointer}` {change} still decodes: {error}");
+            }
+        }
+    }
+}
+
+/// A value of another JSON type than `value`.
+fn retyped(value: &Value) -> Value {
+    match value {
+        Value::String(_) => Value::from(7),
+        Value::Number(_) => Value::from("7"),
+        Value::Bool(_) => Value::from("true"),
+        Value::Array(_) => serde_json::json!({}),
+        Value::Object(_) => serde_json::json!([]),
+        Value::Null => Value::from(false),
     }
 }
 
@@ -811,29 +836,135 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
     }
 }
 
-/// H9. Content the model does not read is downgraded by the adapter, so
-/// the encoder never refuses a history: images in every role, tool calls
-/// and results, and blank system messages.
+/// H9. The adapter downgrades whatever the model does not read or the wire
+/// cannot carry in its form, so the encoder never refuses a history and
+/// never drops a part the adapter kept: images, audio, video and documents
+/// in every source form and role, tool calls and results, and blank system
+/// messages. A text-only model gets no image at all.
 pub fn h09_capability_downgrades<F: HistoryFixture>(fixture: &F) {
-    let image = Image {
-        data: crate::message::DocumentSourceKind::base64(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        ),
-        media_type: Some(crate::message::ImageMediaType::PNG),
+    let history = media_history();
+    let models = std::iter::once(fixture.model()).chain(fixture.text_only_model());
+    for model in models {
+        let wire = fixture.wire(model);
+        let describe = wire.describe();
+        let replay = describe.replay.expect("a replay target");
+        let adapted =
+            crate::completion::history::adapt_for_model(&history, replay, Some(model), false);
+        if Some(model) == fixture.text_only_model() {
+            assert!(
+                !replay.accepts(model).user_images,
+                "{model} is text-only, so its wire says it reads no images"
+            );
+            assert!(
+                payloads(&adapted).iter().all(|(kind, _)| *kind != "image"),
+                "{model} gets no image: {adapted:?}"
+            );
+        }
+        for mode in MODES {
+            let body = sent(fixture, model, history.clone(), mode).unwrap_or_else(|error| {
+                panic!(
+                    "{model} in {mode:?}: the adapter leaves nothing the encoder refuses: {error}"
+                )
+            });
+            let text = body.to_string();
+            for (kind, needles) in payloads(&adapted) {
+                assert!(
+                    needles.iter().any(|needle| text.contains(needle.as_str())),
+                    "{model} in {mode:?}: the {kind} the adapter kept is sent ({needles:?}): {body}"
+                );
+            }
+        }
+    }
+}
+
+/// A history holding every canonical media form in every role.
+fn media_history() -> Vec<Message> {
+    use crate::message::{
+        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source,
+        ImageMediaType, Video, VideoMediaType,
+    };
+    let image = |data: Source, media_type: Option<ImageMediaType>| Image {
+        data,
+        media_type,
         ..Image::default()
+    };
+    let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
+        data,
+        media_type,
+        additional_params: None,
     };
     let call = ToolCall::new(
         CallId::from_wire("call_shot"),
         ToolFunction::new(name("screenshot"), serde_json::json!({})),
     );
-    let history = vec![
+    vec![
         Message::system(""),
         Message::User {
-            content: vec![UserContent::text("look"), UserContent::Image(image.clone())],
+            content: vec![
+                UserContent::text("look"),
+                UserContent::Image(image(Source::base64(MATRIX_PNG), Some(ImageMediaType::PNG))),
+                UserContent::Image(image(Source::base64("R0lGODlhAQABAIAAAP///wAAACw="), None)),
+                UserContent::Image(image(
+                    Source::url("https://example.com/rig-matrix.png"),
+                    None,
+                )),
+                UserContent::Image(image(Source::file_id("file-rig-matrix-image"), None)),
+                UserContent::Image(image(
+                    Source::Raw(vec![
+                        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F',
+                    ]),
+                    None,
+                )),
+                UserContent::Image(image(Source::string("rig-matrix-string-image"), None)),
+                UserContent::Image(image(Source::Unknown, Some(ImageMediaType::PNG))),
+                UserContent::Audio(Audio {
+                    data: Source::base64("SUQzBAAAAAAAI1RTU0UAAAAP"),
+                    media_type: Some(AudioMediaType::MP3),
+                }),
+                UserContent::Audio(Audio {
+                    data: Source::url("https://example.com/rig-matrix.mp3"),
+                    media_type: Some(AudioMediaType::MP3),
+                }),
+                UserContent::Video(Video {
+                    data: Source::url("https://example.com/rig-matrix.mp4"),
+                    media_type: Some(VideoMediaType::MP4),
+                    additional_params: None,
+                }),
+                UserContent::Video(Video {
+                    data: Source::base64("AAAAIGZ0eXBpc29tAAACAA"),
+                    media_type: Some(VideoMediaType::MP4),
+                    additional_params: None,
+                }),
+                UserContent::Document(document(
+                    Source::base64("JVBERi0xLjQKcmlnLW1hdHJpeA=="),
+                    Some(DocumentMediaType::PDF),
+                )),
+                UserContent::Document(document(
+                    Source::url("https://example.com/rig-matrix.pdf"),
+                    Some(DocumentMediaType::PDF),
+                )),
+                UserContent::Document(document(
+                    Source::string("rig matrix plain document"),
+                    Some(DocumentMediaType::TXT),
+                )),
+                UserContent::Document(document(
+                    Source::base64("cmlnLG1hdHJpeAoxLDIK"),
+                    Some(DocumentMediaType::CSV),
+                )),
+                UserContent::Document(document(
+                    Source::string("# rig matrix markdown"),
+                    Some(DocumentMediaType::MARKDOWN),
+                )),
+                UserContent::Document(document(Source::file_id("file-rig-matrix-document"), None)),
+                UserContent::Document(document(Source::base64("cmlnIG1hdHJpeCB1bnR5cGVk"), None)),
+            ],
         },
         Message::Assistant(AssistantMessage {
             content: vec![
-                AssistantContent::Image(image.clone()),
+                AssistantContent::Image(image(
+                    Source::url("https://example.com/rig-matrix-assistant.png"),
+                    Some(ImageMediaType::PNG),
+                )),
                 AssistantContent::Text(Text::new("taking a shot")),
                 AssistantContent::ToolCall(call.clone()),
             ],
@@ -844,20 +975,84 @@ pub fn h09_capability_downgrades<F: HistoryFixture>(fixture: &F) {
         Message::User {
             content: vec![UserContent::ToolResult(call.result(vec![
                 ToolResultContent::text("here"),
-                ToolResultContent::Image(image),
+                ToolResultContent::Image(image(
+                    Source::base64(MATRIX_WEBP),
+                    Some(ImageMediaType::WEBP),
+                )),
+                ToolResultContent::Image(image(
+                    Source::url("https://example.com/rig-matrix-tool.png"),
+                    Some(ImageMediaType::PNG),
+                )),
             ]))],
         },
-    ];
-    let models = std::iter::once(fixture.model()).chain(fixture.text_only_model());
-    for model in models {
-        for mode in MODES {
-            sent(fixture, model, history.clone(), mode).unwrap_or_else(|error| {
-                panic!(
-                    "{model} in {mode:?}: the adapter leaves nothing the encoder refuses: {error}"
-                )
-            });
+    ]
+}
+
+/// A 1x1 PNG.
+const MATRIX_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+/// A 1x1 WEBP.
+const MATRIX_WEBP: &str = "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA=";
+
+/// Each media part `history` still holds, by kind, with the strings one of
+/// which its encoding contains: its URL, file id, string, or the head of
+/// its data (and a text document's decoded text).
+fn payloads(history: &[Message]) -> Vec<(&'static str, Vec<String>)> {
+    use crate::message::DocumentSourceKind as Source;
+    use base64::Engine as _;
+    fn needles(source: &Source) -> Vec<String> {
+        match source {
+            Source::Url(text) | Source::FileId(text) | Source::String(text) => {
+                vec![text.clone()]
+            }
+            Source::Base64(data) => {
+                let mut needles = vec![data.chars().take(16).collect()];
+                if let Some(text) = base64::prelude::BASE64_STANDARD
+                    .decode(data.as_bytes())
+                    .ok()
+                    .and_then(|bytes| String::from_utf8(bytes).ok())
+                {
+                    needles.push(text);
+                }
+                needles
+            }
+            Source::Raw(_) | Source::Unknown => vec![String::from("<no payload>")],
         }
     }
+    let mut found = Vec::new();
+    for message in history {
+        match message {
+            Message::User { content } => {
+                for part in content {
+                    match part {
+                        UserContent::Image(image) => found.push(("image", needles(&image.data))),
+                        UserContent::Audio(audio) => found.push(("audio", needles(&audio.data))),
+                        UserContent::Video(video) => found.push(("video", needles(&video.data))),
+                        UserContent::Document(document) => {
+                            found.push(("document", needles(&document.data)));
+                        }
+                        UserContent::ToolResult(result) => {
+                            for part in &result.content {
+                                if let ToolResultContent::Image(image) = part {
+                                    found.push(("image", needles(&image.data)));
+                                }
+                            }
+                        }
+                        UserContent::Text(_) => {}
+                    }
+                }
+            }
+            Message::Assistant(turn) => {
+                for block in &turn.content {
+                    if let AssistantContent::Image(image) = block {
+                        found.push(("image", needles(&image.data)));
+                    }
+                }
+            }
+            Message::System { .. } => {}
+        }
+    }
+    found
 }
 
 /// H10. A turn stored and loaded again, by serde and by a store that sorts
@@ -1002,21 +1197,61 @@ pub fn h12_edits<F: HistoryFixture>(fixture: &F) {
     }
 }
 
-/// H13. A turn a runtime rolls back (`CompletionResponse::continued`) keeps
-/// its origin and the provider items of the blocks that closed, so it
-/// replays to the same model.
+/// H13. A turn a runtime rolls back (`CompletionResponse::continued`), at
+/// its end or cut off just before its finish, keeps its origin and the
+/// provider items of the blocks that closed, so it replays to the same
+/// model. A block closes once the next one starts, so a cut turn loses at
+/// most its last block.
 pub fn h13_rollback<F: HistoryFixture>(fixture: &F) {
     let wire = fixture.wire(fixture.model());
     let Some(frames) = fixture.reply(Shape::Rich, Mode::Streaming) else {
         return;
     };
-    let response = decode(
+    let count = frames.len();
+    let whole = decode(
         &wire,
         &CompletionRequest::new("restate"),
         Mode::Streaming,
         frames,
     )
     .unwrap_or_else(|error| panic!("the rich reply decodes: {error}"));
+    let blocks = whole.choice.len();
+    rolled_back(fixture, &whole, "at its end");
+    let cut_at = |cut: usize| {
+        let frames = fixture
+            .reply(Shape::Rich, Mode::Streaming)
+            .unwrap_or_default();
+        partial(&wire, Mode::Streaming, frames.into_iter().take(cut))
+    };
+    let Some((cut, cut_off)) = (1..count)
+        .rev()
+        .map(|cut| (cut, cut_at(cut)))
+        .find_map(|(cut, (response, ended))| (!ended).then_some((cut, response)))
+    else {
+        return;
+    };
+    let closed = blocks.saturating_sub(1);
+    let kept: Vec<AssistantContent> = cut_off
+        .choice
+        .iter()
+        .take(closed)
+        .map(AssistantContent::canonical)
+        .collect();
+    let expected: Vec<AssistantContent> = whole
+        .choice
+        .iter()
+        .take(closed)
+        .map(AssistantContent::canonical)
+        .collect();
+    assert_eq!(
+        kept, expected,
+        "a reply cut after {cut} frames keeps every block but the last"
+    );
+    rolled_back(fixture, &cut_off, "cut before its finish");
+}
+
+/// Roll `response` back as a runtime does and check it replays.
+fn rolled_back<F: HistoryFixture>(fixture: &F, response: &CompletionResponse, when: &str) {
     let turn = response.continued(response.choice.clone());
     let origin = turn
         .origin
@@ -1030,11 +1265,11 @@ pub fn h13_rollback<F: HistoryFixture>(fixture: &F) {
         vec![Message::user("q"), Message::Assistant(turn)],
         Mode::Streaming,
     )
-    .unwrap_or_else(|error| panic!("the rolled-back history encodes: {error}"));
+    .unwrap_or_else(|error| panic!("the turn rolled back {when} encodes: {error}"));
     for item in expected {
         assert!(
             contains_subtree(&body, &item),
-            "a rolled-back turn replays {item}"
+            "a turn rolled back {when} replays {item}"
         );
     }
 }
