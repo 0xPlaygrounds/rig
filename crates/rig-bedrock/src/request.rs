@@ -16,7 +16,7 @@ use rig_core::message::{
     ToolChoice, ToolResultContent, UserContent, Video, VideoMediaType,
 };
 use rig_core::providers::internal::wire_ids::WireIds;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::completion::{Converse, Family};
@@ -40,7 +40,6 @@ pub(crate) fn body(
     unary: bool,
 ) -> Result<Value, EncodeError> {
     let family = wire.family(model);
-    let mut body = Map::new();
     // The system messages that lead the history are the system prompt. A
     // later one stays where the history puts it, as user text, so adding
     // one never changes the cached prefix before it.
@@ -49,79 +48,51 @@ pub(crate) fn body(
         .iter()
         .take_while(|message| matches!(message, Message::System { .. }))
         .count();
-    let mut system: Vec<Value> = request
+    let (system, history) = request
         .chat_history
+        .split_at_checked(leading)
+        .unwrap_or_default();
+    let mut system: Vec<Value> = system
         .iter()
-        .take(leading)
         .filter_map(|message| match message {
             Message::System { content } if !content.is_empty() => Some(json!({ "text": content })),
             _ => None,
         })
         .collect();
-    if !system.is_empty() {
-        if wire.prompt_caching {
-            system.push(json!({ "cachePoint": { "type": "default" } }));
-        }
-        body.insert("system".to_owned(), Value::Array(system));
+    if wire.prompt_caching && !system.is_empty() {
+        system.push(json!({ "cachePoint": { "type": "default" } }));
     }
-    let mut inference = Map::new();
-    if let Some(temperature) = request.temperature {
-        inference.insert(
-            "temperature".to_owned(),
-            json!(f64::from(temperature as f32)),
-        );
-    }
-    if let Some(max_tokens) = request.max_tokens {
-        inference.insert("maxTokens".to_owned(), json!(max_tokens as i32));
-    }
-    body.insert("inferenceConfig".to_owned(), Value::Object(inference));
-    if let Some(config) = tool_config(&request) {
-        body.insert("toolConfig".to_owned(), config);
-    }
-    if let Some(params) = &request.additional_params {
-        body.insert("additionalModelRequestFields".to_owned(), params.clone());
-    }
-    if let Some(schema) = &request.output_schema {
-        let schema = serde_json::to_string(schema.as_value())?;
-        let name = request.output_schema_name();
-        let format = json!({ "type": "json_schema", "structure": { "jsonSchema": { "schema": schema, "name": name } } });
-        body.insert("outputConfig".to_owned(), json!({ "textFormat": format }));
-    }
-    if let Some(guardrail) = wire.guardrail.as_ref().filter(|_| unary) {
-        body.insert("guardrailConfig".to_owned(), guardrail.clone());
-    }
-    let history = request.chat_history.get(leading..).unwrap_or_default();
     let ids = WireIds::for_target(history, wire, model);
     let mut messages: Vec<Value> = Vec::new();
     for message in history {
-        let (role, mut content) = match message {
-            Message::System { content } => ("user", vec![json!({ "text": content })]),
-            Message::User { content } => {
-                let mut blocks = Vec::new();
-                for part in content {
-                    blocks.extend(user(part, family, &ids)?);
+        let mut content = Vec::new();
+        let role = match message {
+            Message::System { content: text } => {
+                content.push(json!({ "text": text }));
+                "user"
+            }
+            Message::User { content: parts } => {
+                for part in parts {
+                    content.extend(user(part, family, &ids)?);
                 }
-                if blocks.is_empty() {
-                    blocks.push(json!({ "text": EMPTY_TEXT }));
+                if content.is_empty() {
+                    content.push(json!({ "text": EMPTY_TEXT }));
                 }
-                ("user", blocks)
+                "user"
             }
             Message::Assistant(turn) => {
-                let mut blocks = Vec::new();
                 for block in &turn.content {
-                    blocks.extend(assistant(block, wire, family, &ids)?);
+                    content.extend(assistant(block, wire, family, &ids)?);
                 }
-                // Converse rejects an empty message.
-                if blocks.is_empty() {
-                    continue;
-                }
-                ("assistant", blocks)
+                "assistant"
             }
         };
-        // Converse alternates roles: a turn the adapter left beside another
-        // of its role, such as two turns an orphan result separated, joins it.
-        match messages.last_mut().and_then(|last| last.as_object_mut()) {
-            Some(last) if last.get("role") == Some(&json!(role)) => {
+        // Converse rejects an empty message, and alternates roles: a turn the
+        // adapter left beside another of its role, such as two turns an
+        // orphan result separated, joins it.
+        match messages.last_mut() {
+            _ if content.is_empty() => {}
+            Some(last) if last["role"] == role => {
                 if let Some(Value::Array(previous)) = last.get_mut("content") {
                     previous.append(&mut content);
                 }
@@ -132,11 +103,9 @@ pub(crate) fn body(
     // Bedrock requires a name on every document and Rig's `Document` carries
     // none. A name repeated within one request takes a counter.
     let mut seen = HashMap::<String, usize>::new();
-    for document in
-        blocks(&mut messages).filter_map(|block| block.get_mut("document")?.as_object_mut())
-    {
-        if let Some(Value::String(name)) = document.get_mut("name") {
-            let count = seen.entry(name.clone()).or_insert(0);
+    for name in blocks(&mut messages).filter_map(|block| block.pointer_mut("/document/name")) {
+        if let Value::String(name) = name {
+            let count = seen.entry(name.clone()).or_default();
             *count += 1;
             if *count > 1 {
                 *name = format!("{name}-{count}");
@@ -153,8 +122,37 @@ pub(crate) fn body(
     {
         last.push(json!({ "cachePoint": { "type": "default" } }));
     }
-    body.insert("messages".to_owned(), Value::Array(messages));
-    Ok(Value::Object(body))
+    let output = match &request.output_schema {
+        Some(schema) => Some(
+            json!({ "textFormat": { "type": "json_schema", "structure": { "jsonSchema": {
+            "schema": serde_json::to_string(schema.as_value())?,
+            "name": request.output_schema_name(),
+        } } } }),
+        ),
+        None => None,
+    };
+    let inference = json!({
+        "temperature": request.temperature.map(|temperature| f64::from(temperature as f32)),
+        "maxTokens": request.max_tokens.map(|max_tokens| max_tokens as i32),
+    });
+    Ok(present(json!({
+        "system": (!system.is_empty()).then_some(system),
+        "inferenceConfig": present(inference),
+        "toolConfig": tool_config(&request),
+        "additionalModelRequestFields": request.additional_params,
+        "outputConfig": output,
+        "guardrailConfig": wire.guardrail.as_ref().filter(|_| unary),
+        "messages": messages,
+    })))
+}
+
+/// `value` without its `null` fields: Converse reads an absent field, not a
+/// `null` one.
+fn present(mut value: Value) -> Value {
+    if let Value::Object(fields) = &mut value {
+        fields.retain(|_, field| !field.is_null());
+    }
+    value
 }
 
 /// Every content block of `messages`.
@@ -177,9 +175,6 @@ fn tool_config(request: &CompletionRequest) -> Option<Value> {
             .map(|name| json!({ "tool": { "name": name.as_str() } })),
         None => None,
     };
-    if request.tools.is_empty() {
-        return None;
-    }
     let tools: Vec<Value> = request
         .tools
         .iter()
@@ -191,11 +186,7 @@ fn tool_config(request: &CompletionRequest) -> Option<Value> {
             } })
         })
         .collect();
-    let mut config = Map::from_iter([("tools".to_owned(), Value::Array(tools))]);
-    if let Some(choice) = choice {
-        config.insert("toolChoice".to_owned(), choice);
-    }
-    Some(Value::Object(config))
+    (!tools.is_empty()).then(|| present(json!({ "tools": tools, "toolChoice": choice })))
 }
 
 /// The Converse block for one assistant block, or `None` when there is
@@ -279,21 +270,14 @@ fn user(content: &UserContent, family: Family, ids: &WireIds) -> Result<Vec<Valu
                     }
                 });
             }
-            let mut block = Map::from_iter([
-                (
-                    "toolUseId".to_owned(),
-                    json!(
-                        ids.of(&result.call)
-                            .map_or_else(|| result.call.wire(), Into::into)
-                    ),
-                ),
-                ("content".to_owned(), Value::Array(parts)),
-            ]);
             // Converse reads a result with no status as a success, and
             // documents the field for Nova and Claude only.
-            if result.is_error && family != Family::Other {
-                block.insert("status".to_owned(), json!("error"));
-            }
+            let failed = result.is_error && family != Family::Other;
+            let block = present(json!({
+                "toolUseId": ids.of(&result.call).map_or_else(|| result.call.wire(), Into::into),
+                "content": parts,
+                "status": failed.then_some("error"),
+            }));
             vec![json!({ "toolResult": block })]
         }
         UserContent::Image(part) => vec![json!({ "image": image(part)? })],
@@ -328,20 +312,36 @@ fn source(data: &DocumentSourceKind) -> Result<(Value, Vec<u8>), EncodeError> {
     Ok((json!({ "bytes": BASE64_STANDARD.encode(&bytes) }), bytes))
 }
 
+/// A Converse media block in `format`, which `None` says Converse does
+/// not list.
+fn media(format: Option<&str>, data: &DocumentSourceKind) -> Result<Value, EncodeError> {
+    let format =
+        format.ok_or_else(|| EncodeError::request("Converse takes no media in this format"))?;
+    Ok(json!({ "format": format, "source": source(data)?.0 }))
+}
+
 /// The Converse image block for `image`: PNG, JPEG, GIF or WEBP.
 pub(crate) fn image(image: &Image) -> Result<Value, EncodeError> {
     let format = match &image.media_type {
-        Some(ImageMediaType::JPEG) => "jpeg",
-        Some(ImageMediaType::PNG) => "png",
-        Some(ImageMediaType::GIF) => "gif",
-        Some(ImageMediaType::WEBP) => "webp",
-        _ => {
-            return Err(EncodeError::request(
-                "Converse takes PNG, JPEG, GIF or WEBP images",
-            ));
-        }
+        Some(ImageMediaType::JPEG) => Some("jpeg"),
+        Some(ImageMediaType::PNG) => Some("png"),
+        Some(ImageMediaType::GIF) => Some("gif"),
+        Some(ImageMediaType::WEBP) => Some("webp"),
+        _ => None,
     };
-    Ok(json!({ "format": format, "source": source(&image.data)?.0 }))
+    media(format, &image.data)
+}
+
+/// The Converse video block for `video`, in a format Converse lists.
+pub(crate) fn video(video: &Video) -> Result<Value, EncodeError> {
+    let format = match &video.media_type {
+        Some(VideoMediaType::MP4) => Some("mp4"),
+        Some(VideoMediaType::MPEG) => Some("mpeg"),
+        Some(VideoMediaType::MOV) => Some("mov"),
+        Some(VideoMediaType::WEBM) => Some("webm"),
+        _ => None,
+    };
+    media(format, &video.data)
 }
 
 /// The Converse document block for `document`. A text format Converse does
@@ -349,37 +349,25 @@ pub(crate) fn image(image: &Image) -> Result<Value, EncodeError> {
 /// is byte-stable across turns and runs, which prompt-cache prefixes and
 /// recorded replays rely on.
 pub(crate) fn document(document: &Document) -> Result<Value, EncodeError> {
-    let format = match &document.media_type {
-        Some(DocumentMediaType::PDF) => "pdf",
-        Some(DocumentMediaType::HTML) => "html",
-        Some(DocumentMediaType::MARKDOWN) => "md",
-        Some(DocumentMediaType::CSV) => "csv",
-        Some(_) => "txt",
-        None => return Err(EncodeError::request("Converse needs a document's format")),
-    };
-    let (source, bytes) = source(&document.data)?;
+    let format = document
+        .media_type
+        .as_ref()
+        .map(|media_type| match media_type {
+            DocumentMediaType::PDF => "pdf",
+            DocumentMediaType::HTML => "html",
+            DocumentMediaType::MARKDOWN => "md",
+            DocumentMediaType::CSV => "csv",
+            _ => "txt",
+        });
+    let mut block = media(format, &document.data)?;
+    let (_, bytes) = source(&document.data)?;
     let digest: String = Sha256::digest(&bytes)
         .iter()
         .take(8)
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    Ok(json!({ "format": format, "name": format!("document-{digest}"), "source": source }))
-}
-
-/// The Converse video block for `video`, in a format Converse lists.
-pub(crate) fn video(video: &Video) -> Result<Value, EncodeError> {
-    let format = match &video.media_type {
-        Some(VideoMediaType::MP4) => "mp4",
-        Some(VideoMediaType::MPEG) => "mpeg",
-        Some(VideoMediaType::MOV) => "mov",
-        Some(VideoMediaType::WEBM) => "webm",
-        _ => {
-            return Err(EncodeError::request(
-                "Converse takes no video in this format",
-            ));
-        }
-    };
-    Ok(json!({ "format": format, "source": source(&video.data)?.0 }))
+    block["name"] = json!(format!("document-{digest}"));
+    Ok(block)
 }
 
 #[cfg(test)]

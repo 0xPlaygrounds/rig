@@ -212,12 +212,12 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "#2311",
     ),
     (
-        "crates/rig-bedrock/src/types/assistant_content/tests.rs",
-        "claude_behind_an_application_profile_keeps_its_signatures",
+        "crates/rig-bedrock/src/request/tests.rs",
+        "an_edited_block_is_rebuilt_for_the_family",
         "core NEW Bedrock application inference profile",
     ),
     (
-        "crates/rig-bedrock/src/types/completion_request/tests.rs",
+        "crates/rig-bedrock/src/request/tests.rs",
         "a_later_system_message_stays_in_place",
         "core NEW Bedrock system hoisting",
     ),
@@ -357,12 +357,12 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "review: gRPC part with no data replays",
     ),
     (
-        "crates/rig-bedrock/src/types/completion_request/tests.rs",
+        "crates/rig-bedrock/src/request/tests.rs",
         "a_hosted_use_replays_only_with_its_result",
         "review: Bedrock server_tool_use replays without its result",
     ),
     (
-        "crates/rig-bedrock/src/types/completion_request/tests.rs",
+        "crates/rig-bedrock/src/request/tests.rs",
         "only_nova_and_claude_get_a_result_status",
         "review: Bedrock status sent to every family",
     ),
@@ -370,6 +370,46 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "crates/rig-bedrock/tests/history_conformance.rs",
         "a_reply_the_sdk_cannot_read_decodes_from_its_json",
         "review: Bedrock whole reply read strictly",
+    ),
+    (
+        "crates/rig-bedrock/src/request/tests.rs",
+        "a_tool_history_without_tools_is_text",
+        "round 4: Bedrock NEW-R4-toolconfig",
+    ),
+    (
+        "crates/rig-bedrock/src/streaming/tests.rs",
+        "a_stream_without_a_stop_reason_fails",
+        "round 4: core NEW-R4-finish (Bedrock metadata without messageStop)",
+    ),
+    (
+        "crates/rig-bedrock/src/request/tests.rs",
+        "a_same_model_assistant_image_is_not_sent",
+        "round 4: NEW-bedrock-assistant-image",
+    ),
+    (
+        "crates/rig-bedrock/src/request/tests.rs",
+        "duplicate_stored_ids_reach_converse_distinct",
+        "round 4: NEW-dup-stored-ids on Converse",
+    ),
+    (
+        "crates/rig-bedrock/src/request/tests.rs",
+        "documents_are_named_by_content_and_land_in_the_first_user_message",
+        "round 4: #43, #652, #404, #405 (Bedrock document placement and names)",
+    ),
+    (
+        "crates/rig-bedrock/src/request/tests.rs",
+        "cache_points_follow_what_the_request_sends",
+        "round 4: #1673 (cache point after a reasoning turn)",
+    ),
+    (
+        "crates/rig-bedrock/src/request/tests.rs",
+        "a_stored_item_goes_back_with_whole_numbers",
+        "round 4: Bedrock H10 (a store writes whole numbers as floats)",
+    ),
+    (
+        "crates/rig-bedrock/tests/history_conformance.rs",
+        "the_transport_sends_the_encoded_body",
+        "round 4: Bedrock request built as JSON, sent as encoded",
     ),
     (
         "crates/rig-candle/src/protocol/tests.rs",

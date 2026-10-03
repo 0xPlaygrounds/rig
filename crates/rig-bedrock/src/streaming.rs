@@ -25,18 +25,14 @@ use serde_json::{Map, Value, json};
 use crate::completion::ConverseFrame;
 use crate::types::errors;
 
-/// What an open block is. The writer holds its JSON; an image is written
-/// whole at its stop.
+/// What an open block is. The writer holds its JSON.
 enum Open {
     Text,
     Reasoning,
     Call,
     Hosted,
+    Image,
     Opaque,
-    Image {
-        format: String,
-        source: Option<Value>,
-    },
 }
 
 /// One Converse reply's state: a whole reply or a stream of events.
@@ -87,7 +83,7 @@ impl StreamState {
             "contentBlockDelta" => self.delta(out, index, payload.get("delta"))?,
             "contentBlockStop" => self.stop(out, index, None)?,
             "messageStop" => self.reason = payload.str("stopReason").map(str::to_owned),
-            "metadata" => return self.end(out, payload.get("usage")).map(Some),
+            "metadata" => return Ok(Some(self.end(payload.get("usage")))),
             "messageStart" => {}
             kind if kind.ends_with("Exception") => return Err(errors::exception(kind, payload)),
             kind => skip(kind),
@@ -120,10 +116,21 @@ impl StreamState {
                 out.edit(index, |slot| *slot = item)?;
                 Open::Call
             }
-            "image" => Open::Image {
-                format: body.str("format").unwrap_or_default().to_owned(),
-                source: None,
-            },
+            // An image in a format Rig does not name keeps its JSON and does
+            // not replay.
+            "image" if let Some(media_type) = media_type(body.str("format")) => {
+                let image = Image {
+                    data: DocumentSourceKind::Base64(String::new()),
+                    media_type: Some(media_type),
+                    ..Image::default()
+                };
+                out.open(index, Block::Image(image), Value::Null)?;
+                Open::Image
+            }
+            "image" => {
+                out.open(index, Block::Opaque { replay: false }, item)?;
+                Open::Opaque
+            }
             kind => {
                 out.open(index, Block::Opaque { replay: true }, item)?;
                 if kind == "toolUse" {
@@ -235,7 +242,11 @@ impl StreamState {
                     content.extend(body.as_array().into_iter().flatten().cloned());
                 }
             })?,
-            ("image", Some(Open::Image { source, .. })) => *source = body.get("source").cloned(),
+            ("image", Some(Open::Image)) => {
+                if let Some(data) = body.at("/source/bytes").and_then(Value::as_str) {
+                    out.push(index, data)?;
+                }
+            }
             (kind, _) => skip(kind),
         }
         Ok(())
@@ -249,12 +260,8 @@ impl StreamState {
         index: usize,
         whole: Option<&Value>,
     ) -> Result<(), ProviderError> {
-        let open = match self.open.remove(&index) {
-            Some(Open::Image { format, source }) => {
-                return image(out, index, &format, source.as_ref());
-            }
-            Some(open) => open,
-            None => return Ok(()),
+        let Some(open) = self.open.remove(&index) else {
+            return Ok(());
         };
         let call = matches!(open, Open::Call | Open::Hosted);
         out.edit(index, |item| {
@@ -282,7 +289,8 @@ impl StreamState {
                         || item.at("/reasoningContent/redactedContent").is_some()
                 }
                 Open::Call | Open::Hosted => input.is_some(),
-                Open::Opaque | Open::Image { .. } => true,
+                Open::Image => false,
+                Open::Opaque => true,
             };
             match (kept, input, whole) {
                 (false, ..) => *item = Value::Null,
@@ -298,26 +306,14 @@ impl StreamState {
         out.finish(index)
     }
 
-    /// The reply's end: an image the stream never stopped is written as it
-    /// arrived, and the writer closes every other open block as incomplete.
-    fn end(
-        &mut self,
-        out: &mut Out<'_, Completion>,
-        usage: Option<&Value>,
-    ) -> Result<Finish, ProviderError> {
-        let images: Vec<usize> = self
-            .open
-            .iter()
-            .filter_map(|(index, open)| matches!(open, Open::Image { .. }).then_some(*index))
-            .collect();
-        for index in images {
-            self.stop(out, index, None)?;
-        }
-        Ok(Finish {
+    /// The reply's end. The writer closes every block still open as
+    /// incomplete.
+    fn end(&self, usage: Option<&Value>) -> Finish {
+        Finish {
             usage: usage.map(self::usage).unwrap_or_default(),
             reason: self.reason.as_deref().map(finish_reason),
             ..Finish::default()
-        })
+        }
     }
 
     /// A whole reply, written as the events that would have streamed it.
@@ -336,8 +332,7 @@ impl StreamState {
             self.stop(&mut out, index, Some(block))?;
         }
         self.reason = document.str("stopReason").map(str::to_owned);
-        let end = self.end(&mut out, document.get("usage"))?;
-        Ok(out.end(end))
+        Ok(out.end(self.end(document.get("usage"))))
     }
 }
 
@@ -380,32 +375,15 @@ fn restated(index: usize, block: &Value) -> Vec<Value> {
     vec![start(json!({ kind: opened })), delta(streamed)]
 }
 
-/// Write the image at `index`, or an item that does not replay when
-/// Converse sent no bytes or a format Rig does not name.
-fn image(
-    out: &mut Out<'_, Completion>,
-    index: usize,
-    format: &str,
-    source: Option<&Value>,
-) -> Result<(), ProviderError> {
-    let media_type = match format {
+/// The image type a Converse image `format` names.
+fn media_type(format: Option<&str>) -> Option<ImageMediaType> {
+    match format? {
         "gif" => Some(ImageMediaType::GIF),
         "jpeg" => Some(ImageMediaType::JPEG),
         "png" => Some(ImageMediaType::PNG),
         "webp" => Some(ImageMediaType::WEBP),
         _ => None,
-    };
-    let data = source.and_then(|source| source.str("bytes"));
-    let (Some(media_type), Some(data)) = (media_type, data) else {
-        let item = json!({ "image": { "format": format, "source": source } });
-        return out.whole(index, Block::Opaque { replay: false }, item, "");
-    };
-    let image = Image {
-        data: DocumentSourceKind::Base64(String::new()),
-        media_type: Some(media_type),
-        ..Image::default()
-    };
-    out.whole(index, Block::Image(image), Value::Null, data)
+    }
 }
 
 fn skip(item: &str) {

@@ -350,9 +350,7 @@ fn image_and_tool_result_deltas_assemble_at_their_stop() {
     ));
 }
 
-/// Every stop reason Converse documents ends a turn as documented; a
-/// stream that ends at its metadata without `messageStop` names no reason
-/// and fails, as pi's "Bedrock stream ended without a stop reason" does.
+/// Every stop reason Converse documents ends a turn as documented.
 #[test]
 fn every_stop_reason_maps() {
     for (reason, stop) in [
@@ -375,14 +373,18 @@ fn every_stop_reason_maps() {
         let response = whole(NOVA, vec![json!({ "text": "x" })], reason);
         assert!(response.stop().is_failure(), "{reason}");
     }
-    let response = streamed(
-        NOVA,
-        vec![
-            delta(0, json!({ "text": "half an ans" })),
-            ended("end_turn")[1].clone(),
-        ],
-    )
-    .expect("decodes");
+}
+
+/// A stream that ends at its metadata without `messageStop` names no
+/// reason, so it fails, as pi's "Bedrock stream ended without a stop
+/// reason" does.
+#[test]
+fn a_stream_without_a_stop_reason_fails() {
+    let events = vec![
+        delta(0, json!({ "text": "half an ans" })),
+        ended("end_turn")[1].clone(),
+    ];
+    let response = streamed(NOVA, events).expect("decodes");
     assert!(response.stop().is_failure(), "{:?}", response.stop());
 }
 

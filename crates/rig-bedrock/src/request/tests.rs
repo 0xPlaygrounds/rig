@@ -601,3 +601,34 @@ fn a_stored_item_goes_back_with_whole_numbers() {
     );
     assert_eq!(body["messages"][1]["content"], json!(hosted()));
 }
+
+/// A hosted tool's use and its result replay together or not at all: a
+/// use whose result cannot replay, or a result whose use is gone, is not
+/// sent.
+#[test]
+fn a_hosted_use_replays_only_with_its_result() {
+    let [used, result] = hosted();
+    let opaque = |item: &Value, replay| {
+        AssistantContent::Opaque(Opaque {
+            item: item.clone(),
+            replay,
+        })
+    };
+    let origin = Origin::new("bedrock.converse", crate::completion::PROVIDER_NAME, NOVA);
+    for (content, sent_items) in [
+        (vec![opaque(&used, true), opaque(&result, true)], 2),
+        (vec![opaque(&used, true), opaque(&result, false)], 0),
+        (vec![opaque(&result, true)], 0),
+    ] {
+        let mut content = content;
+        content.push(AssistantContent::text("done"));
+        let turn = AssistantMessage {
+            content,
+            origin: Some(origin.clone()),
+            stop: Some(StopReason::Stop),
+        };
+        let body = sent(NOVA, vec![Message::user("q"), Message::Assistant(turn)]);
+        let blocks = body["messages"][1]["content"].as_array().expect("content");
+        assert_eq!(blocks.len(), sent_items + 1, "{body}");
+    }
+}
