@@ -57,6 +57,31 @@ impl AssistantMessage {
         }
     }
 
+    /// The turn a runtime rolls back over: what arrived of a reply from
+    /// `origin`, stopped to call tools, since the runtime answers its calls.
+    /// `content` keeps only the provider items its fold kept.
+    pub fn rolled_back(origin: Option<Origin>, content: Vec<AssistantContent>) -> Self {
+        Self {
+            content,
+            origin,
+            stop: Some(StopReason::ToolUse),
+        }
+    }
+
+    /// The turn a run failed on before the reply ended: kept in history,
+    /// never replayed.
+    pub fn aborted(
+        origin: Option<Origin>,
+        content: Vec<AssistantContent>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            content,
+            origin,
+            stop: Some(StopReason::Aborted(reason.into())),
+        }
+    }
+
     /// The tool calls, in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
         self.content.iter().filter_map(|part| match part {

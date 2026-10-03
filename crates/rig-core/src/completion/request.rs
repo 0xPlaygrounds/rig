@@ -362,11 +362,7 @@ impl CompletionResponse {
                 }
             })
             .collect();
-        AssistantMessage {
-            content,
-            origin: Some(self.origin.clone()),
-            stop: Some(StopReason::ToolUse),
-        }
+        AssistantMessage::rolled_back(Some(self.origin.clone()), content)
     }
 
     /// The turn's origin and stop with no content, for a

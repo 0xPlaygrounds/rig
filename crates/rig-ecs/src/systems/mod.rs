@@ -2048,14 +2048,11 @@ fn fail_unknown_call(
     commands.entity(turn).insert(Materialised);
     // The run fails on the call: the delivered prefix is history, a turn
     // that never ended and is never replayed.
-    let prefix = AssistantMessage {
-        content: call.prefix.clone(),
-        origin: call.origin.clone(),
-        stop: Some(rig_core::message::StopReason::Aborted(format!(
-            "the run failed on the unknown tool call `{}`",
-            call.name
-        ))),
-    };
+    let prefix = AssistantMessage::aborted(
+        call.origin.clone(),
+        call.prefix.clone(),
+        format!("the run failed on the unknown tool call `{}`", call.name),
+    );
     if let Ok(assistant) = MessageParts::assistant(prefix) {
         spawn_deferred(commands, assets, run, assistant)?;
     }
@@ -2094,11 +2091,7 @@ fn abandon_turn(
     let message = if call.prefix.is_empty() {
         outs.head.message(content.clone())
     } else {
-        AssistantMessage {
-            content: content.clone(),
-            origin: call.origin.clone(),
-            stop: Some(rig_core::message::StopReason::ToolUse),
-        }
+        AssistantMessage::rolled_back(call.origin.clone(), content.clone())
     };
     let assistant = MessageParts::assistant(message)?;
     spawn_deferred(commands, assets, run, assistant)?;
