@@ -1042,11 +1042,6 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
          environment, so its scenarios cannot be recorded",
     ),
     (
-        "mistral",
-        "this account's Mistral plan refuses prompt caching (403), so its probes cannot be \
-         recorded",
-    ),
-    (
         "copilot",
         "OAuth-backed provider with no Copilot credentials in this environment, so its scenarios \
          cannot be recorded",

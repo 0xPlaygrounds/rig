@@ -346,7 +346,7 @@ impl Hop {
         let decoded = match self {
             Self::OpenAiResponses => decode_whole_reply(
                 &OpenAIConfig::new("decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .responses("gpt-5-mini")
                     .wire,
                 &body,
@@ -357,7 +357,7 @@ impl Hop {
             ),
             Self::Anthropic => decode_whole_reply(
                 &AnthropicConfig::new("decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .completion("claude-sonnet-4-6")
                     .wire,
                 &body,

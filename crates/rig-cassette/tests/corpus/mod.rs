@@ -4093,7 +4093,8 @@ async fn hand_drive(program: &Program, resume: Resume) {
             assert_same_records(&replayed, &log, "hand driver");
             return;
         };
-        if let (Some((handle, id)), None) = (&memory, program.history) {
+        // A resumed run appended its messages itself, as the engine does.
+        if let (Some((handle, id)), None, false) = (&memory, program.history, resumes) {
             // As the engine: a failed append is logged and the answer stands.
             if let Err(report) = within(handle.append(id.clone(), response.messages.clone())).await
             {

@@ -43,7 +43,7 @@ impl OpenAiModels {
     pub fn from_env_for(dialect: &openai::wire::Dialect) -> Result<Self, EnvError> {
         Ok(Self::new(
             openai::OpenAIConfig::from_env_with(dialect)?,
-            rig_reqwest::shared(),
+            crate::cassettes::local_http(),
         ))
     }
 
@@ -141,7 +141,7 @@ impl AnthropicModels {
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
             anthropic::AnthropicConfig::from_env()?,
-            rig_reqwest::shared(),
+            crate::cassettes::local_http(),
         ))
     }
 
@@ -200,7 +200,7 @@ impl GeminiModels {
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
             gemini::GeminiConfig::from_env()?,
-            rig_reqwest::shared(),
+            crate::cassettes::local_http(),
         ))
     }
 
@@ -308,7 +308,7 @@ impl CohereModels {
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
             cohere::CohereConfig::from_env()?,
-            rig_reqwest::shared(),
+            crate::cassettes::local_http(),
         ))
     }
 
@@ -360,7 +360,7 @@ impl OllamaModels {
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
             ollama::OllamaConfig::from_env()?,
-            rig_reqwest::shared(),
+            crate::cassettes::local_http(),
         ))
     }
 
@@ -412,7 +412,7 @@ impl CopilotModels {
     pub fn from_env() -> Result<Self, EnvError> {
         Ok(Self::new(
             copilot::CopilotConfig::from_env()?,
-            rig_reqwest::shared(),
+            crate::cassettes::local_http(),
         ))
     }
 

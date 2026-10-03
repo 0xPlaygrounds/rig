@@ -144,11 +144,6 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
         "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
     ),
     (
-        "copilot/permission_control/permission_control_prompt_example.yaml",
-        "Copilot has no credentials to re-record with, so its request still echoes the \
-         reply's whole message rather than the projection the rebuild sends",
-    ),
-    (
         "ollama/tools/optional_argument.yaml",
         "the model wrote its reasoning inline in content; both modes split it into `thinking`, \
          which the turn replays",

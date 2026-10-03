@@ -3,6 +3,30 @@
 pub use rig_cassette::http::*;
 use std::path::PathBuf;
 
+/// The HTTP client every cassette test sends through, one per process. A
+/// replay or a recording talks only to the local cassette server, so the
+/// client skips the system proxy lookup: on macOS that lookup reads every
+/// file beside the test binary, which costs seconds in each test process
+/// once `target/debug/deps` grows large.
+pub fn local_http() -> rig_core::http_client::DynHttpClient {
+    rig_core::http_client::DynHttpClient::new(local_reqwest())
+}
+
+/// [`local_http`] before it is erased.
+pub fn local_reqwest() -> rig_reqwest::ReqwestClient {
+    static CLIENT: std::sync::LazyLock<rig_reqwest::ReqwestClient> =
+        std::sync::LazyLock::new(|| {
+            rig_reqwest::reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .map_or_else(
+                    |_| rig_reqwest::ReqwestClient::default(),
+                    rig_reqwest::ReqwestClient::from,
+                )
+        });
+    CLIENT.clone()
+}
+
 /// Locate this workspace's provider cassette directory from the crate manifest.
 pub fn cassette_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

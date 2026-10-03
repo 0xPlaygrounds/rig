@@ -594,20 +594,25 @@ async fn incomplete_mid_tool_call_normalizes_to_length() {
 
             assert_terminal(&run, FinishReason::Length);
             // Whatever partial output survived must be well-formed part-wise:
-            // a truncated tool call must not surface corrupted arguments.
+            // a truncated tool call keeps what its arguments state, as an
+            // object, with the text they arrived as beside it.
             for call in &run.tool_calls {
                 assert!(
-                    call.function.invalid_arguments.is_none(),
-                    "surfaced tool call must carry object arguments, got {:?}",
-                    call.function.arguments
+                    call.function
+                        .arguments
+                        .values()
+                        .all(|value| !value.is_null())
+                        && call.function.invalid_arguments.is_some(),
+                    "a cut-off call keeps an object and its raw text, got {:?}",
+                    call.function
                 );
             }
             for content in run.choice.iter() {
                 if let AssistantContent::ToolCall(call) = content {
                     assert!(
-                        call.function.invalid_arguments.is_none(),
-                        "aggregated tool call must carry object arguments, got {:?}",
-                        call.function.arguments
+                        call.function.invalid_arguments.is_some(),
+                        "an aggregated cut-off call keeps its raw text beside its object, got {:?}",
+                        call.function
                     );
                 }
             }

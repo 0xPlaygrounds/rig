@@ -48,7 +48,7 @@ where
     let (cassette, bound) = openrouter_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -67,7 +67,7 @@ where
     let (cassette, bound) = openrouter_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -84,7 +84,7 @@ pub(super) async fn with_openrouter_openai_cassette<F, Fut>(
     let (cassette, bound) = openrouter_openai_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -115,7 +115,7 @@ where
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

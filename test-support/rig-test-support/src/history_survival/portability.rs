@@ -116,14 +116,14 @@ impl Source {
         let decoded = match self {
             Self::Anthropic => decode_whole_reply(
                 &AnthropicConfig::new("decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .completion("claude-sonnet-4-6")
                     .wire,
                 &body,
             ),
             Self::OpenAiResponses => decode_whole_reply(
                 &OpenAIConfig::new("decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .responses("gpt-5.2")
                     .wire,
                 &body,
@@ -134,7 +134,7 @@ impl Source {
             ),
             Self::DeepSeek => decode_whole_reply(
                 &OpenAIConfig::with_key(&DEEPSEEK, "decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .chat("deepseek-v4-flash")
                     .wire,
                 &body,

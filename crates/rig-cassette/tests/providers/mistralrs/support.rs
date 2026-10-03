@@ -80,7 +80,7 @@ where
     let (cassette, responses) = mistralrs_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         responses,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -102,7 +102,7 @@ pub(super) async fn with_mistralrs_completions_cassette<F, Fut>(
     let (cassette, completions) = mistralrs_completions_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         completions,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

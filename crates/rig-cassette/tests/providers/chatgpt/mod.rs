@@ -84,7 +84,7 @@ async fn live_provider(http: &DynHttpClient) -> OpenAIConfig {
 }
 
 pub(crate) async fn live_client() -> OpenAiModels {
-    let http = rig::rig_reqwest::shared();
+    let http = rig_test_support::cassettes::local_http();
     OpenAiModels::new(live_provider(&http).await, http)
 }
 

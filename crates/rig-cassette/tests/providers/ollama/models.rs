@@ -6,7 +6,10 @@ use rig_test_support::cassette_models::OllamaModels;
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn list_models_smoke() {
-    let ollama = OllamaModels::new(OllamaConfig::new(), rig::rig_reqwest::shared());
+    let ollama = OllamaModels::new(
+        OllamaConfig::new(),
+        rig_test_support::cassettes::local_http(),
+    );
     let models = match ollama.list_models().await {
         Ok(models) => models,
         Err(error) => {

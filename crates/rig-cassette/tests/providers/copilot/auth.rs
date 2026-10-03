@@ -28,7 +28,7 @@ async fn authorize_oauth(path: &Path) -> CopilotModels {
         authorize(AuthSource::OAuth, Some(path), true)
             .await
             .expect("device authorization should succeed"),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )
 }
 
@@ -39,7 +39,7 @@ async fn api_key_completion_smoke() {
         authorize(AuthSource::ApiKey(required_copilot_api_key()), None, false)
             .await
             .expect("api key auth should succeed"),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     );
 
     let response = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
@@ -63,7 +63,7 @@ async fn github_access_token_completion_smoke() {
         )
         .await
         .expect("bootstrap-token auth should succeed"),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     );
 
     let response = rig::AgentBuilder::new(client.completion(LIVE_MODEL))

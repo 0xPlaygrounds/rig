@@ -600,7 +600,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
     let model = OpenAIConfig::with_key(&LLAMACPP, "")
         .with_base_url("http://127.0.0.1:1/v1")
-        .connect(rig::http_client::ReqwestClient::default())
+        .connect(rig_test_support::cassettes::local_reqwest())
         .completion(CASSETTE_MODEL);
 
     let error = model
@@ -652,7 +652,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
     let model = OpenAIConfig::with_key(&LLAMACPP, "")
         .with_base_url("http://127.0.0.1:1/v1")
-        .connect(rig::http_client::ReqwestClient::default())
+        .connect(rig_test_support::cassettes::local_reqwest())
         .completion(CASSETTE_MODEL);
 
     let error = model

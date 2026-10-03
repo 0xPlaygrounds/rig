@@ -292,7 +292,7 @@ async fn run_matrix_body(
 fn unreachable_anthropic_client() -> AnthropicModels {
     AnthropicModels::new(
         AnthropicConfig::new("client-side-error-test-key").with_base_url("http://127.0.0.1:9"),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )
 }
 
