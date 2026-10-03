@@ -2387,48 +2387,6 @@ fn test_plaintext_rig_to_anthropic_conversion() {
 }
 
 #[test]
-fn test_unsupported_document_type_returns_error() {
-    use crate::completion::message as msg;
-
-    let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
-            data: DocumentSourceKind::String("data".into()),
-            media_type: Some(msg::DocumentMediaType::HTML),
-            additional_params: None,
-        })],
-    };
-
-    let result = convert(rig_message);
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("Anthropic only supports PDF and plain text documents"),
-        "Unexpected error: {err}"
-    );
-}
-
-#[test]
-fn test_plaintext_document_url_source_returns_error() {
-    use crate::completion::message as msg;
-
-    let rig_message = msg::Message::User {
-        content: vec![msg::UserContent::Document(msg::Document {
-            data: DocumentSourceKind::Url("https://example.com/doc.txt".into()),
-            media_type: Some(msg::DocumentMediaType::TXT),
-            additional_params: None,
-        })],
-    };
-
-    let result = convert(rig_message);
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("Only string or base64 data is supported for plain text documents"),
-        "Unexpected error: {err}"
-    );
-}
-
-#[test]
 fn test_plaintext_document_with_cache_control() {
     let content = Content::Document {
         source: DocumentSource::Text {
@@ -3473,4 +3431,184 @@ fn a_tool_result_image_by_url_is_sent_by_url() {
         value["content"][0]["content"][0]["source"],
         json!({"type": "url", "url": "https://example.com/shot.png"})
     );
+}
+
+/// The user message holding `part`, as the encoder converts it.
+fn user_wire(part: message::UserContent) -> Result<Option<Message>, MessageError> {
+    convert(message::Message::User {
+        content: vec![part],
+    })
+}
+
+/// `encodes` is true exactly for the media forms the encoder converts:
+/// images by typed base64, URL or file id, in a user turn or a tool result,
+/// and documents by file id, PDF data or URL, or text. Audio, video and
+/// assistant images are never carried.
+#[test]
+fn encodes_states_exactly_the_media_the_encoder_carries() {
+    use crate::completion::{Media, Place, ReplayTarget};
+    use message::{
+        Audio, AudioMediaType, Document, DocumentMediaType as Doc, DocumentSourceKind as Source,
+        Image, ImageMediaType, Video, VideoMediaType,
+    };
+
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let image = |data: Source, media_type: Option<ImageMediaType>| Image {
+        data,
+        media_type,
+        ..Image::default()
+    };
+    let document = |data: Source, media_type: Option<Doc>| Document {
+        data,
+        media_type,
+        additional_params: None,
+    };
+    let images = [
+        (
+            image(Source::base64("aGk="), Some(ImageMediaType::PNG)),
+            true,
+        ),
+        (image(Source::base64("aGk="), None), false),
+        (
+            image(Source::base64("aGk="), Some(ImageMediaType::HEIC)),
+            false,
+        ),
+        (image(Source::url("https://example.com/a.png"), None), true),
+        (image(Source::file_id("file_image"), None), true),
+        (image(Source::string("not an image"), None), false),
+    ];
+    for (image, carried) in images {
+        let in_result = message::UserContent::ToolResult(message::ToolResult {
+            call: message::CallId::from_wire("toolu_1"),
+            name: message::ToolName::new("shot").expect("tool name"),
+            content: vec![message::ToolResultContent::Image(image.clone())],
+            is_error: false,
+        });
+        for (place, part) in [
+            (Place::User, message::UserContent::Image(image.clone())),
+            (Place::ToolResult, in_result),
+        ] {
+            assert_eq!(
+                wire.encodes(CLAUDE_SONNET_4_6, Media::Image(&image, place)),
+                carried,
+                "{image:?} at {place:?}"
+            );
+            assert_eq!(user_wire(part).is_ok(), carried, "{image:?} at {place:?}");
+        }
+        assert!(!wire.encodes(CLAUDE_SONNET_4_6, Media::Image(&image, Place::Assistant)));
+    }
+    let documents = [
+        (document(Source::base64("JVBERi0="), Some(Doc::PDF)), true),
+        (
+            document(Source::url("https://example.com/a.pdf"), Some(Doc::PDF)),
+            true,
+        ),
+        (
+            document(Source::url("https://example.com/a.pdf"), None),
+            true,
+        ),
+        (
+            document(Source::url("https://example.com/a.txt"), Some(Doc::TXT)),
+            false,
+        ),
+        (document(Source::file_id("file_doc"), None), true),
+        (document(Source::string("plain"), Some(Doc::TXT)), true),
+        (document(Source::string("plain"), None), true),
+        (document(Source::base64("cGxhaW4="), Some(Doc::TXT)), true),
+        (
+            document(Source::base64("cmlnLG1hdHJpeAo="), Some(Doc::CSV)),
+            true,
+        ),
+        (document(Source::string("<p>hi</p>"), Some(Doc::HTML)), true),
+        (document(Source::base64("//79"), Some(Doc::CSV)), false),
+        (document(Source::base64("cGxhaW4="), None), false),
+    ];
+    for (document, carried) in documents {
+        assert_eq!(
+            wire.encodes(CLAUDE_SONNET_4_6, Media::Document(&document)),
+            carried,
+            "{document:?}"
+        );
+        assert_eq!(
+            user_wire(message::UserContent::Document(document.clone())).is_ok(),
+            carried,
+            "{document:?}"
+        );
+    }
+    let audio = Audio {
+        data: Source::base64("SUQz"),
+        media_type: Some(AudioMediaType::MP3),
+    };
+    let video = Video {
+        data: Source::url("https://example.com/a.mp4"),
+        media_type: Some(VideoMediaType::MP4),
+        additional_params: None,
+    };
+    assert!(!wire.encodes(CLAUDE_SONNET_4_6, Media::Audio(&audio)));
+    assert!(!wire.encodes(CLAUDE_SONNET_4_6, Media::Video(&video)));
+    assert!(user_wire(message::UserContent::Audio(audio)).is_err());
+    assert!(user_wire(message::UserContent::Video(video)).is_err());
+}
+
+/// A text-family document is sent as a text source, its base64 data
+/// decoded, so a CSV or a base64 plain-text file reaches the model as the
+/// text it holds.
+#[test]
+fn a_text_family_document_is_sent_as_its_text() {
+    use message::{DocumentMediaType as Doc, DocumentSourceKind as Source};
+
+    for (data, media_type, text) in [
+        (
+            Source::base64("cmlnLG1hdHJpeAoxLDIK"),
+            Some(Doc::CSV),
+            "rig,matrix\n1,2\n",
+        ),
+        (
+            Source::base64("cGxhaW4gdGV4dA=="),
+            Some(Doc::TXT),
+            "plain text",
+        ),
+        (Source::string("# notes"), Some(Doc::MARKDOWN), "# notes"),
+        (Source::string("untyped"), None, "untyped"),
+    ] {
+        let converted = user_wire(message::UserContent::Document(message::Document {
+            data,
+            media_type,
+            additional_params: None,
+        }))
+        .expect("the document converts")
+        .expect("a block");
+        let value = serde_json::to_value(&converted).expect("the message serializes");
+        assert_eq!(
+            value["content"][0]["source"],
+            json!({"type": "text", "media_type": "text/plain", "data": text})
+        );
+    }
+}
+
+/// An image by Files API id is sent as a file source, in a user turn and
+/// in a tool result.
+#[test]
+fn an_image_by_file_id_is_sent_as_a_file_source() {
+    let image = message::Image {
+        data: message::DocumentSourceKind::file_id("file_image"),
+        ..message::Image::default()
+    };
+    let converted = convert(message::Message::User {
+        content: vec![
+            message::UserContent::ToolResult(message::ToolResult {
+                call: message::CallId::from_wire("toolu_1"),
+                name: message::ToolName::new("shot").expect("tool name"),
+                content: vec![message::ToolResultContent::Image(image.clone())],
+                is_error: false,
+            }),
+            message::UserContent::Image(image),
+        ],
+    })
+    .expect("the images convert")
+    .expect("a message");
+    let value = serde_json::to_value(&converted).expect("the message serializes");
+    let source = json!({"type": "file", "file_id": "file_image"});
+    assert_eq!(value["content"][0]["content"][0]["source"], source);
+    assert_eq!(value["content"][1]["source"], source);
 }

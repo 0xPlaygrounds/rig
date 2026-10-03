@@ -12,8 +12,9 @@ use crate::json_utils::string_or_vec;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::{
     completion,
-    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType},
+    message::{self, DocumentMediaType, DocumentSourceKind, MessageError},
 };
+use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
 
@@ -535,11 +536,8 @@ impl FromStr for ToolResultContent {
     }
 }
 
-/// The source of an image content block.
-///
-/// Anthropic supports two source types for images:
-/// - `Base64`: Base64-encoded image data with media type
-/// - `Url`: URL reference to an image
+/// The source of an image content block: base64 data with its media type,
+/// a URL, or a Files API id.
 ///
 /// See: <https://docs.anthropic.com/en/api/messages>
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -551,7 +549,12 @@ pub enum ImageSource {
         media_type: ImageFormat,
     },
     #[serde(rename = "url")]
-    Url { url: String },
+    Url {
+        url: String,
+    },
+    File {
+        file_id: String,
+    },
 }
 
 /// The source of a document content block.
@@ -679,8 +682,8 @@ fn assistant_content(block: message::AssistantContent, id: Option<&str>) -> Opti
             input: serde_json::Value::Object(call.function.arguments),
         }),
         Block::Opaque(opaque) => Some(Content::Native(opaque.item)),
-        // Assistant turns take no images; `adapt` downgrades another
-        // model's, so only a hand-built one reaches here.
+        // Assistant turns take no images; `adapt` downgrades every one, so
+        // only a turn sent without it reaches here.
         Block::Image(_) => Some(Content::from(
             crate::completion::history::ASSISTANT_IMAGE_OMITTED.to_owned(),
         )),
@@ -753,7 +756,7 @@ fn user_content(
                         text: value.to_string(),
                     }),
                     message::ToolResultContent::Image(image) => Ok(ToolResultContent::Image {
-                        source: image_source(image)?,
+                        source: image_source(&image).ok_or_else(unsendable)?,
                     }),
                 })
                 .collect::<Result<Vec<_>, _>>()?,
@@ -761,16 +764,13 @@ fn user_content(
             cache_control: None,
         },
         message::UserContent::Image(image) => Content::Image {
-            source: image_source(image)?,
+            source: image_source(&image).ok_or_else(unsendable)?,
             cache_control: None,
         },
-        message::UserContent::Document(message::Document {
-            data,
-            media_type,
-            additional_params,
-        }) => {
-            let (title, context, citations) = extract_anthropic_doc_params(additional_params)?;
-            let source = document_source(data, media_type)?;
+        message::UserContent::Document(document) => {
+            let source = document_source(&document).ok_or_else(unsendable)?;
+            let (title, context, citations) =
+                extract_anthropic_doc_params(document.additional_params)?;
             Content::Document {
                 source,
                 title,
@@ -779,93 +779,69 @@ fn user_content(
                 cache_control: None,
             }
         }
-        message::UserContent::Audio { .. } => {
-            return Err(MessageError::ConversionError(
-                "Audio is not supported in Anthropic".to_owned(),
-            ));
-        }
-        message::UserContent::Video { .. } => {
-            return Err(MessageError::ConversionError(
-                "Video is not supported in Anthropic".to_owned(),
-            ));
+        message::UserContent::Audio(_) | message::UserContent::Video(_) => {
+            return Err(unsendable());
         }
     }))
 }
 
-/// An image's source on the wire, in a user turn or a tool result: base64
-/// data with its media type, or a URL.
-fn image_source(image: message::Image) -> Result<ImageSource, MessageError> {
-    match image.data {
-        DocumentSourceKind::Base64(data) => {
-            let media_type = image.media_type.ok_or(MessageError::ConversionError(
-                "Image media type is required for Claude API".to_string(),
-            ))?;
-            Ok(ImageSource::Base64 {
-                data,
-                media_type: ImageFormat::try_from(media_type)?,
-            })
-        }
-        DocumentSourceKind::Url(url) => Ok(ImageSource::Url { url }),
-        DocumentSourceKind::Unknown => Err(MessageError::ConversionError(
-            "Image content has no body".into(),
-        )),
-        doc => Err(MessageError::ConversionError(format!(
-            "Unsupported document type: {doc:?}"
-        ))),
-    }
+/// The error for media [`super::Messages`]'s `encodes` refuses, which
+/// `adapt` replaces before a prepared request reaches the encoder.
+fn unsendable() -> MessageError {
+    MessageError::ConversionError("Anthropic cannot receive this media in its form".to_owned())
 }
 
-/// A document's source on the wire: a file id, a PDF or a plain text body.
-fn document_source(
-    data: DocumentSourceKind,
-    media_type: Option<DocumentMediaType>,
-) -> Result<DocumentSource, MessageError> {
-    if let DocumentSourceKind::FileId(file_id) = data {
-        return Ok(DocumentSource::File { file_id });
-    }
-    let media_type = match media_type {
-        Some(media_type) => media_type,
-        // Anthropic's URL document source has no media-type field and is
-        // defined specifically for PDFs, so the source itself is sufficient.
-        None if matches!(&data, DocumentSourceKind::Url(_)) => DocumentMediaType::PDF,
-        None => {
-            return Err(MessageError::ConversionError(
-                "Document media type is required".to_string(),
-            ));
-        }
-    };
-    Ok(match media_type {
-        DocumentMediaType::PDF => match data {
-            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data) => {
-                DocumentSource::Base64 {
-                    data,
-                    media_type: DocumentFormat::PDF,
-                }
-            }
-            DocumentSourceKind::Url(url) => DocumentSource::Url { url },
-            _ => {
-                return Err(MessageError::ConversionError(
-                    "Only base64 encoded data or URLs are supported for PDF documents".into(),
-                ));
-            }
+/// An image's source on the wire, in a user turn or a tool result: base64
+/// data of a type Anthropic reads, a URL, or a Files API id. `None` for any
+/// other form.
+pub(super) fn image_source(image: &message::Image) -> Option<ImageSource> {
+    Some(match &image.data {
+        DocumentSourceKind::Base64(data) => ImageSource::Base64 {
+            data: data.clone(),
+            media_type: ImageFormat::try_from(image.media_type.clone()?).ok()?,
         },
-        DocumentMediaType::TXT => {
-            let (DocumentSourceKind::String(data) | DocumentSourceKind::Base64(data)) = data else {
-                return Err(MessageError::ConversionError(
-                    "Only string or base64 data is supported for plain text documents".into(),
-                ));
-            };
-            DocumentSource::Text {
-                data,
-                media_type: PlainTextMediaType::Plain,
-            }
+        DocumentSourceKind::Url(url) => ImageSource::Url { url: url.clone() },
+        DocumentSourceKind::FileId(file_id) => ImageSource::File {
+            file_id: file_id.clone(),
+        },
+        DocumentSourceKind::Raw(_)
+        | DocumentSourceKind::String(_)
+        | DocumentSourceKind::Unknown => {
+            return None;
         }
-        other => {
-            return Err(MessageError::ConversionError(format!(
-                "Anthropic only supports PDF and plain text documents, got: {}",
-                other.to_mime_type()
-            )));
+    })
+}
+
+/// A document's source on the wire: a Files API id, a PDF as data or by
+/// URL, or any other document as the text it holds. `None` for any other
+/// form.
+pub(super) fn document_source(document: &message::Document) -> Option<DocumentSource> {
+    let text = |data: String| DocumentSource::Text {
+        data,
+        media_type: PlainTextMediaType::Plain,
+    };
+    Some(match (&document.data, &document.media_type) {
+        (DocumentSourceKind::FileId(file_id), _) => DocumentSource::File {
+            file_id: file_id.clone(),
+        },
+        // Anthropic's URL source is defined for PDFs and has no media-type
+        // field, so an untyped URL is one.
+        (DocumentSourceKind::Url(url), None | Some(DocumentMediaType::PDF)) => {
+            DocumentSource::Url { url: url.clone() }
         }
+        (
+            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
+            Some(DocumentMediaType::PDF),
+        ) => DocumentSource::Base64 {
+            data: data.clone(),
+            media_type: DocumentFormat::PDF,
+        },
+        (DocumentSourceKind::String(data), _) => text(data.clone()),
+        (DocumentSourceKind::Base64(data), Some(_)) => {
+            let bytes = BASE64_STANDARD.decode(data).ok()?;
+            text(String::from_utf8(bytes).ok()?)
+        }
+        _ => return None,
     })
 }
 

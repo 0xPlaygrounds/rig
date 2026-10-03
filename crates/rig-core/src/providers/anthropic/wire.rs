@@ -27,7 +27,8 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::{
     AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, ToolDefinition,
-    default_max_tokens_for_model, rejects_forced_tool_choice, sanitize_strict_tool_schema,
+    default_max_tokens_for_model, document_source, image_source, rejects_forced_tool_choice,
+    sanitize_strict_tool_schema,
 };
 use super::streaming::MessagesDecoder;
 
@@ -595,6 +596,19 @@ impl crate::completion::ReplayTarget for Messages {
             assistant_images: false,
             tool_result_images: images,
             tools: true,
+        }
+    }
+
+    /// The encoder carries images by typed base64, URL or file id in user
+    /// turns and tool results, and documents by file id, PDF data or URL,
+    /// or the text they hold. Assistant images, audio and video it never
+    /// carries.
+    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+        use crate::completion::{Media, Place};
+        match media {
+            Media::Image(image, Place::User | Place::ToolResult) => image_source(image).is_some(),
+            Media::Document(document) => document_source(document).is_some(),
+            Media::Image(_, Place::Assistant) | Media::Audio(_) | Media::Video(_) => false,
         }
     }
 
