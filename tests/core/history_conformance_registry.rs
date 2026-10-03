@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use rig_core::test_utils::history_conformance::HISTORY_WIRES;
+use rig_core::test_utils::history_conformance::{HISTORY_WIRES, TESTS};
 
 use super::{history_conformance, verification_checks};
 
@@ -115,4 +115,57 @@ fn out_of_binary_history_suites_name_a_live_check() {
             entry.package
         );
     }
+}
+
+/// Provider modules with no completion wire, so no suite.
+const NO_COMPLETION_WIRE: &[&str] = &["internal", "registry", "voyageai"];
+
+/// Every provider module has a suite: some wire in `HISTORY_WIRES` names it
+/// as one of its `_`-separated words, so a new provider cannot skip the
+/// suite.
+#[test]
+fn every_provider_module_has_a_history_suite() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-core/src/providers");
+    let mut modules: BTreeSet<String> = BTreeSet::new();
+    for entry in std::fs::read_dir(&root).expect("the providers directory") {
+        let path = entry.expect("a directory entry").path();
+        let Some(name) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        if name != "mod" && (path.is_dir() || path.extension().is_some_and(|ext| ext == "rs")) {
+            modules.insert(name.to_owned());
+        }
+    }
+    let missing: Vec<&String> = modules
+        .iter()
+        .filter(|module| !NO_COMPLETION_WIRE.contains(&module.as_str()))
+        .filter(|module| {
+            !HISTORY_WIRES
+                .iter()
+                .any(|wire| wire.split('_').any(|word| word == module.as_str()))
+        })
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "provider modules without a history suite: {missing:?}"
+    );
+}
+
+/// Every test `TESTS` names for an audit finding still exists.
+#[test]
+fn every_named_finding_test_exists() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let missing: Vec<String> = TESTS
+        .iter()
+        .filter(|(file, test, _)| {
+            !std::fs::read_to_string(root.join(file))
+                .unwrap_or_default()
+                .contains(&format!("fn {test}("))
+        })
+        .map(|(file, test, _)| format!("{file}::{test}"))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "named tests that no longer exist: {missing:?}"
+    );
 }

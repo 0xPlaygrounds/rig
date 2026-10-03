@@ -7,8 +7,8 @@
 //! [`HISTORY_WIRES`] has no suite.
 //!
 //! Each row's function documents its invariant. The audit findings each row
-//! closes are listed in [`ROWS`]; a finding is closed only by a row or by a
-//! test named beside it.
+//! closes are listed in [`ROWS`], and those a named test closes in
+//! [`TESTS`]; a finding is closed only by one of them.
 //!
 //! ```ignore
 //! mod anthropic_history {
@@ -119,6 +119,77 @@ pub const ROWS: &[(&str, &str)] = &[
     (
         "h14_model_identity",
         "gemini NEW resume origin model, gemini NEW Vertex model override",
+    ),
+];
+
+/// Each audit finding a named test closes rather than a row: the file that
+/// holds it, the test function, and the findings. The workspace registry
+/// fails when a named test no longer exists.
+pub const TESTS: &[(&str, &str, &str)] = &[
+    (
+        "crates/rig-core/src/completion/request/tests.rs",
+        "documents_join_the_first_user_message_so_roles_alternate",
+        "#1179",
+    ),
+    (
+        "crates/rig-agent/src/agent/runner/entry_tests.rs",
+        "resume_appends_its_messages_without_loading",
+        "#2244",
+    ),
+    (
+        "crates/rig-bedrock/src/streaming/tests.rs",
+        "a_streams_raw_is_bedrocks_json",
+        "#2311",
+    ),
+    (
+        "crates/rig-bedrock/src/types/assistant_content/tests.rs",
+        "claude_behind_an_application_profile_keeps_its_signatures",
+        "core NEW Bedrock application inference profile",
+    ),
+    (
+        "crates/rig-bedrock/src/types/completion_request/tests.rs",
+        "a_later_system_message_stays_in_place",
+        "core NEW Bedrock system hoisting",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/wire/chat/history_tests.rs",
+        "response_only_fields_never_go_back",
+        "chatB NEW response-only fields replayed, #1835",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
+        "a_call_added_but_never_done_is_delivered",
+        "Responses NEW call added but never done",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "the_last_turn_container_is_replayed_unless_the_request_names_one",
+        "anthropic NEW container",
+    ),
+    (
+        "crates/rig-core/src/completion/message/native/tests.rs",
+        "a_store_that_writes_whole_numbers_as_integers_keeps_the_item_current",
+        "review: fingerprint number form",
+    ),
+    (
+        "crates/rig-core/src/operation/completion/tests.rs",
+        "a_reused_call_id_is_renamed_and_loses_its_item",
+        "review: duplicate call id fails the reply",
+    ),
+    (
+        "crates/rig-core/src/serve/handler/tests.rs",
+        "a_written_reply_names_its_origin_before_its_first_item",
+        "review: Reply::written sends no origin",
+    ),
+    (
+        "crates/rig-core/src/completion/history/tests.rs",
+        "results_come_before_the_text_of_the_message_they_merge_into",
+        "review: text before tool_result after a merge",
+    ),
+    (
+        "crates/rig-core/src/completion/history/tests.rs",
+        "media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text",
+        "review: encoders refuse canonical content",
     ),
 ];
 

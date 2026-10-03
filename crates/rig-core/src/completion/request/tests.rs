@@ -613,6 +613,33 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
 }
 
 #[test]
+fn documents_join_the_first_user_message_so_roles_alternate() {
+    let request = CompletionRequest::new(Message::user("Prompt"))
+        .message(Message::system("System prompt"))
+        .message(Message::user("Earlier user turn"))
+        .document(test_document("doc1", "Document text."));
+    let history = request.chat_history_with_documents();
+    let roles: Vec<&str> = history
+        .iter()
+        .map(|message| match message {
+            Message::System { .. } => "system",
+            Message::User { .. } => "user",
+            Message::Assistant(_) => "assistant",
+        })
+        .collect();
+    assert_eq!(roles, ["system", "user", "user"]);
+    let Message::User { content } = &history[1] else {
+        panic!("the first user message: {history:?}");
+    };
+    assert!(matches!(content.first(), Some(UserContent::Document(_))));
+    assert!(
+        content.iter().any(
+            |part| matches!(part, UserContent::Text(text) if text.text == "Earlier user turn")
+        )
+    );
+}
+
+#[test]
 fn build_without_documents_keeps_message_order_unchanged() {
     let request = CompletionRequest::new(Message::user("Prompt"))
         .message(Message::system("System prompt"))
