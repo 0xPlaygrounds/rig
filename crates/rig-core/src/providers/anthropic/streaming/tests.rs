@@ -1683,3 +1683,47 @@ fn an_invented_item_and_field_survive_decode_and_same_model_replay() {
         assert_eq!(body["messages"][1]["content"], json!([invented, text]));
     }
 }
+
+/// The response the whole message `message` folds into on the Anthropic
+/// wire.
+fn whole(message: Value) -> Result<crate::completion::CompletionResponse, ProviderError> {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hello"),
+        Mode::Unary,
+        [WireFrame::Text(message.to_string())],
+        Value::Null,
+    )
+}
+
+/// A reply with no content folds the same whole or streamed, whatever its
+/// stop reason: pi accepts empty content, and the stop reason decides how
+/// the turn ends.
+#[test]
+fn an_empty_reply_folds_the_same_whole_or_streamed() {
+    for reason in [
+        "end_turn",
+        "stop_sequence",
+        "max_tokens",
+        "model_context_window_exceeded",
+        "tool_use",
+        "pause_turn",
+        "refusal",
+        "sensitive",
+    ] {
+        let streamed = streamed(&reply(vec![], reason)).map(|response| response.stop());
+        let whole = whole(json!({
+            "type": "message", "id": "msg_1", "role": "assistant", "model": CLAUDE_SONNET_4_6,
+            "content": [], "stop_reason": reason, "stop_sequence": null,
+            "usage": {"input_tokens": 3, "output_tokens": 5}
+        }))
+        .map(|response| response.stop());
+        assert!(streamed.is_ok(), "{reason}: {streamed:?}");
+        assert_eq!(
+            whole.as_ref().ok(),
+            streamed.as_ref().ok(),
+            "{reason}: {whole:?}"
+        );
+    }
+}

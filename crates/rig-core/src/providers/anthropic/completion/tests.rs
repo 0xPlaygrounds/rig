@@ -1,6 +1,5 @@
 use super::*;
 use crate::error::ProviderError;
-use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::test_utils::json_body;
 use crate::wire::WireFrame;
@@ -2581,8 +2580,7 @@ fn empty_end_turn_response_normalizes_to_an_empty_choice() {
     assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
 }
 
-/// Build an empty-content response with the given terminal, for exercising
-/// the two legal empty cases against everything else.
+/// An empty-content response with the given terminal.
 fn empty_response_with(
     stop_reason: Option<&str>,
     stop_sequence: Option<&str>,
@@ -2604,36 +2602,6 @@ fn empty_response_with(
             output_tokens: 2,
             output_tokens_details: None,
         },
-    }
-}
-
-#[test]
-fn empty_response_outside_the_legal_terminals_still_errors() {
-    for (stop_reason, stop_sequence) in [
-        (Some("tool_use"), None),
-        (Some("max_tokens"), None),
-        (Some("refusal"), None),
-        (Some("pause_turn"), None),
-        (None, None),
-        // Claims to have stopped on a sequence but names none: the
-        // malformed shape the guard exists for, not a legal empty turn.
-        (Some("stop_sequence"), None),
-        // The inverse: naming a sequence does not make an illegal terminal
-        // legal. The carve-out gates on the reason first, then the field.
-        (Some("max_tokens"), Some("alpha")),
-    ] {
-        let err = fold_reply(
-            &serde_json::to_value(empty_response_with(stop_reason, stop_sequence))
-                .expect("serialize the wire type"),
-        )
-        .expect_err(&format!(
-            "empty {stop_reason:?} response should remain an error"
-        ));
-
-        assert!(matches!(
-            err,
-            ProviderError::Response(message) if message == EMPTY_RESPONSE_ERROR
-        ));
     }
 }
 

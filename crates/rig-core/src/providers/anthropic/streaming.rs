@@ -427,8 +427,8 @@ impl MessagesDecoder {
     }
 
     /// A whole message, written block by block through the calls a stream
-    /// makes, then ended. Empty content is refused unless the stop reason
-    /// is `end_turn`, or `stop_sequence` with a reported sequence.
+    /// makes, then ended. Empty content is a turn like any other, as it is
+    /// streamed (pi's rule): the stop reason decides how it ends.
     fn whole(
         &mut self,
         message: Map<String, Value>,
@@ -440,16 +440,6 @@ impl MessagesDecoder {
             Some(Value::Array(content)) => content.as_slice(),
             _ => &[],
         };
-        let legal_empty_turn = match stop_reason {
-            Some("end_turn") => true,
-            Some("stop_sequence") => message.get("stop_sequence").is_some_and(Value::is_string),
-            _ => false,
-        };
-        if content.is_empty() && !legal_empty_turn {
-            return Err(ProviderError::Response(
-                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
-            ));
-        }
         for (index, block) in content.iter().enumerate() {
             let Some(block) = block
                 .as_object()
