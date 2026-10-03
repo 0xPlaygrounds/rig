@@ -4,7 +4,7 @@
 use crate::client::macros::http_client;
 use crate::driver::Model;
 
-use crate::providers::cohere::wire::{CohereConfig, Embeddings, ImageEmbeddings};
+use crate::providers::cohere::{CohereConfig, Embeddings, ImageEmbeddings};
 use crate::providers::openai::wire::Chat;
 
 http_client!(

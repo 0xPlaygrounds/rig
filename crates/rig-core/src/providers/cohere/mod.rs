@@ -20,7 +20,11 @@ pub mod embeddings;
 pub mod wire;
 
 pub use crate::client::cohere::Cohere;
-pub use wire::{CohereConfig, Embeddings, ImageEmbeddings};
+pub use embeddings::{
+    EMBED_ENGLISH_LIGHT_V3, EMBED_ENGLISH_V3, EMBED_MULTILINGUAL_LIGHT_V3, EMBED_MULTILINGUAL_V3,
+    EMBED_V4, Embeddings, ImageEmbeddings,
+};
+pub use wire::CohereConfig;
 
 /// Stable descriptor name recorded on normalized responses and telemetry.
 pub(crate) const PROVIDER_NAME: &str = "cohere";
@@ -42,34 +46,11 @@ pub const COMMAND_R_PLUS_08_2024: &str = "command-r-plus-08-2024";
 /// `command-r-08-2024` completion model
 pub const COMMAND_R_08_2024: &str = "command-r-08-2024";
 
-/// `embed-v4.0` embedding model
-pub const EMBED_V4: &str = "embed-v4.0";
-/// `embed-english-v3.0` embedding model
-pub const EMBED_ENGLISH_V3: &str = "embed-english-v3.0";
-/// `embed-english-light-v3.0` embedding model
-pub const EMBED_ENGLISH_LIGHT_V3: &str = "embed-english-light-v3.0";
-/// `embed-multilingual-v3.0` embedding model
-pub const EMBED_MULTILINGUAL_V3: &str = "embed-multilingual-v3.0";
-/// `embed-multilingual-light-v3.0` embedding model
-pub const EMBED_MULTILINGUAL_LIGHT_V3: &str = "embed-multilingual-light-v3.0";
-
 /// Whether `model` reads user images: Cohere's vision models (Command A
 /// Vision, Aya Vision) do, and its text models do not.
 pub(crate) fn reads_images(model: &str) -> bool {
     model.contains("vision")
 }
-
-pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
-    match identifier {
-        EMBED_V4 => Some(1_536),
-        EMBED_ENGLISH_V3 | EMBED_MULTILINGUAL_V3 => Some(1_024),
-        EMBED_ENGLISH_LIGHT_V3 | EMBED_MULTILINGUAL_LIGHT_V3 => Some(384),
-        _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests;
 
 #[cfg(test)]
 mod history_tests;
