@@ -226,6 +226,17 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'll write the essay and save it as a note."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"

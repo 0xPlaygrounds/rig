@@ -422,6 +422,23 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
+                },
+                "fingerprint": 13268155671576221190
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -462,23 +479,6 @@
                   "type": "function"
                 },
                 "fingerprint": 10443962742099781388
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
-              "native": {
-                "item": {
-                  "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
-                },
-                "fingerprint": 13268155671576221190
               }
             }
           }

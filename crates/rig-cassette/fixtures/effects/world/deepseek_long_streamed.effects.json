@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +46,23 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 12,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -54,25 +70,33 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
-        "batch": 14,
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 16,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 17,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 34,
+        "batch": 30,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -80,21 +104,21 @@
         }
       },
       {
-        "batch": 34,
+        "batch": 30,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 36,
+        "batch": 31,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 54,
+        "batch": 40,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -102,21 +126,21 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 40,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 55,
+        "batch": 41,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 62,
+        "batch": 53,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -124,21 +148,21 @@
         }
       },
       {
-        "batch": 62,
+        "batch": 53,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 64,
+        "batch": 55,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 70,
+        "batch": 63,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -146,139 +170,67 @@
         }
       },
       {
-        "batch": 71,
+        "batch": 63,
         "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 72,
+        "batch": 64,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 78,
+        "batch": 69,
         "id": 10,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 12
         }
       },
       {
-        "batch": 79,
+        "batch": 70,
         "id": 10,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 9
         }
       },
       {
-        "batch": 80,
+        "batch": 71,
         "id": 10,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 81,
+        "batch": 117,
         "id": 10,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
-        "batch": 82,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 83,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 85,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 86,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 6
-        }
-      },
-      {
-        "batch": 87,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 88,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 89,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 90,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 116,
-        "id": 10,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 116,
+        "batch": 118,
         "id": 10,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 118,
+        "batch": 119,
         "id": 11,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 125,
+        "batch": 129,
         "id": 12,
         "kind": {
           "delivery": "stream",
@@ -286,49 +238,17 @@
         }
       },
       {
-        "batch": 125,
+        "batch": 129,
         "id": 12,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 126,
+        "batch": 131,
         "id": 13,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 131,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 132,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 133,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 134,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -336,7 +256,7 @@
         "id": 14,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 15
         }
       },
       {
@@ -344,7 +264,7 @@
         "id": 14,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 9
         }
       },
       {
@@ -352,59 +272,11 @@
         "id": 14,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 175,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 176,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
           "items": 2
         }
       },
       {
-        "batch": 177,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 178,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 179,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 180,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 181,
+        "batch": 141,
         "id": 14,
         "kind": {
           "delivery": "stream",
@@ -412,37 +284,21 @@
         }
       },
       {
-        "batch": 182,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 189,
-        "id": 14,
-        "kind": {
-          "delivery": "stream",
-          "items": 4
-        }
-      },
-      {
-        "batch": 189,
+        "batch": 141,
         "id": 14,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 190,
+        "batch": 143,
         "id": 15,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 244,
+        "batch": 212,
         "id": 16,
         "kind": {
           "delivery": "stream",
@@ -450,21 +306,21 @@
         }
       },
       {
-        "batch": 244,
+        "batch": 212,
         "id": 16,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 245,
+        "batch": 213,
         "id": 17,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 253,
+        "batch": 219,
         "id": 18,
         "kind": {
           "delivery": "stream",
@@ -472,21 +328,21 @@
         }
       },
       {
-        "batch": 253,
+        "batch": 219,
         "id": 18,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 255,
+        "batch": 220,
         "id": 19,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 261,
+        "batch": 227,
         "id": 20,
         "kind": {
           "delivery": "stream",
@@ -494,7 +350,7 @@
         }
       },
       {
-        "batch": 262,
+        "batch": 228,
         "id": 20,
         "kind": {
           "delivery": "stream",
@@ -502,7 +358,7 @@
         }
       },
       {
-        "batch": 262,
+        "batch": 228,
         "id": 20,
         "kind": {
           "delivery": "outcome"
@@ -879,6 +735,17 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'll start by listing the repository files."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -917,17 +784,6 @@
                 },
                 "fingerprint": 2944050724405728981
               }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "I'll start by listing the repository files."
             }
           }
         }
@@ -3426,6 +3282,17 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -3467,17 +3334,6 @@
                 },
                 "fingerprint": 12613439282465330346
               }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
             }
           }
         }
@@ -5081,6 +4937,17 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -5121,17 +4988,6 @@
                 },
                 "fingerprint": 12459092173350215110
               }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
             }
           }
         }

@@ -118,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -194,29 +194,45 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 30,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 1
         }
       },
       {
-        "batch": 45,
+        "batch": 31,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 47,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 47,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 46,
+        "batch": 48,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 52,
+        "batch": 54,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -224,7 +240,7 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 55,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -232,7 +248,7 @@
         }
       },
       {
-        "batch": 54,
+        "batch": 56,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -661,6 +677,23 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
+                },
+                "fingerprint": 13268155671576221190
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -701,23 +734,6 @@
                   "type": "function"
                 },
                 "fingerprint": 10443962742099781388
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25.",
-              "native": {
-                "item": {
-                  "reasoning_content": "We need answer. Need use add tool. Simple. Then reply just number. Need call add with 17,25."
-                },
-                "fingerprint": 13268155671576221190
               }
             }
           }

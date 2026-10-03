@@ -370,6 +370,17 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "I'll start by listing the repository files."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -408,17 +419,6 @@
                 },
                 "fingerprint": 2944050724405728981
               }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "I'll start by listing the repository files."
             }
           }
         }
@@ -2907,6 +2907,17 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -2948,17 +2959,6 @@
                 },
                 "fingerprint": 12613439282465330346
               }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
             }
           }
         }
@@ -4558,6 +4558,17 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "text",
+              "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -4598,17 +4609,6 @@
                 },
                 "fingerprint": 12459092173350215110
               }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "The next failure points at `days_in_week` in src/calendar.rs. Let me read it before fixing."
             }
           }
         }

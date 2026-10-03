@@ -606,6 +606,31 @@
         {
           "item": "event",
           "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                  "reasoning_details": [
+                    {
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                      "type": "reasoning.text"
+                    }
+                  ]
+                },
+                "fingerprint": 18139074956839541234
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -646,31 +671,6 @@
                   "type": "function"
                 },
                 "fingerprint": 16101763976040688387
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-              "native": {
-                "item": {
-                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-                  "reasoning_details": [
-                    {
-                      "format": "unknown",
-                      "index": 0,
-                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-                      "type": "reasoning.text"
-                    }
-                  ]
-                },
-                "fingerprint": 18139074956839541234
               }
             }
           }
@@ -1303,30 +1303,6 @@
         {
           "item": "event",
           "value": {
-            "event": "start",
-            "part": 1,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": "4"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 1,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "end",
             "part": 0,
             "content": {
@@ -1347,6 +1323,30 @@
                 "fingerprint": 13219916638805988789
               }
             }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "text"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "4"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 1,
+            "text": "2"
           }
         },
         {
