@@ -321,8 +321,9 @@ impl Chat {
                 }
                 tools.push(json!({"type": "function", "function": function}));
             }
-            // Function tools in the passthrough join the typed ones, which a
-            // flattened `tools` key would replace; the rest stay behind.
+            // Passthrough tools, function or native (Groq's `browser_search`),
+            // join the typed ones in one array, which a flattened `tools` key
+            // would otherwise replace.
             if let Some(passthrough) = params.shift_remove("tools") {
                 let Value::Array(passthrough) = passthrough else {
                     return Err(EncodeError::request(
@@ -330,15 +331,7 @@ impl Chat {
                          expected an array",
                     ));
                 };
-                let (function, native): (Vec<Value>, Vec<Value>) = passthrough
-                    .into_iter()
-                    .partition(|tool| tool.str("type") == Some("function"));
-                tools.extend(function);
-                if quirks.rewrite == BodyRewrite::GroqCompoundTools {
-                    fold_groq_native_tools(&mut params, native);
-                } else if !native.is_empty() {
-                    params.insert("tools".to_owned(), Value::Array(native));
-                }
+                tools.extend(passthrough);
             }
             tool_choice = request
                 .tool_choice
@@ -354,7 +347,6 @@ impl Chat {
                 tracing::warn!("Tool choice is not supported by this provider and will be ignored");
             }
         }
-        refuse_openai_tools(&model, &tools, &params, quirks)?;
 
         if request.output_schema.is_some() && !quirks.supports_response_format {
             tracing::warn!(
@@ -598,64 +590,26 @@ impl Chat {
                     }
                 }
             }
-            // Perplexity takes text-only part arrays as strings (other arrays
-            // are left for its sonar models); `adapt` alternates its roles.
-            BodyRewrite::Perplexity => {
-                for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
-                    flatten_text_content_parts(content, "\n", true);
-                }
-            }
             // The gateway takes every message's content as one string.
             BodyRewrite::Mira => {
                 for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
-                    flatten_text_content_parts(content, "\n", false);
+                    if let Value::Array(parts) = content {
+                        let texts: Vec<&str> =
+                            parts.iter().filter_map(|part| part.str("text")).collect();
+                        *content = Value::String(texts.join("\n"));
+                    }
                 }
             }
             BodyRewrite::DeepSeek => finalize_deepseek(map),
             BodyRewrite::Mistral => finalize_mistral(map),
             BodyRewrite::OpenRouter if self.prompt_caching => apply_openrouter_prompt_caching(map),
             BodyRewrite::None
+            | BodyRewrite::Perplexity
             | BodyRewrite::OpenRouter
-            | BodyRewrite::GroqCompoundTools
             | BodyRewrite::HuggingFaceRouter => {}
         }
         Ok(())
     }
-}
-
-/// Refuse function tools to an OpenAI model that cannot call them on Chat
-/// Completions: some GPT-6 models take them there only at
-/// `reasoning_effort: "none"`, and some not at all. Only OpenAI's own
-/// endpoint serves those families.
-fn refuse_openai_tools(
-    model: &str,
-    tools: &[Value],
-    params: &Map<String, Value>,
-    quirks: &Quirks,
-) -> Result<(), EncodeError> {
-    if quirks.output_cap != OutputCap::OpenAiReasoningFamilies || tools.is_empty() {
-        return Ok(());
-    }
-    if NO_TOOLS_ON_CHAT.iter().any(|id| is_model(model, id)) {
-        return Err(EncodeError::request(format!(
-            "{model} cannot call function tools on Chat Completions: it takes them there \
-             only at reasoning_effort \"none\", which it does not support. Use the \
-             Responses wire."
-        )));
-    }
-    let effort_none = params.get("reasoning_effort").and_then(Value::as_str) == Some("none");
-    if TOOLS_ONLY_WITHOUT_REASONING
-        .iter()
-        .any(|id| is_model(model, id))
-        && !effort_none
-    {
-        return Err(EncodeError::request(format!(
-            "{model} calls function tools on Chat Completions only at reasoning_effort \
-             \"none\": send `\"reasoning_effort\": \"none\"` in additional_params, or use \
-             the Responses wire."
-        )));
-    }
-    Ok(())
 }
 
 /// `call` as the item the wire sends, from what replay hands the encoder:
@@ -735,12 +689,6 @@ fn messages_mut(map: &mut Map<String, Value>) -> impl Iterator<Item = &mut Map<S
         .filter_map(Value::as_object_mut)
 }
 
-/// GPT-6 models that call function tools on Chat Completions only at
-/// `reasoning_effort: "none"` (their model pages), and those that do not
-/// support `"none"` at all, so never call tools there.
-const TOOLS_ONLY_WITHOUT_REASONING: [&str; 2] = [models::GPT_6_SOL, models::GPT_6_LUNA];
-const NO_TOOLS_ON_CHAT: [&str; 2] = [models::GPT_6_ASTRA, models::GPT_6_1_SOL];
-
 /// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYY-MM-DD`).
 fn is_model(model: &str, id: &str) -> bool {
     model
@@ -748,75 +696,31 @@ fn is_model(model: &str, id: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with("-20"))
 }
 
-/// Groq's compound-system native tools (`browser_search`, `code_interpreter`,
-/// …) go in `compound_custom.enabled_tools`, a set keyed by tool type, so a
-/// caller who names the same tool twice enables it once.
-fn fold_groq_native_tools(params: &mut Map<String, Value>, native: Vec<Value>) {
-    if native.is_empty() {
-        return;
-    }
-    let enabled = params
-        .entry("compound_custom")
-        .or_insert_with(|| json!({}))
-        .as_object_mut()
-        .map(|custom| {
-            custom
-                .entry("enabled_tools")
-                .or_insert_with(|| Value::Array(Vec::new()))
-        });
-    let Some(Value::Array(enabled)) = enabled else {
-        return;
-    };
-    for tool in native {
-        if !enabled
-            .iter()
-            .any(|existing| existing.str("type") == tool.str("type"))
-        {
-            enabled.push(tool);
-        }
-    }
-}
-
-/// DeepSeek takes message `content` as a plain string, needs an explicit
-/// empty `content` on a tool-call-only assistant turn, and rejects forced
-/// tool choices unless thinking is explicitly disabled.
+/// DeepSeek rejects a forced tool choice while thinking, and every model
+/// but `deepseek-chat` thinks unless `thinking` says `disabled` (checked
+/// live), so the choice is relaxed to the default there.
 fn finalize_deepseek(map: &mut Map<String, Value>) {
-    for message in messages_mut(map) {
-        let assistant = message.get("role").and_then(Value::as_str) == Some("assistant");
-        match message.get_mut("content") {
-            // Nontext parts stay, so an unsupported attachment is refused
-            // rather than silently left out of the prompt.
-            Some(content) => {
-                flatten_text_content_parts(content, if assistant { "" } else { "\n" }, true);
-            }
-            None if assistant => {
-                message.insert("content".to_owned(), Value::String(String::new()));
-            }
-            None => {}
-        }
-    }
-    let thinking_disabled = map
+    let thinking = match map
         .get("thinking")
         .and_then(|thinking| thinking.str("type"))
-        .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"));
-    if !thinking_disabled
-        && let Some(tool_choice) = map.get_mut("tool_choice")
-        && (tool_choice.is_object() || tool_choice.as_str() == Some("required"))
     {
-        *tool_choice = Value::Null;
+        Some(mode) => !mode.eq_ignore_ascii_case("disabled"),
+        None => map.get("model").and_then(Value::as_str) != Some("deepseek-chat"),
+    };
+    let forced = map
+        .get("tool_choice")
+        .is_some_and(|choice| choice.is_object() || choice.as_str() == Some("required"));
+    if thinking && forced {
+        tracing::debug!(
+            "dropping tool_choice: DeepSeek rejects a forced tool choice while thinking"
+        );
+        map.shift_remove("tool_choice");
     }
 }
 
-/// Mistral's wire-level differences: its own spelling for a forced tool
-/// choice, the relaxation that lets a structured format ride beside tools,
-/// its content chunks, and `content` on every assistant message.
+/// Mistral's wire-level differences: a forced tool choice relaxed beside a
+/// structured format, and its content chunks.
 fn finalize_mistral(map: &mut Map<String, Value>) {
-    // Mistral spells the "must call some tool" mode `any`, not `required`.
-    if let Some(tool_choice) = map.get_mut("tool_choice")
-        && tool_choice.as_str() == Some("required")
-    {
-        *tool_choice = Value::from("any");
-    }
     // Mistral rejects forced tool calls beside JSON response formats: the
     // choice is relaxed rather than the schema discarded.
     let forces_a_tool_call = map
@@ -837,24 +741,11 @@ fn finalize_mistral(map: &mut Map<String, Value>) {
         );
         map.insert("tool_choice".to_owned(), Value::from("auto"));
     }
-    for message in messages_mut(map) {
-        // An assistant message only needs its missing `content` filled in.
-        if message.get("role").and_then(Value::as_str) == Some("assistant") {
-            message
-                .entry("content")
-                .or_insert_with(|| Value::String(String::new()));
-        } else {
-            let user = message.get("role").and_then(Value::as_str) == Some("user");
-            if let Some(content) = message.get_mut("content") {
-                mistral_content(content, user);
-            }
+    for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
+        for part in content.as_array_mut().into_iter().flatten() {
+            *part = mistral_chunk(part);
         }
     }
-}
-
-/// The text a part carries, under either key the conversion uses.
-fn part_text(part: &Value) -> Option<&str> {
-    part.str("text").or_else(|| part.str("refusal"))
 }
 
 /// One content part as the Mistral chunk that carries it, by its `type`:
@@ -865,60 +756,18 @@ fn part_text(part: &Value) -> Option<&str> {
 fn mistral_chunk(part: &Value) -> Value {
     let field = |pointer: &str| part.at(pointer).and_then(Value::as_str);
     match part.str("type") {
-        Some("text" | "refusal") | None => {
-            json!({"type": "text", "text": part_text(part).unwrap_or_default()})
-        }
         Some("image_url") => {
             json!({"type": "image_url", "image_url": part.get("image_url")})
         }
         Some("input_audio") => json!({"type": "input_audio",
-            "input_audio": field("/input_audio/data").or(field("/input_audio"))}),
-        Some("file") => match (field("/file/file_data"), field("/file/filename")) {
-            (Some(data), Some(name)) => {
-                json!({"type": "document_url", "document_url": data, "document_name": name})
-            }
-            (Some(data), None) => json!({"type": "document_url", "document_url": data}),
-            (None, _) => json!({"type": "file",
-                "file_id": field("/file/file_id").or(field("/file_id"))}),
+            "input_audio": field("/input_audio/data")}),
+        Some("file") => match field("/file/file_data") {
+            Some(data) => json!({"type": "document_url", "document_url": data,
+                "document_name": field("/file/filename")}),
+            None => json!({"type": "file", "file_id": field("/file/file_id")}),
         },
-        Some(_) => part.clone(),
+        _ => part.clone(),
     }
-}
-
-/// A part array as Mistral content: a lone text part as a string, a
-/// user's parts as one chunk each (pi keeps them apart), another role's
-/// text joined by newlines, and a mixed array as chunks. Anything else
-/// stays as it is.
-fn mistral_content(content: &mut Value, user: bool) {
-    let Some(parts) = content.as_array_mut() else {
-        return;
-    };
-    let textual = |part: &Value| match part.str("type") {
-        Some("text" | "refusal") => true,
-        Some(_) => false,
-        None => part_text(part).is_some(),
-    };
-    if parts.iter().all(textual) && (parts.len() < 2 || !user) {
-        flatten_text_content_parts(content, "\n", false);
-        return;
-    }
-    for part in parts {
-        *part = mistral_chunk(part);
-    }
-}
-
-/// Flatten a content-part array to its text parts (refusals are text),
-/// joined by `separator`. With `only_if_all_text`, an array with a nontext
-/// part is left as it is; otherwise nontext parts are dropped.
-fn flatten_text_content_parts(content: &mut Value, separator: &str, only_if_all_text: bool) {
-    let Some(parts) = content.as_array() else {
-        return;
-    };
-    if only_if_all_text && !parts.iter().all(|part| part_text(part).is_some()) {
-        return;
-    }
-    let texts: Vec<&str> = parts.iter().filter_map(part_text).collect();
-    *content = Value::String(texts.join(separator));
 }
 
 /// OpenRouter's ephemeral `cache_control` on the system prompt: on its
@@ -1064,16 +913,14 @@ impl crate::completion::ReplayTarget for Chat {
     /// pi's rule for this wire. A `call|item` id joins its sanitized halves
     /// with `_`, ending a result over 40 characters in a hash of the whole
     /// id; OpenAI's own ids are cut to 40; any other id is kept. Mistral
-    /// takes exactly nine alphanumerics.
+    /// takes any such id (checked live on eight models), where pi derives
+    /// nine alphanumerics.
     fn normalize_tool_call_id(
         &self,
         id: &str,
         _model: &str,
         _: Option<&crate::message::Origin>,
     ) -> String {
-        if self.provider.dialect.quirks.rewrite == BodyRewrite::Mistral {
-            return mistral_call_id(id);
-        }
         let sanitized =
             |part: &str| crate::providers::internal::wire_ids::legal_call_id(part, usize::MAX);
         if let Some((call, item)) = id.split_once('|') {
@@ -1117,10 +964,6 @@ impl crate::completion::ReplayTarget for Chat {
 
     fn call_id_slot(&self) -> Option<&'static str> {
         Some("/id")
-    }
-
-    fn states_finish_reason(&self) -> bool {
-        self.provider.dialect.quirks.states_finish_reason
     }
 
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
@@ -1191,26 +1034,6 @@ fn reads_images(dialect: &super::Dialect, model: &str) -> bool {
         }
         _ => vendor_reads_images(dialect.name, model),
     }
-}
-
-/// pi's derivation of a Mistral call id: the id's alphanumerics when there
-/// are exactly nine, otherwise nine characters of their hash.
-fn mistral_call_id(id: &str) -> String {
-    const LENGTH: usize = 9;
-    let normalized: String = id.chars().filter(char::is_ascii_alphanumeric).collect();
-    if normalized.len() == LENGTH {
-        return normalized;
-    }
-    let seed = if normalized.is_empty() {
-        id
-    } else {
-        &normalized
-    };
-    crate::providers::internal::wire_ids::short_hash(seed)
-        .chars()
-        .filter(char::is_ascii_alphanumeric)
-        .take(LENGTH)
-        .collect()
 }
 
 /// Classified Chat Completions frame, including whole replies and terminal signals.

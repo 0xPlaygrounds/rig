@@ -484,13 +484,17 @@ fn perplexity_reads_a_tool_exchange_as_text() {
         json!([
             {"role": "user", "content": "look it up"},
             {"role": "assistant", "content": "[called tool lookup with {\"q\":\"rig\"}]"},
-            {"role": "user", "content": "[tool lookup result] crimson\nnext"},
+            {"role": "user", "content": [
+                {"type": "text", "text": "[tool lookup result] crimson"},
+                {"type": "text", "text": "next"},
+            ]},
         ])
     );
 }
 
-/// chatA NEW-4: two foreign ids Mistral's rule maps to the same nine
-/// alphanumerics stay distinct, each result following its own call.
+/// chatA NEW-4: two foreign ids that differ only in punctuation reach
+/// Mistral as they are, distinct, each result following its own call.
+/// Mistral takes any `[A-Za-z0-9_-]` id (checked live on eight models).
 #[test]
 fn mistral_call_ids_stay_distinct() {
     let calls: Vec<ToolCall> = ["abc-123456", "abc_123456"]
@@ -531,12 +535,7 @@ fn mistral_call_ids_stay_distinct() {
         .flatten()
         .filter_map(|call| call["id"].as_str())
         .collect();
-    assert_eq!(ids.len(), 2);
-    assert_ne!(ids[0], ids[1], "{body}");
-    assert!(
-        ids.iter()
-            .all(|id| id.len() == 9 && id.chars().all(|c| c.is_ascii_alphanumeric()))
-    );
+    assert_eq!(ids, ["abc-123456", "abc_123456"], "{body}");
     assert_eq!(body["messages"][2]["tool_call_id"], ids[0]);
     assert_eq!(body["messages"][2]["content"], "abc-123456");
     assert_eq!(body["messages"][3]["tool_call_id"], ids[1]);
@@ -755,17 +754,12 @@ fn an_answers_audio_transcript_is_text() {
     }
 }
 
-/// A Mistral id: nine alphanumerics.
-fn is_mistral_id(id: &str) -> bool {
-    id.len() == 9 && id.chars().all(|c| c.is_ascii_alphanumeric())
-}
-
 /// chat NEW-3, chat_new NEW-4: a call rig issued an id for (the second of
-/// two calls a reply named alike, or one an agent built) reaches Mistral as
-/// nine alphanumerics on the call and its result, same model or not. One
+/// two calls a reply named alike, or one an agent built) reaches Mistral
+/// with one spelling on the call and its result, same model or not. One
 /// `WireIds` spells every id through the target's normalizer.
 #[test]
-fn a_rig_issued_id_reaches_mistral_as_nine_alphanumerics() {
+fn a_rig_issued_id_reaches_mistral_spelled_once() {
     let mistral = wire(&MISTRAL, "mistral-large-latest");
     let frames = vec![whole(
         json!({"role": "assistant", "content": "", "tool_calls": [
@@ -815,7 +809,8 @@ fn a_rig_issued_id_reaches_mistral_as_nine_alphanumerics() {
         .filter_map(|message| message["tool_call_id"].as_str())
         .collect();
     assert_eq!(ids.len(), 3, "{body}");
-    assert!(ids.iter().all(|id| is_mistral_id(id)), "{body}");
+    let distinct: std::collections::HashSet<&&str> = ids.iter().collect();
+    assert_eq!(distinct.len(), 3, "{body}");
     assert_eq!(ids, answers, "each result names its own call: {body}");
 }
 

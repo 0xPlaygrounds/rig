@@ -142,25 +142,18 @@ pub enum OutputCap {
 pub enum BodyRewrite {
     /// Send the OpenAI-compatible body unchanged.
     None,
-    /// Groq: fold `additional_params.tools` (its compound-system native
-    /// tools) into `compound_custom.enabled_tools` so they do not clobber
-    /// the function-tool array on serialization.
-    GroqCompoundTools,
     /// Hugging Face's router: qualify the model identifier for sub-providers
     /// that demand one (Fireworks).
     HuggingFaceRouter,
-    /// DeepSeek: string-flattened content, `content: ""` on tool-call-only
-    /// assistant turns, and forced tool choices suppressed unless thinking
-    /// is explicitly disabled. Its reasoning field is
-    /// [`Quirks::reasoning_field`].
+    /// DeepSeek: forced tool choices dropped while the model thinks. Its
+    /// reasoning field is [`Quirks::reasoning_field`].
     DeepSeek,
     /// Mira's gateway: content-part arrays flattened to strings.
     Mira,
-    /// Perplexity: text-only arrays flattened.
+    /// Perplexity: sent unchanged; the encoder's media rules read it.
     Perplexity,
-    /// Mistral: `any` for a forced tool choice, the choice relaxed to `auto`
-    /// beside a structured response format, its own content chunks, and
-    /// `content` on every assistant turn.
+    /// Mistral: the forced tool choice relaxed to `auto` beside a structured
+    /// response format, and its own content chunks.
     Mistral,
     /// llama.cpp: refuse a specific-function tool choice, which
     /// `llama-server` silently treats as `auto`.
@@ -320,10 +313,6 @@ pub struct Quirks {
     /// dialect shares (`stop`, `length`, `tool_calls`, `content_filter` and
     /// their compatible spellings). Any other reason fails the turn.
     pub finishes: &'static [(&'static str, crate::completion::FinishReason)],
-    /// Whether every reply states why it stopped (pi's
-    /// `supportsFinishReason`). A dialect whose server never sends a reason
-    /// says `false`, and its replies then end as a stop.
-    pub states_finish_reason: bool,
     /// The field rebuilt reasoning goes under, which every assistant message
     /// then carries, empty when the turn has none (pi's
     /// `requiresReasoningContentOnAssistantMessages`). `None` sends
@@ -399,7 +388,6 @@ impl Quirks {
             output_cap: OutputCap::Legacy,
             native_finish_reason: false,
             finishes: &[],
-            states_finish_reason: true,
             reasoning_field: None,
             reliable_reasoning_count: true,
             accepts_bare_string_reply: false,

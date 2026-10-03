@@ -88,10 +88,6 @@ pub const DEEPSEEK: Dialect = Dialect {
 /// Groq.
 pub const GROQ: Dialect = Dialect {
     request_id_header: Some("x-request-id"),
-    quirks: Quirks {
-        rewrite: BodyRewrite::GroqCompoundTools,
-        ..Quirks::openai()
-    },
     ..Dialect::gateway("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY")
 };
 
@@ -253,10 +249,9 @@ pub const LLAMACPP: Dialect = Dialect {
 pub const MISTRAL: Dialect = Dialect {
     request_id_header: Some("mistral-correlation-id"),
     quirks: Quirks {
-        // Mistral rejects `stream_options` and reports usage on its final
-        // chunk regardless.
+        // Mistral reports usage on its final chunk without asking.
         stream_include_usage: false,
-        // Mistral reads one optional system message, before the conversation.
+        // pi's default fold of later system messages into the leading one.
         later_system: crate::completion::LaterSystem::Leading,
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",

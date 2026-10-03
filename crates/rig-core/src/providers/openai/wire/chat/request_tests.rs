@@ -9,7 +9,7 @@ use crate::message::{
     AssistantContent, AssistantMessage, CallId, DocumentMediaType, DocumentSourceKind, Image,
     ImageMediaType, ToolCall, ToolFunction, ToolName, ToolResult, ToolResultContent, UserContent,
 };
-use crate::providers::openai::wire::{GROQ, OPENAI, OpenAIConfig};
+use crate::providers::openai::wire::{GROQ, OpenAIConfig};
 use crate::test_utils::json_body;
 use crate::wire::{Mode, Operation, Wire};
 
@@ -292,12 +292,12 @@ fn the_output_cap_is_spelled_for_the_model() {
     assert!(none.get("max_tokens").is_none() && none.get("max_completion_tokens").is_none());
 }
 
-/// A mixed `additional_params.tools` array splits by shape: function tools
-/// join the typed `tools` (left in the flattened params they would replace
-/// them), the rest stay behind, and Groq folds its native ones into
-/// `compound_custom.enabled_tools`.
+/// Every `additional_params.tools` entry, function or native, joins the
+/// typed `tools` in one array. Groq's `gpt-oss` models take a native tool
+/// there (`browser_search` checked live); `compound_custom.enabled_tools`
+/// is ignored.
 #[test]
-fn passthrough_function_tools_join_the_typed_ones() {
+fn passthrough_tools_join_the_typed_ones() {
     let request = || {
         CompletionRequest::new("Hello")
             .tools(vec![tool("builder_tool")])
@@ -307,25 +307,26 @@ fn passthrough_function_tools_join_the_typed_ones() {
                 {"type": "browser_search"},
             ]}))
     };
-    let groq = OpenAIConfig::with_key(&GROQ, "key").chat("compound-beta");
-    let sent = body_on(&groq, request());
-    let names: Vec<&str> = sent["tools"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|tool| tool["function"]["name"].as_str())
-        .collect();
-    assert_eq!(names, ["builder_tool", "params_tool"], "{sent}");
-    assert_eq!(
-        sent["compound_custom"],
-        json!({"enabled_tools": [{"type": "browser_search"}]})
-    );
-    let openai = body(request());
-    assert_eq!(
-        openai["tools"],
-        json!([{"type": "browser_search"}]),
-        "{openai}"
-    );
+    let groq = OpenAIConfig::with_key(&GROQ, "key").chat("openai/gpt-oss-20b");
+    for sent in [body_on(&groq, request()), body(request())] {
+        let kinds: Vec<&str> = sent["tools"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|tool| {
+                tool["function"]["name"]
+                    .as_str()
+                    .or_else(|| tool["type"].as_str())
+                    .unwrap_or_default()
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            ["builder_tool", "params_tool", "browser_search"],
+            "{sent}"
+        );
+        assert!(sent.get("compound_custom").is_none(), "{sent}");
+    }
 }
 
 /// `additional_params` is flattened in after the typed fields, so a
@@ -463,27 +464,5 @@ fn reasoning_replays_under_its_own_field() {
     assert_eq!(
         beside["messages"][1],
         json!({"role": "assistant", "reasoning_content": "hidden", "content": "visible"})
-    );
-}
-
-/// GPT-6 models that take Chat function tools only at effort `none` are
-/// refused before the request is sent, naming the fix.
-#[test]
-fn openai_reasoning_families_refuse_tools_they_cannot_call_on_chat() {
-    let request = |model: &str, params: Option<Value>| {
-        let mut request = CompletionRequest::new("q").tools(vec![tool("add")]);
-        request.additional_params = params;
-        OpenAIConfig::with_key(&OPENAI, "key")
-            .chat(model)
-            .encode(request, Mode::Unary)
-    };
-    assert!(request(super::models::GPT_6_ASTRA, None).is_err());
-    assert!(request(super::models::GPT_6_SOL, None).is_err());
-    assert!(
-        request(
-            super::models::GPT_6_SOL,
-            Some(json!({"reasoning_effort": "none"}))
-        )
-        .is_ok()
     );
 }

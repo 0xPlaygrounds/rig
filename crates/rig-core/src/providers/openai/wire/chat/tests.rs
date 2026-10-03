@@ -327,74 +327,27 @@ fn the_output_cap_spelling_follows_the_model_family() {
 }
 
 /// GPT-6 on Chat Completions answers a request with function tools with a
-/// 400 unless it runs at `reasoning_effort: "none"` (recorded 2026-09-29:
-/// "Function tools with reasoning_effort are not supported for gpt-6-sol in
-/// /v1/chat/completions"), and Astra and 6.1 Sol reject `"none"` itself. Rig
-/// refuses before sending, so this is an encode error with no request to
-/// record: it cannot be a cassette test.
+/// 400 unless it runs at `reasoning_effort: "none"`, and Astra and 6.1 Sol
+/// reject `"none"` itself. The 400 names the fix ("use /v1/responses or set
+/// reasoning_effort to 'none'"), so Rig sends the request as pi does and
+/// lets it stand; `openai/models/gpt_6_*/session` record it.
 #[test]
-fn gpt_6_chat_tools_need_effort_none_or_the_responses_wire() {
+fn gpt_6_chat_tools_are_sent_as_asked() {
     use crate::completion::ToolDefinition;
-    use crate::providers::openai::completion::{
-        GPT_5_4, GPT_6_1_SOL, GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL,
-    };
+    use crate::providers::openai::completion::{GPT_6_1_SOL, GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL};
 
-    let with_tool = |params: Option<serde_json::Value>| {
+    for model in [GPT_6_SOL, GPT_6_LUNA, GPT_6_ASTRA, GPT_6_1_SOL] {
         let mut request = prompt("look it up");
         request.tools = vec![ToolDefinition {
             name: crate::message::ToolName::new("lookup").expect("tool name"),
             description: "Look something up.".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         }];
-        request.temperature = None;
-        request.additional_params = params;
-        request
-    };
-    let encode = |model: &str, params: Option<serde_json::Value>| {
-        OpenAIConfig::new("sk-test")
+        let encoded = OpenAIConfig::new("sk-test")
             .chat(model)
-            .encode(with_tool(params), Mode::Unary)
-    };
-    let none = || Some(serde_json::json!({"reasoning_effort": "none"}));
-
-    for model in [GPT_6_SOL, GPT_6_LUNA] {
-        let error = encode(model, None).expect_err("tools at the default effort are refused");
-        assert!(
-            error
-                .to_string()
-                .contains("only at reasoning_effort \"none\""),
-            "{model}: {error}"
-        );
-        assert!(
-            encode(model, none()).is_ok(),
-            "{model} takes tools at effort none"
-        );
+            .encode(request, Mode::Unary);
+        assert!(encoded.is_ok(), "{model}");
     }
-    for model in [GPT_6_ASTRA, GPT_6_1_SOL] {
-        for params in [None, none()] {
-            let error = encode(model, params).expect_err("no effort lets these call tools here");
-            assert!(
-                error.to_string().contains("Use the Responses wire"),
-                "{model}: {error}"
-            );
-        }
-    }
-    // Without tools, and on models that take tools here, nothing changes.
-    assert!(
-        OpenAIConfig::new("sk-test")
-            .chat(GPT_6_ASTRA)
-            .encode(prompt("hi"), Mode::Unary)
-            .is_ok()
-    );
-    assert!(encode(GPT_5_4, None).is_ok());
-    // Compatible gateways on this wire are not OpenAI's endpoint.
-    assert!(
-        OpenAIConfig::new("gsk-test")
-            .with_dialect(&GROQ)
-            .chat(GPT_6_SOL)
-            .encode(with_tool(None), Mode::Unary)
-            .is_ok()
-    );
 }
 
 /// OpenRouter takes no provider file id, so the adapter leaves a placeholder
@@ -1334,8 +1287,9 @@ fn streamed_annotations_and_audio_survive() {
     );
 }
 
-/// pi's id rule for this wire (`openai-completions.js`, `normalizeToolCallId`)
-/// and Mistral's nine alphanumerics. The hashes are pi's `shortHash`.
+/// pi's id rule for this wire (`openai-completions.js`, `normalizeToolCallId`).
+/// The hashes are pi's `shortHash`. Mistral takes the same ids (checked live
+/// on eight models), where pi derives nine alphanumerics.
 #[test]
 fn foreign_call_ids_are_normalized_the_way_pi_does() {
     use crate::completion::ReplayTarget;
@@ -1393,7 +1347,7 @@ fn foreign_call_ids_are_normalized_the_way_pi_does() {
     );
     assert_eq!(
         mistral.normalize_tool_call_id("call_abc123", mistral.model(), None),
-        "9k918q7jl"
+        "call_abc123"
     );
 }
 
