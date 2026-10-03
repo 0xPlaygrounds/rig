@@ -1392,7 +1392,7 @@ fn runtime_turns_come_from_folds() {
 /// Provider files that still read provider items directly. Each family
 /// moves its encoder onto `AssistantContent::replay` and deletes its entry;
 /// the list only shrinks.
-const PENDING_REPLAY_ADOPTION: &[&str] = &["rig-core/src/providers/internal/rebuild.rs"];
+const PENDING_REPLAY_ADOPTION: &[&str] = &[];
 
 /// Encoders read provider items only through `AssistantContent::replay`, so
 /// the core alone decides what a current, edited or foreign item becomes.

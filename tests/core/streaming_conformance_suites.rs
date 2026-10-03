@@ -36,7 +36,7 @@ pub mod openai_chat_suite {
     streaming_conformance_suite! {
         provider: "openai_chat",
         fixture: openai_chat::fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, defective_known_frame, delta_less_prelude],
+        manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, delta_less_prelude],
     }
 }
 

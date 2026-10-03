@@ -160,7 +160,6 @@ impl ObservedError {
     }
 }
 
-
 /// A provider's cumulative usage snapshot for one HTTP attempt.
 ///
 /// Missing, invalid or negative counts remain unknown. A present zero is a

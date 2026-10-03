@@ -1742,7 +1742,9 @@ pub mod fixtures {
                 // A wrongly-typed `content` is tolerated by the lenient delta
                 // decode; a wrongly-typed `choices` is a genuine schema defect
                 // of the known chunk shape.
-                defective_known_frame: Some(sse_raw(r#"{"choices": 42}"#)),
+                // The Chat decoder reads leniently, as pi does: `choices`
+                // of another type is a chunk with no choices, not a defect.
+                defective_known_frame: None,
                 // The Azure `prompt_filter_results` prelude: a choice with no
                 // `delta` at all.
                 delta_less_prelude_frame: Some(sse_raw(

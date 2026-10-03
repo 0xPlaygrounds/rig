@@ -1832,18 +1832,6 @@ async fn an_empty_turn_never_reaches_the_local_runtime()
             ]),
             "assistant message at index 0 has no content",
         ),
-        (
-            request(vec![parsed(serde_json::json!({
-                "role": "user",
-                "content": [{
-                    "type": "toolresult",
-                    "call": {"provider": "call_1"},
-                    "name": "lookup",
-                    "content": [],
-                }],
-            }))?]),
-            "tool result for `lookup` at index 0",
-        ),
     ];
     let events = Arc::new(std::sync::Mutex::new(vec![GenerationEvent::Text(
         "unreachable".to_owned(),

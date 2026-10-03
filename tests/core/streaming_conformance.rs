@@ -186,7 +186,7 @@ pub mod copilot_chat_suite {
     rig_core::streaming_conformance_suite! {
         provider: "copilot",
         fixture: copilot::chat_fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, defective_known_frame, delta_less_prelude],
+        manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, delta_less_prelude],
     }
 }
 

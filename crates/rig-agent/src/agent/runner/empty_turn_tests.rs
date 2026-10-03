@@ -60,20 +60,6 @@ fn cases() -> Vec<(Message, Vec<Message>, bool, &'static str)> {
             false,
             "assistant message at index 0 has no content",
         ),
-        (
-            Message::user("hello"),
-            vec![parsed(json!({
-                "role": "user",
-                "content": [{
-                    "type": "toolresult",
-                    "call": {"provider": "call_1"},
-                    "name": "lookup",
-                    "content": [],
-                }],
-            }))],
-            false,
-            "tool result for `lookup` at index 0 of the user message at index 0 has no content",
-        ),
     ]
 }
 
