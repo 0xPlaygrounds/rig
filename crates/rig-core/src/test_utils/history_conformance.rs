@@ -158,13 +158,13 @@ pub const TESTS: &[(&str, &str, &str)] = &[
     ),
     (
         "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
-        "a_call_added_but_never_done_is_delivered",
-        "Responses NEW call added but never done",
+        "a_call_added_but_never_done_fails_the_turn",
+        "Responses NEW call added but never done, review: a never-done call loses its id",
     ),
     (
         "crates/rig-core/src/providers/anthropic/completion/tests.rs",
-        "the_last_turn_container_is_replayed_unless_the_request_names_one",
-        "anthropic NEW container",
+        "the_container_survives_a_dropped_block_and_an_edited_call",
+        "anthropic NEW container, review: container lost when content changes",
     ),
     (
         "crates/rig-core/src/completion/message/native/tests.rs",
@@ -190,6 +190,81 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "crates/rig-core/src/completion/history/tests.rs",
         "media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text",
         "review: encoders refuse canonical content",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "an_edited_call_keeps_its_caller",
+        "review: an edited Anthropic call loses its caller",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/streaming/tests.rs",
+        "an_empty_reply_folds_the_same_whole_or_streamed",
+        "review: Anthropic empty replies differ whole and streamed",
+    ),
+    (
+        "crates/rig-core/src/providers/anthropic/completion/tests.rs",
+        "tool_results_lead_a_merged_user_message",
+        "review: Anthropic text before tool_result",
+    ),
+    (
+        "crates/rig-cassette/tests/providers/anthropic/cassette/malformed_tool_args_matrix.rs",
+        "streaming_malformed_call_is_answered_with_an_error",
+        "review: hand-derived malformed-arguments cassette",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
+        "reasoning_done_without_ciphertext_keeps_its_item_in_a_stream_without_indices",
+        "review: Responses reasoning loses its item without output_index",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
+        "a_terminal_only_item_does_not_repeat_text_streamed_without_indices",
+        "review: Responses terminal-only items duplicate text",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
+        "a_done_item_s_text_replaces_the_text_its_deltas_streamed",
+        "review: Responses block text and native disagree",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
+        "an_item_without_a_type_never_replays",
+        "review: Responses item without a type replays",
+    ),
+    (
+        "crates/rig-core/src/providers/openai/responses_api/streaming/tests.rs",
+        "response_incomplete_is_incomplete_whatever_its_status_says",
+        "review: response.incomplete without status is Stop",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/completion/tests.rs",
+        "a_url_tool_result_image_follows_the_results_on_gemini_3",
+        "review: gRPC URL tool-result image",
+    ),
+    (
+        "crates/rig-gemini-grpc/src/streaming/tests.rs",
+        "a_part_of_an_undeclared_kind_never_replays_without_data",
+        "review: gRPC part with no data replays",
+    ),
+    (
+        "crates/rig-bedrock/src/types/completion_request/tests.rs",
+        "a_hosted_use_replays_only_with_its_result",
+        "review: Bedrock server_tool_use replays without its result",
+    ),
+    (
+        "crates/rig-bedrock/src/types/completion_request/tests.rs",
+        "only_nova_and_claude_get_a_result_status",
+        "review: Bedrock status sent to every family",
+    ),
+    (
+        "crates/rig-bedrock/tests/history_conformance.rs",
+        "a_reply_the_sdk_cannot_read_decodes_from_its_json",
+        "review: Bedrock whole reply read strictly",
+    ),
+    (
+        "crates/rig-candle/src/protocol/tests.rs",
+        "every_renderer_takes_any_media_the_adapter_hands_over",
+        "review: Candle refuses media",
     ),
 ];
 
