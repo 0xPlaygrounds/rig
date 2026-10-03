@@ -282,13 +282,26 @@ impl AnthropicConfig {
 
     /// The request headers every Messages-format endpoint takes.
     pub(super) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
+        self.headers_with(builder, None)
+    }
+
+    /// [`Self::headers`], with `extra` among the `anthropic-beta` flags.
+    pub(super) fn headers_with(
+        &self,
+        builder: http::request::Builder,
+        extra: Option<&str>,
+    ) -> http::request::Builder {
         let builder = builder
             .header("x-api-key", self.api_key.expose())
             .header("anthropic-version", &self.version);
-        if self.betas.is_empty() {
+        let mut betas: Vec<&str> = self.betas.iter().map(String::as_str).collect();
+        if let Some(extra) = extra.filter(|extra| !betas.contains(extra)) {
+            betas.push(extra);
+        }
+        if betas.is_empty() {
             builder
         } else {
-            builder.header("anthropic-beta", self.betas.join(","))
+            builder.header("anthropic-beta", betas.join(","))
         }
     }
 }
@@ -450,7 +463,10 @@ impl Wire for Messages {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let body = super::completion::body(self, request, mode)?;
+        let beta = super::completion::drops_unbound_thinking(self, &model)
+            .then_some(super::completion::THINKING_BINDING_BETA);
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Anthropic completion request",
@@ -458,10 +474,10 @@ impl Wire for Messages {
         );
         let request = self
             .provider
-            .headers(http::Request::post(format!(
-                "{}/v1/messages",
-                self.provider.base_url
-            )))
+            .headers_with(
+                http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
+                beta,
+            )
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         Ok(Encoded::new(
@@ -557,12 +573,6 @@ impl crate::completion::ReplayTarget for Messages {
 
     fn call_id_slot(&self) -> Option<&'static str> {
         Some("/id")
-    }
-
-    /// Claude models whose thinking is bound to the tools and system prompt
-    /// it was made under refuse it under others.
-    fn binds_context(&self, model: &str) -> bool {
-        self.provider.dialect.name == ANTHROPIC.name && super::completion::binds_context(model)
     }
 
     /// A server tool's use (`server_tool_use`, `mcp_tool_use`) and the

@@ -132,6 +132,39 @@ pub fn binds_context(model: &str) -> bool {
     listed(&model.replace('.', "-")).is_some_and(|[_, _, binds]| binds)
 }
 
+/// The beta that lets a request ask Anthropic to drop a thinking block bound
+/// to another context instead of rejecting the request.
+pub(super) const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
+
+/// Whether a request to `model` on `wire` asks Anthropic to drop thinking
+/// bound to another context (pi's `drop_block`): Anthropic's own API, for a
+/// model whose thinking binds. Its turns then replay verbatim whatever the
+/// context, and Anthropic drops a block whose binding no longer matches.
+pub(super) fn drops_unbound_thinking(wire: &Messages, model: &str) -> bool {
+    wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(model)
+}
+
+/// `body`'s `thinking` with `drop_block` set: the caller's settings, or the
+/// model's default adaptive thinking when it names none. Thinking the caller
+/// disabled stays disabled.
+fn drop_unbound_thinking(body: &mut Map<String, Value>) {
+    let binding = json!({ "prefix_mismatch_behavior": "drop_block" });
+    match body.get_mut("thinking") {
+        Some(Value::Object(thinking)) => {
+            if thinking.get("type").and_then(Value::as_str) != Some("disabled") {
+                thinking.entry("block_binding").or_insert(binding);
+            }
+        }
+        Some(_) => {}
+        None => {
+            body.insert(
+                "thinking".into(),
+                json!({ "type": "adaptive", "block_binding": binding }),
+            );
+        }
+    }
+}
+
 /// The Messages request body for `request`, already prepared, on `wire`.
 ///
 /// # Errors
@@ -224,6 +257,9 @@ pub(super) fn body(
         ("container", container.map(Value::String)),
     ]);
     body.extend(params);
+    if drops_unbound_thinking(wire, &model) {
+        drop_unbound_thinking(&mut body);
+    }
     if let Some(top) = top {
         body.insert("cache_control".into(), top);
     }

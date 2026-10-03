@@ -2931,14 +2931,16 @@ fn an_idless_call_replays_under_the_id_its_result_gets() {
     }
 }
 
-/// #2703: Claude Opus 5.5 binds its thinking to the tools it was made
-/// under. A turn made under other tools replays as another model's: its
-/// thinking goes as text, never as a signed block the API refuses. Under
-/// the same tools it replays verbatim, and a model that does not bind
-/// replays it whatever the tools.
+/// #2703: Claude Opus 5.5 binds its thinking to the tools and system prompt
+/// it was made under. Its turns replay verbatim whatever the tools, and
+/// every request asks Anthropic, under the binding beta, to drop a block
+/// whose binding no longer matches (pi's `drop_block`). A model that does
+/// not bind gets neither.
 #[test]
-fn thinking_made_under_other_tools_replays_as_another_models() {
+fn a_binding_model_replays_its_thinking_and_asks_for_drop_block() {
+    use crate::wire::{Operation, Wire};
     let thinking = json!({"type": "thinking", "thinking": "plan", "signature": "sig_opus"});
+    let drop_block = json!({"prefix_mismatch_behavior": "drop_block"});
     for (model, binds) in [(CLAUDE_OPUS_5_5, true), (CLAUDE_SONNET_4_6, false)] {
         let wire = AnthropicConfig::new("test-key").completion(model);
         let made = hello_request().tools(vec![generic_tool("add")]);
@@ -2948,34 +2950,63 @@ fn thinking_made_under_other_tools_replays_as_another_models() {
             json!({"model": model, "stop_reason": "end_turn", "content": [
                 thinking.clone(), {"type": "text", "text": "done"}]}),
         );
-        let history = || {
-            vec![
-                message::Message::user("go"),
-                message::Message::Assistant(turn.clone()),
-                message::Message::user("next"),
-            ]
-        };
-        let same = sent_with(&wire, history(), vec![generic_tool("add")]);
-        assert_eq!(
-            same["messages"][1]["content"][0], thinking,
-            "{model}: {same}"
-        );
+        let history = vec![
+            message::Message::user("go"),
+            message::Message::Assistant(turn),
+            message::Message::user("next"),
+        ];
         let changed = sent_with(
             &wire,
-            history(),
+            history.clone(),
             vec![generic_tool("add"), generic_tool("mul")],
         );
         assert_eq!(
-            changed["messages"][1]["content"][0] == thinking,
-            !binds,
+            changed["messages"][1]["content"][0], thinking,
             "{model}: {changed}"
         );
-        if binds {
-            assert_eq!(
-                changed["messages"][1]["content"][0],
-                json!({"type": "text", "text": "plan"})
-            );
-        }
+        let expected = binds.then(|| json!({"type": "adaptive", "block_binding": drop_block}));
+        assert_eq!(
+            changed.get("thinking"),
+            expected.as_ref(),
+            "{model}: {changed}"
+        );
+
+        let mut request = completion_request_with_history(history, None);
+        request.tools = vec![generic_tool("add")];
+        let request = crate::operation::Completion::prepare(request, &wire.describe())
+            .expect("the request prepares");
+        let encoded = wire
+            .encode(request, crate::wire::Mode::Unary)
+            .expect("the request encodes");
+        let beta = encoded
+            .request
+            .headers()
+            .get("anthropic-beta")
+            .and_then(|value| value.to_str().ok());
+        assert_eq!(
+            beta,
+            binds.then_some("thinking-binding-controls-2026-08-01")
+        );
+    }
+}
+
+/// The caller's thinking settings stay, with `drop_block` added; thinking
+/// the caller disabled stays disabled.
+#[test]
+fn drop_block_joins_the_callers_thinking() {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_5_5);
+    for (thinking, sent) in [
+        (
+            json!({"type": "adaptive", "display": "summarized"}),
+            json!({"type": "adaptive", "display": "summarized",
+                "block_binding": {"prefix_mismatch_behavior": "drop_block"}}),
+        ),
+        (json!({"type": "disabled"}), json!({"type": "disabled"})),
+    ] {
+        let mut request = completion_request_with_history(vec![message::Message::user("q")], None);
+        request.additional_params = Some(json!({ "thinking": thinking }));
+        let body = super::body(&wire, request, crate::wire::Mode::Unary).expect("encodes");
+        assert_eq!(body["thinking"], sent);
     }
 }
 
