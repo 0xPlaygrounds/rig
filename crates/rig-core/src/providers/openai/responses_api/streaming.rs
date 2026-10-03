@@ -370,9 +370,10 @@ impl ResponsesDecoder {
     }
 
     /// The slot `frame` addresses, an event for an item of `kind`: the one
-    /// at its output index, else the one its item id names, else, for a
-    /// frame that names no index, the open one the stream is on. `None` for
-    /// an item no slot holds yet.
+    /// at its output index, else the one its item id names, else the open
+    /// one the stream is on, when the frame names no index or that item
+    /// was opened by a frame that named none (an envelope-less delta, then
+    /// its envelope-full done item). `None` for an item no slot holds yet.
     fn addressed(&self, frame: &Value, kind: Kind) -> Result<Option<usize>, ProviderError> {
         let index = output_index(frame)?;
         if let Some(slot) = index.and_then(|index| self.indexed.get(&index)) {
@@ -389,11 +390,11 @@ impl ResponsesDecoder {
         }) {
             return Ok(Some(slot));
         }
-        Ok(self.current.filter(|slot| {
-            index.is_none()
+        Ok(self.current.filter(|current| {
+            (index.is_none() || !self.indexed.values().any(|slot| slot == current))
                 && self
                     .slots
-                    .get(*slot)
+                    .get(*current)
                     .is_some_and(|slot| slot.open && slot.kind == kind)
         }))
     }
