@@ -741,3 +741,30 @@ fn raw_is_the_json_bedrock_sent() {
         })
     );
 }
+
+/// A reply the SDK cannot read, here for a field of an unexpected type,
+/// decodes from the JSON Bedrock sent: each block that converts is kept,
+/// with the stop reason and usage.
+#[test]
+fn a_reply_the_sdk_cannot_read_decodes_from_its_json() {
+    let content = vec![
+        reasoning("plan", Some("sig")),
+        json!({ "text": "Looking it up." }),
+        call("tooluse_1", json!({ "q": "rig" })),
+    ];
+    let read = document(content.clone(), "tool_use");
+    let mut unread = read.clone();
+    unread["metrics"]["latencyMs"] = json!("5");
+    let decode = |document: Value| {
+        rig_core::test_utils::history::decode(
+            &Converse::new(CLAUDE),
+            Mode::Unary,
+            unary_frames(document),
+        )
+        .expect("the reply decodes")
+    };
+    let (expected, response) = (decode(read), decode(unread));
+    assert_eq!(response.choice, expected.choice);
+    assert_eq!(response.usage, expected.usage);
+    assert!(response.tool_calls().count() == 1);
+}

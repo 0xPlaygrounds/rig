@@ -272,6 +272,9 @@ pub enum ConverseFrame {
     Opened { request_id: Option<String> },
     /// The whole unary reply. Its JSON body is the response's `raw`.
     Whole(Box<ConverseOutput>),
+    /// A whole unary reply the SDK could not read, as the JSON Bedrock sent,
+    /// which the decoder reads leniently.
+    Document(serde_json::Value),
     /// One streamed event.
     Event(aws_bedrock::ConverseStreamOutput),
     /// The JSON Bedrock sent for the event that follows, as
@@ -392,6 +395,24 @@ impl rig_core::completion::ReplayTarget for Converse {
     }
 }
 
+/// The JSON and request id of a successful reply the SDK could not read:
+/// the SDK reads a reply strictly, and a field of an unexpected type fails
+/// the whole of it. A success is never a modeled service error.
+fn unread<E>(
+    error: &aws_sdk_bedrockruntime::error::SdkError<
+        E,
+        aws_smithy_runtime_api::client::orchestrator::HttpResponse,
+    >,
+    capture: &Capture,
+) -> Option<(serde_json::Value, Option<String>)> {
+    let raw = error.raw_response()?;
+    if !raw.status().is_success() {
+        return None;
+    }
+    let request_id = raw.headers().get("x-amzn-requestid").map(str::to_owned);
+    Some((capture.document()?, request_id))
+}
+
 impl Transport<Converse> for BedrockRuntime {
     fn send(&self, payload: ConverseRequest, exchange: Exchange) -> Opening<ConverseFrame> {
         let mode = exchange.mode;
@@ -449,7 +470,17 @@ impl Transport<Converse> for BedrockRuntime {
                                 None => opened,
                             }
                         }
-                        Err(error) => Opened::failed(sdk_error(error)),
+                        Err(error) => match unread(&error, &capture) {
+                            Some((document, request_id)) => Opened::new(futures::stream::iter([
+                                Ok(ConverseFrame::Opened {
+                                    request_id: request_id.clone(),
+                                }),
+                                Ok(ConverseFrame::Document(document.clone())),
+                            ]))
+                            .with_request_id(request_id)
+                            .with_document(document),
+                            None => Opened::failed(sdk_error(error)),
+                        },
                     })
                 }
                 Mode::Streaming => {

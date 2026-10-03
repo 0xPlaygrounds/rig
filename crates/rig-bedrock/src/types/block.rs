@@ -266,6 +266,7 @@ pub(crate) fn from_json(item: &Value) -> Option<aws_bedrock::ContentBlock> {
     use aws_bedrock::ContentBlock as Block;
     let (kind, body) = item.as_object()?.iter().next()?;
     match kind.as_str() {
+        "text" => body.as_str().map(|text| Block::Text(text.to_owned())),
         "reasoningContent" => {
             if let Some(data) = body.get("redactedContent") {
                 let bytes = BASE64_STANDARD.decode(data.as_str()?).ok()?;
@@ -307,7 +308,10 @@ pub(crate) fn from_json(item: &Value) -> Option<aws_bedrock::ContentBlock> {
             .tool_use_id(text(body, "toolUseId")?)
             .name(text(body, "name")?)
             .input(json::to_document(body.get("input")?.clone()))
-            .set_type(text(body, "type").map(|kind| aws_bedrock::ToolUseType::from(kind.as_str())))
+            .set_type(present(
+                body.get("type")
+                    .map(|kind| kind.as_str().map(aws_bedrock::ToolUseType::from)),
+            )?)
             .build()
             .ok()
             .map(Block::ToolUse),

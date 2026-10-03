@@ -1,6 +1,6 @@
 //! The Converse reply decoder. A stream arrives as SDK events; a whole reply
-//! is the SDK's output, written block by block through the same helpers, so
-//! both fold into the same turn.
+//! is the SDK's output, or its JSON when the SDK could not read it, written
+//! block by block through the same helpers, so both fold into the same turn.
 //!
 //! Every Converse content block becomes a block. Reasoning, cited text, and
 //! a hosted tool's use and result keep their Converse JSON as the provider
@@ -564,6 +564,40 @@ fn whole(output: ConverseOutput, mut out: Out<'_, Completion>) -> Result<Flow, P
     Ok(out.end(finish(output.usage.as_ref(), Some(&output.stop_reason))))
 }
 
+/// A whole reply the SDK could not read, from the JSON Bedrock sent: each
+/// block that still converts, a marker for the rest, and the stop reason
+/// and usage counts that hold the type Converse documents.
+fn whole_json(document: &Value, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
+    let content = document
+        .pointer("/output/message/content")
+        .and_then(Value::as_array);
+    for (index, item) in content.into_iter().flatten().enumerate() {
+        match block::from_json(item) {
+            Some(content) => whole_block(&mut out, index, content)?,
+            None => marker(&mut out, index, "unknown")?,
+        }
+    }
+    let stop_reason = document
+        .get("stopReason")
+        .and_then(Value::as_str)
+        .map(aws_bedrock::StopReason::from);
+    let usage = document.get("usage").and_then(|usage| {
+        let count = |key: &str| {
+            let count = usage.get(key)?.as_i64()?;
+            i32::try_from(count).ok()
+        };
+        aws_bedrock::TokenUsage::builder()
+            .input_tokens(count("inputTokens").unwrap_or(0))
+            .output_tokens(count("outputTokens").unwrap_or(0))
+            .total_tokens(count("totalTokens").unwrap_or(0))
+            .set_cache_read_input_tokens(count("cacheReadInputTokens"))
+            .set_cache_write_input_tokens(count("cacheWriteInputTokens"))
+            .build()
+            .ok()
+    });
+    Ok(out.end(finish(usage.as_ref(), stop_reason.as_ref())))
+}
+
 impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamState {
     type Event = ConverseFrame;
 
@@ -587,6 +621,7 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamStat
         match event {
             ConverseFrame::Opened { .. } => Ok(Flow::More),
             ConverseFrame::Whole(output) => whole(*output, out),
+            ConverseFrame::Document(document) => whole_json(&document, out),
             ConverseFrame::Event(event) => self.event(event, out),
             ConverseFrame::Raw(Value::Object(event)) => {
                 for (kind, payload) in event {

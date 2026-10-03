@@ -4,6 +4,7 @@
 //! a stream's body is event-stream messages, each carrying one event's JSON.
 //!
 //! The SDK's types stay the decoder's input: they are what the SDK checked.
+//! A successful unary reply the SDK cannot read is decoded from this JSON.
 
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
