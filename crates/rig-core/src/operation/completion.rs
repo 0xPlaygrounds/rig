@@ -951,6 +951,18 @@ impl<'id> Out<'id, Completion> {
         Ok(())
     }
 
+    /// Replace the text or reasoning of the open item at `index` with
+    /// `text`, the whole of it as the provider restates it at its end. The
+    /// fragments already streamed stand; the block ends holding `text`.
+    pub fn restate(&mut self, index: usize, text: &str) -> Result<(), ProviderError> {
+        if let Body::Text(body) | Body::Reasoning { text: body, .. } =
+            &mut self.lock().fold.draft(index)?.body
+        {
+            text.clone_into(body);
+        }
+        Ok(())
+    }
+
     /// Edit the item at `index` in place, for a delta [`Self::merge`] does
     /// not model or the whole item a provider restates when it finishes.
     pub fn edit(
