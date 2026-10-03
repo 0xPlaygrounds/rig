@@ -13,12 +13,11 @@
 //! a gateway: OpenRouter says which upstream served the turn (`provider`) and
 //! what it cost (`usage.cost`), and neither has a slot on the normalized
 //! response, so they reach a caller through `raw` precisely because `raw` is
-//! the body. The document still reads back as OpenRouter's own
-//! [`openrouter::CompletionResponse`], which is the typed escape hatch.
+//! the body. A caller reads it as JSON under OpenRouter's own field names.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_reads_back_as_openrouter_type` | typed read-back | `raw` deserializes into `openrouter::CompletionResponse` and its identity agrees with the normalized response | recorded |
+//! | 1 | `raw_reads_back_as_openrouter_type` | JSON read-back | `raw` is the reply document and its identity agrees with the normalized response | recorded |
 //! | 2 | `raw_exposes_routed_provider` | provider-only fields | `raw.provider` and `raw.usage.cost` equal the fixture body, and neither has a normalized slot | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes, and the same checks hold against its own `raw` | recorded |
 //!
@@ -28,7 +27,7 @@
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the routed provider out of the
-//! recorded body rather than trusting the string the typed view reports, and
+//! recorded body rather than trusting the string `raw` reports, and
 //! cell 3 checks the normalized fields against the recorded body before
 //! checking them against its own `raw`, so a recording that stopped carrying a
 //! usage block or a finish reason fails loudly instead of covering nothing.
@@ -52,7 +51,7 @@ fn request() -> CompletionRequest {
 }
 
 // ================================================================
-// 1. raw is the reply document, and reads back as OpenRouter's type
+// 1. raw is the reply document, read under OpenRouter's field names
 // ================================================================
 
 #[tokio::test]
@@ -85,8 +84,7 @@ async fn raw_reads_back_as_openrouter_type() {
     );
     assert_matches_recorded_document(raw, &body, &["id"], "raw is the gateway's document");
 
-    // And it reads back as OpenRouter's own response type — the typed escape
-    // hatch — whose identity is the identity the decoder reported.
+    // And its identity, read as JSON, is the identity the decoder reported.
     let typed = raw.clone();
     assert_eq!(typed["id"].as_str(), response.response_id());
     assert_eq!(typed["model"].as_str(), response.model());
@@ -131,7 +129,7 @@ async fn raw_exposes_routed_provider() {
         normalized_usage.get("cost").is_none(),
         "the normalized usage has no cost slot: {normalized_usage}"
     );
-    // The routed upstream is also what OpenRouter's own type calls it.
+    // The routed upstream is also what OpenRouter's reply document calls it.
     let typed = raw.clone();
     assert_eq!(typed["provider"].as_str(), Some(recorded_provider));
 }

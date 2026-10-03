@@ -2,8 +2,8 @@
 //!
 //! **The feature.** Every blocking completion attaches the provider's reply
 //! document — the bytes Mistral sent, parsed as JSON — onto the normalized
-//! [`rig::completion::CompletionResponse::raw`], where Mistral's own
-//! [`mistral::CompletionResponse`] reads it back. Capture is always on: there is
+//! [`rig::completion::CompletionResponse::raw`], where a caller reads it as
+//! JSON. Capture is always on: there is
 //! no flag to request it, nothing about it reaches the wire, and a
 //! `Value::Null` only ever means a response built by hand with no provider
 //! payload behind it. `raw` is a second view of the same response, never a
@@ -14,16 +14,16 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_mistral_type` | typed round trip | `raw` deserializes into `mistral::CompletionResponse`, whose provider-native fields are the normalized response's | recorded |
+//! | 1 | `raw_round_trips_mistral_type` | JSON read-back | `raw` is the reply document, whose provider-native fields are the normalized response's | recorded |
 //! | 2 | `raw_exposes_object_and_service_tier` | provider-only field | `raw.object` and `raw.usage.service_tier` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `mistral-correlation-id` header), and the typed view of its own `raw` agrees with it field for field | recorded |
-//! | 4 | `tool_call_raw_round_trips_and_exposes_wire_tool_call` | forced tool call | a `tool_choice: any` turn's `raw` round-trips into `mistral::CompletionResponse`; `raw.choices[0].message.tool_calls[0].function.arguments` is a JSON *string* that parses to the fixture's arguments while the normalized call carries an object; `finish_reason()` is `ToolCalls` while `raw.choices[0].finish_reason` is the wire's `"tool_calls"` | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `mistral-correlation-id` header), and its own `raw`, read as JSON, agrees with it field for field | recorded |
+//! | 4 | `tool_call_raw_round_trips_and_exposes_wire_tool_call` | forced tool call | a `tool_choice: any` turn's `raw` is the reply document; `raw.choices[0].message.tool_calls[0].function.arguments` is a JSON *string* that parses to the fixture's arguments while the normalized call carries an object; `finish_reason()` is `ToolCalls` while `raw.choices[0].finish_reason` is the wire's `"tool_calls"` | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the tier out of the recorded body
-//! rather than trusting the string the typed view reports, cell 3 checks
+//! rather than trusting the string `raw` reports, cell 3 checks
 //! the normalized fields against the recorded body and headers before
-//! comparing them with the typed view of its own `raw`, and cell 4 reads the
+//! comparing them with its own `raw`, and cell 4 reads the
 //! call (id, name, stringified arguments) and the `"tool_calls"` finish out
 //! of the recorded body, so a recording that stopped carrying a usage block,
 //! a finish reason, the correlation-id header, or a tool call fails loudly
@@ -31,8 +31,8 @@
 //!
 //! Both halves of cell 3 are the shared chat-completions checks:
 //! [`chat::assert_reproduces_body`] for "the normalized fields are the
-//! recorded reply's" and [`chat::assert_native_matches_normalized`] for "the
-//! typed view of `raw` agrees with them".
+//! recorded reply's" and [`chat::assert_native_matches_normalized`] for
+//! "`raw`, read as JSON, agrees with them".
 
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::AssistantContent;
@@ -88,7 +88,7 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
 }
 
 // ================================================================
-// 1. raw round-trips Mistral's own type
+// 1. raw is Mistral's reply document
 // ================================================================
 
 #[tokio::test]
@@ -115,9 +115,8 @@ async fn raw_round_trips_mistral_type() {
         "the recorded turn should be a plain text answer"
     );
 
-    // `raw` is the reply document, so Mistral's own response type reads it
-    // back — the documented escape hatch — and its provider-native fields
-    // are the normalized response's fields.
+    // `raw` is the reply document, so a caller reads it as JSON, and its
+    // provider-native fields are the normalized response's fields.
     let typed = response.raw.clone();
     assert_eq!(typed["id"].as_str(), response.response_id());
     assert_eq!(typed["model"].as_str(), response.model());
@@ -201,9 +200,9 @@ async fn normalized_fields_match_raw_renormalized() {
         REQUEST_ID_HEADER,
     );
 
-    // One reply, two views. `raw` is the document Mistral sent; its own type
-    // reads that back, and every provider-native field it exposes must be
-    // the normalized response's. There is one decoder and one mapping, so
+    // One reply, two views. `raw` is the document Mistral sent, read as
+    // JSON, and every provider-native field it exposes must be the
+    // normalized response's. There is one decoder and one mapping, so
     // this pins that mapping instead of comparing it with a second one.
     let typed = response.raw.clone();
     assert_eq!(
@@ -221,7 +220,7 @@ async fn normalized_fields_match_raw_renormalized() {
 }
 
 // ================================================================
-// 4. A forced tool call: raw round-trips and keeps the wire's spelling
+// 4. A forced tool call: raw keeps the wire's spelling
 // ================================================================
 
 #[tokio::test]
@@ -269,8 +268,8 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     assert_eq!(recorded_arguments["city"], json!("Paris"));
 
     // raw keeps the wire's representation: `arguments` is a JSON string
-    // (the typed view re-serializes it compactly, so it is compared parsed,
-    // not byte-for-byte), and the finish reason is the wire's own spelling.
+    // (compared parsed, not byte-for-byte, so whitespace does not matter),
+    // and the finish reason is the wire's own spelling.
     let raw = &response.raw;
     assert_eq!(raw["choices"][0]["finish_reason"], json!("tool_calls"));
     let raw_call = &raw["choices"][0]["message"]["tool_calls"][0];

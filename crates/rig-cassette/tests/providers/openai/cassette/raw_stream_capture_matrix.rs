@@ -10,19 +10,18 @@
 //! `Value::Null` only on a record built by hand, never on one a stream
 //! yielded. Unlike a unary `raw` — which is the provider's verbatim reply
 //! document — a streamed `raw` is the record the decoder assembled from the
-//! reply's frames, because no single frame is the terminal. So it
-//! round-trips into that terminal type and re-serializes equal, it exposes a
-//! terminal-only field the normalized `CompletionResponse` does not model, and —
-//! because capture is unconditional and must stay an escape hatch — running
-//! the decoder's own mapper over the captured record reproduces the `usage`,
-//! `finish_reason`, `model` and identity the stream reported.
+//! reply's frames, because no single frame is the terminal. A cell reads it
+//! as JSON. It exposes a terminal-only field the normalized
+//! `CompletionResponse` does not model, and its `usage`, `finish_reason`,
+//! `model` and identity are the ones the stream reported.
 //!
-//! Terminal types: Chat Completions' `openai::wire::StreamingCompletionResponse`
-//! (whose `additional_params` accumulates the unmodeled top-level chunk
-//! fields — `service_tier`, `system_fingerprint` — and whose `ChatUsage`
-//! keeps the dialect's extra usage counters), and the Responses API's
-//! response object, verbatim (whose `status` and message id come from the
-//! terminal `response.completed` event alone).
+//! Terminal records: on Chat Completions, a JSON object with the keys
+//! `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
+//! `additional_params`. Its `additional_params` accumulates the unmodeled
+//! top-level chunk fields (`service_tier`, `system_fingerprint`), and its
+//! `usage` is the provider's usage object, extra counters included. On the
+//! Responses API, the response object, verbatim (whose `status` and message
+//! id come from the terminal `response.completed` event alone).
 //!
 //! Cells 5–6 are the streamed twins of the reasoning and tool-call cells in
 //! `raw_capture_matrix`: a Responses reasoning stream, whose terminal
@@ -36,12 +35,12 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | chat terminal type round trip; the decoder's mapper over `raw` ≡ terminal | recorded |
+//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | `raw` is the chat terminal record; its fields ≡ terminal | recorded |
 //! | 2 | `chat_stream_raw_exposes_service_tier` | chat, terminal-only field | `raw["additional_params"]["service_tier"]` = last chunk | recorded |
 //! | 3 | `responses_stream_raw_round_trips_typed` | Responses, streamed | Responses terminal type round trip; its fields ≡ terminal | recorded |
 //! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
 //! | 5 | `responses_reasoning_stream_raw_round_trips_typed` | Responses, reasoning stream (`reasoning: { effort, summary }`) | terminal round trip; `raw["reasoning_metadata"]` = `response.completed`'s `reasoning`; premise: a `reasoning` output item with `encrypted_content` | recorded |
-//! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | terminal round trip; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
+//! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the terminal record; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Premise, re-derived from each
 //! cell's fixture after the wrapper returns: the recorded stream ends with a
@@ -190,10 +189,9 @@ async fn chat_stream_raw_round_trips_typed() {
 
     // `raw` is there to read at all: it is the terminal response object.
     captured_raw(SCENARIO, &terminal);
-    // It reads back as the chat terminal type, re-serializes to exactly the
-    // captured value, and agrees with the normalized terminal on identity,
-    // model, finish reason and the accounting it normalized — two views of
-    // one record.
+    // It is the chat terminal record, read as JSON. It agrees with the
+    // normalized terminal on identity, model, finish reason and the
+    // accounting it normalized: two views of one record.
     let typed = chat::assert_terminal_round_trips(&terminal);
     // The captured value is *this* stream's terminal.
     assert_matches_recorded_token(
@@ -460,10 +458,11 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     );
 }
 
-/// A forced Chat tool-call stream: the terminal record round-trips, `raw`
-/// spells `finish_reason` as OpenAI's own `"tool_calls"` — the same word the
-/// last finishing chunk carried — and the normalized terminal reports
-/// `FinishReason::ToolCalls`. Premise: a chunk's delta carried `tool_calls`.
+/// A forced Chat tool-call stream: the terminal record agrees with the
+/// normalized terminal, and `raw` spells `finish_reason` as OpenAI's own
+/// `"tool_calls"`, the same word the last finishing chunk carried, while the
+/// normalized terminal reports `FinishReason::ToolCalls`. Premise: a chunk's
+/// delta carried `tool_calls`.
 #[tokio::test]
 async fn chat_tool_call_stream_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_stream_capture_matrix/chat_tool_call_stream_raw_round_trips_typed";

@@ -1,21 +1,21 @@
-//! Matrix for the typed escape hatch's parity with the normalized path on
-//! both Copilot routes.
+//! Matrix for the reply document's parity with the normalized path on both
+//! Copilot routes.
 //!
 //! # The contract
 //!
 //! One `completion(req)` yields both views of one reply: the normalized
 //! [`CompletionResponse`](rig::completion::CompletionResponse), and
 //! [`raw`](rig::completion::CompletionResponse::raw) — the route's own reply
-//! body, verbatim, which reads back into that route's own response type.
+//! body, verbatim, read as JSON.
 //! The two must agree on `identity()`, `finish_reason()`, `model` and
 //! `usage`, because the normalized view is a projection of that exact body,
 //! produced by the one decoder — there is no second mapping to compare it
 //! against any more.
 //!
-//! Copilot relays two request shapes, so `raw` has two shapes — the shared
-//! [`openai::CompletionResponse`] on the chat-completions route, the
-//! Responses response object on the Responses route, and the
-//! route is decided by the model id alone
+//! Copilot relays two request shapes, so `raw` has two shapes: a
+//! chat-completions reply body on the chat-completions route, and the
+//! Responses response object on the Responses route. The route is decided by
+//! the model id alone
 //! ([`wire::routes_through_responses`](rig::providers::copilot::wire::routes_through_responses)).
 //! `raw` carries no routing tag: the body is the provider's, and the tag was
 //! rig's.
@@ -29,7 +29,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_raw_with_request_id_reproduces_completion` | chat route | `raw` reads back as [`openai::CompletionResponse`], re-normalizes to the same identity/finish_reason/model/usage, and `provider_request_id` is the recorded `x-request-id` | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_raw_with_request_id_reproduces_completion` | chat route | `raw` is the chat-completions reply document and agrees with the normalized identity/finish_reason/model/usage, and `provider_request_id` is the recorded `x-request-id` | unrecorded (no COPILOT credentials in this environment) |
 //! | 2 | `responses_raw_completion_carries_request_id` | responses route | the same, with `raw` the Responses route's own reply object | unrecorded (no COPILOT credentials in this environment) |
 //!
 //! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
@@ -108,9 +108,9 @@ async fn chat_raw_with_request_id_reproduces_completion() {
 
     let response = captured.take();
     // The other view of the same reply: the route's own body. There is one
-    // mapping now, so the typed parse is compared field by field against the
-    // folded response rather than re-derived through a second implementation
-    // of it.
+    // mapping now, so the body, read as JSON, is compared field by field
+    // against the folded response rather than re-derived through a second
+    // implementation of it.
     let typed = response.raw.clone();
     chat::assert_native_matches_normalized(&response, &typed, "the chat route's own body");
     assert_eq!(response.provider(), COPILOT_PROVIDER);

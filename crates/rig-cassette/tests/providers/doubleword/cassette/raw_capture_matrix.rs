@@ -4,17 +4,16 @@
 //! **The feature.** Every blocking completion attaches Doubleword's verbatim
 //! reply document onto the normalized
 //! [`rig::completion::CompletionResponse::raw`]. Doubleword speaks the shared
-//! chat-completions wire, so that document reads back as
-//! [`openai::CompletionResponse`] — but it is the bytes the provider sent,
-//! not a re-serialization of that parse, so it also retains fields the shared
-//! type does not model. Capture is always on: there is no flag to request it,
+//! chat-completions wire, and `raw` is the bytes the provider sent, read as
+//! JSON. So it also retains fields the shared chat-completions shape does not
+//! name. Capture is always on: there is no flag to request it,
 //! nothing about it reaches the wire, and a `Value::Null` only ever means a
 //! response built by hand with no provider payload behind it. `raw` is a
 //! second view of the same response, never a substitute for a normalized
 //! field.
 //!
 //! Two kinds of field are reachable only through `raw`, and cells 1 and 2
-//! pin one each: the `object` tag, which the shared type models and the
+//! pin one each: the `object` tag, which the shared shape names and the
 //! normalized response has no slot for, and Doubleword's backend usage
 //! extras (`cache_creation`, `cache_creation_input_tokens`,
 //! `cache_read_input_tokens`), which no Rust type here models and which
@@ -22,13 +21,13 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_openai_type` | typed read-back | `raw` deserializes into `openai::CompletionResponse`, and additionally carries usage extras that type does not model | recorded |
+//! | 1 | `raw_round_trips_openai_type` | JSON read-back | `raw` is the reply document, its id is the normalized response's, and it carries usage extras the shared shape does not name | recorded |
 //! | 2 | `raw_exposes_object` | provider-only field | `raw.object` equals the fixture body; the unmodeled usage extras reach the caller through `raw` | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the normalized fields reproduce the fixture bytes and equal the provider-native fields of the captured payload | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the tag out of the recorded body
-//! rather than trusting the typed view, and cell 3 checks the normalized
+//! rather than trusting `raw`, and cell 3 checks the normalized
 //! fields against the recorded body before comparing them with the captured
 //! payload's own fields, so a recording that stopped carrying a usage block
 //! or a finish reason fails loudly instead of covering nothing. Doubleword
@@ -62,7 +61,7 @@ const UNMODELLED_USAGE: [&str; 3] = [
 ];
 
 // ================================================================
-// 1. raw reads back as the shared OpenAI type — and carries more
+// 1. raw is Doubleword's reply document, and carries more
 // ================================================================
 
 #[tokio::test]
@@ -80,9 +79,9 @@ async fn raw_round_trips_openai_type() {
     let typed = raw.clone();
     assert_eq!(typed["id"].as_str(), response.response_id());
 
-    // `raw` is the document Doubleword sent, not a re-serialization of
-    // `typed`: these usage fields have no home on the shared type and reach
-    // the caller only because capture keeps the payload whole.
+    // `raw` is the document Doubleword sent, not a re-serialization of a
+    // parse: these usage fields have no home on the normalized response and
+    // reach the caller only because capture keeps the payload whole.
     for field in UNMODELLED_USAGE {
         assert!(
             raw["usage"].get(field).is_some(),

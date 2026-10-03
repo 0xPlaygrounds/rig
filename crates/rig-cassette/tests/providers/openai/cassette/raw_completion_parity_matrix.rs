@@ -1,26 +1,24 @@
-//! Typed-route parity for OpenAI: the provider-native view of a reply
-//! reproduces what `Model::call` returns.
+//! Raw parity for OpenAI: the provider-native view of a reply reproduces
+//! what `Model::call` returns.
 //!
 //! # What this pins
 //!
 //! One call yields both views of one reply. The normalized
 //! [`CompletionResponse`] is what `completion()` returns, and
-//! [`CompletionResponse::raw`] holds the provider's own reply, serialized —
-//! so deserializing `raw` into the route's wire type and normalizing *that*
-//! must reproduce the response the call already handed back.
+//! [`CompletionResponse::raw`] holds the provider's reply document verbatim.
+//! Reading `raw` as JSON, under the provider's own field names, must
+//! reproduce the response the call already handed back.
 //!
-//! On the Chat Completions route the wire type (`openai::CompletionResponse`)
-//! is substitutable across every OpenAI-compatible provider, so the transport
-//! request id from the `x-request-id` header cannot live on it: it is a
-//! header, not a body field, and `raw` mirrors the body. So the provider-native
+//! On the Chat Completions route the transport request id from the
+//! `x-request-id` header is not in the reply document. It is a header, not a
+//! body field, and `raw` is the body. So the provider-native
 //! view reproduces `completion()` only once the call's own transport id is
 //! attached to it. Cell 3 pins exactly that asymmetry — the body-derived view
 //! lacks the id, `completion()` reports it — so the documented contract is
 //! tested rather than asserted in prose.
 //!
-//! On the Responses route the wire type carries `provider_request_id` itself,
-//! but wire deserialization always leaves it `None` for the same reason, so
-//! the same rule holds.
+//! On the Responses route the reply document carries no transport id
+//! either, for the same reason, so the same rule holds.
 //!
 //! Every parity cell issues the same request twice — two interactions of one
 //! scenario, replayed in order by the harness. The first call supplies the
@@ -298,7 +296,7 @@ fn assert_chat_parity(
             "{scenario}: interaction {index} wire finish reason"
         );
     }
-    // The first reply, read both ways: the provider's own type out of `raw`,
+    // The first reply, read both ways: the provider's own document in `raw`,
     // then rig's normalized view of the same reply.
     let reply = typed.raw.clone();
     assert_chat_views_agree(scenario, &reply, &typed);

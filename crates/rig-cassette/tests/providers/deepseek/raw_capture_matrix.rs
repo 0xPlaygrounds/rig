@@ -8,9 +8,8 @@
 //!
 //! **What `raw` is.** The driver fills it from the reply's bytes, so it is
 //! DeepSeek's response *document* rather than a re-serialization of whatever
-//! the decoder parsed — which is why [`deepseek::CompletionResponse`]
-//! deserializes straight out of it and is the typed escape hatch for the
-//! fields the normalized view has no slot for. DeepSeek is worth its own
+//! the decoder parsed. A caller reads it as JSON for the fields the
+//! normalized view has no slot for. DeepSeek is worth its own
 //! matrix because its usage block carries a `prompt_cache_hit_tokens` /
 //! `prompt_cache_miss_tokens` split rig only half-normalizes: the hit count
 //! reaches `Usage::cached_input_tokens`, the miss count has no slot at all
@@ -18,20 +17,20 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_deepseek_type` | typed read-back | `raw` deserializes into `deepseek::CompletionResponse`, whose provider-native fields are the normalized response's | recorded |
+//! | 1 | `raw_round_trips_deepseek_type` | JSON read-back | `raw` is the reply document, whose provider-native fields are the normalized response's | recorded |
 //! | 2 | `raw_exposes_prompt_cache_miss_tokens` | provider-only field | `raw.usage.prompt_cache_miss_tokens` and `raw.system_fingerprint` equal the fixture body, and neither has a normalized slot | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes, and the typed view of its own `raw` agrees with it field for field | recorded |
-//! | 4 | `reasoning_raw_round_trips_and_exposes_reasoning_content` | reasoning turn | a thinking-mode turn's `raw` reads back into `deepseek::CompletionResponse`; its assistant message's `reasoning` (spelled `reasoning_content` on the wire) is the fixture's reasoning string, which the normalized view carries only as a `Reasoning` block under a different spelling | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes, and its own `raw`, read as JSON, agrees with it field for field | recorded |
+//! | 4 | `reasoning_raw_round_trips_and_exposes_reasoning_content` | reasoning turn | a thinking-mode turn's `raw` is the reply document; its assistant message's `reasoning_content` is the fixture's reasoning string, which the normalized view carries only as a `Reasoning` block under a different spelling | recorded |
 //!
 //! The scenario literals — and so the fixture directories — keep the names
 //! they were recorded under.
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the miss count out of the recorded
-//! body rather than trusting the number the typed view reports, cell 3
+//! body rather than trusting the number `raw` reports, cell 3
 //! checks the normalized fields against the recorded body — the shared
 //! chat-completions field set plus DeepSeek's own cache-hit rule — before
-//! comparing them with the typed view of `raw`, and cell 4 reads the
+//! comparing them with `raw`, and cell 4 reads the
 //! reasoning string out of the recorded body (and the `thinking` toggle out
 //! of the recorded request), so a recording that stopped carrying a usage
 //! block, a finish reason, or a reasoning block fails loudly instead of
@@ -99,7 +98,7 @@ fn assert_typed_view_matches(typed: &Value, response: &CompletionResponse) {
 }
 
 // ================================================================
-// 1. raw reads back as DeepSeek's own type
+// 1. raw is DeepSeek's reply document
 // ================================================================
 
 #[tokio::test]
@@ -116,8 +115,8 @@ async fn raw_round_trips_deepseek_type() {
 
     let typed = response.raw.clone();
     assert_typed_view_matches(&typed, &response);
-    // And `raw` is the reply document rather than a re-serialization
-    // of that parse, so it keeps what neither view models.
+    // And `raw` is the reply document, verbatim, so it keeps what the
+    // normalized view does not model.
     assert!(
         response.raw["usage"]["prompt_cache_miss_tokens"].is_u64(),
         "the document keeps DeepSeek's miss count: {}",
@@ -206,7 +205,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // request-id header, so `None` is the documented outcome.
     assert_no_request_id(response.provider_request_id.as_deref(), PROVIDER);
 
-    // One seam, two views: the typed read of the response's own `raw` is the
+    // One seam, two views: the JSON read of the response's own `raw` is the
     // same reply the normalized fields describe. Capture adds a view; there
     // is only one mapping left, and this is what pins it.
     let typed = response.raw.clone();
@@ -214,7 +213,7 @@ async fn normalized_fields_match_raw_renormalized() {
 }
 
 // ================================================================
-// 4. A thinking-mode turn: raw reads back and carries reasoning_content
+// 4. A thinking-mode turn: raw carries reasoning_content
 // ================================================================
 
 #[tokio::test]
@@ -248,8 +247,8 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
         "the recorded turn should still carry an answer"
     );
 
-    // The typed view of `raw` carries the wire's own spelling of the
-    // reasoning block, and agrees with the normalized response beside it.
+    // `raw` carries the wire's own spelling of the reasoning block, and
+    // agrees with the normalized response beside it.
     let typed = response.raw.clone();
     assert_typed_view_matches(&typed, &response);
     assert_eq!(

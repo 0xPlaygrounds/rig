@@ -337,8 +337,8 @@ async fn logprobs_survive_into_the_raw_response() {
             .await
             .expect("a logprobs request should succeed");
 
-        // `raw` is the reply document, so the typed escape hatch reads the
-        // per-token array straight off it.
+        // `raw` is the reply document, so a caller reads the per-token array
+        // straight off it as JSON.
         let logprobs = response.raw["choices"][0]["logprobs"].clone();
         assert!(
             logprobs.is_object(),

@@ -1,4 +1,4 @@
-//! Response identity, and the typed route's parity with the normalized one.
+//! Response identity, and the reply document's parity with the normalized one.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
@@ -219,9 +219,9 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
 ///
 /// 1. **`encode` is deterministic.** The same built request produces the same
 ///    request bytes every time, so a caller can replay it.
-/// 2. **`raw` is a faithful second view of the reply it rode on.** Read back
-///    through `llamacpp::CompletionResponse`, its provider-native fields
-///    reproduce the normalized response's.
+/// 2. **`raw` is a faithful second view of the reply it rode on.** Read as
+///    the reply document, its provider-native fields reproduce the
+///    normalized response's.
 ///
 /// llama.cpp sends no transport request id, so — unlike Groq or xAI, where a
 /// captured body necessarily drops one the normalized path reports — `raw` is

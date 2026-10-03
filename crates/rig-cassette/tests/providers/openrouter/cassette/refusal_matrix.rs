@@ -20,11 +20,11 @@
 //! uses the shared `delta_text`, which prefers a non-empty `refusal`, so the
 //! same request streamed the refusal fine and only the blocking twin failed.
 //!
-//! The fix applies the one rule the OpenAI chat paths share
-//! (`assistant_refusal_fallback`, #2332) rather than inventing a second one,
-//! and the chat wire's decoder now folds the unary body by synthesizing the
-//! stream's events — so the two transports cannot disagree about a refusal at
-//! all.
+//! The fix applies the one rule the OpenAI chat paths share rather than
+//! inventing a second one: a delta's text is its `content`, or else its
+//! `refusal`. The chat wire's decoder reads a unary body as a single delta
+//! carrying its message, so the two transports cannot disagree about a
+//! refusal at all.
 //!
 //! **Recorded upstreams.** OpenRouter routes `openai/gpt-4o` to either OpenAI
 //! or Azure — the very first, unpinned, hunt recording landed on Azure — so
@@ -68,14 +68,12 @@
 //! | 21 | `control_no_schema_refusal_is_plain_content` | blocking | raw model | refusal as content | recorded |
 //! | 22 | `control_tool_call_turn_is_unchanged` | blocking | raw model | tool-calls-only turn | recorded |
 //!
-//! Ten unit cells — wire shapes the live gateway will not produce on demand
-//! (`content: null`, `content` absent, `content: ""`, a refusal beside
-//! non-empty content, an empty refusal string, a tool-calls-only turn, a
-//! refusal *with* tool calls, a refusal beside reasoning details, the
-//! Responses-shaped refusal *part* arriving on this wire, and document-vs-
-//! normalized text agreement) — live next to the fix in
-//! `crates/rig-core/src/providers/openai/wire/chat.rs`
-//! (`assistant_refusal_fallback`).
+//! Wire shapes the live gateway will not produce on demand (`content: null`,
+//! `content` absent, `content: ""`, a refusal beside non-empty content, an
+//! empty refusal string, a tool-calls-only turn, a refusal *with* tool calls,
+//! a refusal beside reasoning details, and the Responses-shaped refusal
+//! *part* arriving on this wire) are read by the same rule in
+//! `crates/rig-core/src/providers/openai/wire/chat.rs`.
 
 use rig::message::Message;
 use serde::Deserialize;
@@ -201,8 +199,8 @@ async fn blocking_agent_prompt_surfaces_refusal() {
 /// not. `text_response` is gone with the client layer and there is one reader
 /// now, so the cell asserts what remains: the decoder's normalized choice
 /// carries exactly the `refusal` string sitting beside `content` in the reply
-/// document, which is what `assistant_refusal_fallback` in
-/// `openai/wire/chat.rs` is for.
+/// document, which the shared Chat decoder in `openai/wire/chat.rs` reads in
+/// place of an empty `content`.
 #[tokio::test]
 async fn blocking_raw_and_normalized_agree() {
     const SCENARIO: &str = "refusal_matrix/blocking_raw_and_normalized_agree";

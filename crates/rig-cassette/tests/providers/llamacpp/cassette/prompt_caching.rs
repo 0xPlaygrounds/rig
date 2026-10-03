@@ -13,8 +13,7 @@
 //! `cache_prompt` default, and reports its work in two independently populated
 //! places: `usage.prompt_tokens_details.cached_tokens`, which rig normalizes
 //! into [`Usage::cached_input_tokens`](rig::completion::Usage), and
-//! `timings.cache_n`, which this provider preserves through
-//! [`llamacpp::Timings`](rig::providers::llamacpp::Timings).
+//! `timings.cache_n`, which reaches a caller in `raw`, the reply document.
 //!
 //! Measured by the fixtures below, against b10964-b29c606e2 with
 //! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M: `prompt_caching/blocking_probe` bills
@@ -298,8 +297,8 @@ async fn agent_loop_does_not_move_its_own_prefix() {
 /// The two counters llama.cpp populates independently must agree.
 ///
 /// `usage.prompt_tokens_details.cached_tokens` is what rig normalizes;
-/// `timings.cache_n` is what llama.cpp's own tooling reads and what this
-/// provider preserves through `llamacpp::Timings`. They are computed
+/// `timings.cache_n` is what llama.cpp's own tooling reads and what reaches
+/// a caller in `raw`, the reply document. They are computed
 /// separately in the server, so a disagreement would mean one of them is
 /// describing something else — and rig's users would be reading whichever one
 /// their tool happened to pick.

@@ -17,11 +17,10 @@
 //! `created`, `system_fingerprint`, and llama.cpp's own `timings` — and a
 //! caller reaches them through `raw`. That is cells 2 and 4.
 //!
-//! And `raw` reads back into llama.cpp's own response type,
-//! [`llamacpp::CompletionResponse`](rig::providers::llamacpp::CompletionResponse),
-//! which is the documented typed escape hatch. Cells 1 and 3 use it: 1 that
-//! the document parses, 3 that every normalized field the decoder produced
-//! agrees with the provider-native field it came from. Cell 3 is deliberately
+//! And `raw` is read as JSON under the provider's own field names. Cell 1
+//! pins that it is the recorded reply document, and cell 3 that every
+//! normalized field the decoder produced agrees with the provider-native
+//! field it came from. Cell 3 is deliberately
 //! *not* a comparison of two normalizations — there is one decoder and one
 //! mapping now, so comparing it to a second mapping would compare it to a
 //! copy of itself.
@@ -41,19 +40,17 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_reads_back_as_the_provider_type` | typed access | `raw` is the recorded reply document and `llamacpp::CompletionResponse::deserialize(&raw)` parses it | recorded |
+//! | 1 | `raw_reads_back_as_the_provider_type` | body fidelity | `raw` is the recorded reply document, with the fixture body's fields | recorded |
 //! | 2 | `raw_exposes_envelope_fields` | provider-only fields | `object`/`created`/`system_fingerprint` in `raw` equal the fixture body | recorded |
 //! | 3 | `normalized_fields_match_the_typed_raw` | normalized view | every normalized field equals the provider-native field on `raw` that produced it | recorded |
-//! | 4 | `raw_preserves_the_timings_the_openai_type_drops` | Part 4: dropped fields | `timings` survives into `raw`; the same bytes read as `openai::CompletionResponse` lose it | recorded |
+//! | 4 | `raw_preserves_the_timings_the_openai_type_drops` | Part 4: dropped fields | `timings` survives into `raw`, equal to the fixture body's | recorded |
 //!
-//! Cell 4 is the one that justifies this provider having its own response
-//! type at all. `timings` is llama.cpp's server-side latency accounting and
-//! the only such accounting a caller gets — for local inference,
-//! `predicted_per_second` is the number people watch. The shared
-//! `openai::CompletionResponse` has neither a field for it nor a catch-all, so
-//! a caller who reads `raw` through that type drops it silently, while
-//! `llamacpp::CompletionResponse` keeps it. The asymmetry is real and cell 4
-//! plus `raw_stream_capture_matrix`'s timings cell are what pin both halves.
+//! Cell 4 pins the field a caller most needs from `raw`. `timings` is
+//! llama.cpp's server-side latency accounting and the only such accounting a
+//! caller gets. For local inference, `predicted_per_second` is the number
+//! people watch. The normalized response has no field for it, so a caller
+//! reads it off `raw`, as the server sent it. Cell 4 and
+//! `raw_stream_capture_matrix`'s timings cell pin both paths.
 //!
 //! The scenario literals — and therefore the fixture filenames — keep the
 //! names they were recorded under; two cell names changed because the old
@@ -109,7 +106,7 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the reply document, and it reads back as the provider's type
+// 1: raw is the reply document, verbatim
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -264,18 +261,14 @@ async fn normalized_fields_match_the_typed_raw() {
 }
 
 // ---------------------------------------------------------------------------
-// 4: `timings` — the field the shared OpenAI type has nowhere to put
+// 4: `timings`, the field the normalized response has nowhere to put
 // ---------------------------------------------------------------------------
 
-/// `raw` carries llama.cpp's `timings`; reading the same bytes as the shared
-/// OpenAI type loses them.
+/// `raw` carries llama.cpp's `timings`, equal to the recorded wire value.
 ///
-/// This is the whole argument for `llamacpp::CompletionResponse` existing,
-/// made against real recorded bytes rather than a hand-written body. The
-/// second half is deliberately a *negative* assertion about
-/// `openai::CompletionResponse`: if that type ever grows a catch-all, this
-/// cell fails and tells whoever is looking that the provider-local type is no
-/// longer carrying its weight.
+/// The normalized response has no field for them, so `raw` is how a caller
+/// reaches them. The cell reads real recorded bytes rather than a
+/// hand-written body.
 #[tokio::test]
 async fn raw_preserves_the_timings_the_openai_type_drops() {
     let scenario = "raw_capture_matrix/raw_preserves_timings";

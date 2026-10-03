@@ -19,14 +19,14 @@
 //! is the dialect datum `GROQ.request_id_header`, and the driver stamps
 //! `provider_request_id` from it. The reply document has no field for it in
 //! the shared chat-completions shape; Groq happens to mirror it in its own
-//! `x_groq.id` envelope, which no shared type models and which reaches a
+//! `x_groq.id` envelope, which the shared shape does not name and which reaches a
 //! caller only because `raw` is the document. So the header and the body
 //! agree, and the cells assert that they do rather than assuming it.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `encode_is_deterministic_and_raw_is_faithful` | two turns, one seam | both turns send identical request bytes; each response reproduces *its own* interaction's body and `x-request-id`, and its `raw["x_groq"]["id"]` is that same id | recorded |
-//! | 2 | `the_transport_id_comes_from_the_header_not_the_body` | header vs document | `provider_request_id` is populated from the header; the shared typed view of `raw` has no slot for it, and the document carries it only in Groq's own envelope | recorded |
+//! | 2 | `the_transport_id_comes_from_the_header_not_the_body` | header vs document | `provider_request_id` is populated from the header; the shared chat-completions fields of `raw` have no slot for it, and the document carries it only in Groq's own envelope | recorded |
 //!
 //! The scenario literals — and therefore the fixture filenames — keep the
 //! names they were recorded under; the cell names describe what the cells now

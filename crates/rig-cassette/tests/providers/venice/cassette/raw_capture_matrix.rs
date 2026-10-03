@@ -19,7 +19,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_venice_type` | typed read-back | `raw` deserializes into `venice::CompletionResponse`, and additionally carries fields that type does not model | recorded |
+//! | 1 | `raw_round_trips_venice_type` | JSON read-back | `raw` is the reply document, its id is the normalized response's, and it carries fields the normalized response does not model | recorded |
 //! | 2 | `raw_exposes_venice_parameters_and_cost` | provider-only field | `raw.venice_parameters.disable_thinking` and `raw.cost.usd` equal the fixture body | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the normalized fields reproduce the fixture bytes and equal the provider-native fields of the captured payload | recorded |
 //!
@@ -58,7 +58,7 @@ fn request() -> CompletionRequest {
 }
 
 // ================================================================
-// 1. raw reads back as Venice's own type — and carries more
+// 1. raw is Venice's reply document, and carries more
 // ================================================================
 
 #[tokio::test]
@@ -76,7 +76,7 @@ async fn raw_round_trips_venice_type() {
     let typed = raw.clone();
     assert_eq!(typed["id"].as_str(), response.response_id());
 
-    // `raw` is the document Venice sent, not a re-serialization of `typed`:
+    // `raw` is the document Venice sent, not a re-serialization of a parse:
     // these fields have no home on any Rust type here, and reach the caller
     // only because capture keeps the payload whole.
     assert_eq!(

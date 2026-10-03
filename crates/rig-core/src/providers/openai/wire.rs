@@ -284,9 +284,9 @@ pub enum BodyRewrite {
     /// that demand one (Fireworks).
     HuggingFaceRouter,
     /// DeepSeek: string-flattened content, `content: ""` on tool-call-only
-    /// assistant turns, `reasoning_content: ""` on assistant turns without
-    /// reasoning, and forced tool choices
-    /// suppressed unless thinking is explicitly disabled.
+    /// assistant turns, and forced tool choices suppressed unless thinking
+    /// is explicitly disabled. Its reasoning field is
+    /// [`Quirks::reasoning_field`].
     DeepSeek,
     /// Mira's gateway: content-part arrays flattened to strings.
     Mira,

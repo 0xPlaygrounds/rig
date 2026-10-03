@@ -16,17 +16,16 @@
 //! envelope on every response; none has a home on the normalized
 //! [`rig::completion::CompletionResponse`], and cell 2 reads them back
 //! through `raw`. Its per-second throughput fields inside `usage`
-//! (`avg_compl_tok_per_sec` and friends) are not modelled by the shared
-//! [`openai::CompletionResponse`] either — and they still reach a caller,
-//! because `raw` is the document rather than the parse: cell 1 pins that by
-//! requiring `raw` to reproduce the recorded reply key for key while the
-//! typed view is only as wide as the shared shape.
+//! (`avg_compl_tok_per_sec` and friends) have no normalized home either, and
+//! they still reach a caller because `raw` is the document rather than the
+//! parse. Cell 1 pins that by requiring `raw` to reproduce the recorded reply
+//! key for key.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_is_the_reply_document` | body fidelity | `raw` reproduces the recorded reply, and reads back as `openai::CompletionResponse` | unrecorded (no mistral.rs server in this environment) |
+//! | 1 | `raw_is_the_reply_document` | body fidelity | `raw` reproduces the recorded reply, and its id and model are the normalized response's | unrecorded (no mistral.rs server in this environment) |
 //! | 2 | `raw_exposes_envelope_fields` | provider-only fields | `system_fingerprint`/`object`/`created` in `raw` equal the fixture body | unrecorded (no mistral.rs server in this environment) |
 //! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized fields are the fields the reply document carries, live and in the fixture | unrecorded (no mistral.rs server in this environment) |
 //!
@@ -88,7 +87,7 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the reply document, and the shared type reads it back
+// 1: raw is the reply document, key for key
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -109,7 +108,7 @@ async fn raw_is_the_reply_document() {
 
     let response = captured.take();
     let typed = response.raw.clone();
-    // The typed view agrees with the normalized one on what the model said,
+    // `raw` agrees with the normalized view on what the model said,
     // so raw is a superset, not a divergent copy.
     assert_eq!(typed["model"].as_str(), response.model());
     assert_eq!(typed["id"].as_str(), response.response_id());
@@ -119,9 +118,9 @@ async fn raw_is_the_reply_document() {
     let raw = &response.raw;
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
-    // The document, key for key: whatever mistral.rs sent — including the
-    // `usage` throughput fields no shared type models — is what a caller
-    // reads off `raw`.
+    // The document, key for key: whatever mistral.rs sent, including the
+    // `usage` throughput fields the normalized response has no home for, is
+    // what a caller reads off `raw`.
     assert_matches_recorded_document(raw, &body, &["id"], "raw is the provider's document");
     assert_wire_value_matches(raw, &body, "id");
 }

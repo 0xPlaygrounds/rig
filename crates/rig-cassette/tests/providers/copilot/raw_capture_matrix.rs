@@ -6,23 +6,22 @@
 //! Capture is always on. Every completion the driver returns carries `raw`:
 //! the route's own reply *document*, set from the reply's bytes
 //! (`driver::call` does `serde_json::from_slice(&body)`), untagged. So it is
-//! not a round trip through whatever type the decoder parsed — it is the body
-//! Copilot sent, and it reads back into the type that route owns
-//! ([`openai::CompletionResponse`] on chat completions,
-//! the Responses response object on the Responses route). Nothing
+//! not a round trip through whatever the decoder parsed. It is the body
+//! Copilot sent: a chat-completions reply body on chat completions, the
+//! Responses response object on the Responses route. Nothing
 //! about it is sent to Copilot. `raw == Value::Null` means only that a
 //! `CompletionResponse` was built by hand without a provider response behind
 //! it, which no cell here can produce.
 //!
 //! That the document is the body, and not the parse, is what lets a caller
-//! reach the fields rig's shared types do not model: Copilot's chat route
-//! sends a `copilot_usage` block that the shared chat-completions type has no
+//! reach the fields the normalized response does not model: Copilot's chat
+//! route sends a `copilot_usage` block that the normalized response has no
 //! field for, and it reaches the caller through `raw` for exactly that
 //! reason. Cell 1 pins it, so the capability stays stated rather than
 //! rediscovered.
 //!
 //! Which route a turn took is a fact about the wire rather than about `raw`,
-//! so each typed-access cell asserts it on the bound wire itself.
+//! so each body-fidelity cell asserts it on the bound wire itself.
 //!
 //! Provider-only fields per route: the chat route's `system_fingerprint` and
 //! `copilot_usage`; the Responses route's `object`/`status`.
@@ -31,10 +30,10 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_raw_round_trips_provider_type` | chat route, typed access | the wire is `CopilotWire::Chat`; `raw` is untagged, reads back as `openai::CompletionResponse`, and carries the recorded reply's own keys including the unmodelled `copilot_usage` | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_raw_round_trips_provider_type` | chat route, body fidelity | the wire is `CopilotWire::Chat`; `raw` is untagged, is the chat-completions reply document, and carries the recorded reply's own keys including the unmodelled `copilot_usage` | unrecorded (no COPILOT credentials in this environment) |
 //! | 2 | `chat_raw_exposes_system_fingerprint` | chat route, provider-only field | `raw.system_fingerprint` equals the fixture body's | unrecorded (no COPILOT credentials in this environment) |
 //! | 3 | `chat_normalized_fields_equal_raw_renormalized` | chat route, normalized view | every normalized field equals the provider-native field it was mapped from, on `raw` and on the fixture body | unrecorded (no COPILOT credentials in this environment) |
-//! | 4 | `responses_raw_round_trips_provider_type` | responses route, typed access | the wire is `CopilotWire::Responses`; `raw` is untagged, is the Responses response object, and carries the recorded reply's own keys | unrecorded (no COPILOT credentials in this environment) |
+//! | 4 | `responses_raw_round_trips_provider_type` | responses route, body fidelity | the wire is `CopilotWire::Responses`; `raw` is untagged, is the Responses response object, and carries the recorded reply's own keys | unrecorded (no COPILOT credentials in this environment) |
 //! | 5 | `responses_raw_exposes_envelope` | responses route, provider-only fields | `raw.object`/`raw.status` equal the fixture body's | unrecorded (no COPILOT credentials in this environment) |
 //! | 6 | `responses_normalized_fields_equal_raw_renormalized` | responses route, normalized view | every normalized field equals the provider-native field it was mapped from, on `raw` and on the fixture body | unrecorded (no COPILOT credentials in this environment) |
 //!
@@ -117,7 +116,7 @@ fn assert_recorded_responses_body(body: &Value, scenario: &str) {
 }
 
 /// `raw` is the reply document: it carries the top-level keys the recorded
-/// reply carried, whatever subset of them rig's wire type models. Scrubbing
+/// reply carried, whatever subset of them rig normalizes. Scrubbing
 /// rewrites values and never keys, so the key set compares exactly in both
 /// cassette modes.
 fn assert_is_reply_document(raw: &Value, body: &Value, scenario: &str) {
@@ -220,8 +219,8 @@ async fn chat_raw_exposes_system_fingerprint() {
 
 /// `raw` and the normalized response are two views of one reply, produced by
 /// one decoder: so every normalized field must equal the provider-native field
-/// it was mapped from — read off `raw` through the route's own response type,
-/// and again off the recorded wire body.
+/// it was mapped from, read off `raw` as JSON and again off the recorded
+/// wire body.
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_normalized_fields_equal_raw_renormalized() {

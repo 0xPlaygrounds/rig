@@ -8,19 +8,18 @@
 //!
 //! **What `raw` is.** The driver sets it from the reply's bytes
 //! (`driver::call`), so it is the provider's response *document* rather than a
-//! round-trip through whatever type the decoder parsed. Two things follow for
-//! Groq specifically. Its timing accounting (`usage.queue_time`,
-//! `prompt_time`, `completion_time`, `total_time`) is reachable through the
-//! typed escape hatch — [`openai::CompletionResponse`] models those fields and
-//! the normalized [`rig::completion::Usage`] has no slot for any of them. And
-//! its `x_groq` envelope, which *no* shared chat-completions type models,
-//! reaches a caller anyway, precisely because `raw` is the body. `raw` is a
+//! round-trip through whatever the decoder parsed. Two things follow for Groq
+//! specifically. Its timing accounting (`usage.queue_time`, `prompt_time`,
+//! `completion_time`, `total_time`) is reachable through `raw`, and the
+//! normalized [`rig::completion::Usage`] has no slot for any of it. And its
+//! `x_groq` envelope, which the shared chat-completions shape does not name,
+//! reaches a caller too, precisely because `raw` is the body. `raw` is a
 //! second view of the same response, never a substitute for a normalized
 //! field.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_is_the_verbatim_response_body` | body fidelity | `raw` reproduces the recorded reply field for field, reads back as `openai::CompletionResponse`, and still carries the unmodelled `x_groq` | recorded |
+//! | 1 | `raw_is_the_verbatim_response_body` | body fidelity | `raw` reproduces the recorded reply field for field, its id agrees with the normalized response, and it still carries the unmodelled `x_groq` | recorded |
 //! | 2 | `raw_exposes_queue_time` | provider-only fields | `raw`'s `usage.queue_time`/`prompt_time` and `system_fingerprint` equal the fixture body, and none of them has a normalized slot | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (body and `x-request-id` header), and the same checks hold against its own `raw` | recorded |
 //!
@@ -30,7 +29,7 @@
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the queue time out of the recorded
-//! body rather than trusting the number the typed view reports, and cell 3
+//! body rather than trusting the number `raw` reports, and cell 3
 //! checks the normalized fields against the recorded body and header before
 //! checking them against `raw`, so a recording that stopped carrying usage, a
 //! finish reason, or the request-id header fails loudly instead of covering
@@ -95,8 +94,8 @@ async fn raw_is_the_verbatim_response_body() {
     );
     assert_matches_recorded_document(raw, &body, &["id"], "raw is the provider's document");
 
-    // And it is still the shared chat-completions shape: the typed escape
-    // hatch reads it back, and agrees with the normalized identity.
+    // And it is still the shared chat-completions shape: its `id` agrees
+    // with the normalized identity.
     let typed = raw.clone();
     assert_matches_recorded_token(
         typed["id"].as_str(),
@@ -204,8 +203,8 @@ async fn normalized_fields_match_raw_renormalized() {
     let raw = response.raw.clone();
     chat::assert_reproduces_body(&response, PROVIDER, &raw, "the response's own raw");
 
-    // The provider-native view of the same reply, through the typed escape
-    // hatch: its own fields are what the decoder mapped from.
+    // The provider-native view of the same reply, read as JSON: its own
+    // fields are what the decoder mapped from.
     chat::assert_native_matches_normalized(&response, &raw, "the reply document");
     assert_eq!(
         raw["choices"][0]["finish_reason"]

@@ -82,6 +82,9 @@ async fn a_tool_result_image_is_read_by_the_model() {
             )
             .max_tokens(30)
             .temperature(0.0)
+            // The request continues a tool loop, so it declares the tool;
+            // without one, the result reaches the model as text.
+            .tool(crate::support::zero_arg_tool_definition("view_file"))
             .messages(vec![
                 tool_call_turn(),
                 rig::message::Message::User {

@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI Responses API,
 //! asserted through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal `CompletionResponse`
+//! `choice` from `CompletionStream::finish`, the terminal `CompletionResponse`
 //! record, usage, IDs, and finish reason — real recorded wire traffic, not
 //! synthetic chunks.
 //!

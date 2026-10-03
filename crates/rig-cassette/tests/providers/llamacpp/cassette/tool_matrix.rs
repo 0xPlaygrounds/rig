@@ -713,6 +713,9 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                     },
                     lookup_call_turn("call_text"),
                 ])
+                // The request continues a tool loop, so it declares the tool;
+                // without one, its call and result reach the model as text.
+                .tool(zero_arg_tool_definition("lookup"))
                 .max_tokens(512),
             )
             .await
@@ -772,6 +775,9 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                     },
                     lookup_call_turn("call_json"),
                 ])
+                // The request continues a tool loop, so it declares the tool;
+                // without one, its call and result reach the model as text.
+                .tool(zero_arg_tool_definition("lookup"))
                 .max_tokens(512),
             )
             .await

@@ -4,11 +4,11 @@
 //! # The feature
 //!
 //! Capture is always on. llama.cpp streams through the OpenAI `Chat` wire,
-//! whose decoder builds
-//! [`openai::wire::StreamingCompletionResponse`](rig::providers::openai::wire::StreamingCompletionResponse)
-//! as its terminal record: the usage from the stream's final `data:` frame
-//! plus the envelope fields the chunks carried (`object`, `created`,
-//! `system_fingerprint`) accumulated under `additional_params`. Every
+//! whose decoder builds a terminal record: a JSON object with the keys
+//! `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
+//! `additional_params`. Its usage comes from the stream's final `data:`
+//! frame, and the envelope fields the chunks carried (`object`, `created`,
+//! `system_fingerprint`) accumulate under `additional_params`. Every
 //! terminal record the seam yields carries `raw` — that record serialized by
 //! the decoder before it folds into a `CompletionResponse` — the terminal record
 //! only, never the frames, and nothing about it is sent to the server.
@@ -37,19 +37,17 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::wire::StreamingCompletionResponse::deserialize(&raw)` re-serializes equal | recorded |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | record shape | `raw` is the terminal record; its id, model, finish reason and usage are the terminal's | recorded |
 //! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded frames; usage equals the terminal frame | recorded |
 //! | 3 | `stream_raw_preserves_llamacpp_timings` | Part 4: dropped fields | `timings` from the terminal frame survives under `additional_params` | recorded |
 //!
-//! Cell 3 is the streaming half of the asymmetry `raw_capture_matrix`'s
-//! timings cell describes. The terminal record carries a
-//! `#[serde(flatten)]`-backed `additional_params` catch-all for exactly this
-//! reason — a streamed terminal must not erase a field merely because the
-//! shared wire shape does not know its name yet — so llama.cpp's `timings`
-//! reach the caller here *without* any provider-specific type. The blocking
-//! path's `openai::CompletionResponse` has no such catch-all, which is why
-//! `llamacpp::CompletionResponse` exists; on that path `timings` reach the
-//! caller because `raw` is the reply document.
+//! Cell 3 is the streaming half of `raw_capture_matrix`'s timings cell. The
+//! terminal record's `additional_params` collects every top-level chunk
+//! field the shared wire shape does not name, so a streamed terminal does not
+//! erase a field merely because the shape does not know it. llama.cpp's
+//! `timings` reach the caller here *without* any provider-specific type. On
+//! the blocking path `timings` reach the caller because `raw` is the reply
+//! document.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
@@ -88,10 +86,9 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     .expect("stream_raw_terminal_round_trips_provider_type should replay from its cassette");
     let terminal = sink.take();
 
-    // `raw` is the record the decoder emitted, serialized, so the typed round
-    // trip is exact; and the typed record's own identity and accounting are
-    // the normalized ones — `ChatUsage::to_normalized` pinned directly rather
-    // than compared to a copy of itself.
+    // `raw` is the terminal record the decoder emitted, read as JSON. Its
+    // identity and accounting are the normalized ones, pinned against the
+    // provider's own counters rather than compared to a copy of the mapping.
     chat::assert_terminal_round_trips(&terminal);
 
     let (_, terminal_frame) = chat::recorded_frames_with_terminal(LLAMACPP_PROVIDER, scenario);
@@ -173,11 +170,11 @@ async fn stream_raw_exposes_envelope_fields() {
 /// llama.cpp's `timings` ride the terminal frame and land under
 /// `additional_params`.
 ///
-/// The blocking path needs `llamacpp::CompletionResponse` to read this field
-/// as a typed value; the streaming path keeps it for free, because the
-/// terminal record's `additional_params` is a `#[serde(flatten)]` catch-all.
-/// Pinning both halves is what makes the asymmetry a measured fact rather
-/// than a reading of the source.
+/// The blocking path keeps this field because `raw` is the reply document.
+/// The streaming path keeps it because the terminal record's
+/// `additional_params` collects the chunk fields the shared shape does not
+/// name. Pinning both paths makes that a measured fact rather than a reading
+/// of the source.
 #[tokio::test]
 async fn stream_raw_preserves_llamacpp_timings() {
     let scenario = "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings";

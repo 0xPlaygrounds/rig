@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI **chat-completions**
 //! wire (the compat family's canonical wire), asserted through the
-//! *normalized* path: the aggregated [`StreamingCompletionResponse::choice`],
+//! *normalized* path: the aggregated `choice` from `CompletionStream::finish`,
 //! the terminal `CompletionResponse` record, usage, IDs, and finish reason — real
 //! recorded wire traffic, not synthetic chunks.
 //!

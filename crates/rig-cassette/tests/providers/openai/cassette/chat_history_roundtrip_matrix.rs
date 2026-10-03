@@ -162,7 +162,28 @@ fn history(shape: Shape) -> Vec<Message> {
 
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
     let mut builder = CompletionRequest::new(prompt(cell.shape)).max_tokens(24);
-    for message in history(cell.shape) {
+    // A history that carries calls continues a tool loop, so the request
+    // declares their tools, as an agent's does; without them the calls and
+    // their results reach the model as text.
+    let history = history(cell.shape);
+    let mut names = Vec::new();
+    for message in &history {
+        if let rig::completion::Message::Assistant(turn) = message {
+            for call in turn.tool_calls() {
+                if !names.contains(&call.function.name) {
+                    names.push(call.function.name.clone());
+                }
+            }
+        }
+    }
+    for name in names {
+        builder = builder.tool(rig::completion::ToolDefinition::new(
+            name,
+            "Look up a stored value.",
+            json!({"type": "object", "properties": {}}),
+        ));
+    }
+    for message in history {
         builder = builder.message(message);
     }
     builder
@@ -302,7 +323,11 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
         cell.transport == Transport::Streaming,
         "{scenario}: transport"
     );
-    assert!(request.get("tools").is_none(), "{scenario}: history only");
+    assert_eq!(
+        request.get("tools").is_some(),
+        cell.shape != Shape::Text,
+        "{scenario}: a tool history declares its tools"
+    );
 
     let messages = request["messages"]
         .as_array()

@@ -1,26 +1,25 @@
 //! Raw provider response capture on Groq's streaming chat-completions path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the provider-native terminal
-//! record the decoder assembled behind the stream's finished response —
-//! for Groq the shared chat-completions terminal
-//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
-//! is always on: there is no flag to request it, nothing about it reaches
-//! the wire, and a
-//! `Value::Null` only ever means a terminal built by hand with no provider
-//! record behind it. It is the terminal record only, never the stream's
-//! frames — which is the one place `raw` is *not* a reply document: an SSE
-//! reply is many frames and no single one of them is the answer, so the
-//! decoder's reassembled record is what rides along, and a typed round trip
-//! through it is therefore exact. Groq's terminal usage carries its timing
-//! accounting (`queue_time`, `prompt_time`, ...) that the normalized `Usage`
-//! has no slot for, and the accumulated `additional_params` carries the
-//! `x_groq` envelope and `system_fingerprint` the frames repeat; both are
-//! reachable only through `raw`.
+//! [`rig::completion::CompletionResponse::raw`] carries the provider-native
+//! terminal record the decoder assembled behind the stream's finished
+//! response: for Groq the shared chat-completions terminal record, a JSON
+//! object with the keys `usage`, `finish_reason`, `response_id`, `model`,
+//! `logprobs` and `additional_params`. Capture is always on: there is no flag
+//! to request it, nothing about it reaches the wire, and a `Value::Null` only
+//! ever means a terminal built by hand with no provider record behind it. It
+//! is the terminal record only, never the stream's frames. That is the one
+//! place `raw` is *not* a reply document: an SSE reply is many frames and no
+//! single one of them is the answer, so the decoder's reassembled record is
+//! what rides along. Groq's terminal usage carries its timing accounting
+//! (`queue_time`, `prompt_time`, ...) that the normalized `Usage` has no slot
+//! for, and the accumulated `additional_params` carries the `x_groq` envelope
+//! and `system_fingerprint` the frames repeat; both are reachable only through
+//! `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat terminal record and agrees with the normalized terminal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_queue_time` | terminal-only field | `raw.usage.queue_time` and `raw.additional_params.x_groq.id` equal the recorded terminal frame's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -57,7 +56,7 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
 }
 
 // ================================================================
-// 1. raw round-trips the terminal type
+// 1. raw is the terminal record
 // ================================================================
 
 #[tokio::test]

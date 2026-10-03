@@ -9,9 +9,9 @@
 //! 1. **`encode` is deterministic.** The same built request produces the same
 //!    request bytes every time, so a caller can replay it — and both recorded
 //!    turns of each scenario must therefore carry byte-identical bodies.
-//! 2. **`raw` is a faithful second view, not a summary.** Read back as
-//!    OpenRouter's own [`openrouter::CompletionResponse`], its provider-native
-//!    fields are the fields the normalized response reports.
+//! 2. **`raw` is a faithful second view, not a summary.** Read as JSON under
+//!    OpenRouter's own field names, its provider-native fields are the fields
+//!    the normalized response reports.
 //!
 //! **Why there is no third thing to compare.** `OPENROUTER.request_id_header`
 //! is `None`, so [`rig::completion::CompletionResponse::provider_request_id`]
@@ -99,9 +99,8 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     let native = second.raw.clone();
     chat::assert_native_matches_normalized(&second, &native, "the typed view of raw");
 
-    // OpenRouter's own type is the gateway-aware escape hatch over the same
-    // document, and it is where the upstream's native finish-reason spelling
-    // survives; the normalized response maps it away.
+    // The same document is where the upstream's native finish-reason
+    // spelling survives; the normalized response maps it away.
     let typed = second.raw.clone();
     assert_eq!(
         typed["choices"][0]["native_finish_reason"].as_str(),

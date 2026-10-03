@@ -8,13 +8,12 @@
 //! `raw` is `Value::Null` only on a response constructed without a provider
 //! response behind it, never on one that came off the wire. Because capture
 //! is unconditional it must be an escape hatch, not a second source of
-//! truth: `raw` reads back as the route's own response type, and every field
-//! rig normalizes is the field that type carries under the provider's own
-//! name, so `raw` and the normalized response are two views of one reply
-//! produced by one decoder. Both routes are covered because they have
-//! different wire types: Chat Completions' `openai::CompletionResponse` and
-//! the Responses API's response object model their bodies differently, so
-//! each needs its own evidence that `raw` is the document its decoder read.
+//! truth: every field rig normalizes is the field `raw` carries under the
+//! provider's own name, so `raw` and the normalized response are two views
+//! of one reply produced by one decoder. Both routes are covered because
+//! their reply documents differ: a Chat Completions body and a Responses
+//! response object are shaped differently, so each needs its own evidence
+//! that `raw` is the document its decoder read.
 //!
 //! `raw` being the whole document rather than a re-serialization of the
 //! parse is what makes it an escape hatch at all: the provider-specific
@@ -33,19 +32,19 @@
 //! spelling is OpenAI's own `"tool_calls"`), and a Chat structured-output
 //! turn (`response_format: json_schema`, whose message carries a `refusal`
 //! sibling and whose body carries `system_fingerprint`). Cells 5–7 record
-//! each of those and hold the same reads-back / two-views bar.
+//! each of those and hold the same two-views bar.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_raw_round_trips_typed` | chat, unary | `raw` reads back as `openai::CompletionResponse`; its fields ≡ the normalized response's | recorded |
+//! | 1 | `chat_raw_round_trips_typed` | chat, unary | `raw` is the chat reply document; its fields ≡ the normalized response's | recorded |
 //! | 2 | `chat_raw_exposes_service_tier` | chat, provider-only field | `raw["service_tier"]` = fixture | recorded |
 //! | 3 | `responses_raw_round_trips_typed` | Responses, unary | `raw` is the Responses response object; its fields ≡ the normalized response's | recorded |
 //! | 4 | `responses_raw_exposes_service_tier_and_store` | Responses, provider-only fields | `raw["service_tier"]`, `raw["store"]` = fixture | recorded |
 //! | 5 | `responses_reasoning_raw_round_trips_typed` | Responses, reasoning turn (`reasoning: { effort, summary }`) | reads back; `raw["output"][i].type == "reasoning"` with `encrypted_content` + `summary` = fixture; `raw["reasoning"]` = fixture | recorded |
-//! | 6 | `chat_tool_call_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | reads back; `tool_calls[0].function.arguments` is a JSON string = fixture; `finish_reason() == ToolCalls` while `raw` spells `"tool_calls"` | recorded |
-//! | 7 | `chat_structured_output_raw_exposes_system_fingerprint` | chat, `response_format: json_schema` | reads back; `raw["system_fingerprint"]` = fixture; message carries `refusal`; content parses under the schema | recorded |
+//! | 6 | `chat_tool_call_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the reply document; `tool_calls[0].function.arguments` is a JSON string = fixture; `finish_reason() == ToolCalls` while `raw` spells `"tool_calls"` | recorded |
+//! | 7 | `chat_structured_output_raw_exposes_system_fingerprint` | chat, `response_format: json_schema` | `raw` is the reply document; `raw["system_fingerprint"]` = fixture; message carries `refusal`; content parses under the schema | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Each cell re-derives its premise
 //! from its own fixture after the wrapper returns: the recorded response is a
@@ -634,7 +633,7 @@ async fn chat_tool_call_raw_round_trips_typed() {
 }
 
 /// A Chat structured-output turn (`response_format: json_schema` via the
-/// builder's `output_schema`): `raw` reads back as the chat type, its
+/// builder's `output_schema`): `raw` is the chat reply document, its
 /// message content is the schema-shaped JSON the fixture carries, and
 /// `system_fingerprint` — which the normalized response does not model — is
 /// readable off `raw` and equals the fixture's. The wire's `refusal` sibling
