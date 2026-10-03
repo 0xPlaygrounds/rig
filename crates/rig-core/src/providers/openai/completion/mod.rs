@@ -1,14 +1,9 @@
-//! Chat Completions model identifiers, the tool choice the OpenAI wires
-//! share, and the usage counters of OpenAI's replies.
+//! OpenAI's completion model identifiers.
 //!
 //! ```
-//! use rig_core::providers::openai::completion::{GPT_4O, ToolChoice};
-//! assert_eq!(serde_json::to_value(ToolChoice::Required)?, "required");
-//! # let _ = GPT_4O;
-//! # Ok::<(), serde_json::Error>(())
+//! use rig_core::providers::openai::completion::GPT_4O;
+//! assert_eq!(GPT_4O, "gpt-4o");
 //! ```
-
-use serde::{Deserialize, Serialize, Serializer};
 
 /// GPT-6 Astra, API ID `gpt-6-astra`: a reasoning model. Chat Completions
 /// takes its function tools only at `reasoning_effort: "none"`, which it does
@@ -143,76 +138,6 @@ pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
 pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
 /// `gpt-4.1` completion model
 pub const GPT_4_1: &str = "gpt-4.1";
-
-#[derive(Default, Clone, Debug, PartialEq)]
-pub enum ToolChoice {
-    #[default]
-    Auto,
-    None,
-    Required,
-    /// Force the model to call one specific function:
-    /// `{"type": "function", "function": {"name": "..."}}`.
-    Function {
-        name: String,
-    },
-}
-
-#[derive(Deserialize, Serialize)]
-struct ToolChoiceFunctionName {
-    name: String,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum ToolChoiceFunctionRepr {
-    Function { function: ToolChoiceFunctionName },
-}
-
-impl Serialize for ToolChoice {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Auto => serializer.serialize_str("auto"),
-            Self::None => serializer.serialize_str("none"),
-            Self::Required => serializer.serialize_str("required"),
-            Self::Function { name } => ToolChoiceFunctionRepr::Function {
-                function: ToolChoiceFunctionName { name: name.clone() },
-            }
-            .serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ToolChoice {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Repr {
-            Mode(String),
-            Function(ToolChoiceFunctionRepr),
-        }
-
-        match Repr::deserialize(deserializer)? {
-            Repr::Mode(mode) => match mode.as_str() {
-                "auto" => Ok(Self::Auto),
-                "none" => Ok(Self::None),
-                "required" => Ok(Self::Required),
-                other => Err(serde::de::Error::custom(format!(
-                    "unknown tool_choice mode {other:?}"
-                ))),
-            },
-            Repr::Function(ToolChoiceFunctionRepr::Function {
-                function: ToolChoiceFunctionName { name },
-            }) => Ok(Self::Function { name }),
-        }
-    }
-}
-
-impl ToolChoice {
-    /// Force a call to the named function.
-    pub fn function(name: impl Into<String>) -> Self {
-        Self::Function { name: name.into() }
-    }
-}
 
 /// Whether the model matches the GPT-5 through GPT-9 or numeric o-series rules
 /// used to select `max_completion_tokens`.

@@ -1,7 +1,7 @@
 //! Cassette-backed coverage of Venice's `venice_parameters` request block.
 //!
 //! These are the tests that pin Venice's own dialect: that the block reaches
-//! the wire in the shape [`VeniceParameters`] serializes (the cassette matches
+//! the wire as the caller spells it (the cassette matches
 //! outbound request bodies, so a serialization regression fails as a mock
 //! miss), and that what Venice sends back — the resolved echo, including web
 //! search citations — survives onto
@@ -10,15 +10,15 @@
 //! the echo and the per-request `cost` have no slot on the normalized
 //! response, which makes it the only route to them.
 
-use rig::providers::venice::{VeniceParameters, WebSearchMode};
+use serde_json::{Value, json};
 
 use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
 use rig::completion::CompletionRequest;
 
 /// The parameters Venice echoes as resolved, read out of the captured
 /// document.
-fn venice_echo(raw: &serde_json::Value) -> VeniceParameters {
-    serde_json::from_value(raw["venice_parameters"].clone())
+fn venice_echo(raw: &Value) -> &Value {
+    raw.get("venice_parameters")
         .expect("Venice echoes its resolved parameters")
 }
 
@@ -29,13 +29,11 @@ async fn web_search_on_returns_citations() {
         let request =
             CompletionRequest::new("In one sentence, what is the Rust programming language?")
                 .max_tokens(64)
-                .additional_params(
-                    VeniceParameters::new()
-                        .enable_web_search(WebSearchMode::On)
-                        .enable_web_citations(true)
-                        .disable_thinking(true)
-                        .into_additional_params(),
-                );
+                .additional_params(json!({"venice_parameters": {
+                    "enable_web_search": "on",
+                    "enable_web_citations": true,
+                    "disable_thinking": true,
+                }}));
 
         let response = model
             .call(request)
@@ -43,8 +41,7 @@ async fn web_search_on_returns_citations() {
             .expect("web-search completion should succeed");
         let parameters = venice_echo(&response.raw);
         assert_eq!(
-            parameters.enable_web_search,
-            Some(WebSearchMode::On),
+            parameters["enable_web_search"], "on",
             "Venice should report the web-search mode it applied"
         );
         let citations = response.raw["venice_parameters"]["web_search_citations"]
@@ -70,22 +67,17 @@ async fn web_search_auto_is_echoed() {
         let model = client.completion(DEFAULT_MODEL);
         let request = CompletionRequest::new("What is 2 + 2? Answer with the number only.")
             .max_tokens(16)
-            .additional_params(
-                VeniceParameters::new()
-                    .enable_web_search(WebSearchMode::Auto)
-                    .disable_thinking(true)
-                    .into_additional_params(),
-            );
+            .additional_params(json!({"venice_parameters": {
+                "enable_web_search": "auto",
+                "disable_thinking": true,
+            }}));
 
         let response = model
             .call(request)
             .await
             .expect("auto web-search completion should succeed");
 
-        assert_eq!(
-            venice_echo(&response.raw).enable_web_search,
-            Some(WebSearchMode::Auto)
-        );
+        assert_eq!(venice_echo(&response.raw)["enable_web_search"], "auto");
     })
     .await;
 }
@@ -98,12 +90,10 @@ async fn disable_thinking_is_applied() {
         let model = client.completion(DEFAULT_MODEL);
         let request = CompletionRequest::new("Name one primary color. Answer with one word.")
             .max_tokens(16)
-            .additional_params(
-                VeniceParameters::new()
-                    .disable_thinking(true)
-                    .strip_thinking_response(true)
-                    .into_additional_params(),
-            );
+            .additional_params(json!({"venice_parameters": {
+                "disable_thinking": true,
+                "strip_thinking_response": true,
+            }}));
 
         let response = model
             .call(request)
@@ -111,8 +101,8 @@ async fn disable_thinking_is_applied() {
             .expect("completion should succeed");
 
         let echo = venice_echo(&response.raw);
-        assert_eq!(echo.disable_thinking, Some(true));
-        assert_eq!(echo.strip_thinking_response, Some(true));
+        assert_eq!(echo["disable_thinking"], true);
+        assert_eq!(echo["strip_thinking_response"], true);
     })
     .await;
 }
@@ -127,20 +117,18 @@ async fn venice_system_prompt_can_be_disabled() {
             let model = client.completion(DEFAULT_MODEL);
             let request = CompletionRequest::new("Say hi in three words.")
                 .max_tokens(24)
-                .additional_params(
-                    VeniceParameters::new()
-                        .include_venice_system_prompt(false)
-                        .disable_thinking(true)
-                        .into_additional_params(),
-                );
+                .additional_params(json!({"venice_parameters": {
+                    "include_venice_system_prompt": false,
+                    "disable_thinking": true,
+                }}));
 
             let response = model
                 .call(request)
                 .await
                 .expect("completion should succeed");
             assert_eq!(
-                venice_echo(&response.raw).include_venice_system_prompt,
-                Some(false)
+                venice_echo(&response.raw)["include_venice_system_prompt"],
+                false
             );
             assert!(
                 response.raw["cost"].is_object(),
@@ -159,22 +147,17 @@ async fn character_slug_selects_a_persona() {
         let model = client.completion(DEFAULT_MODEL);
         let request = CompletionRequest::new("Introduce yourself in one sentence.")
             .max_tokens(64)
-            .additional_params(
-                VeniceParameters::new()
-                    .character_slug("alan-watts")
-                    .disable_thinking(true)
-                    .into_additional_params(),
-            );
+            .additional_params(json!({"venice_parameters": {
+                "character_slug": "alan-watts",
+                "disable_thinking": true,
+            }}));
 
         let response = model
             .call(request)
             .await
             .expect("character completion should succeed");
 
-        assert_eq!(
-            venice_echo(&response.raw).character_slug.as_deref(),
-            Some("alan-watts")
-        );
+        assert_eq!(venice_echo(&response.raw)["character_slug"], "alan-watts");
     })
     .await;
 }

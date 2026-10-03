@@ -1,27 +1,4 @@
 use super::*;
-use serde_json::json;
-
-/// The tool choice the OpenAI wires share reads and writes OpenAI's
-/// spelling: a mode string, or a function object.
-#[test]
-fn a_tool_choice_round_trips_in_openai_spelling() {
-    for (choice, wire) in [
-        (ToolChoice::Auto, json!("auto")),
-        (ToolChoice::None, json!("none")),
-        (ToolChoice::Required, json!("required")),
-        (
-            ToolChoice::function("add"),
-            json!({"type": "function", "function": {"name": "add"}}),
-        ),
-    ] {
-        assert_eq!(serde_json::to_value(&choice).expect("serializes"), wire);
-        assert_eq!(
-            serde_json::from_value::<ToolChoice>(wire).expect("deserializes"),
-            choice
-        );
-    }
-    assert!(serde_json::from_value::<ToolChoice>(json!("sometimes")).is_err());
-}
 
 /// The gate itself, over every family whose behavior was measured against
 /// the live endpoint: the reasoning models reject the legacy field, and

@@ -140,14 +140,11 @@ fn doubleword_thinking(on: bool) -> serde_json::Value {
 }
 
 fn venice_thinking(on: bool) -> serde_json::Value {
-    use rig_core::providers::venice::VeniceParameters;
-
     if on {
-        VeniceParameters::default().strip_thinking_response(false)
+        serde_json::json!({"venice_parameters": {"strip_thinking_response": false}})
     } else {
-        VeniceParameters::default().disable_thinking(true)
+        serde_json::json!({"venice_parameters": {"disable_thinking": true}})
     }
-    .into_additional_params()
 }
 
 impl ThinkingWire {

@@ -35,7 +35,6 @@
 //! small reasoning model answers in plain text within the token budget.
 
 use rig::completion::CompletionRequest;
-use rig::providers::venice::VeniceParameters;
 use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
@@ -50,11 +49,7 @@ const PROMPT: &str = "Reply with the single word: pong";
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT)
         .max_tokens(16)
-        .additional_params(
-            VeniceParameters::new()
-                .disable_thinking(true)
-                .into_additional_params(),
-        )
+        .additional_params(json!({"venice_parameters": {"disable_thinking": true}}))
 }
 
 // ================================================================
