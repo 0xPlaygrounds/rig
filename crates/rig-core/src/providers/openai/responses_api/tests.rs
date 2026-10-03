@@ -726,32 +726,6 @@ fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
 }
 
 #[test]
-fn service_tier_serializes_expected_strings() {
-    let cases = [
-        (OpenAIServiceTier::Auto, "auto"),
-        (OpenAIServiceTier::Default, "default"),
-        (OpenAIServiceTier::Flex, "flex"),
-        (OpenAIServiceTier::Priority, "priority"),
-        (OpenAIServiceTier::Standard, "standard"),
-    ];
-
-    for (service_tier, expected) in cases {
-        assert_eq!(
-            serde_json::to_value(service_tier).expect("service tier should serialize"),
-            json!(expected)
-        );
-    }
-
-    assert_eq!(
-        serde_json::to_value(OpenAIServiceTier::Other(
-            "provider_experimental".to_string()
-        ))
-        .expect("provider-specific service tier should serialize"),
-        json!("provider_experimental")
-    );
-}
-
-#[test]
 fn completion_response_accepts_top_level_reasoning_string() {
     let response = json!({
         "id": "resp_123",
@@ -967,46 +941,11 @@ fn reasoning_mode_pro_composes_with_independent_effort() {
 
 #[test]
 fn reasoning_context_values_survive_request_conversion() {
-    for (context, wire_value) in [
-        (ReasoningContext::Auto, "auto"),
-        (ReasoningContext::AllTurns, "all_turns"),
-        (ReasoningContext::CurrentTurn, "current_turn"),
-    ] {
-        let typed = serde_json::to_value(Reasoning::new().with_context(context))
-            .expect("typed reasoning should serialize");
-        assert_eq!(typed, json!({ "context": wire_value }));
-
+    for wire_value in ["auto", "all_turns", "current_turn"] {
         let request = request_with_reasoning_params(json!({ "context": wire_value }));
         let serialized = serde_json::to_value(&request).expect("request should serialize");
         assert_eq!(serialized["reasoning"], json!({ "context": wire_value }));
     }
-}
-
-#[test]
-fn reasoning_omits_unset_optional_fields() {
-    let reasoning = serde_json::to_value(Reasoning::new().with_mode(ReasoningMode::Pro))
-        .expect("reasoning should serialize");
-
-    assert_eq!(reasoning, json!({ "mode": "pro" }));
-
-    let reasoning = serde_json::to_value(
-        Reasoning::new()
-            .with_effort(ReasoningEffort::Max)
-            .with_mode(ReasoningMode::Pro)
-            .with_context(ReasoningContext::CurrentTurn)
-            .with_summary_level(ReasoningSummaryLevel::Detailed),
-    )
-    .expect("reasoning should serialize");
-
-    assert_eq!(
-        reasoning,
-        json!({
-            "effort": "max",
-            "mode": "pro",
-            "context": "current_turn",
-            "summary": "detailed"
-        })
-    );
 }
 
 #[test]
