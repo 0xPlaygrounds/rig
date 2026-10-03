@@ -940,7 +940,10 @@ pub fn h09_capability_downgrades<F: HistoryFixture>(fixture: &F) {
             let text = body.to_string();
             for (kind, needles) in payloads(&adapted) {
                 assert!(
-                    needles.iter().any(|needle| text.contains(needle.as_str())),
+                    needles.iter().any(|needle| {
+                        let escaped = serde_json::to_string(needle).unwrap_or_default();
+                        text.contains(needle.as_str()) || text.contains(escaped.trim_matches('"'))
+                    }),
                     "{model} in {mode:?}: the {kind} the adapter kept is sent ({needles:?}): {body}"
                 );
             }
