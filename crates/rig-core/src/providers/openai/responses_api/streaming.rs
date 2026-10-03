@@ -150,7 +150,8 @@ pub struct ResponseChunk {
     /// The response itself
     pub response: CompletionResponse,
     /// The item sequence
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
 }
 
 /// Response chunk type.
@@ -1099,14 +1100,16 @@ pub enum ItemChunkKind {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingItemDoneOutput {
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub item: Output,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ContentPartChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub part: ContentPartChunkPart,
 }
 
@@ -1166,7 +1169,8 @@ impl<'de> Deserialize<'de> for ContentPartChunkPart {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DeltaTextChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub delta: String,
 }
 
@@ -1174,21 +1178,24 @@ pub struct DeltaTextChunk {
 pub struct DeltaTextChunkWithItemId {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_index: Option<u64>,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub delta: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OutputTextChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub text: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RefusalTextChunk {
     pub content_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub refusal: String,
 }
 
@@ -1196,21 +1203,24 @@ pub struct RefusalTextChunk {
 pub struct ArgsTextChunk {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_index: Option<u64>,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub arguments: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SummaryPartChunk {
     pub summary_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     pub part: SummaryPartChunkPart,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SummaryTextChunk {
     pub summary_index: u64,
-    pub sequence_number: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence_number: Option<u64>,
     // `response.reasoning_summary_text.delta` carries `delta`;
     // the `.done` sibling carries the full `text` under the same shape.
     #[serde(alias = "text")]

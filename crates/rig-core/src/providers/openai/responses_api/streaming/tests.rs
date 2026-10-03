@@ -39,6 +39,50 @@ fn classify_known_event_decodes() {
     ));
 }
 
+/// Gateways translating non-OpenAI models (rig#2668, e.g. LiteLLM serving
+/// Claude) omit `sequence_number`, which OpenAI always sends. It is an
+/// ordering hint on an already-ordered SSE stream, so its absence must not
+/// discard the event.
+#[test]
+fn classify_events_without_sequence_number_decode() {
+    let delta = json!({
+        "type": "response.output_text.delta",
+        "item_id": "msg_b",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": "OK",
+        "model": "claude",
+    })
+    .to_string();
+    assert!(
+        matches!(
+            classify_responses_frame(&delta),
+            WireEvent::Known(StreamingCompletionChunk::Delta(_))
+        ),
+        "a delta without sequence_number must decode"
+    );
+
+    let done = json!({
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+            "type": "message",
+            "id": "msg_b",
+            "role": "assistant",
+            "status": "completed",
+            "content": [{ "type": "output_text", "annotations": [], "text": "OK" }],
+        },
+    })
+    .to_string();
+    assert!(
+        matches!(
+            classify_responses_frame(&done),
+            WireEvent::Known(StreamingCompletionChunk::Delta(_))
+        ),
+        "an output_item.done without sequence_number must decode"
+    );
+}
+
 #[test]
 fn classify_unknown_event_type_is_unknown() {
     let frame = json!({
