@@ -1,3 +1,4 @@
+use super::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use super::*;
 use rig_core::message::{ToolFunction, ToolResultContent};
 use serde_json::json;

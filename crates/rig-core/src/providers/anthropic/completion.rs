@@ -143,24 +143,29 @@ pub fn binds_context(model: &str) -> bool {
 /// to another context instead of rejecting the request.
 pub(super) const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
 
-/// Whether a request to `model` on `wire` asks Anthropic to drop thinking
-/// bound to another context (pi's `drop_block`): Anthropic's own API, for a
-/// model whose thinking binds. Its turns then replay verbatim whatever the
-/// context, and Anthropic drops a block whose binding no longer matches.
-pub(super) fn drops_unbound_thinking(wire: &Messages, model: &str) -> bool {
-    wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(model)
+/// Whether a request to `model` on `wire`, with `thinking` as the caller
+/// sets it, asks Anthropic to drop thinking bound to another context (pi's
+/// `drop_block`): Anthropic's own API, for a model whose thinking binds, in
+/// adaptive thinking (the default when the caller names none), the only
+/// mode that takes the binding. Its turns then replay verbatim whatever the
+/// context. In another mode (`disabled`, `between_tools`) a turn made under
+/// another context replays as another model's.
+pub(super) fn drops_unbound_thinking(
+    wire: &Messages,
+    model: &str,
+    thinking: Option<&Value>,
+) -> bool {
+    let adaptive = thinking.is_none_or(|thinking| thinking.str("type") == Some("adaptive"));
+    wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(model) && adaptive
 }
 
-/// `body`'s `thinking` with `drop_block` set: the caller's settings, or the
-/// model's default adaptive thinking when it names none. Thinking the caller
-/// disabled stays disabled.
+/// `body`'s `thinking` with `drop_block` set: the caller's adaptive
+/// settings, or the model's default adaptive thinking when it names none.
 fn drop_unbound_thinking(body: &mut Map<String, Value>) {
     let binding = json!({ "prefix_mismatch_behavior": "drop_block" });
     match body.get_mut("thinking") {
         Some(Value::Object(thinking)) => {
-            if thinking.get("type").and_then(Value::as_str) != Some("disabled") {
-                thinking.entry("block_binding").or_insert(binding);
-            }
+            thinking.entry("block_binding").or_insert(binding);
         }
         Some(_) => {}
         None => {
@@ -244,7 +249,7 @@ pub(super) fn body(
         ("container", container.map(Value::String)),
     ]);
     body.extend(params);
-    if drops_unbound_thinking(wire, &model) {
+    if drops_unbound_thinking(wire, &model, body.get("thinking")) {
         drop_unbound_thinking(&mut body);
     }
     if let Some(top) = top {
@@ -363,7 +368,11 @@ fn document_part(document: &message::Document) -> Result<Value, EncodeError> {
 /// current, else the block rebuilt from its canonical fields as pi rebuilds
 /// it, with the identity keys of an edited item. `None` for a block with
 /// nothing Anthropic takes.
-fn assistant_part(block: &AssistantContent, target: &Messages, ids: &WireIds) -> Option<Value> {
+pub(super) fn assistant_part(
+    block: &AssistantContent,
+    target: &Messages,
+    ids: &WireIds,
+) -> Option<Value> {
     if let AssistantContent::Opaque(opaque) = block {
         // The reply's container is conversation state, sent as the
         // request's `container`, never as content.
@@ -519,9 +528,15 @@ pub(super) fn split_system(history: &[Message], mid: bool) -> (Vec<Value>, Vec<M
     let mut system = Vec::new();
     let mut remaining = Vec::new();
     let mut deferred: Vec<&str> = Vec::new();
+    let lead = history
+        .iter()
+        .take_while(|message| matches!(message, Message::System { .. }))
+        .count();
     for (index, message) in history.iter().enumerate() {
         match message {
             Message::System { content } if content.is_empty() => {}
+            // The system messages that lead the history are the prompt.
+            Message::System { content } if index < lead => system.push(text(content)),
             Message::System { .. } if mid && valid_system_message(history, index) => {
                 remaining.push(message.clone());
             }
@@ -548,11 +563,16 @@ pub(super) fn split_system(history: &[Message], mid: bool) -> (Vec<Value>, Vec<M
 }
 
 /// Whether a system message may sit right after `history[index]`: it is a
-/// user turn, and what follows is the end of the array or an assistant turn.
+/// user turn, and the next turn that is not a system message is an
+/// assistant turn or there is none, since Anthropic takes several system
+/// messages in a row there.
 fn system_slot(history: &[Message], index: usize) -> bool {
     matches!(history.get(index), Some(Message::User { .. }))
         && history
-            .get(index + 1)
+            .get(index + 1..)
+            .into_iter()
+            .flatten()
+            .find(|message| !matches!(message, Message::System { .. }))
             .is_none_or(|message| matches!(message, Message::Assistant(_)))
 }
 
@@ -560,7 +580,14 @@ fn system_slot(history: &[Message], index: usize) -> bool {
 /// after a user turn, or an assistant turn ending in a server tool's result,
 /// and before an assistant turn or the end.
 fn valid_system_message(history: &[Message], index: usize) -> bool {
-    let after = index.checked_sub(1).and_then(|before| history.get(before));
+    // A run of system messages shares one slot.
+    let not_system = |message: &&Message| !matches!(message, Message::System { .. });
+    let after = history
+        .get(..index)
+        .into_iter()
+        .flatten()
+        .rev()
+        .find(not_system);
     let follows = match after {
         Some(Message::User { .. }) => true,
         Some(Message::Assistant(turn)) => matches!(
@@ -572,7 +599,10 @@ fn valid_system_message(history: &[Message], index: usize) -> bool {
     };
     follows
         && history
-            .get(index + 1)
+            .get(index + 1..)
+            .into_iter()
+            .flatten()
+            .find(not_system)
             .is_none_or(|message| matches!(message, Message::Assistant(_)))
 }
 

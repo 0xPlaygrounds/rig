@@ -465,7 +465,7 @@ impl Wire for Messages {
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let body = super::completion::body(self, request, mode)?;
-        let beta = super::completion::drops_unbound_thinking(self, &model)
+        let beta = super::completion::drops_unbound_thinking(self, &model, body.get("thinking"))
             .then_some(super::completion::THINKING_BINDING_BETA);
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -550,16 +550,7 @@ impl crate::completion::ReplayTarget for Messages {
         _model: &str,
         _source: Option<&crate::message::Origin>,
     ) -> String {
-        id.chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .take(64)
-            .collect()
+        crate::providers::internal::wire_ids::legal_call_id(id, 64)
     }
 
     /// An edited call keeps the `caller` that ties it to the code
@@ -583,18 +574,27 @@ impl crate::completion::ReplayTarget for Messages {
 
     /// A container item is request state, never content, and unsigned
     /// thinking that is redacted or blank has nothing to send.
+    /// Claude models whose thinking binds to the tools and system prompt it
+    /// was made under.
+    fn binds_context(&self, model: &str) -> bool {
+        self.provider.dialect.name == ANTHROPIC.name && super::completion::binds_context(model)
+    }
+
+    /// A request in adaptive thinking asks Anthropic to drop a block bound
+    /// to another context (`drop_block`), so its turns replay verbatim.
+    fn drops_unbound_items(&self, request: &CompletionRequest) -> bool {
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        let thinking = request
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get("thinking"));
+        super::completion::drops_unbound_thinking(self, model, thinking)
+    }
+
+    /// What the encoder sends for the block, so the two never disagree.
     fn sends_alone(&self, block: &crate::message::AssistantContent) -> bool {
-        use crate::completion::Replay;
-        use crate::message::AssistantContent;
         let ids = crate::providers::internal::wire_ids::WireIds::default();
-        match (block, block.replay(self, &ids)) {
-            (AssistantContent::Opaque(opaque), _) => opaque.kind() != Some("container"),
-            (_, Replay::Item(_)) => true,
-            (AssistantContent::Reasoning(reasoning), _) => {
-                !reasoning.redacted && !reasoning.text.trim().is_empty()
-            }
-            _ => true,
-        }
+        super::completion::assistant_part(block, self, &ids).is_some()
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {

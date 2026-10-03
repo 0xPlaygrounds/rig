@@ -219,19 +219,11 @@ fn assistant(
     })
 }
 
-/// Whether [`assistant`] sends `block` on `wire`: everything but an opaque
-/// item that does not replay and reasoning that is redacted or blank without
-/// a current item, which carry nothing Converse takes.
+/// Whether [`assistant`] sends `block` on `wire`, read from the encoder
+/// itself so the two never disagree.
 pub(crate) fn sends(block: &AssistantContent, wire: &Converse) -> bool {
-    let ids = WireIds::default();
-    match (block, block.replay(wire, &ids)) {
-        (AssistantContent::Opaque(opaque), _) => opaque.replay,
-        (_, Replay::Item(_)) => true,
-        (AssistantContent::Reasoning(reasoning), _) => {
-            !reasoning.redacted && !reasoning.text.trim().is_empty()
-        }
-        _ => true,
-    }
+    let family = wire.family(&wire.model);
+    assistant(block, wire, family, &WireIds::default()).is_ok_and(|block| block.is_some())
 }
 
 /// `value` with each whole number written as an integer: a store may write

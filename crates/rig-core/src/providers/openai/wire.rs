@@ -156,8 +156,7 @@ pub enum BodyRewrite {
     DeepSeek,
     /// Mira's gateway: content-part arrays flattened to strings.
     Mira,
-    /// Perplexity: strict user/assistant alternation, text-only arrays
-    /// flattened.
+    /// Perplexity: text-only arrays flattened.
     Perplexity,
     /// Mistral: `any` for a forced tool choice, the choice relaxed to `auto`
     /// beside a structured response format, its own content chunks, and

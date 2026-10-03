@@ -154,7 +154,13 @@ impl ReplayTarget for Interactions {
         _model: &str,
         _: Option<&crate::message::Origin>,
     ) -> String {
-        crate::providers::gemini::completion::legal_call_id(id)
+        crate::providers::internal::wire_ids::legal_call_id(id, 64)
+    }
+
+    /// Gemini takes system text only in `systemInstruction`: later system
+    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
+        crate::completion::LaterSystem::Leading
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {
@@ -303,7 +309,13 @@ impl ReplayTarget for InteractionResume {
         _model: &str,
         _: Option<&crate::message::Origin>,
     ) -> String {
-        crate::providers::gemini::completion::legal_call_id(id)
+        crate::providers::internal::wire_ids::legal_call_id(id, 64)
+    }
+
+    /// Gemini takes system text only in `systemInstruction`: later system
+    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
+        crate::completion::LaterSystem::Leading
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {

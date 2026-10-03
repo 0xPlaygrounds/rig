@@ -215,6 +215,14 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         false
     }
 
+    /// Whether `request` asks the provider to drop an item bound to another
+    /// context itself (Anthropic's `drop_block`), so a turn made under
+    /// another context replays verbatim rather than as another model's.
+    fn drops_unbound_items(&self, request: &crate::completion::CompletionRequest) -> bool {
+        let _ = request;
+        false
+    }
+
     /// Whether this provider item requires the item after it in its turn
     /// (Responses reasoning): when that one is not replayed, neither is
     /// this.
@@ -536,26 +544,89 @@ pub(crate) fn adapt_for(
             }
         }
     }
-    if target.starts_with_user() && !stored {
-        for message in &mut shaped {
-            match message {
-                Some(Message::User { .. }) => break,
-                Some(Message::Assistant(_)) => *message = None,
-                Some(Message::System { .. }) | None => {}
-            }
-        }
-    }
-    let shaped = merge_users(answer_calls(shaped, stored));
+    // Calls and results pair first, so an orphan result goes whether or not
+    // the request declares tools; only then does a request without tools
+    // get them as text, with no result made up for an unanswered call.
+    let shaped = merge_users(answer_calls(shaped, stored, accepts.tools));
+    let shaped = if accepts.tools {
+        shaped
+    } else {
+        tools_as_text(shaped)
+    };
     let shaped = match target.later_system(model) {
         LaterSystem::InPlace => shaped,
         LaterSystem::Leading => leading_system(shaped),
         LaterSystem::UserText => system_as_user_text(shaped),
+    };
+    let shaped = if target.starts_with_user() && !stored {
+        from_first_user(shaped)
+    } else {
+        shaped
     };
     if target.alternates_roles() {
         alternated(shaped)
     } else {
         shaped
     }
+}
+
+/// `history` with its calls and results as text, for a request that
+/// declares no tools. Keys are sorted, so the text is the same however the
+/// provider ordered the arguments.
+fn tools_as_text(history: Vec<Message>) -> Vec<Message> {
+    let history = history
+        .into_iter()
+        .map(|message| match message {
+            Message::Assistant(mut turn) => {
+                for block in &mut turn.content {
+                    if let AssistantContent::ToolCall(call) = block {
+                        *block = AssistantContent::Text(Text::new(format!(
+                            "[called tool {} with {}]",
+                            call.function.name,
+                            crate::json_utils::to_canonical_string(
+                                &call.function.arguments_value()
+                            )
+                        )));
+                    }
+                }
+                Message::Assistant(turn)
+            }
+            Message::User { content } => Message::User {
+                content: content
+                    .into_iter()
+                    .map(|part| match part {
+                        UserContent::ToolResult(result) => UserContent::text(result_text(&result)),
+                        part => part,
+                    })
+                    .collect(),
+            },
+            message => message,
+        })
+        .collect();
+    merge_users(history)
+}
+
+/// `history` from its first user message, after the leading system
+/// messages: an assistant turn before it goes, with the results answering
+/// it, until a user message leads.
+fn from_first_user(mut history: Vec<Message>) -> Vec<Message> {
+    let lead = history
+        .iter()
+        .take_while(|message| matches!(message, Message::System { .. }))
+        .count();
+    while let Some(Message::Assistant(turn)) = history.get(lead) {
+        let calls: HashSet<CallId> = turn.tool_calls().map(|call| call.id.clone()).collect();
+        history.remove(lead);
+        if let Some(Message::User { content }) = history.get_mut(lead) {
+            content.retain(|part| {
+                !matches!(part, UserContent::ToolResult(result) if calls.contains(&result.call))
+            });
+            if content.is_empty() {
+                history.remove(lead);
+            }
+        }
+    }
+    history
 }
 
 /// Whether `history` has a system message after its first user or
@@ -810,13 +881,6 @@ fn assistant(
             // Keys sorted, so the text is the same however the provider
             // ordered the arguments.
             let block = match block {
-                AssistantContent::ToolCall(call) if !accepts.tools => {
-                    AssistantContent::Text(Text::new(format!(
-                        "[called tool {} with {}]",
-                        call.function.name,
-                        crate::json_utils::to_canonical_string(&call.function.arguments_value())
-                    )))
-                }
                 AssistantContent::Opaque(opaque)
                     if !accepts.tools
                         && target.hosted_needs_tools()
@@ -830,7 +894,7 @@ fn assistant(
         })
         .collect();
     let content = if same {
-        paired(content, target)
+        paired(content, target, accepts.tools)
     } else {
         content.into_iter().flatten().collect()
     };
@@ -849,6 +913,7 @@ fn assistant(
 fn paired(
     mut content: Vec<Option<AssistantContent>>,
     target: &dyn ReplayTarget,
+    tools: bool,
 ) -> Vec<AssistantContent> {
     let pair = |block: &AssistantContent| match block {
         AssistantContent::Opaque(opaque) if opaque.replay => target.hosted_pair(&opaque.item),
@@ -889,6 +954,8 @@ fn paired(
                 .and_then(Option::as_ref)
                 .is_none_or(|next| match next {
                     AssistantContent::Opaque(opaque) => !opaque.replay,
+                    // A request without tools gets the call as text.
+                    AssistantContent::ToolCall(_) if !tools => true,
                     next => {
                         next.native_item().is_none()
                             && next
@@ -991,13 +1058,11 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
                 result.content = result_images(result.content, form, &mut attached);
                 let parts = form.accepts.tool_result_images || form.target.result_parts(form.model);
                 result.content = result_text_parts(result.content, parts, result.is_error);
-                if form.accepts.tools {
-                    shaped.push(UserContent::ToolResult(result));
-                } else {
-                    shaped.push(UserContent::text(result_text(&result)));
-                }
+                shaped.push(UserContent::ToolResult(result));
                 continue;
             }
+            // Blank text says nothing, and several providers reject it.
+            UserContent::Text(text) if text.text.trim().is_empty() => continue,
             UserContent::Text(_) => {
                 shaped.push(part.clone());
                 continue;
@@ -1011,7 +1076,10 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
             shaped.push(UserContent::text(placeholder));
         }
     }
-    let mut messages = vec![Message::User { content: shaped }];
+    let mut messages = Vec::new();
+    if !shaped.is_empty() {
+        messages.push(Message::User { content: shaped });
+    }
     if !attached.is_empty() {
         let mut content = vec![UserContent::text(TOOL_IMAGES_HEADING)];
         content.extend(attached.into_iter().map(UserContent::Image));
@@ -1206,7 +1274,7 @@ fn merge_users(history: Vec<Message>) -> Vec<Message> {
 /// A skipped turn's results go with it, and the user messages it separated
 /// become one, since a wire that requires alternating roles would otherwise
 /// reject the history.
-fn answer_calls(history: Vec<Option<Message>>, stored: bool) -> Vec<Message> {
+fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> Vec<Message> {
     // Results before the first turn of a stored conversation answer calls
     // the provider holds.
     let mut stored = stored;
@@ -1216,14 +1284,28 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool) -> Vec<Message> {
     let mut gap = false;
     for message in adjacent_users_merged(history) {
         let Some(message) = message else {
-            close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
+            close(
+                &mut shaped,
+                &mut waiting,
+                &mut held,
+                answers,
+                Vec::new(),
+                false,
+            );
             stored = false;
             gap = true;
             continue;
         };
         match message {
             Message::Assistant(turn) => {
-                close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
+                close(
+                    &mut shaped,
+                    &mut waiting,
+                    &mut held,
+                    answers,
+                    Vec::new(),
+                    false,
+                );
                 stored = false;
                 if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
                     gap = true;
@@ -1235,7 +1317,14 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool) -> Vec<Message> {
             }
             Message::User { mut content } => {
                 if content.is_empty() {
-                    close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
+                    close(
+                        &mut shaped,
+                        &mut waiting,
+                        &mut held,
+                        answers,
+                        Vec::new(),
+                        false,
+                    );
                     shaped.push(Message::User { content });
                     gap = false;
                     continue;
@@ -1257,7 +1346,7 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool) -> Vec<Message> {
                     // Only results nothing waits for: the gap stays open.
                     continue;
                 }
-                close(&mut shaped, &mut waiting, &mut held, content, gap);
+                close(&mut shaped, &mut waiting, &mut held, answers, content, gap);
                 gap = false;
             }
             Message::System { .. } if !waiting.is_empty() => held.push(message),
@@ -1267,7 +1356,14 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool) -> Vec<Message> {
             }
         }
     }
-    close(&mut shaped, &mut waiting, &mut held, Vec::new(), false);
+    close(
+        &mut shaped,
+        &mut waiting,
+        &mut held,
+        answers,
+        Vec::new(),
+        false,
+    );
     shaped
 }
 
@@ -1297,9 +1393,13 @@ fn close(
     shaped: &mut Vec<Message>,
     waiting: &mut Vec<ToolCall>,
     held: &mut Vec<Message>,
+    answers: bool,
     mut content: Vec<UserContent>,
     merge: bool,
 ) {
+    if !answers {
+        waiting.clear();
+    }
     let missing: Vec<UserContent> = waiting
         .drain(..)
         .filter(|call| {

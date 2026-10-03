@@ -153,19 +153,25 @@ pub fn invalid_call_feedback(
     content
         .iter()
         .filter_map(|part| match part {
-            AssistantContent::ToolCall(call) => Some(tool_result_message(
+            AssistantContent::ToolCall(call) if &call.id == invalid => Some(tool_result_message(
                 call.id.clone(),
                 call.function.name.clone(),
-                if &call.id == invalid {
-                    feedback
-                } else {
-                    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
-                }
-                .to_owned(),
+                feedback.to_owned(),
             )),
+            AssistantContent::ToolCall(call) => Some(not_executed(call)),
             _ => None,
         })
         .collect()
+}
+
+/// The result of a call the run did not execute because a call beside it
+/// was invalid.
+pub fn not_executed(call: &crate::message::ToolCall) -> UserContent {
+    tool_result_message(
+        call.id.clone(),
+        call.function.name.clone(),
+        TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned(),
+    )
 }
 
 /// Whether a generated assistant turn is empty: every part is blank

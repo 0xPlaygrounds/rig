@@ -46,10 +46,9 @@ use rig_core::completion::message::unanswered_failure;
 use rig_core::json_utils;
 use rig_core::structured_output;
 use transcript::{
-    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_message,
-    assistant_text_from_choice, assistant_turn, build_full_history, build_history_for_request,
-    invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
-    validate_canonical,
+    TranscriptError, assistant_message, assistant_text_from_choice, assistant_turn,
+    build_full_history, build_history_for_request, invalid_tool_retry_user_message,
+    is_empty_assistant_turn, tool_result_message, validate_canonical,
 };
 
 pub use streamed::{
@@ -1376,13 +1375,9 @@ impl AgentRun {
         if any_skipped {
             for (index, item) in items.iter().enumerate() {
                 if let AssistantContent::ToolCall(tool_call) = item {
-                    skipped.entry(index).or_insert_with(|| {
-                        tool_result_message(
-                            tool_call.id.clone(),
-                            tool_call.function.name.clone(),
-                            TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-                        )
-                    });
+                    skipped
+                        .entry(index)
+                        .or_insert_with(|| rig_core::transcript::not_executed(tool_call));
                 }
             }
         }

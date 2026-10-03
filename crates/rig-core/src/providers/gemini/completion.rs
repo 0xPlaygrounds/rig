@@ -239,6 +239,12 @@ impl ReplayTarget for GenerateContent {
         normalize_tool_call_id(model, id)
     }
 
+    /// Gemini takes system text only in `systemInstruction`: later system
+    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
+        crate::completion::LaterSystem::Leading
+    }
+
     fn call_id_slot(&self) -> Option<&'static str> {
         CALL_ID_SLOT
     }
@@ -363,18 +369,7 @@ pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
     if !requires_tool_call_id(model) {
         return id.to_owned();
     }
-    legal_call_id(id)
-}
-
-/// `id` in the alphabet and length Gemini's call ids take.
-pub(crate) fn legal_call_id(id: &str) -> String {
-    id.chars()
-        .map(|c| match c {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' => c,
-            _ => '_',
-        })
-        .take(64)
-        .collect()
+    crate::providers::internal::wire_ids::legal_call_id(id, 64)
 }
 
 /// The REST `GenerateContentRequest` body `request` sends to `model` on

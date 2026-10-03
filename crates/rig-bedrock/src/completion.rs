@@ -366,11 +366,7 @@ impl ReplayTarget for Converse {
 
     /// Converse tool-use ids match `[a-zA-Z0-9_-]{1,64}`.
     fn normalize_tool_call_id(&self, id: &str, _model: &str, _source: Option<&Origin>) -> String {
-        let id = id.replace(
-            |c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-',
-            "_",
-        );
-        id.chars().take(64).collect()
+        rig_core::providers::internal::wire_ids::legal_call_id(id, 64)
     }
 
     fn call_id_slot(&self) -> Option<&'static str> {

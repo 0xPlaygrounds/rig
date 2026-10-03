@@ -131,11 +131,13 @@ impl Operation for Completion {
             tools: stored
                 || target.declares_tools(&request)
                     && !matches!(request.tool_choice, Some(crate::message::ToolChoice::None)),
-            context: Some(crate::completion::history::context_of(
-                &request,
-                target,
-                request.model.as_deref().unwrap_or(target.model()),
-            )),
+            context: (!target.drops_unbound_items(&request)).then(|| {
+                crate::completion::history::context_of(
+                    &request,
+                    target,
+                    request.model.as_deref().unwrap_or(target.model()),
+                )
+            }),
         };
         request.chat_history =
             crate::completion::history::adapt_for(&request.chat_history, target, &shape);

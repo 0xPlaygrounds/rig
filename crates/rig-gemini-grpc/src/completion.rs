@@ -109,6 +109,12 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         rest::normalize_tool_call_id(model, id)
     }
 
+    /// Gemini takes system text only in `systemInstruction`: later system
+    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    fn later_system(&self, _model: &str) -> rig_core::completion::LaterSystem {
+        rig_core::completion::LaterSystem::Leading
+    }
+
     fn call_id_slot(&self) -> Option<&'static str> {
         rest::CALL_ID_SLOT
     }

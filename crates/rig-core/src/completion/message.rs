@@ -91,15 +91,11 @@ impl AssistantMessage {
     }
 }
 
-/// Returns whether the choice contains no nonempty text, tool call, or image.
-/// Reasoning and provider-only items are not an answer, even when retained
-/// in history.
+/// Whether no block of the choice is an answer
+/// ([`AssistantContent::is_answer`]): reasoning, provider-only items and
+/// blank text are not, even when retained in history.
 pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
-    !choice.iter().any(|content| match content {
-        AssistantContent::Text(text) => !text.text.is_empty(),
-        AssistantContent::ToolCall(_) | AssistantContent::Image(_) => true,
-        AssistantContent::Reasoning(_) | AssistantContent::Opaque(_) => false,
-    })
+    !choice.iter().any(AssistantContent::is_answer)
 }
 
 /// Why a run fails on a turn that delivered no answer
@@ -173,14 +169,26 @@ impl AssistantContent {
         block
     }
 
+    /// Whether the block answers the user: text that is not blank, a call
+    /// or an image. Reasoning and provider-only items are not an answer.
+    pub fn is_answer(&self) -> bool {
+        match self {
+            Self::Text(text) => !text.text.trim().is_empty(),
+            Self::ToolCall(_) | Self::Image(_) => true,
+            Self::Reasoning(_) | Self::Opaque(_) => false,
+        }
+    }
+
     /// Whether the block has nothing to send, so replay drops it: blank text
-    /// or reasoning without a provider item that is still current (with
-    /// one, its identity pairs it with what follows, and pi replays it
-    /// whatever its text), and an opaque item that does not replay.
+    /// or reasoning, and redacted reasoning, without a provider item that is
+    /// still current (with one, its identity pairs it with what follows, and
+    /// pi replays it whatever its text), and an opaque item that does not
+    /// replay.
     pub fn is_blank(&self) -> bool {
         match self {
-            Self::Text(Text { text, .. }) | Self::Reasoning(Reasoning { text, .. }) => {
-                text.trim().is_empty() && self.native_item().is_none()
+            Self::Text(Text { text, .. }) => text.trim().is_empty() && self.native_item().is_none(),
+            Self::Reasoning(Reasoning { text, redacted, .. }) => {
+                (*redacted || text.trim().is_empty()) && self.native_item().is_none()
             }
             Self::Opaque(opaque) => !opaque.replay,
             Self::ToolCall(_) | Self::Image(_) => false,

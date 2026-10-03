@@ -1074,12 +1074,8 @@ impl crate::completion::ReplayTarget for Chat {
         if self.provider.dialect.quirks.rewrite == BodyRewrite::Mistral {
             return mistral_call_id(id);
         }
-        let sanitized = |part: &str| {
-            part.replace(
-                |c: char| !(c.is_ascii_alphanumeric() || "_-".contains(c)),
-                "_",
-            )
-        };
+        let sanitized =
+            |part: &str| crate::providers::internal::wire_ids::legal_call_id(part, usize::MAX);
         if let Some((call, item)) = id.split_once('|') {
             let call = sanitized(call);
             let item = sanitized(item);
@@ -1091,7 +1087,10 @@ impl crate::completion::ReplayTarget for Chat {
             if combined.len() <= 40 {
                 return combined;
             }
-            let hash: String = short_hash(id).chars().take(8).collect();
+            let hash: String = crate::providers::internal::wire_ids::short_hash(id)
+                .chars()
+                .take(8)
+                .collect();
             let prefix: String = call.chars().take((40 - hash.len() - 1).max(1)).collect();
             return format!("{prefix}_{hash}");
         }
@@ -1126,11 +1125,6 @@ impl crate::completion::ReplayTarget for Chat {
 
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
         self.provider.dialect.quirks.later_system
-    }
-
-    /// Perplexity takes user and assistant messages only in alternation.
-    fn alternates_roles(&self) -> bool {
-        self.provider.dialect.quirks.rewrite == BodyRewrite::Perplexity
     }
 
     /// In array mode a result's parts go as an array.
@@ -1212,37 +1206,11 @@ fn mistral_call_id(id: &str) -> String {
     } else {
         &normalized
     };
-    short_hash(seed)
+    crate::providers::internal::wire_ids::short_hash(seed)
         .chars()
         .filter(char::is_ascii_alphanumeric)
         .take(LENGTH)
         .collect()
-}
-
-/// pi's `shortHash`: two 32-bit multiplicative hashes of the UTF-16 code
-/// units, written in base 36.
-fn short_hash(text: &str) -> String {
-    fn base36(mut value: u32) -> String {
-        let mut digits = Vec::new();
-        loop {
-            digits.push(char::from_digit(value % 36, 36).unwrap_or('0'));
-            value /= 36;
-            if value == 0 {
-                break;
-            }
-        }
-        digits.iter().rev().collect()
-    }
-    let (mut h1, mut h2) = (0xdead_beef_u32, 0x41c6_ce57_u32);
-    for unit in text.encode_utf16().map(u32::from) {
-        h1 = (h1 ^ unit).wrapping_mul(2_654_435_761);
-        h2 = (h2 ^ unit).wrapping_mul(1_597_334_677);
-    }
-    h1 = (h1 ^ (h1 >> 16)).wrapping_mul(2_246_822_507)
-        ^ (h2 ^ (h2 >> 13)).wrapping_mul(3_266_489_909);
-    h2 = (h2 ^ (h2 >> 16)).wrapping_mul(2_246_822_507)
-        ^ (h1 ^ (h1 >> 13)).wrapping_mul(3_266_489_909);
-    format!("{}{}", base36(h2), base36(h1))
 }
 
 /// Classified Chat Completions frame, including whole replies and terminal signals.

@@ -270,9 +270,13 @@ impl crate::completion::ReplayTarget for Responses {
         _model: &str,
         _source: Option<&crate::message::Origin>,
     ) -> String {
-        let legal = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
-        let sanitized: String = id.replace(|c| !legal(c), "_").chars().take(64).collect();
-        sanitized.trim_end_matches('_').to_owned()
+        use crate::providers::internal::wire_ids::{legal_call_id, short_hash};
+        let legal = legal_call_id(id, 64);
+        match legal.trim_end_matches('_') {
+            // An id with nothing legal in it still names its call.
+            "" => short_hash(id),
+            trimmed => trimmed.to_owned(),
+        }
     }
 }
 

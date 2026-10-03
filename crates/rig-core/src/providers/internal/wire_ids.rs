@@ -90,6 +90,47 @@ impl WireIds {
     }
 }
 
+/// `id` in the alphabet most wires take for call ids, `[A-Za-z0-9_-]`,
+/// cut to `max` characters: every other character becomes `_`.
+pub fn legal_call_id(id: &str, max: usize) -> String {
+    id.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(max)
+        .collect()
+}
+
+/// pi's `shortHash`: two 32-bit multiplicative hashes of the UTF-16 code
+/// units, written in base 36.
+pub(crate) fn short_hash(text: &str) -> String {
+    fn base36(mut value: u32) -> String {
+        let mut digits = Vec::new();
+        loop {
+            digits.push(char::from_digit(value % 36, 36).unwrap_or('0'));
+            value /= 36;
+            if value == 0 {
+                break;
+            }
+        }
+        digits.iter().rev().collect()
+    }
+    let (mut h1, mut h2) = (0xdead_beef_u32, 0x41c6_ce57_u32);
+    for unit in text.encode_utf16().map(u32::from) {
+        h1 = (h1 ^ unit).wrapping_mul(2_654_435_761);
+        h2 = (h2 ^ unit).wrapping_mul(1_597_334_677);
+    }
+    h1 = (h1 ^ (h1 >> 16)).wrapping_mul(2_246_822_507)
+        ^ (h2 ^ (h2 >> 13)).wrapping_mul(3_266_489_909);
+    h2 = (h2 ^ (h2 >> 16)).wrapping_mul(2_246_822_507)
+        ^ (h1 ^ (h1 >> 13)).wrapping_mul(3_266_489_909);
+    format!("{}{}", base36(h2), base36(h1))
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 pub(crate) mod tests;

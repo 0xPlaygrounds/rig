@@ -322,7 +322,7 @@ fn user_content_has_its_converse_form() {
     let c = call("t1", "list", json!({}));
     let history = vec![
         Message::User {
-            content: vec![UserContent::text(" \n")],
+            content: vec![UserContent::text("q"), UserContent::text(" \n")],
         },
         Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
             c.clone(),
@@ -336,10 +336,8 @@ fn user_content_has_its_converse_form() {
         },
     ];
     let body = sent(NOVA, history);
-    assert_eq!(
-        body["messages"][0]["content"],
-        json!([{ "text": "<empty>" }])
-    );
+    // `adapt` drops blank user text, which Converse rejects.
+    assert_eq!(body["messages"][0]["content"], json!([{ "text": "q" }]));
     assert_eq!(
         body["messages"][2]["content"][0]["toolResult"]["content"],
         json!([{ "json": { "result": [1, 2] } }, { "json": { "a": 1 } }])

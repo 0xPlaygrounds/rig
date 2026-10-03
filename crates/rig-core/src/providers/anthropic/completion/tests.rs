@@ -3141,3 +3141,90 @@ fn own_turn(content: Vec<message::AssistantContent>) -> message::Message {
         stop: Some(message::StopReason::Stop),
     })
 }
+
+/// System messages keep their order: one deferred past a user turn lands
+/// before the one that already sat in a valid slot after it, and a run of
+/// system messages shares one slot.
+#[test]
+fn deferred_system_messages_keep_their_order() {
+    let value = encode_mid_conversation_history(
+        CLAUDE_OPUS_5_5,
+        vec![
+            message::Message::system("s0"),
+            message::Message::user("a"),
+            message::Message::system("s1"),
+            message::Message::user("b"),
+            message::Message::system("s2"),
+            message::Message::system("s3"),
+            message::Message::assistant("ok"),
+            message::Message::user("end"),
+        ],
+    );
+    let shape: Vec<String> = value["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|message| {
+            let text = message["content"][0]["text"].as_str().unwrap_or_default();
+            format!("{}:{text}", message["role"].as_str().unwrap_or_default())
+        })
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            "user:a",
+            "user:b",
+            "system:s1",
+            "system:s2",
+            "system:s3",
+            "assistant:ok",
+            "user:end"
+        ],
+        "{value}"
+    );
+}
+
+/// Thinking that takes no block binding (`between_tools`, `disabled`) asks
+/// Anthropic for no `drop_block`, so a turn made under other tools replays
+/// as another model's: its signed thinking goes as text, which Anthropic
+/// takes where a mismatched signature is refused (checked live on Claude
+/// Sonnet 5.5).
+#[test]
+fn thinking_without_a_binding_replays_another_contexts_turn_as_text() {
+    let thinking = json!({"type": "thinking", "thinking": "plan", "signature": "sig"});
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_5_5);
+    let made = hello_request().tools(vec![generic_tool("add")]);
+    let turn = folded_turn(
+        &wire,
+        &made,
+        json!({"model": CLAUDE_SONNET_5_5, "stop_reason": "end_turn", "content": [
+            thinking.clone(), {"type": "text", "text": "done"}]}),
+    );
+    let history = vec![
+        message::Message::user("go"),
+        message::Message::Assistant(turn),
+        message::Message::user("next"),
+    ];
+    let mut request = completion_request_with_history(history, None);
+    request.tools = vec![generic_tool("add"), generic_tool("mul")];
+    request.additional_params = Some(json!({"thinking": {"type": "between_tools"}}));
+    let value = request_body(Params {
+        model: CLAUDE_SONNET_5_5,
+        request,
+        prompt_caching: false,
+        automatic_caching: false,
+        automatic_caching_ttl: None,
+        static_prefix_cache_ttl: None,
+    })
+    .expect("encodes");
+    assert_eq!(
+        value["thinking"],
+        json!({"type": "between_tools"}),
+        "{value}"
+    );
+    assert_eq!(
+        value["messages"][1]["content"][0],
+        json!({"type": "text", "text": "plan"}),
+        "{value}"
+    );
+}
