@@ -265,6 +265,29 @@ impl crate::completion::ReplayTarget for Responses {
         }
     }
 
+    /// Responses carries user and tool-result images as data URLs, URLs or
+    /// file ids, documents as files or text, and no audio, video or
+    /// assistant image. File ids need a dialect that resolves them, and
+    /// xAI's `input_image` takes none.
+    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+        use crate::completion::{Media, Place};
+        use crate::message::DocumentSourceKind;
+        let quirks = &self.provider.dialect.quirks;
+        let file_ids = quirks.accepts_file_ids;
+        match media {
+            Media::Image(_, Place::Assistant) | Media::Audio(_) | Media::Video(_) => false,
+            Media::Image(image, _) => {
+                super::image_input(image).is_some()
+                    && (!matches!(image.data, DocumentSourceKind::FileId(_))
+                        || file_ids && quirks.responses.contract != ResponsesContract::Xai)
+            }
+            Media::Document(document) => {
+                super::document_input(document).is_some()
+                    && (file_ids || !matches!(document.data, DocumentSourceKind::FileId(_)))
+            }
+        }
+    }
+
     /// A request naming `previous_response_id` continues a response the
     /// provider stores, which holds the calls its first results answer.
     fn continues_stored(&self, request: &completion::CompletionRequest) -> bool {

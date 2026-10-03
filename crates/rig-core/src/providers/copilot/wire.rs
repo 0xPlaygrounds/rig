@@ -60,6 +60,8 @@ pub const DIALECT: Dialect = Dialect {
         hooks: Some(&HOOKS),
         verify_path: "",
         base_url_env_alias: Some("COPILOT_BASE_URL"),
+        // Copilot keeps no files, so no file id resolves there.
+        accepts_file_ids: false,
         embedding: EmbeddingQuirks {
             requires_usage: false,
             ..EmbeddingQuirks::openai()

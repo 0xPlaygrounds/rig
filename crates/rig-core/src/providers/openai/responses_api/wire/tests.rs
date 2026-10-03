@@ -558,3 +558,85 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
         "the provider's own message must survive: {error}"
     );
 }
+
+/// What each dialect's encoder carries: images as data or URLs, image file
+/// ids only where the endpoint keeps files and its `input_image` takes them,
+/// documents as files or text, and no audio, video or assistant image.
+#[test]
+fn each_dialect_encodes_what_its_endpoint_reads() {
+    use crate::completion::{Media, Place, ReplayTarget};
+    use crate::message::{
+        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source, Image,
+        ImageMediaType, Video, VideoMediaType,
+    };
+    let image = |data: Source, media_type: Option<ImageMediaType>| Image {
+        data,
+        media_type,
+        ..Image::default()
+    };
+    let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
+        data,
+        media_type,
+        additional_params: None,
+    };
+    let png = image(Source::base64("iVBORw0KGgo="), Some(ImageMediaType::PNG));
+    let untyped = image(Source::base64("AAAA"), None);
+    let url = image(Source::url("https://example.com/a.png"), None);
+    let image_file = image(Source::file_id("file-image"), None);
+    let string = image(Source::string("an image"), None);
+    let pdf = document(Source::base64("JVBERi0="), Some(DocumentMediaType::PDF));
+    let pdf_url = document(Source::url("https://example.com/a.pdf"), None);
+    let text = document(Source::string("plain"), Some(DocumentMediaType::TXT));
+    let csv = document(Source::base64("YSxi"), Some(DocumentMediaType::CSV));
+    let document_file = document(Source::file_id("file-document"), None);
+    let audio = Audio {
+        data: Source::base64("SUQz"),
+        media_type: Some(AudioMediaType::MP3),
+    };
+    let video = Video {
+        data: Source::url("https://example.com/a.mp4"),
+        media_type: Some(VideoMediaType::MP4),
+        additional_params: None,
+    };
+    let copilot = Responses::new(
+        OpenAIConfig::with_key(&crate::providers::copilot::wire::DIALECT, "key"),
+        "gpt-5.3-codex",
+    );
+    // (dialect, image file ids, document file ids)
+    for (wire, image_files, document_files) in [
+        (openai(), true, true),
+        (xai(), false, true),
+        (chatgpt(), false, false),
+        (copilot, false, false),
+    ] {
+        let name = wire.provider.dialect.name;
+        let model = wire.model.clone();
+        let encodes = |media| wire.encodes(&model, media);
+        for place in [Place::User, Place::ToolResult] {
+            assert!(encodes(Media::Image(&png, place)), "{name}: data");
+            assert!(encodes(Media::Image(&url, place)), "{name}: URL");
+            assert_eq!(
+                encodes(Media::Image(&image_file, place)),
+                image_files,
+                "{name}: image file id"
+            );
+            assert!(!encodes(Media::Image(&untyped, place)), "{name}: untyped");
+            assert!(!encodes(Media::Image(&string, place)), "{name}: string");
+        }
+        assert!(!encodes(Media::Image(&png, Place::Assistant)), "{name}");
+        assert!(!encodes(Media::Audio(&audio)), "{name}: audio");
+        assert!(!encodes(Media::Video(&video)), "{name}: video");
+        assert!(encodes(Media::Document(&pdf)), "{name}: PDF data");
+        assert!(encodes(Media::Document(&pdf_url)), "{name}: file URL");
+        assert!(encodes(Media::Document(&text)), "{name}: text");
+        assert!(
+            !encodes(Media::Document(&csv)),
+            "{name}: text data goes as its text"
+        );
+        assert_eq!(
+            encodes(Media::Document(&document_file)),
+            document_files,
+            "{name}: document file id"
+        );
+    }
+}

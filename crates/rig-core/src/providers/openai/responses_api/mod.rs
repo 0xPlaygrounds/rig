@@ -15,7 +15,7 @@ use crate::error::EncodeError;
 use crate::json_utils;
 use crate::json_utils::string_or_vec;
 use crate::message::{
-    Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError, MimeType, Text,
+    Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MimeType, Text,
 };
 use crate::{completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -200,20 +200,58 @@ pub enum ToolResultOutputContent {
     },
 }
 
-/// Returns a request error for an unsupported source.
-/// Callers must base64-encode raw bytes before request conversion.
-fn unsupported_document_source(source: DocumentSourceKind) -> EncodeError {
-    match source {
-        DocumentSourceKind::Raw(_) => {
-            EncodeError::request("Raw file data not supported, encode as base64 first")
-        }
-        source => EncodeError::request(format!("Unsupported document type: {source}")),
+/// The `image_url` and `file_id` an `input_image` carries `image` as: a
+/// data URL for typed base64 data, its URL, or its file id. `None` for any
+/// other source, which [`wire::Responses`] tells the adapter it does not
+/// carry.
+fn image_input(image: &message::Image) -> Option<(Option<String>, Option<String>)> {
+    match &image.data {
+        DocumentSourceKind::Base64(data) => image.media_type.as_ref().map(|media_type| {
+            let url = format!("data:{};base64,{data}", media_type.to_mime_type());
+            (Some(url), None)
+        }),
+        DocumentSourceKind::Url(url) => Some((Some(url.clone()), None)),
+        DocumentSourceKind::FileId(file_id) => Some((None, Some(file_id.clone()))),
+        _ => None,
     }
+}
+
+/// The content part `document` goes as: an `input_file` for a file id, a
+/// URL or base64 PDF data, and its text for a string. `None` for any other
+/// form; the adapter sends a text document's text instead.
+fn document_input(document: &Document) -> Option<UserContent> {
+    let file = |file_id, file_url, file_data, filename| UserContent::InputFile {
+        file_id,
+        file_url,
+        file_data,
+        filename,
+    };
+    match &document.data {
+        DocumentSourceKind::FileId(file_id) => Some(file(Some(file_id.clone()), None, None, None)),
+        DocumentSourceKind::Url(url) => Some(file(None, Some(url.clone()), None, None)),
+        DocumentSourceKind::Base64(data) if document.media_type == Some(DocumentMediaType::PDF) => {
+            Some(file(
+                None,
+                None,
+                Some(format!("data:application/pdf;base64,{data}")),
+                Some("document.pdf".to_owned()),
+            ))
+        }
+        DocumentSourceKind::String(text) => Some(UserContent::InputText { text: text.clone() }),
+        _ => None,
+    }
+}
+
+/// The refusal for a part a request was not prepared to carry.
+fn unsendable(part: &str) -> EncodeError {
+    EncodeError::request(format!(
+        "the Responses API cannot carry this {part}; prepare the request first"
+    ))
 }
 
 fn responses_tool_result_output(
     content: Vec<message::ToolResultContent>,
-) -> Result<ToolResultOutput, MessageError> {
+) -> Result<ToolResultOutput, EncodeError> {
     let mut rich_output = Vec::new();
 
     for content in content {
@@ -226,39 +264,13 @@ fn responses_tool_result_output(
                     text: value.to_string(),
                 });
             }
-            message::ToolResultContent::Image(message::Image {
-                data,
-                media_type,
-                detail,
-                ..
-            }) => {
-                let (image_url, file_id) = match data {
-                    DocumentSourceKind::Base64(data) => {
-                        let media_type = media_type.ok_or_else(|| {
-                            MessageError::ConversionError(
-                                "A media type is required for base64 tool-result images".into(),
-                            )
-                        })?;
-                        (
-                            Some(format!(
-                                "data:{media_type};base64,{data}",
-                                media_type = media_type.to_mime_type()
-                            )),
-                            None,
-                        )
-                    }
-                    DocumentSourceKind::Url(url) => (Some(url), None),
-                    DocumentSourceKind::FileId(file_id) => (None, Some(file_id)),
-                    unsupported => {
-                        return Err(MessageError::ConversionError(format!(
-                            "Unsupported tool-result image source: {unsupported}"
-                        )));
-                    }
-                };
+            message::ToolResultContent::Image(image) => {
+                let (image_url, file_id) =
+                    image_input(&image).ok_or_else(|| unsendable("tool-result image"))?;
                 rich_output.push(ToolResultOutputContent::InputImage {
                     image_url,
                     file_id,
-                    detail: detail.unwrap_or_default(),
+                    detail: image.detail.unwrap_or_default(),
                 });
             }
         }
@@ -463,78 +475,20 @@ fn user_input_item(
                 })
             }
         }
-        crate::message::UserContent::Document(Document {
-            data: DocumentSourceKind::FileId(file_id),
-            ..
-        }) => InputItem::user_content(UserContent::InputFile {
-            file_id: Some(file_id),
-            file_data: None,
-            file_url: None,
-            filename: None,
-        }),
-        crate::message::UserContent::Document(Document {
-            data,
-            media_type: Some(DocumentMediaType::PDF),
-            ..
-        }) => {
-            let (file_data, file_url, filename) = match data {
-                DocumentSourceKind::Base64(data) => (
-                    Some(format!("data:application/pdf;base64,{data}")),
-                    None,
-                    Some("document.pdf".to_string()),
-                ),
-                DocumentSourceKind::Url(url) => (None, Some(url), None),
-                source => return Err(unsupported_document_source(source)),
-            };
-            InputItem::user_content(UserContent::InputFile {
-                file_id: None,
-                file_data,
-                file_url,
-                filename,
-            })
-        }
-        // A URL whose type the caller did not name: `input_file` fetches it
-        // and reads the type itself.
-        crate::message::UserContent::Document(Document {
-            data: DocumentSourceKind::Url(url),
-            media_type: None,
-            ..
-        }) => InputItem::user_content(UserContent::InputFile {
-            file_id: None,
-            file_data: None,
-            file_url: Some(url),
-            filename: None,
-        }),
-        crate::message::UserContent::Document(Document {
-            data: DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text),
-            ..
-        }) => InputItem::user_content(UserContent::InputText { text }),
-        crate::message::UserContent::Image(crate::message::Image {
-            data,
-            media_type,
-            detail,
-            ..
-        }) => {
-            let url = match data {
-                DocumentSourceKind::Base64(data) => {
-                    let media_type = media_type
-                        .map(|media_type| media_type.to_mime_type().to_string())
-                        .unwrap_or_default();
-                    format!("data:{media_type};base64,{data}")
-                }
-                DocumentSourceKind::Url(url) => url,
-                source => return Err(unsupported_document_source(source)),
-            };
+        // `input_file` reads the type of a file it fetches itself.
+        crate::message::UserContent::Document(document) => InputItem::user_content(
+            document_input(&document).ok_or_else(|| unsendable("document"))?,
+        ),
+        crate::message::UserContent::Image(image) => {
+            let (image_url, file_id) = image_input(&image).ok_or_else(|| unsendable("image"))?;
             InputItem::user_content(UserContent::InputImage {
-                image_url: url,
-                detail: detail.unwrap_or_default(),
+                image_url,
+                file_id,
+                detail: image.detail.unwrap_or_default(),
             })
         }
-        message => {
-            return Err(EncodeError::request(format!(
-                "Unsupported message: {message:?}"
-            )));
-        }
+        crate::message::UserContent::Audio(_) => return Err(unsendable("audio")),
+        crate::message::UserContent::Video(_) => return Err(unsendable("video")),
     }))
 }
 
@@ -1357,7 +1311,12 @@ pub enum UserContent {
         text: String,
     },
     InputImage {
-        image_url: String,
+        /// A URL or base64 data URL, mutually exclusive with `file_id`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image_url: Option<String>,
+        /// An uploaded file's id, mutually exclusive with `image_url`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file_id: Option<String>,
         #[serde(default)]
         detail: ImageDetail,
     },
