@@ -516,3 +516,59 @@ fn id_less_tool_call_envelopes_mint_distinct_handles_by_position() {
     assert_ne!(ids[0], ids[2], "two id-less calls stay distinct");
     assert_eq!(ids[1], CallId::from_wire("explicit-1"));
 }
+
+#[test]
+fn every_renderer_takes_any_media_the_adapter_hands_over() {
+    use rig_core::message::{
+        Audio, AudioMediaType, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
+        UserContent, Video, VideoMediaType,
+    };
+    let document = |data, media_type| {
+        UserContent::Document(rig_core::message::Document {
+            data,
+            media_type: Some(media_type),
+            additional_params: None,
+        })
+    };
+    let history = vec![Message::User {
+        content: vec![
+            UserContent::text("look"),
+            UserContent::Image(Image {
+                data: DocumentSourceKind::url("https://example.com/a.png"),
+                media_type: Some(ImageMediaType::PNG),
+                ..Image::default()
+            }),
+            UserContent::Audio(Audio {
+                data: DocumentSourceKind::url("https://example.com/a.mp3"),
+                media_type: Some(AudioMediaType::MP3),
+            }),
+            UserContent::Video(Video {
+                data: DocumentSourceKind::url("https://example.com/a.mp4"),
+                media_type: Some(VideoMediaType::MP4),
+                additional_params: None,
+            }),
+            document(
+                DocumentSourceKind::string("the plain document"),
+                DocumentMediaType::TXT,
+            ),
+            document(
+                DocumentSourceKind::base64("JVBERi0xLjQ="),
+                DocumentMediaType::PDF,
+            ),
+        ],
+    }];
+    let adapted = rig_core::completion::adapt(&history, &crate::Generation);
+    for protocol in [
+        ConversationProtocol::Llama3,
+        ConversationProtocol::SmolLm2,
+        ConversationProtocol::Qwen3,
+    ] {
+        let request = CompletionRequest {
+            tools: Vec::new(),
+            ..request(adapted.clone())
+        };
+        let prompt = render_prompt(&request, protocol)
+            .unwrap_or_else(|error| panic!("{protocol:?} renders the adapted history: {error}"));
+        assert!(prompt.contains("the plain document"), "{prompt}");
+    }
+}

@@ -358,6 +358,12 @@ impl rig_core::completion::ReplayTarget for Generation {
     fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
         rig_core::completion::Accepts::TEXT
     }
+
+    /// The prompt renderers take text only: a text document arrives as its
+    /// text, and every other media part as a placeholder.
+    fn encodes(&self, _model: &str, _media: rig_core::completion::Media<'_>) -> bool {
+        false
+    }
 }
 
 /// Writes local generation events into the reply. Every input is modeled;
