@@ -77,15 +77,24 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
     })
 }
 
-/// Why a run fails on a turn the provider failed (`stop` is
-/// [`StopReason::Error`]) that delivered no answer: a failed turn with
-/// nothing to show cannot end a run as a success. `None` for any other turn.
-pub fn failed_turn_message(
+/// Why a run fails on a turn that delivered no answer
+/// ([`turn_delivered_no_answer`]): the output budget or a filter cut it
+/// (`finish` is truncating), or the provider failed it (`stop` is
+/// [`StopReason::Error`]). `None` for a turn that answered, or ended cleanly
+/// with nothing to say. Every runtime reads this one rule.
+pub fn unanswered_failure(
     choice: &[AssistantContent],
     stop: Option<&StopReason>,
+    finish: Option<&crate::completion::FinishReason>,
 ) -> Option<String> {
+    if !turn_delivered_no_answer(choice) {
+        return None;
+    }
+    if let Some(finish) = finish.filter(|finish| finish.truncated_output()) {
+        return Some(finish.no_answer_message());
+    }
     match stop {
-        Some(StopReason::Error(reason)) if turn_delivered_no_answer(choice) => Some(format!(
+        Some(StopReason::Error(reason)) => Some(format!(
             "the provider failed the turn without an answer: {reason}"
         )),
         _ => None,

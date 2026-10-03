@@ -42,7 +42,7 @@ pub mod streamed;
 
 pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
-use rig_core::completion::message::{failed_turn_message, turn_delivered_no_answer};
+use rig_core::completion::message::unanswered_failure;
 use rig_core::json_utils;
 use rig_core::structured_output;
 use transcript::{
@@ -929,14 +929,13 @@ impl AgentRun {
                     return Ok(self.finish(content, output_tool_calls));
                 }
 
-                // Reasoning alone is not an answer. Reject answerless truncated turns
-                // before committing history, but retain valid empty non-truncated turns.
-                if turn_delivered_no_answer(&items)
-                    && let Some(reason) = self.truncating_finish_reason()
-                {
-                    return Err(ProviderError::Response(reason.no_answer_message()).into());
-                }
-                if let Some(message) = failed_turn_message(&items, head.stop.as_ref()) {
+                // Reasoning alone is not an answer. Reject answerless cut or failed
+                // turns before committing history, but retain valid empty turns.
+                let finish = self
+                    .completion_calls
+                    .last()
+                    .and_then(|call| call.finish_reason.as_ref());
+                if let Some(message) = unanswered_failure(&items, head.stop.as_ref(), finish) {
                     return Err(ProviderError::Response(message).into());
                 }
 
@@ -1060,14 +1059,6 @@ impl AgentRun {
 
     /// Latest call's reason when [`FinishReason::truncated_output`] identifies
     /// truncation. Unknown provider reasons do not imply truncation.
-    fn truncating_finish_reason(&self) -> Option<&FinishReason> {
-        self.completion_calls
-            .last()?
-            .finish_reason
-            .as_ref()
-            .filter(|reason| reason.truncated_output())
-    }
-
     fn record_completion_call(
         &mut self,
         usage: Usage,

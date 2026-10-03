@@ -265,3 +265,29 @@ fn a_stored_call_with_any_arguments_shape_loads() {
         serde_json::from_value(stored).expect("a stored call loads");
     assert_eq!(function.arguments_value(), serde_json::json!({"q": 1}));
 }
+
+#[test]
+fn an_unanswered_turn_fails_its_run_only_when_cut_or_failed() {
+    use super::{AssistantContent, StopReason, unanswered_failure};
+    use crate::completion::FinishReason;
+    let empty: Vec<AssistantContent> = vec![AssistantContent::reasoning("thinking")];
+    let answered = vec![AssistantContent::text("hi")];
+    let failed = StopReason::Error("refused".into());
+    assert_eq!(
+        unanswered_failure(
+            &empty,
+            Some(&StopReason::Length),
+            Some(&FinishReason::Length)
+        ),
+        Some(FinishReason::Length.no_answer_message())
+    );
+    assert!(unanswered_failure(&empty, Some(&failed), None).is_some_and(|m| m.contains("refused")));
+    assert_eq!(
+        unanswered_failure(&empty, Some(&StopReason::Stop), Some(&FinishReason::Stop)),
+        None
+    );
+    assert_eq!(
+        unanswered_failure(&answered, Some(&failed), Some(&FinishReason::Length)),
+        None
+    );
+}

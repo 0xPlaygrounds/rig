@@ -31,7 +31,6 @@ use bevy_ecs::{
 use rig_core::{
     completion::message::{
         AssistantContent, AssistantMessage, ToolChoice, ToolResultContent, UserContent,
-        turn_delivered_no_answer,
     },
     effect::{EffectKind, FamilyDescriptor, Outcome},
     error::ErrorKind,
@@ -2321,20 +2320,10 @@ pub fn read_turn(
                 continue;
             }
         };
-        if turn_delivered_no_answer(&outs.content)
-            && let Some(reason) = response
-                .finish_reason()
-                .filter(|reason| reason.truncated_output())
-        {
-            let report = rig_core::error::ErrorReport::from(
-                &rig_core::error::ProviderError::Response(reason.no_answer_message()),
-            );
-            commands.entity(run).end(Failed(Failure::Provider(report)));
-            continue;
-        }
-        if let Some(message) = rig_core::completion::message::failed_turn_message(
+        if let Some(message) = rig_core::completion::message::unanswered_failure(
             &outs.content,
             Some(&response.stop()),
+            response.finish_reason().as_ref(),
         ) {
             let report = rig_core::error::ErrorReport::from(
                 &rig_core::error::ProviderError::Response(message),
