@@ -69,6 +69,15 @@ impl Operation for Completion {
             || Api::from(call.wire.name.to_owned()),
             |target| target.api(),
         );
+        let mut origin = Origin::new(api, call.wire.name, model);
+        // Only a wire that binds items to the context needs it recorded.
+        if call
+            .wire
+            .replay
+            .is_some_and(|target| target.binds_context(model))
+        {
+            origin.context = Some(crate::completion::history::context_of(request));
+        }
         Turn {
             span,
             wire: call
@@ -76,7 +85,7 @@ impl Operation for Completion {
                 .replay
                 .is_some_and(|target| target.states_finish_reason()),
             call_id_slot: call.wire.replay.and_then(|target| target.call_id_slot()),
-            ..Turn::new(Origin::new(api, call.wire.name, model))
+            ..Turn::new(origin)
         }
     }
 
@@ -106,13 +115,19 @@ impl Operation for Completion {
             .take()
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
-        let stored = target.continues_stored(&request);
-        request.chat_history = crate::completion::history::adapt_for_model(
-            &request.chat_history,
-            target,
-            request.model.as_deref(),
-            stored,
-        );
+        // Documents join the history before it is adapted, so the adapter's
+        // rules apply to them and no encoder places them.
+        request.chat_history = request.chat_history_with_documents();
+        request.documents.clear();
+        let shape = crate::completion::history::Request {
+            model: request.model.as_deref(),
+            stored: target.continues_stored(&request),
+            tools: !request.tools.is_empty()
+                && !matches!(request.tool_choice, Some(crate::message::ToolChoice::None)),
+            context: Some(crate::completion::history::context_of(&request)),
+        };
+        request.chat_history =
+            crate::completion::history::adapt_for(&request.chat_history, target, &shape);
         request.validate_message_content()?;
         Ok(request)
     }

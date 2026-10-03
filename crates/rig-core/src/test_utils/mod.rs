@@ -85,3 +85,31 @@ pub(crate) fn fold_for<W: crate::wire::Wire>(
         &mut crate::wire::Call::new(&wire.describe(), mode),
     )
 }
+
+/// The documents a prepared request sent, as `(id, text)`: `prepare` folds
+/// a request's documents into its first user message as `<file id: ...>`
+/// text documents.
+pub fn sent_documents(request: &crate::completion::CompletionRequest) -> Vec<(String, String)> {
+    request
+        .chat_history
+        .iter()
+        .flat_map(|message| match message {
+            crate::message::Message::User { content } => content.iter().collect::<Vec<_>>(),
+            crate::message::Message::System { .. } | crate::message::Message::Assistant(_) => {
+                Vec::new()
+            }
+        })
+        .filter_map(|part| match part {
+            crate::message::UserContent::Document(document) => match &document.data {
+                crate::message::DocumentSourceKind::String(text) => {
+                    let body = text.strip_prefix("<file id: ")?;
+                    let (id, rest) = body.split_once(">\n")?;
+                    let text = rest.strip_suffix("\n</file>\n")?;
+                    Some((id.to_owned(), text.to_owned()))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}

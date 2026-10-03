@@ -71,6 +71,13 @@ pub struct Origin {
     /// The provider's response id, when it sent one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+    /// The fingerprint of the request's tools and system prompt. A wire
+    /// that binds its items to them ([`ReplayTarget::binds_context`])
+    /// replays a turn made under another context as if from another model.
+    ///
+    /// [`ReplayTarget::binds_context`]: crate::completion::ReplayTarget::binds_context
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<Fingerprint>,
 }
 
 impl Origin {
@@ -83,6 +90,7 @@ impl Origin {
             model: model.into(),
             response_model: None,
             response_id: None,
+            context: None,
         }
     }
 

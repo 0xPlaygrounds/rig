@@ -225,7 +225,7 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 }
 
 /// Which side of a hosted-tool pair an opaque item is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Pairing {
     /// The hosted tool's use.
     Use,
@@ -323,20 +323,68 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
 pub fn adapt(history: &[Message], target: &dyn ReplayTarget) -> Vec<Message> {
-    adapt_for_model(history, target, None, false)
+    adapt_for(history, target, &Request::default())
 }
 
-/// [`adapt`] for a request that names `model` in place of the wire's own,
-/// and that continues a conversation the provider stores when `stored`.
-pub(crate) fn adapt_for_model(
+/// What `adapt` reads of the request a history is sent with.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Request<'a> {
+    /// The model it names in place of the wire's own.
+    pub(crate) model: Option<&'a str>,
+    /// Whether it continues a conversation the provider stores.
+    pub(crate) stored: bool,
+    /// Whether it lets the model call tools: a request with none, or with
+    /// `ToolChoice::None`, gets calls and results as text.
+    pub(crate) tools: bool,
+    /// The fingerprint of its tools and system prompt ([`context_of`]).
+    pub(crate) context: Option<crate::message::Fingerprint>,
+}
+
+impl Default for Request<'_> {
+    fn default() -> Self {
+        Self {
+            model: None,
+            stored: false,
+            tools: true,
+            context: None,
+        }
+    }
+}
+
+/// The fingerprint of `request`'s tool definitions, by name, and of its
+/// leading system messages: what a context-bound item was made under.
+pub(crate) fn context_of(
+    request: &crate::completion::CompletionRequest,
+) -> crate::message::Fingerprint {
+    let mut tools: Vec<_> = request.tools.iter().collect();
+    tools.sort_by(|left, right| left.name.cmp(&right.name));
+    let system: Vec<&str> = request
+        .chat_history
+        .iter()
+        .map_while(|message| match message {
+            Message::System { content } => Some(content.as_str()),
+            Message::User { .. } | Message::Assistant(_) => None,
+        })
+        .collect();
+    crate::message::Fingerprint::of(&serde_json::json!(["context", tools, system]))
+}
+
+/// [`adapt`] for `request`.
+pub(crate) fn adapt_for(
     history: &[Message],
     target: &dyn ReplayTarget,
-    model: Option<&str>,
-    stored: bool,
+    request: &Request<'_>,
 ) -> Vec<Message> {
-    let model = model.unwrap_or(target.model());
-    let same = (target.api(), target.provider(), model);
-    let accepts = target.accepts(model);
+    let model = request.model.unwrap_or(target.model());
+    let stored = request.stored;
+    let same = Same {
+        api: target.api(),
+        provider: target.provider(),
+        model,
+        context: request.context.filter(|_| target.binds_context(model)),
+    };
+    let mut accepts = target.accepts(model);
+    accepts.tools &= request.tools;
     let mut ids = Renamed::default();
     let mut shaped = Vec::with_capacity(history.len());
     for message in history {
@@ -361,6 +409,10 @@ pub(crate) fn adapt_for_model(
                         .content
                         .into_iter()
                         .map(|block| match block {
+                            // The capability holds for the model's own turns too.
+                            AssistantContent::Image(_) if !accepts.assistant_images => {
+                                AssistantContent::Text(Text::new(ASSISTANT_IMAGE_OMITTED))
+                            }
                             AssistantContent::Image(image) if image.native.is_none() => {
                                 let image = sendable_image(image);
                                 if matches!(image.data, DocumentSourceKind::Unknown)
@@ -460,27 +512,48 @@ fn with_counter(id: &str, attempt: u64) -> String {
     id.chars().take(keep).chain(digits).collect()
 }
 
-/// `turn` shaped for the target `(api, provider, model)`.
+/// The model a history is sent to, as a turn's origin is compared with it.
+struct Same<'a> {
+    api: Api,
+    provider: &'a str,
+    model: &'a str,
+    /// The request's context, when the target binds items to it.
+    context: Option<crate::message::Fingerprint>,
+}
+
+impl Same<'_> {
+    /// Whether `origin` is this model, made under this context where the
+    /// target binds items to it.
+    fn is(&self, origin: &Origin) -> bool {
+        origin.same_model(&self.api, self.provider, self.model)
+            && self
+                .context
+                .is_none_or(|context| origin.context == Some(context))
+    }
+}
+
+/// `turn` shaped for the target named by `same`.
 fn assistant(
     turn: &AssistantMessage,
     target: &dyn ReplayTarget,
-    (api, provider, model): &(Api, &str, &str),
+    same_model: &Same<'_>,
     accepts: Accepts,
     ids: &mut Renamed,
 ) -> AssistantMessage {
+    let model = same_model.model;
     let same = turn
         .origin
         .as_ref()
-        .is_some_and(|origin| origin.same_model(api, provider, model));
+        .is_some_and(|origin| same_model.is(origin));
     // A failed turn is skipped, so it claims no ids a later turn may use.
     if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
         return turn.clone();
     }
     ids.turn();
-    let content = turn
+    let content: Vec<Option<AssistantContent>> = turn
         .content
         .iter()
-        .filter_map(|block| {
+        .map(|block| {
             let block = if same {
                 match block.clone() {
                     AssistantContent::ToolCall(mut call) => {
@@ -527,11 +600,60 @@ fn assistant(
             kept(&block).then_some(block)
         })
         .collect();
+    let content = if same {
+        paired(content, target)
+    } else {
+        content.into_iter().flatten().collect()
+    };
     AssistantMessage {
         content,
         origin: turn.origin.clone(),
         stop: turn.stop.clone(),
     }
+}
+
+/// A same-model turn's kept blocks (`None` where `adapt` dropped one), with
+/// every block whose partner is gone dropped too: an item that needs the one
+/// after it ([`ReplayTarget::needs_next`]), and a hosted use or result
+/// whose other half is missing ([`ReplayTarget::hosted_pair`]).
+fn paired(
+    mut content: Vec<Option<AssistantContent>>,
+    target: &dyn ReplayTarget,
+) -> Vec<AssistantContent> {
+    let pair = |block: &AssistantContent| match block {
+        AssistantContent::Opaque(opaque) if opaque.replay => target.hosted_pair(&opaque.item),
+        _ => None,
+    };
+    let sides: HashSet<(Pairing, String)> = content.iter().flatten().filter_map(pair).collect();
+    for slot in content.iter_mut() {
+        if let Some((side, id)) = slot.as_ref().and_then(pair) {
+            let other = match side {
+                Pairing::Use => Pairing::Result,
+                Pairing::Result => Pairing::Use,
+            };
+            if !sides.contains(&(other, id)) {
+                *slot = None;
+            }
+        }
+    }
+    for at in (0..content.len()).rev() {
+        let needs = content
+            .get(at)
+            .and_then(Option::as_ref)
+            .and_then(|block| match block {
+                AssistantContent::Opaque(opaque) if opaque.replay => Some(&opaque.item),
+                block => block.native_item(),
+            })
+            .is_some_and(|item| target.needs_next(item));
+        let next_gone = content.get(at + 1).is_none_or(Option::is_none);
+        if needs
+            && next_gone
+            && let Some(slot) = content.get_mut(at)
+        {
+            *slot = None;
+        }
+    }
+    content.into_iter().flatten().collect()
 }
 
 /// Whether a block has anything to send: blank text survives only with a
@@ -633,6 +755,7 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
                     result.call = id;
                 }
                 result.content = result_images(result.content, form, &mut attached);
+                result.content = result_text_parts(result.content, form.accepts, result.is_error);
                 if form.accepts.tools {
                     shaped.push(UserContent::ToolResult(result));
                 } else {
@@ -660,6 +783,51 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
         messages.push(Message::User { content });
     }
     messages
+}
+
+/// What replaces an empty tool result: models answer a call whose result
+/// says nothing better than one with no content (pi).
+pub const NO_TOOL_OUTPUT: &str = "(no tool output)";
+
+/// `content` of a result that has nothing to say, said plainly, and joined
+/// into one text when the model reads no multimodal results: Gemini 2
+/// rejects a result of several parts (pi `google-shared.js`).
+fn result_text_parts(
+    content: Vec<ToolResultContent>,
+    accepts: Accepts,
+    is_error: bool,
+) -> Vec<ToolResultContent> {
+    let blank = content.iter().all(|part| match part {
+        ToolResultContent::Text(text) => text.text.trim().is_empty(),
+        ToolResultContent::Json { .. } | ToolResultContent::Image(_) => false,
+    });
+    if blank {
+        let text = if is_error {
+            format!("[tool error] {NO_TOOL_OUTPUT}")
+        } else {
+            NO_TOOL_OUTPUT.to_owned()
+        };
+        return vec![ToolResultContent::text(text)];
+    }
+    let texts = content
+        .iter()
+        .filter(|part| !matches!(part, ToolResultContent::Image(_)))
+        .count();
+    if accepts.tool_result_images || texts < 2 {
+        return content;
+    }
+    let mut joined: Vec<String> = Vec::new();
+    let mut images = Vec::new();
+    for part in content {
+        match part {
+            ToolResultContent::Text(text) => joined.push(text.text),
+            ToolResultContent::Json { value } => joined.push(value.to_string()),
+            image @ ToolResultContent::Image(_) => images.push(image),
+        }
+    }
+    std::iter::once(ToolResultContent::text(joined.join("\n")))
+        .chain(images)
+        .collect()
 }
 
 /// A tool result as text, for a model without tools.
@@ -921,6 +1089,17 @@ fn close(
     // Results come first: Anthropic requires it, and Chat sends them as tool
     // messages that must follow the turn directly.
     content.sort_by_key(|part| !matches!(part, UserContent::ToolResult(_)));
+    // A held system message goes right after the results, before the user's
+    // own text, as pi places it.
+    let at = content
+        .iter()
+        .position(|part| !matches!(part, UserContent::ToolResult(_)))
+        .unwrap_or(content.len());
+    let text = if held.is_empty() {
+        Vec::new()
+    } else {
+        content.split_off(at)
+    };
     if !content.is_empty() {
         match shaped.last_mut() {
             Some(Message::User { content: previous }) if merge => previous.extend(content),
@@ -928,6 +1107,9 @@ fn close(
         }
     }
     shaped.append(held);
+    if !text.is_empty() {
+        shaped.push(Message::User { content: text });
+    }
 }
 
 /// `calls`, keeping the first of each id.

@@ -6212,12 +6212,15 @@ fn one_text_stream_turn(text: &'static str) -> Vec<MockStreamEvent> {
     ]
 }
 
+use rig_core::test_utils::sent_documents;
+
 /// A single hook's `extra_context` document appears in the completion request,
 /// after the agent's static context, on both `run()` and `stream()`.
 #[tokio::test]
 async fn extra_context_appears_after_static_context_on_both_surfaces() {
     fn assert_docs(req: &crate::completion::CompletionRequest) {
-        let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+        let documents = sent_documents(req);
+        let ids: Vec<&str> = documents.iter().map(|(id, _)| id.as_str()).collect();
         let static_pos = ids
             .iter()
             .position(|id| id.starts_with("static_doc"))
@@ -6231,7 +6234,7 @@ async fn extra_context_appears_after_static_context_on_both_surfaces() {
             "static context precedes hook extras: {ids:?}"
         );
         assert!(
-            req.documents.iter().any(|d| d.text == "injected"),
+            documents.iter().any(|(_, text)| text == "injected"),
             "the hook document's text is present"
         );
     }
@@ -6289,7 +6292,8 @@ async fn multiple_hooks_extra_context_append_in_registration_order() {
         .expect("run should succeed");
     let requests = probe.requests();
     let req = requests.first().expect("one request");
-    let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+    let documents = sent_documents(req);
+    let ids: Vec<&str> = documents.iter().map(|(id, _)| id.as_str()).collect();
     assert_eq!(
         ids,
         vec!["first", "second"],
@@ -6300,10 +6304,10 @@ async fn multiple_hooks_extra_context_append_in_registration_order() {
 #[tokio::test]
 async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_surfaces() {
     fn assert_documents(request: &crate::completion::CompletionRequest) {
-        let documents = request
-            .documents
+        let sent = sent_documents(request);
+        let documents = sent
             .iter()
-            .map(|document| (document.id.as_str(), document.text.as_str()))
+            .map(|(id, text)| (id.as_str(), text.as_str()))
             .collect::<Vec<_>>();
         assert_eq!(
             documents,
@@ -6371,11 +6375,12 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
     );
     let streaming_requests = streaming_probe.requests();
     let request = streaming_requests.first().expect("one request");
-    assert_eq!(request.documents.len(), 1);
-    assert_eq!(request.documents[0].id, "streaming");
     assert_eq!(
-        request.documents[0].text,
-        "{\n  \"source\": \"streaming\"\n}"
+        sent_documents(request),
+        [(
+            "streaming".to_owned(),
+            "{\n  \"source\": \"streaming\"\n}".to_owned()
+        )]
     );
 }
 
@@ -6419,10 +6424,9 @@ async fn dynamic_context_and_application_hooks_follow_registration_order() {
         .expect("run should succeed");
 
     assert_eq!(
-        probe.requests()[0]
-            .documents
-            .iter()
-            .map(|document| document.id.as_str())
+        sent_documents(&probe.requests()[0])
+            .into_iter()
+            .map(|(id, _)| id)
             .collect::<Vec<_>>(),
         vec![
             "static_doc_0",
@@ -6601,11 +6605,11 @@ async fn extra_context_is_per_turn_non_sticky() {
         let turn1 = requests.first().expect("turn 1");
         let turn2 = requests.get(1).expect("turn 2");
         assert!(
-            turn1.documents.iter().any(|d| d.id == "turn-one"),
+            sent_documents(turn1).iter().any(|(id, _)| id == "turn-one"),
             "turn 1 carries the injected document"
         );
         assert!(
-            turn2.documents.iter().all(|d| d.id != "turn-one"),
+            sent_documents(turn2).iter().all(|(id, _)| id != "turn-one"),
             "turn 2 does not inherit turn 1's per-turn document"
         );
     }

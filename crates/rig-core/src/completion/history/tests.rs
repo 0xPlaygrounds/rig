@@ -528,7 +528,14 @@ fn a_turn_left_empty_is_dropped() {
 fn a_request_model_override_is_the_model_compared() {
     let text = AssistantContent::text("a").with_native(json!({"id": "msg_1"}));
     let history = vec![turn(Some(other()), vec![text])];
-    let adapted = adapt_for_model(&history, &TARGET, Some("model-b"), false);
+    let adapted = adapt_for(
+        &history,
+        &TARGET,
+        &Request {
+            model: Some("model-b"),
+            ..Request::default()
+        },
+    );
     assert!(assistant(&adapted[0]).content[0].native_item().is_some());
 }
 
@@ -542,7 +549,14 @@ fn a_request_model_override_decides_image_input() {
     }];
     assert_eq!(adapt(&history, &TARGET), history);
     assert_eq!(
-        adapt_for_model(&history, &TARGET, Some("text-only"), false),
+        adapt_for(
+            &history,
+            &TARGET,
+            &Request {
+                model: Some("text-only"),
+                ..Request::default()
+            }
+        ),
         vec![Message::User {
             content: vec![UserContent::text(USER_IMAGE_OMITTED)],
         }]
@@ -671,7 +685,14 @@ fn results_before_the_first_turn_of_a_stored_conversation_are_kept() {
         },
     ];
     assert_eq!(
-        adapt_for_model(&history, &TARGET, None, true),
+        adapt_for(
+            &history,
+            &TARGET,
+            &Request {
+                stored: true,
+                ..Request::default()
+            }
+        ),
         vec![
             Message::User {
                 content: vec![result("held", "kept")],
@@ -768,10 +789,10 @@ fn tool_result_images_move_to_a_user_message_when_only_users_send_images() {
                 UserContent::ToolResult(ToolResult {
                     call: CallId::from_wire("c1"),
                     name: ToolName::new("lookup").expect("a name"),
-                    content: vec![
-                        ToolResultContent::text("shot"),
-                        ToolResultContent::text(TOOL_IMAGE_ATTACHED),
-                    ],
+                    // A model that reads no multimodal results gets one text.
+                    content: vec![ToolResultContent::text(format!(
+                        "shot\n{TOOL_IMAGE_ATTACHED}"
+                    ))],
                     is_error: false,
                 }),
                 UserContent::text(TOOL_IMAGES_HEADING),
@@ -1015,4 +1036,199 @@ fn an_id_reused_by_a_later_turn_is_made_distinct() {
         content.first(),
         Some(UserContent::ToolResult(result)) if Some(&result.call) == second.as_ref()
     ));
+}
+
+#[test]
+fn an_empty_result_says_so() {
+    let history = vec![
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![result("c1", "  ")],
+        },
+    ];
+    let adapted = adapt(&history, &TARGET);
+    let Message::User { content } = &adapted[1] else {
+        panic!("the result: {adapted:?}");
+    };
+    assert!(matches!(
+        content.first(),
+        Some(UserContent::ToolResult(result))
+            if result.content == [ToolResultContent::text(NO_TOOL_OUTPUT)]
+    ));
+}
+
+#[test]
+fn a_held_system_message_goes_between_the_results_and_the_users_text() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call("c1")]),
+        Message::system("steer"),
+        Message::User {
+            content: vec![result("c1", "done"), UserContent::text("and then")],
+        },
+    ];
+    let adapted = adapt(&history, &TARGET);
+    assert_eq!(
+        adapted[2..],
+        [
+            Message::User {
+                content: vec![result("c1", "done")],
+            },
+            Message::system("steer"),
+            Message::user("and then"),
+        ]
+    );
+}
+
+/// A target whose reasoning items need the item after them, and whose
+/// hosted uses and results pair by id.
+#[derive(Debug)]
+struct Paired;
+
+impl ReplayTarget for Paired {
+    fn api(&self) -> Api {
+        Api::from_static("test.api")
+    }
+
+    fn provider(&self) -> &str {
+        "test"
+    }
+
+    fn model(&self) -> &str {
+        "model-a"
+    }
+
+    fn accepts(&self, _model: &str) -> Accepts {
+        Accepts::ALL
+    }
+
+    fn needs_next(&self, item: &serde_json::Value) -> bool {
+        item.get("type").and_then(serde_json::Value::as_str) == Some("reasoning")
+    }
+
+    fn hosted_pair(&self, item: &serde_json::Value) -> Option<(Pairing, String)> {
+        let id = item.get("id")?.as_str()?.to_owned();
+        match item.get("type")?.as_str()? {
+            "server_use" => Some((Pairing::Use, id)),
+            "server_result" => Some((Pairing::Result, id)),
+            _ => None,
+        }
+    }
+}
+
+#[test]
+fn a_same_model_item_whose_partner_is_gone_goes_with_it() {
+    let reasoning = AssistantContent::reasoning("plan").with_native(json!({"type": "reasoning"}));
+    let blank = AssistantContent::text(" ");
+    let hosted = |kind: &str, id: &str| {
+        AssistantContent::Opaque(Opaque {
+            item: json!({"type": kind, "id": id}),
+            replay: true,
+        })
+    };
+    let history = vec![
+        Message::user("q"),
+        turn(
+            Some(same()),
+            vec![
+                reasoning.clone(),
+                blank,
+                hosted("server_use", "s1"),
+                hosted("server_result", "s1"),
+                hosted("server_use", "s2"),
+                reasoning.clone(),
+                AssistantContent::text("answer"),
+            ],
+        ),
+    ];
+    let adapted = adapt(&history, &Paired);
+    assert_eq!(
+        assistant(&adapted[1]).content,
+        vec![
+            hosted("server_use", "s1"),
+            hosted("server_result", "s1"),
+            reasoning,
+            AssistantContent::text("answer"),
+        ]
+    );
+}
+
+#[test]
+fn a_request_without_tools_gets_calls_and_results_as_text() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call("c1")]),
+        Message::User {
+            content: vec![result("c1", "done")],
+        },
+    ];
+    let adapted = adapt_for(
+        &history,
+        &TARGET,
+        &Request {
+            tools: false,
+            ..Request::default()
+        },
+    );
+    assert!(
+        adapted.iter().all(|message| match message {
+            Message::Assistant(turn) => turn.tool_calls().next().is_none(),
+            Message::User { content } => content
+                .iter()
+                .all(|part| !matches!(part, UserContent::ToolResult(_))),
+            Message::System { .. } => true,
+        }),
+        "{adapted:?}"
+    );
+}
+
+/// A target whose items bind to the request's tools and system prompt.
+#[derive(Debug)]
+struct Bound;
+
+impl ReplayTarget for Bound {
+    fn api(&self) -> Api {
+        Api::from_static("test.api")
+    }
+
+    fn provider(&self) -> &str {
+        "test"
+    }
+
+    fn model(&self) -> &str {
+        "model-a"
+    }
+
+    fn accepts(&self, _model: &str) -> Accepts {
+        Accepts::ALL
+    }
+
+    fn binds_context(&self, _model: &str) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_turn_made_under_other_tools_replays_as_another_models() {
+    let made = crate::message::Fingerprint::of(&json!("tools-a"));
+    let now = crate::message::Fingerprint::of(&json!("tools-b"));
+    let mut origin = same();
+    origin.context = Some(made);
+    let signed = AssistantContent::reasoning("plan").with_native(json!({"signature": "s"}));
+    let history = vec![Message::user("q"), turn(Some(origin), vec![signed.clone()])];
+    let under = |context| {
+        adapt_for(
+            &history,
+            &Bound,
+            &Request {
+                context: Some(context),
+                ..Request::default()
+            },
+        )
+    };
+    assert_eq!(assistant(&under(made)[1]).content, vec![signed]);
+    assert_eq!(
+        assistant(&under(now)[1]).content,
+        vec![AssistantContent::text("plan")]
+    );
 }

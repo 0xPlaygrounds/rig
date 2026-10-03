@@ -110,22 +110,29 @@ const GOLDEN: &str = r#"
         "role": "user",
         "content": [
           {
+            "type": "document",
+            "data": {
+              "type": "string",
+              "value": "<file id: static_doc_0>\nstatic context\n</file>\n"
+            },
+            "media_type": "txt"
+          },
+          {
+            "type": "document",
+            "data": {
+              "type": "string",
+              "value": "<file id: extra>\nextra context\n</file>\n"
+            },
+            "media_type": "txt"
+          },
+          {
             "type": "text",
             "text": "add 2 and 3"
           }
         ]
       }
     ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
+    "documents": [],
     "tools": [
       {
         "name": "add",
@@ -184,6 +191,22 @@ const GOLDEN: &str = r#"
       {
         "role": "user",
         "content": [
+          {
+            "type": "document",
+            "data": {
+              "type": "string",
+              "value": "<file id: static_doc_0>\nstatic context\n</file>\n"
+            },
+            "media_type": "txt"
+          },
+          {
+            "type": "document",
+            "data": {
+              "type": "string",
+              "value": "<file id: extra>\nextra context\n</file>\n"
+            },
+            "media_type": "txt"
+          },
           {
             "type": "text",
             "text": "add 2 and 3"
@@ -233,16 +256,7 @@ const GOLDEN: &str = r#"
         ]
       }
     ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
+    "documents": [],
     "tools": [
       {
         "name": "add",
@@ -301,6 +315,22 @@ const GOLDEN: &str = r#"
       {
         "role": "user",
         "content": [
+          {
+            "type": "document",
+            "data": {
+              "type": "string",
+              "value": "<file id: static_doc_0>\nstatic context\n</file>\n"
+            },
+            "media_type": "txt"
+          },
+          {
+            "type": "document",
+            "data": {
+              "type": "string",
+              "value": "<file id: extra>\nextra context\n</file>\n"
+            },
+            "media_type": "txt"
+          },
           {
             "type": "text",
             "text": "add 2 and 3"
@@ -374,16 +404,7 @@ const GOLDEN: &str = r#"
         ]
       }
     ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
+    "documents": [],
     "tools": [
       {
         "name": "add",

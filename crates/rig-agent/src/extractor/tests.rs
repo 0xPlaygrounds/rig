@@ -331,11 +331,10 @@ async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
     let requests = probe.requests();
     let request = requests.first().expect("one extractor request");
     assert!(
-        request
-            .documents
+        rig_core::test_utils::sent_documents(request)
             .iter()
-            .any(|document| document.id == "extractor-context"
-                && document.text == "{\n  \"question\": \"retrieved\"\n}")
+            .any(|(id, text)| id == "extractor-context"
+                && text == "{\n  \"question\": \"retrieved\"\n}")
     );
 }
 
