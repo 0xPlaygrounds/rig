@@ -607,23 +607,6 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine.",
-              "native": {
-                "item": {
-                  "reasoning_content": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine."
-                },
-                "fingerprint": "53595d1f0730b173"
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
             "part": 1,
             "kind": "text"
@@ -1069,6 +1052,23 @@
             "content": {
               "type": "text",
               "text": "Rust is a systems programming language that uses compile-time ownership and borrowing rules to guarantee memory safety without a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that cause crashes, security vulnerabilities, and undefined behavior."
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer concise, 1-2 sentences. Explain Rust and why memory safety matters. Need maybe mention systems programming language with compile-time ownership/borrow checker preventing memory errors. Why matters: security, crashes, undefined behavior. One or two sentences. Ensure no markdown? Fine."
+                },
+                "fingerprint": "53595d1f0730b173"
+              }
             }
           }
         }

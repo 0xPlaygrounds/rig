@@ -165,6 +165,13 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
         "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
     ),
     (
+        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
+        "thought_signature",
+        "the skip hook abandons the turn before its stream ends, and a turn the consumer has \
+         not wholly taken replays only its canonical fields, as pi drops an unfinished turn's \
+         provider data",
+    ),
+    (
         "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
         "tool_call_id",
         "the cell's repair hook renames the call from `sum_values` to `add` by design, \
@@ -296,6 +303,11 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
     (
         "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream.yaml",
         "the same rename by a repair hook, on a streamed turn",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
+        "the skip hook abandons the turn before its stream ends, so it replays only its \
+         canonical fields",
     ),
     (
         "gemini/auto_caching/support_chat_100_compaction.yaml",

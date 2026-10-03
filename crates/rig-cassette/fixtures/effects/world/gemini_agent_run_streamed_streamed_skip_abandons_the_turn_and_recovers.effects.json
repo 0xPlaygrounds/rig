@@ -165,7 +165,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CiQBaRR9E4ArGB4VLG72kcd1OOUik8fDp7rqpQi9cTODciKViZQKSwFpFH0T/qZTscju/Oe2Uy6XOnAr8HMkZfwmTXzPPtBK/oU7fk70N+DR8Oc3kf0XSRRWyn+IOfSwd0NX/g4hrvk9SfXjnaz50Ccgogp7AWkUfRP0ZF5n2UywECdaYxrLcUNUf6k1O2uBi/imby5QbTorsfNOSG658oGp6elhVtZd002Uw8z+/rukig1teWg5P4hibNocvRyXmThAEb3tUempBds7k4GiGMAa4Mipj7tCA9TxR0pF6TgzPo5hoOkPmLe9XGLvf6mH"
+                  "thoughtSignature": "CiQBaRR9E+jm+o4SKEq3fZDvTVDkV4K5E0aLIVHtPL3kzMDW0NwKWgFpFH0TkFBx0uxtZT2V5ERQe/ciQmoPXkMY6P7+M/GKYYiKv5zBJCauYP78HNNjy397G9/wSYjMuekraVsYbJdAg1+uEYUCYRQBhG+XmxsFUTZGnv73fruViApXAWkUfRPd+L3V1y+tNDG8c9SVWtYJiTij3fTj8/GIVSKfvmbOpnUsKRJ3SIdrcEfXQB1UxIOU1yabpjRmgbOYisfmD5gCM2SbX5FNi6+ymt17s+K84ZAD"
                 },
                 "fingerprint": "8aeaaea51d945ee2"
               }
@@ -173,16 +173,16 @@
           ],
           "usage": {
             "input_tokens": 109,
-            "output_tokens": 67,
-            "total_tokens": 176,
-            "reasoning_tokens": 47
+            "output_tokens": 62,
+            "total_tokens": 171,
+            "reasoning_tokens": 42
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "8QPBaouKH_GBmtkP3oCJ6Aw"
+            "response_id": "aGHBaqjpE5CP6dkPjqS2mQU"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -196,13 +196,13 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 47,
-              "totalTokenCount": 176
+              "thoughtsTokenCount": 42,
+              "totalTokenCount": 171
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "8QPBaouKH_GBmtkP3oCJ6Aw"
+            "response_id": "aGHBaqjpE5CP6dkPjqS2mQU"
           }
         }
       },
@@ -249,7 +249,7 @@
                     },
                     "name": "add"
                   },
-                  "thoughtSignature": "CiQBaRR9E4ArGB4VLG72kcd1OOUik8fDp7rqpQi9cTODciKViZQKSwFpFH0T/qZTscju/Oe2Uy6XOnAr8HMkZfwmTXzPPtBK/oU7fk70N+DR8Oc3kf0XSRRWyn+IOfSwd0NX/g4hrvk9SfXjnaz50Ccgogp7AWkUfRP0ZF5n2UywECdaYxrLcUNUf6k1O2uBi/imby5QbTorsfNOSG658oGp6elhVtZd002Uw8z+/rukig1teWg5P4hibNocvRyXmThAEb3tUempBds7k4GiGMAa4Mipj7tCA9TxR0pF6TgzPo5hoOkPmLe9XGLvf6mH"
+                  "thoughtSignature": "CiQBaRR9E+jm+o4SKEq3fZDvTVDkV4K5E0aLIVHtPL3kzMDW0NwKWgFpFH0TkFBx0uxtZT2V5ERQe/ciQmoPXkMY6P7+M/GKYYiKv5zBJCauYP78HNNjy397G9/wSYjMuekraVsYbJdAg1+uEYUCYRQBhG+XmxsFUTZGnv73fruViApXAWkUfRPd+L3V1y+tNDG8c9SVWtYJiTij3fTj8/GIVSKfvmbOpnUsKRJ3SIdrcEfXQB1UxIOU1yabpjRmgbOYisfmD5gCM2SbX5FNi6+ymt17s+K84ZAD"
                 },
                 "fingerprint": "8aeaaea51d945ee2"
               }
@@ -300,19 +300,6 @@
                       "x": 21,
                       "y": 21
                     }
-                  },
-                  "native": {
-                    "item": {
-                      "functionCall": {
-                        "args": {
-                          "x": 21,
-                          "y": 21
-                        },
-                        "name": "add"
-                      },
-                      "thoughtSignature": "CiQBaRR9E4ArGB4VLG72kcd1OOUik8fDp7rqpQi9cTODciKViZQKSwFpFH0T/qZTscju/Oe2Uy6XOnAr8HMkZfwmTXzPPtBK/oU7fk70N+DR8Oc3kf0XSRRWyn+IOfSwd0NX/g4hrvk9SfXjnaz50Ccgogp7AWkUfRP0ZF5n2UywECdaYxrLcUNUf6k1O2uBi/imby5QbTorsfNOSG658oGp6elhVtZd002Uw8z+/rukig1teWg5P4hibNocvRyXmThAEb3tUempBds7k4GiGMAa4Mipj7tCA9TxR0pF6TgzPo5hoOkPmLe9XGLvf6mH"
-                    },
-                    "fingerprint": "8aeaaea51d945ee2"
                   }
                 }
               ],
@@ -381,47 +368,47 @@
           "choice": [
             {
               "type": "text",
-              "text": "I am sorry, but the add tool is disabled for this request. I cannot calculate 21 + 21.",
+              "text": "The add tool is disabled for this request.",
               "native": {
                 "item": {
-                  "text": "I am sorry, but the add tool is disabled for this request. I cannot calculate 21 + 21.",
-                  "thoughtSignature": "CmwBaRR9E9DyfyNfarN7s+0ZwIzexiE13EKhtwsDCoWpw1NaboQ6wAw+UYCMapJpdyimMRqAYrZJ6y5ENBAaJDNZfq4/P384MzSv6Pra0wWclgAsOqMLE3lHXecoLoFvkTMBzRNCj306RwiScAUKNgFpFH0TE9pbCIe5PKz09e2p6mrRUtdOHEwsKbcEdaBBkENPnv9a6c1JUQLSHr7P6Kcct9ZBbg=="
+                  "text": "The add tool is disabled for this request.",
+                  "thoughtSignature": "CkoBaRR9ExQO/yUd7OwDSG4uu+ZP07m91F1RQLSQmZcom1BefRHWukQdexzH8q839G3DoRm4E41OvpTMOYvJkC3AUo+V53nIb+lrrgrZAQFpFH0T16skjaaO+IBpjd6Zs+HxrMAUfqY7w+AeBLAMLE33+yAWpIYTuYZlytehaqJXFoY2rqf1HsPepkdBpXT49ArnB1RgUDYHiy1IQ+lKpbaHlujFcBUzAeoqHXAQLcxJn7bAwAcem7LAdLx1jwUwCeeXXWvYbWL4KFv6QzAEUixO+5lb9cERPXRPeT5P9oVrdurz6EaDJpAcLxAJb2dziMHvb726zLCQzkoOI0Bavzm/J6W4oAkD/beMSK/+bgGaePNNdoxQD9ZcisRiYBLPsiW/SyXYCWY="
                 },
-                "fingerprint": "f26502907757def1"
+                "fingerprint": "bbf3bba124d16395"
               }
             }
           ],
           "usage": {
-            "input_tokens": 197,
-            "output_tokens": 46,
-            "total_tokens": 243,
-            "reasoning_tokens": 21
+            "input_tokens": 150,
+            "output_tokens": 64,
+            "total_tokens": 214,
+            "reasoning_tokens": 55
           },
           "origin": {
             "api": "gemini.generate_content",
             "provider": "gcp.gemini",
             "model": "gemini-2.5-flash",
             "response_model": "gemini-2.5-flash",
-            "response_id": "8gPBavHwCqGUmtkP_dDFkQM"
+            "response_id": "aWHBaofKAu2LmtkPz72BuAI"
           },
           "finish_reason": "stop",
           "raw": {
             "usage_metadata": {
-              "candidatesTokenCount": 25,
-              "promptTokenCount": 197,
+              "candidatesTokenCount": 9,
+              "promptTokenCount": 150,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 197
+                  "tokenCount": 150
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 21,
-              "totalTokenCount": 243
+              "thoughtsTokenCount": 55,
+              "totalTokenCount": 214
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "8gPBavHwCqGUmtkP_dDFkQM"
+            "response_id": "aWHBaofKAu2LmtkPz72BuAI"
           }
         }
       },
@@ -439,7 +426,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "I am sorry, but the add tool is disabled for this request. I cannot calculate 21 + 21."
+            "text": "The add tool is disabled for this request."
           }
         },
         {
@@ -449,13 +436,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I am sorry, but the add tool is disabled for this request. I cannot calculate 21 + 21.",
+              "text": "The add tool is disabled for this request.",
               "native": {
                 "item": {
-                  "text": "I am sorry, but the add tool is disabled for this request. I cannot calculate 21 + 21.",
-                  "thoughtSignature": "CmwBaRR9E9DyfyNfarN7s+0ZwIzexiE13EKhtwsDCoWpw1NaboQ6wAw+UYCMapJpdyimMRqAYrZJ6y5ENBAaJDNZfq4/P384MzSv6Pra0wWclgAsOqMLE3lHXecoLoFvkTMBzRNCj306RwiScAUKNgFpFH0TE9pbCIe5PKz09e2p6mrRUtdOHEwsKbcEdaBBkENPnv9a6c1JUQLSHr7P6Kcct9ZBbg=="
+                  "text": "The add tool is disabled for this request.",
+                  "thoughtSignature": "CkoBaRR9ExQO/yUd7OwDSG4uu+ZP07m91F1RQLSQmZcom1BefRHWukQdexzH8q839G3DoRm4E41OvpTMOYvJkC3AUo+V53nIb+lrrgrZAQFpFH0T16skjaaO+IBpjd6Zs+HxrMAUfqY7w+AeBLAMLE33+yAWpIYTuYZlytehaqJXFoY2rqf1HsPepkdBpXT49ArnB1RgUDYHiy1IQ+lKpbaHlujFcBUzAeoqHXAQLcxJn7bAwAcem7LAdLx1jwUwCeeXXWvYbWL4KFv6QzAEUixO+5lb9cERPXRPeT5P9oVrdurz6EaDJpAcLxAJb2dziMHvb726zLCQzkoOI0Bavzm/J6W4oAkD/beMSK/+bgGaePNNdoxQD9ZcisRiYBLPsiW/SyXYCWY="
                 },
-                "fingerprint": "f26502907757def1"
+                "fingerprint": "bbf3bba124d16395"
               }
             }
           }
