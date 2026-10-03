@@ -1522,9 +1522,9 @@ async fn chat_conversation(
         profile.chat,
         ChatSupport::TextOnly | ChatSupport::ToolsAtEffortNone
     ) {
-        // Function tools at the default effort are refused before anything
-        // is sent (rig's `EncodeError`), and so is the extractor, whose
-        // `submit` is a function tool.
+        // Function tools at the default effort are refused by OpenAI, whose
+        // 400 names the fix, and so is the extractor, whose `submit` is a
+        // function tool.
         let tools_agent = AgentBuilder::new(plain())
             .preamble("Use lookup_order to answer order questions.")
             .tool(LookupOrder)
@@ -1536,7 +1536,7 @@ async fn chat_conversation(
             .expect_err("tools at the default effort are refused on Chat Completions");
         let message = error.to_string();
         assert!(
-            message.contains("Responses wire"),
+            message.contains("/v1/responses"),
             "{}: {message}",
             session.run
         );
@@ -1550,7 +1550,7 @@ async fn chat_conversation(
                 .scenario_refused(
                     "structured_extraction",
                     wire,
-                    "Responses wire",
+                    "/v1/responses",
                     structured_extraction(plain(), None),
                 )
                 .await;
