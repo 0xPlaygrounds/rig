@@ -60,11 +60,6 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
         "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
     ),
     (
-        "anthropic/long_run_caching/dynamic_tools_30.yaml",
-        "signature",
-        "the request patch changes the tools on turn 11, and Anthropic binds thinking to them, so turns made under the old tools replay as another model's (rule R8, #2703)",
-    ),
-    (
         "deepseek/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
         "tool_call_id",
         "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
@@ -228,10 +223,6 @@ const VERBATIM_EXEMPT: &[(&str, &str)] = &[
     (
         "anthropic/corpus_shaping/tool_choice_none_on_committed_output.yaml",
         "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
-    ),
-    (
-        "anthropic/long_run_caching/dynamic_tools_30.yaml",
-        "the request patch changes the tools on turn 11, and Anthropic binds thinking to them, so turns made under the old tools replay as another model's (rule R8, #2703)",
     ),
     (
         "deepseek/corpus_matrix/shaping_active_tools_none_second_turn.yaml",

@@ -137,10 +137,11 @@ fn tool_changes(recording: &Recording) -> Vec<(usize, u64, Option<u64>)> {
 }
 
 /// Active tools that change every ten turns on Claude Opus 5.5, whose
-/// thinking blocks are bound to the tools they were produced with. A turn
-/// made under other tools replays as another model's, its thinking as text,
-/// so the first request after each change (turns 11 and 21) is accepted
-/// where it used to be refused with a 400 (#2703), and every turn completes.
+/// thinking blocks are bound to the tools they were produced with. Every
+/// request asks Anthropic to drop a block whose binding no longer matches,
+/// so the first request after each change (turns 11 and 21) replays the
+/// signed thinking made under the old tools and is accepted where it used
+/// to be refused with a 400 (#2703), and every turn completes.
 #[tokio::test]
 async fn dynamic_tools_30() {
     let run = with_anthropic_long_run_cassette(
@@ -182,9 +183,13 @@ async fn dynamic_tools_30() {
             .flat_map(|message| message["content"].as_array().into_iter().flatten())
             .filter(|block| block["type"] == "thinking" || block["type"] == "redacted_thinking")
             .count();
+        assert!(
+            signed > 0,
+            "the first request under new tools replays the thinking made under the old ones"
+        );
         assert_eq!(
-            signed, 0,
-            "the first request under new tools replays no thinking made under the old ones"
+            body["thinking"]["block_binding"]["prefix_mismatch_behavior"], "drop_block",
+            "it asks Anthropic to drop a block bound to the old tools"
         );
     }
 }

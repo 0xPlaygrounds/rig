@@ -77,9 +77,8 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     ),
     (
         "anthropic/long_run_caching/dynamic_tools_30.yaml",
-        "the long run's request patch changes the active tools on turn 11; the \
-         changed tool list is the behavior being recorded (Claude Opus 5.5 \
-         refuses it with the thinking-block binding 400)",
+        "the long run's request patch changes the active tools on turns 11 \
+         and 21; the changed tool list is the behavior being recorded",
     ),
     (
         "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
