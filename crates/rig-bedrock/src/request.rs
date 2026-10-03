@@ -366,7 +366,9 @@ pub(crate) fn document(document: &Document) -> Result<Value, EncodeError> {
         .take(8)
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    block["name"] = json!(format!("document-{digest}"));
+    if let Value::Object(fields) = &mut block {
+        fields.insert("name".to_owned(), json!(format!("document-{digest}")));
+    }
     Ok(block)
 }
 
