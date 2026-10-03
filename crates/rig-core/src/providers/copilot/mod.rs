@@ -28,6 +28,7 @@
 /// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
 /// ```
 pub mod auth;
+pub mod model_listing;
 pub mod wire;
 
 pub use crate::client::copilot::Copilot;
@@ -43,9 +44,6 @@ pub(crate) const EDITOR_PLUGIN_VERSION: &str = "copilot-chat/0.35.0";
 pub(crate) const USER_AGENT: &str = "GitHubCopilotChat/0.35.0";
 pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
-
-/// Catalogue endpoint returning all models without pagination.
-pub(crate) const MODEL_LISTING_PATH: &str = "/models";
 
 /// Stable descriptor name reported on normalized Copilot responses.
 pub const PROVIDER_NAME: &str = "copilot";
