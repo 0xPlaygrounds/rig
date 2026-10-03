@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::completion::{CompletionResponse, FinishReason};
-use crate::message::{AssistantContent, Reasoning, ToolCall};
+use crate::message::{AssistantContent, CallId, Reasoning, ToolCall};
 use crate::providers::openai::wire::{Dialect, LLAMACPP, OPENAI, OPENROUTER, OpenAIConfig};
 use crate::streaming::{Item, PartKind, StreamEvent};
 use crate::test_utils::MockStreamingClient;
@@ -352,8 +352,8 @@ async fn a_second_signature_for_one_detail_keeps_the_first() {
 }
 
 #[tokio::test]
-async fn a_provider_id_sent_twice_is_a_duplicate_call_id() {
-    let (items, response) = stream(
+async fn a_provider_id_sent_twice_is_renamed() {
+    let (_, response) = stream(
         &OPENAI,
         &[
             call(0, Some("call_same"), Some("add"), Some(r#"{"a":1}"#)),
@@ -363,22 +363,13 @@ async fn a_provider_id_sent_twice_is_a_duplicate_call_id() {
         ],
     )
     .await;
-    assert!(
-        matches!(
-            items.last(),
-            Some(Err(ProviderError::DuplicateCallId(id)))
-                if id.provider().is_some_and(|id| id.as_str() == "call_same")
-        ),
-        "the duplicate is the stream's last item: {items:?}"
-    );
-    assert!(
-        matches!(
-            &response,
-            Err(ProviderError::DuplicateCallId(id))
-                if id.provider().is_some_and(|id| id.as_str() == "call_same")
-        ),
-        "finish returns the error the stream yielded: {response:?}"
-    );
+    let response = response.expect("a duplicate id does not fail the reply");
+    let ids: Vec<&CallId> = response.tool_calls().map(|call| &call.id).collect();
+    let [first, second] = ids.as_slice() else {
+        panic!("both calls are kept: {ids:?}");
+    };
+    assert_eq!(**first, CallId::from_wire("call_same"));
+    assert!(matches!(second, CallId::Local(_)), "{second:?}");
 }
 
 /// Text streams as it arrives while a call waits in the buffer for its id:

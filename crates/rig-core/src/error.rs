@@ -365,8 +365,6 @@ pub enum ProviderError {
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
     Truncated,
-    /// The provider named two tool calls of one reply with the same id.
-    DuplicateCallId(crate::message::CallId),
 }
 
 impl fmt::Display for ProviderError {
@@ -400,9 +398,6 @@ impl fmt::Display for ProviderError {
             Self::Relayed(report) => f.write_str(&report.message),
             Self::Truncated => {
                 f.write_str("ResponseError: the reply ended before the provider ended it")
-            }
-            Self::DuplicateCallId(id) => {
-                write!(f, "ResponseError: the provider named two tool calls `{id}`")
             }
         }
     }
@@ -466,10 +461,9 @@ impl ProviderError {
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
             Self::Request(_) => ErrorKind::Request,
-            Self::Response(_)
-            | Self::MismatchedDimensions { .. }
-            | Self::Truncated
-            | Self::DuplicateCallId(_) => ErrorKind::Response,
+            Self::Response(_) | Self::MismatchedDimensions { .. } | Self::Truncated => {
+                ErrorKind::Response
+            }
             Self::Provider(_) => ErrorKind::Provider,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)

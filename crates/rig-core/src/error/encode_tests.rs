@@ -53,7 +53,6 @@ fn assert_request_building(case: &str, error: &ProviderError) {
         | ProviderError::CacheExpired { .. }
         | ProviderError::MismatchedDimensions { .. }
         | ProviderError::Truncated
-        | ProviderError::DuplicateCallId(_)
         | ProviderError::Relayed(_) => {
             panic!("{case}: an encode failure must not classify as {error:?}")
         }

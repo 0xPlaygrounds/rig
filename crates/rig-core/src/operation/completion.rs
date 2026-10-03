@@ -480,6 +480,27 @@ impl Turn {
         Ok(())
     }
 
+    /// The id a call closing now takes, and the provider item it keeps:
+    /// `id`, or, when the provider sent none or one an earlier call of the
+    /// reply holds, a fresh rig-issued id (as pi issues). A renamed call
+    /// keeps no item, since the item names the id it lost.
+    fn distinct_call_id(
+        &mut self,
+        id: Option<CallId>,
+        item: serde_json::Value,
+    ) -> (CallId, serde_json::Value) {
+        let (id, item) = match id {
+            Some(id) if !self.call_ids.contains(&id) => (id, item),
+            Some(id) => {
+                tracing::warn!(%id, "the provider named two tool calls with one id; renaming the second");
+                (CallId::Local(LocalCallId::new()), serde_json::Value::Null)
+            }
+            None => (CallId::Local(LocalCallId::new()), item),
+        };
+        self.call_ids.insert(id.clone());
+        (id, item)
+    }
+
     /// Close the item at `index`: its block becomes visible, holding the
     /// provider's item as its native when `closing` says it is complete.
     fn close_item(
@@ -538,10 +559,7 @@ impl Turn {
                     return Ok(());
                 };
                 let function = arguments.function(name);
-                let id = id.unwrap_or_else(|| CallId::Local(LocalCallId::new()));
-                if !self.call_ids.insert(id.clone()) {
-                    return Err(ProviderError::DuplicateCallId(id));
-                }
+                let (id, item) = self.distinct_call_id(id, item);
                 let json = if arguments.text.is_empty() {
                     serde_json::Value::Object(function.arguments.clone()).to_string()
                 } else {
@@ -639,11 +657,18 @@ impl Turn {
         items: &mut Items,
         content: AssistantContent,
     ) -> Result<(), ProviderError> {
-        if let AssistantContent::ToolCall(call) = &content
-            && !self.call_ids.insert(call.id.clone())
-        {
-            return Err(ProviderError::DuplicateCallId(call.id.clone()));
-        }
+        let content = match content {
+            AssistantContent::ToolCall(mut call) => {
+                let item = call
+                    .native
+                    .take()
+                    .map_or(serde_json::Value::Null, |native| native.item);
+                let (id, item) = self.distinct_call_id(Some(call.id), item);
+                call.id = id;
+                with_item(AssistantContent::ToolCall(call), item)
+            }
+            content => content,
+        };
         let part = self.next();
         emit(
             items,

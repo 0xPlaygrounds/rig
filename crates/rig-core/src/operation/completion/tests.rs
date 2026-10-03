@@ -219,7 +219,7 @@ fn a_call_that_never_got_an_id_is_issued_one() {
 }
 
 #[test]
-fn a_reused_call_id_fails_the_reply() {
+fn a_reused_call_id_is_renamed_and_loses_its_item() {
     let decoded = write(|out| {
         for index in 0..2 {
             out.open(
@@ -228,17 +228,21 @@ fn a_reused_call_id_fails_the_reply() {
                     id: CallId::from_wire("call_1"),
                     name: name("lookup"),
                 },
-                Value::Null,
+                json!({"type": "function_call", "call_id": "call_1"}),
             )?;
             out.push(index, "{}")?;
             out.finish(index)?;
         }
         Ok(())
     });
-    assert!(matches!(
-        decoded.outcome,
-        Err(ProviderError::DuplicateCallId(_))
-    ));
+    let calls: Vec<ToolCall> = response(decoded).tool_calls().cloned().collect();
+    let [first, second] = calls.as_slice() else {
+        panic!("both calls are kept: {calls:?}");
+    };
+    assert_eq!(first.id, CallId::from_wire("call_1"));
+    assert!(first.native.is_some());
+    assert!(matches!(second.id, CallId::Local(_)), "{:?}", second.id);
+    assert!(second.native.is_none());
 }
 
 #[test]
