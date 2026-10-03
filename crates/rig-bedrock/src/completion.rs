@@ -45,22 +45,6 @@ pub const AMAZON_NOVA_LITE: &str = "amazon.nova-lite-v1:0";
 pub const AMAZON_NOVA_MICRO: &str = "amazon.nova-micro-v1:0";
 /// `amazon.nova-pro-v1:0`
 pub const AMAZON_NOVA_PRO: &str = "amazon.nova-pro-v1:0";
-/// `amazon.nova-canvas-v1:0` image generation model
-pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
-/// `amazon.nova-reel-v1:0` video generation model
-pub const AMAZON_NOVA_REEL_V1_0: &str = "amazon.nova-reel-v1:0";
-/// `amazon.nova-reel-v1:1` video generation model
-pub const AMAZON_NOVA_REEL_V1_1: &str = "amazon.nova-reel-v1:1";
-/// `amazon.nova-sonic-v1:0` speech model
-pub const AMAZON_NOVA_SONIC: &str = "amazon.nova-sonic-v1:0";
-/// `amazon.rerank-v1:0` rerank model
-pub const AMAZON_RERANK_1_0: &str = "amazon.rerank-v1:0";
-/// `amazon.titan-embed-text-v1` embedding model
-pub const AMAZON_TITAN_EMBEDDINGS_G1_TEXT: &str = "amazon.titan-embed-text-v1";
-/// `amazon.titan-embed-image-v1` multimodal embedding model
-pub const AMAZON_TITAN_MULTIMODAL_EMBEDDINGS_G1: &str = "amazon.titan-embed-image-v1";
-/// `amazon.titan-embed-text-v2:0` embedding model
-pub const AMAZON_TITAN_TEXT_EMBEDDINGS_V2: &str = "amazon.titan-embed-text-v2:0";
 
 /// `us.anthropic.claude-haiku-4-5-20251001-v1:0` (cross-region profile)
 pub const ANTHROPIC_CLAUDE_HAIKU_4_5: &str = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -75,18 +59,8 @@ pub const ANTHROPIC_CLAUDE_SONNET_5: &str = "us.anthropic.claude-sonnet-5";
 /// `us.anthropic.claude-opus-5` (cross-region profile)
 pub const ANTHROPIC_CLAUDE_OPUS_5: &str = "us.anthropic.claude-opus-5";
 
-/// `cohere.embed-english-v3` embedding model
-pub const COHERE_EMBED_ENGLISH: &str = "cohere.embed-english-v3";
-/// `cohere.embed-multilingual-v3` embedding model
-pub const COHERE_EMBED_MULTILINGUAL: &str = "cohere.embed-multilingual-v3";
-/// `cohere.rerank-v3-5:0` rerank model
-pub const COHERE_RERANK_V3_5: &str = "cohere.rerank-v3-5:0";
-
 /// `us.deepseek.r1-v1:0` (cross-region profile)
 pub const DEEPSEEK_R1: &str = "us.deepseek.r1-v1:0";
-
-/// `luma.ray-v2:0` video generation model
-pub const LUMA_RAY_V2_0: &str = "luma.ray-v2:0";
 
 /// `meta.llama3-8b-instruct-v1:0`
 pub const LLAMA_3_8B_INSTRUCT: &str = "meta.llama3-8b-instruct-v1:0";
@@ -113,16 +87,6 @@ pub const MISTRAL_SMALL_24_02: &str = "mistral.mistral-small-2402-v1:0";
 pub const MISTRAL_MIXTRAL_8X7B_INSTRUCT_V0: &str = "mistral.mixtral-8x7b-instruct-v0:1";
 /// `us.mistral.pixtral-large-2502-v1:0` (cross-region profile)
 pub const MISTRAL_PIXTRAL_LARGE_2502: &str = "us.mistral.pixtral-large-2502-v1:0";
-
-/// `stability.sd3-5-large-v1:0` image generation model
-pub const STABILITY_SD3_5_LARGE: &str = "stability.sd3-5-large-v1:0";
-/// `stability.stable-image-core-v1:1` image generation model
-pub const STABILITY_STABLE_IMAGE_CORE_1_0: &str = "stability.stable-image-core-v1:1";
-/// `stability.stable-image-ultra-v1:1` image generation model
-pub const STABILITY_STABLE_IMAGE_ULTRA_1_0: &str = "stability.stable-image-ultra-v1:1";
-
-/// `twelvelabs.pegasus-1-2-v1:0` video-understanding model
-pub const TWELVELABS_PEGASUS_V1_2: &str = "twelvelabs.pegasus-1-2-v1:0";
 
 /// `us.writer.palmyra-x4-v1:0` (cross-region profile)
 pub const WRITER_PALMYRA_X4: &str = "us.writer.palmyra-x4-v1:0";

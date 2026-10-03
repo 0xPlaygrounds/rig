@@ -18,7 +18,7 @@ use rig_core::completion::{FinishReason, Usage};
 use rig_core::error::ProviderError;
 use rig_core::json_utils::Lenient;
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType};
-use rig_core::operation::{Block, CallFragment, Completion, Finish};
+use rig_core::operation::{Block, CallFragment, Completion, Finish, merge};
 use rig_core::wire::{Flow, Out, WireEvent};
 use serde_json::{Map, Value, json};
 
@@ -50,20 +50,6 @@ fn member(value: &Value) -> Option<(&str, &Value)> {
     Some((key.as_str(), value))
 }
 
-/// Append `text` to the string at `pointer` in `item`, starting it when
-/// absent.
-fn append(item: &mut Value, pointer: &str, text: &str) {
-    let Some((parent, key)) = pointer.rsplit_once('/') else {
-        return;
-    };
-    if let Some(Value::Object(fields)) = item.pointer_mut(parent) {
-        match fields.entry(key).or_insert_with(|| json!("")) {
-            Value::String(value) => value.push_str(text),
-            value => *value = json!(text),
-        }
-    }
-}
-
 impl StreamState {
     /// Write one event in delivery order; the reply's end at `metadata`.
     fn event(
@@ -83,7 +69,14 @@ impl StreamState {
             "contentBlockDelta" => self.delta(out, index, payload.get("delta"))?,
             "contentBlockStop" => self.stop(out, index, None)?,
             "messageStop" => self.reason = payload.str("stopReason").map(str::to_owned),
-            "metadata" => return Ok(Some(self.end(payload.get("usage")))),
+            // The writer closes every block still open as incomplete.
+            "metadata" => {
+                return Ok(Some(Finish {
+                    usage: payload.at("/usage").map(usage).unwrap_or_default(),
+                    reason: self.reason.as_deref().map(finish_reason),
+                    ..Finish::default()
+                }));
+            }
             "messageStart" => {}
             kind if kind.ends_with("Exception") => return Err(errors::exception(kind, payload)),
             kind => skip(kind),
@@ -116,8 +109,6 @@ impl StreamState {
                 out.edit(index, |slot| *slot = item)?;
                 Open::Call
             }
-            // An image in a format Rig does not name keeps its JSON and does
-            // not replay.
             "image" if let Some(media_type) = media_type(body.str("format")) => {
                 let image = Image {
                     data: DocumentSourceKind::Base64(String::new()),
@@ -127,12 +118,11 @@ impl StreamState {
                 out.open(index, Block::Image(image), Value::Null)?;
                 Open::Image
             }
-            "image" => {
-                out.open(index, Block::Opaque { replay: false }, item)?;
-                Open::Opaque
-            }
+            // An image in a format Rig does not name keeps its JSON and does
+            // not replay.
             kind => {
-                out.open(index, Block::Opaque { replay: true }, item)?;
+                let replay = kind != "image";
+                out.open(index, Block::Opaque { replay }, item)?;
                 if kind == "toolUse" {
                     Open::Hosted
                 } else {
@@ -144,6 +134,8 @@ impl StreamState {
         Ok(())
     }
 
+    /// One delta: its text, reasoning or arguments go out as they arrive,
+    /// and it merges into the block's Converse JSON.
     fn delta(
         &mut self,
         out: &mut Out<'_, Completion>,
@@ -153,6 +145,7 @@ impl StreamState {
         let Some((kind, body)) = delta.and_then(member) else {
             return Ok(());
         };
+        let redacted = body.get("redactedContent");
         if !self.open.contains_key(&index) {
             let (block, item, open) = match kind {
                 "text" | "citation" => (
@@ -160,13 +153,10 @@ impl StreamState {
                     json!({ "citationsContent": { "content": [{ "text": "" }], "citations": [] } }),
                     Open::Text,
                 ),
-                "reasoningContent" if body.get("redactedContent").is_some() => (
-                    Block::Reasoning { redacted: true },
-                    json!({ "reasoningContent": { "redactedContent": "" } }),
-                    Open::Reasoning,
-                ),
                 "reasoningContent" => (
-                    Block::Reasoning { redacted: false },
+                    Block::Reasoning {
+                        redacted: redacted.is_some(),
+                    },
                     json!({ "reasoningContent": { "reasoningText": { "text": "" } } }),
                     Open::Reasoning,
                 ),
@@ -183,73 +173,48 @@ impl StreamState {
             self.open.insert(index, open);
         }
         let text = body.as_str().or_else(|| body.str("text"));
-        match (kind, self.open.get_mut(&index)) {
-            ("text", Some(Open::Text)) => {
-                if let Some(text) = text {
-                    out.push(index, text)?;
-                    out.edit(index, |item| {
-                        append(item, "/citationsContent/content/0/text", text);
-                    })?;
-                }
+        match (kind, self.open.get(&index), text) {
+            ("text", Some(Open::Text), Some(text))
+            | ("reasoningContent", Some(Open::Reasoning), Some(text)) => out.push(index, text)?,
+            ("toolUse", Some(Open::Call), _) => {
+                let arguments = body.str("input");
+                let fragment = CallFragment {
+                    id: None,
+                    name: None,
+                    arguments,
+                };
+                out.fragment(Some(index), fragment)?;
             }
-            ("citation", Some(Open::Text)) => out.edit(index, |item| {
-                if let Some(Value::Array(citations)) =
-                    item.pointer_mut("/citationsContent/citations")
-                {
-                    citations.push(body.clone());
-                }
-            })?,
-            ("reasoningContent", Some(Open::Reasoning)) => {
-                if let Some(text) = text {
-                    out.push(index, text)?;
-                }
-                out.edit(index, |item| {
-                    for key in ["text", "signature"] {
-                        if let Some(fragment) = body.str(key) {
-                            let pointer = format!("/reasoningContent/reasoningText/{key}");
-                            append(item, &pointer, fragment);
-                        }
-                    }
-                    // Encoded once whole: base64 of each chunk would not
-                    // concatenate.
-                    if let (Some(chunk), Some(Value::String(bytes))) = (
-                        body.str("redactedContent"),
-                        item.pointer_mut("/reasoningContent/redactedContent"),
-                    ) {
-                        let mut whole = BASE64_STANDARD.decode(&*bytes).unwrap_or_default();
-                        whole.extend(BASE64_STANDARD.decode(chunk).unwrap_or_default());
-                        *bytes = BASE64_STANDARD.encode(whole);
-                    }
-                })?;
-            }
-            ("toolUse", Some(open @ (Open::Call | Open::Hosted))) => {
-                let input = body.str("input").unwrap_or_default();
-                if matches!(open, Open::Call) {
-                    let fragment = CallFragment {
-                        id: None,
-                        name: None,
-                        arguments: Some(input),
-                    };
-                    out.fragment(Some(index), fragment)?;
-                }
-                out.edit(index, |item| append(item, "/toolUse/input", input))?;
-            }
-            ("toolResult", Some(Open::Opaque)) => out.edit(index, |item| {
-                if let Some(Value::Object(result)) = item.get_mut("toolResult")
-                    && let Value::Array(content) =
-                        result.entry("content").or_insert_with(|| json!([]))
-                {
-                    content.extend(body.as_array().into_iter().flatten().cloned());
-                }
-            })?,
-            ("image", Some(Open::Image)) => {
+            ("image", Some(Open::Image), _) => {
                 if let Some(data) = body.at("/source/bytes").and_then(Value::as_str) {
                     out.push(index, data)?;
                 }
             }
-            (kind, _) => skip(kind),
+            _ => {}
         }
-        Ok(())
+        // Redacted bytes are kept as their chunks and encoded once whole:
+        // base64 of each chunk would not concatenate.
+        let (pointer, delta) = match kind {
+            "text" => ("/citationsContent/content/0", json!({ "text": body })),
+            "citation" => ("/citationsContent", json!({ "citations": [body] })),
+            "reasoningContent" if redacted.is_some() => (
+                "/reasoningContent",
+                json!({ "redactedContent": [redacted] }),
+            ),
+            "reasoningContent" => ("/reasoningContent/reasoningText", body.clone()),
+            "toolUse" => ("/toolUse", body.clone()),
+            "toolResult" => ("/toolResult", json!({ "content": body })),
+            "image" => return Ok(()),
+            kind => {
+                skip(kind);
+                return Ok(());
+            }
+        };
+        out.edit(index, |item| {
+            if let (Some(at), Value::Object(delta)) = (item.pointer_mut(pointer), &delta) {
+                merge(at, delta);
+            }
+        })
     }
 
     /// The block at `index` stopped: it becomes whole, with `whole` as its
@@ -263,19 +228,7 @@ impl StreamState {
         let Some(open) = self.open.remove(&index) else {
             return Ok(());
         };
-        let call = matches!(open, Open::Call | Open::Hosted);
         out.edit(index, |item| {
-            // Converse takes a JSON object as a tool's input; a call's input
-            // is the one its arguments were read from.
-            let input = item
-                .at("/toolUse/input")
-                .and_then(Value::as_str)
-                .filter(|input| !input.trim().is_empty())
-                .unwrap_or("{}");
-            let input = serde_json::from_str::<Value>(input)
-                .ok()
-                .filter(Value::is_object)
-                .or_else(|| matches!(open, Open::Hosted).then(|| json!({})));
             let kept = match open {
                 Open::Text => item
                     .at("/citationsContent/citations")
@@ -284,36 +237,56 @@ impl StreamState {
                 // Unsigned reasoning keeps no item: it is rebuilt from its
                 // text, as text for a family that rejects unsigned reasoning.
                 Open::Reasoning => {
+                    if let Some(Value::Object(reasoning)) = item.get_mut("reasoningContent")
+                        && let Some(Value::Array(chunks)) = reasoning.get("redactedContent")
+                    {
+                        let bytes: Vec<u8> = chunks
+                            .iter()
+                            .filter_map(|chunk| BASE64_STANDARD.decode(chunk.as_str()?).ok())
+                            .flatten()
+                            .collect();
+                        reasoning.clear();
+                        reasoning.insert(
+                            "redactedContent".to_owned(),
+                            json!(BASE64_STANDARD.encode(bytes)),
+                        );
+                    }
                     item.at("/reasoningContent/reasoningText/signature")
-                        .is_some()
+                        .is_some_and(Value::is_string)
                         || item.at("/reasoningContent/redactedContent").is_some()
                 }
-                Open::Call | Open::Hosted => input.is_some(),
+                // Converse takes a JSON object as a tool's input; a call's
+                // input is the one its arguments were read from.
+                Open::Call | Open::Hosted => {
+                    let input = item
+                        .at("/toolUse/input")
+                        .and_then(Value::as_str)
+                        .filter(|input| !input.trim().is_empty())
+                        .unwrap_or("{}");
+                    let input = serde_json::from_str::<Value>(input)
+                        .ok()
+                        .filter(Value::is_object)
+                        .or_else(|| matches!(open, Open::Hosted).then(|| json!({})));
+                    let kept = input.is_some();
+                    if let (Some(Value::Object(call)), Some(input)) =
+                        (item.get_mut("toolUse"), input)
+                    {
+                        call.insert("input".to_owned(), input);
+                    }
+                    kept
+                }
                 Open::Image => false,
                 Open::Opaque => true,
             };
-            match (kept, input, whole) {
-                (false, ..) => *item = Value::Null,
-                (true, Some(input), _) if call => {
-                    if let Some(Value::Object(fields)) = item.get_mut("toolUse") {
-                        fields.insert("input".to_owned(), input);
-                    }
+            match (kept, whole) {
+                (false, _) => *item = Value::Null,
+                (true, Some(whole)) if !matches!(open, Open::Call | Open::Hosted) => {
+                    whole.clone_into(item);
                 }
-                (true, _, Some(whole)) => whole.clone_into(item),
-                (true, ..) => {}
+                (true, _) => {}
             }
         })?;
         out.finish(index)
-    }
-
-    /// The reply's end. The writer closes every block still open as
-    /// incomplete.
-    fn end(&self, usage: Option<&Value>) -> Finish {
-        Finish {
-            usage: usage.map(self::usage).unwrap_or_default(),
-            reason: self.reason.as_deref().map(finish_reason),
-            ..Finish::default()
-        }
     }
 
     /// A whole reply, written as the events that would have streamed it.
@@ -332,7 +305,11 @@ impl StreamState {
             self.stop(&mut out, index, Some(block))?;
         }
         self.reason = document.str("stopReason").map(str::to_owned);
-        Ok(out.end(self.end(document.get("usage"))))
+        let end = json!({ "metadata": { "usage": document.get("usage") } });
+        match self.event(&end, &mut out)? {
+            Some(end) => Ok(out.end(end)),
+            None => Ok(Flow::More),
+        }
     }
 }
 

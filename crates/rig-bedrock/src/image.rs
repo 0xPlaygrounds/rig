@@ -19,10 +19,14 @@ use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGeneratio
 use rig_core::operation::ImageGeneration;
 use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 
-pub use crate::completion::{
-    AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
-    STABILITY_STABLE_IMAGE_ULTRA_1_0,
-};
+/// `amazon.nova-canvas-v1:0`
+pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
+/// `stability.sd3-5-large-v1:0`
+pub const STABILITY_SD3_5_LARGE: &str = "stability.sd3-5-large-v1:0";
+/// `stability.stable-image-core-v1:1`
+pub const STABILITY_STABLE_IMAGE_CORE_1_0: &str = "stability.stable-image-core-v1:1";
+/// `stability.stable-image-ultra-v1:1`
+pub const STABILITY_STABLE_IMAGE_ULTRA_1_0: &str = "stability.stable-image-ultra-v1:1";
 
 /// The image-generation endpoint for one model.
 #[derive(Clone, Debug, PartialEq)]

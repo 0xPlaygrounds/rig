@@ -34,13 +34,16 @@ pub struct EmbeddingResponse {
     pub input_text_token_count: usize,
 }
 
-pub use crate::completion::{
-    AMAZON_TITAN_EMBEDDINGS_G1_TEXT as AMAZON_TITAN_EMBED_TEXT_V1,
-    AMAZON_TITAN_MULTIMODAL_EMBEDDINGS_G1 as AMAZON_TITAN_EMBED_IMAGE_V1,
-    AMAZON_TITAN_TEXT_EMBEDDINGS_V2 as AMAZON_TITAN_EMBED_TEXT_V2_0,
-    COHERE_EMBED_ENGLISH as COHERE_EMBED_ENGLISH_V3,
-    COHERE_EMBED_MULTILINGUAL as COHERE_EMBED_MULTILINGUAL_V3,
-};
+/// `amazon.titan-embed-text-v1`
+pub const AMAZON_TITAN_EMBED_TEXT_V1: &str = "amazon.titan-embed-text-v1";
+/// `amazon.titan-embed-image-v1` multimodal embedding model
+pub const AMAZON_TITAN_EMBED_IMAGE_V1: &str = "amazon.titan-embed-image-v1";
+/// `amazon.titan-embed-text-v2:0`
+pub const AMAZON_TITAN_EMBED_TEXT_V2_0: &str = "amazon.titan-embed-text-v2:0";
+/// `cohere.embed-english-v3`
+pub const COHERE_EMBED_ENGLISH_V3: &str = "cohere.embed-english-v3";
+/// `cohere.embed-multilingual-v3`
+pub const COHERE_EMBED_MULTILINGUAL_V3: &str = "cohere.embed-multilingual-v3";
 
 /// The embedding endpoint for one model, at a caller-chosen width.
 #[derive(Clone, Debug, PartialEq)]
