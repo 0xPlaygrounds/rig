@@ -152,8 +152,35 @@ impl HistoryFixture for VertexHistory {
                 "/candidates/0/content/parts",
                 "/candidates/0/finishReason",
             ],
-            frames: |document| vec![frame(document)],
+            frames: |mut document| {
+                fitted(&mut document, &reply_document(parts(Shape::Rich), "STOP"));
+                vec![frame(document)]
+            },
         })
+    }
+}
+
+/// `value` with each field and element whose JSON type differs from the
+/// same one in `typed` left out. A reply frame is a typed message, so a
+/// field of another type never arrives; it arrives unset.
+fn fitted(value: &mut Value, typed: &Value) {
+    let fits = |value: &mut Value, typed: Option<&Value>| match typed {
+        Some(typed) if std::mem::discriminant(value) != std::mem::discriminant(typed) => false,
+        Some(typed) => {
+            fitted(value, typed);
+            true
+        }
+        None => true,
+    };
+    match (value, typed) {
+        (Value::Object(fields), Value::Object(types)) => {
+            fields.retain(|key, field| fits(field, types.get(key)));
+        }
+        (Value::Array(values), Value::Array(types)) => {
+            let mut types = types.iter();
+            values.retain_mut(|value| fits(value, types.next()));
+        }
+        _ => {}
     }
 }
 
