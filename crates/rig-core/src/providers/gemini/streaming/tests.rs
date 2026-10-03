@@ -948,12 +948,12 @@ async fn each_block_reason_classifies_the_same_on_the_stream_as_unary() {
     }
 }
 
-/// A part becomes a provider item only at its end: the next part, or the
-/// reply's finish. A text part the reply was cut off in has no item, so it
-/// can never replay as a provider part; the part before it, which a later
-/// part ended, keeps its own.
+/// A reply cut off before its finish keeps no provider item: neither the
+/// text part it was cut in nor the signed thought a later part ended, so
+/// the turn replays canonically, as pi drops an unfinished turn's
+/// provider data.
 #[test]
-fn a_part_cut_off_before_its_end_keeps_no_provider_item() {
+fn a_reply_cut_off_before_its_finish_keeps_no_provider_item() {
     use crate::test_utils::history_conformance::partial;
     let wire = crate::providers::gemini::GeminiConfig::new("test-key")
         .completion("gemini-3-flash-preview");
@@ -971,10 +971,8 @@ fn a_part_cut_off_before_its_end_keeps_no_provider_item() {
     else {
         panic!("the ended thought and the open text: {:?}", response.choice);
     };
-    assert_eq!(
-        plan.native.as_ref().map(|native| &native.item),
-        Some(&json!({"text": "plan", "thought": true, "thoughtSignature": "c2ln"}))
-    );
+    assert_eq!(plan.text, "plan");
+    assert!(plan.native.is_none(), "{plan:?}");
     assert_eq!(answer.text, "the answer is");
     assert!(answer.native.is_none(), "{answer:?}");
     assert!(response.stop().is_failure());

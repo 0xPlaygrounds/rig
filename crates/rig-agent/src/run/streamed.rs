@@ -56,8 +56,8 @@ pub struct StreamedInvalidToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialStreamedTurn {
     /// The turn the reply began, with no content: its origin, so a rolled
-    /// back turn replays to the same model with the provider items of the
-    /// blocks that closed.
+    /// back turn is known to come from its model. A reply cut before its end
+    /// keeps no provider item, so the rolled back turn replays canonically.
     #[serde(default)]
     pub head: AssistantMessage,
     /// The parts that arrived so far, in the order they started, text still
@@ -71,9 +71,8 @@ impl PartialStreamedTurn {
     /// The assistant message representing this partial turn, in arrival
     /// order: each validated call as validated, `current_tool_call` in its
     /// own place, and any other call left out. A call keeps a provider item
-    /// only where the partial reply kept it, and one the partial does not
-    /// hold keeps none, so a call never replays without an item the reply
-    /// left unfinished. `None` when the turn has produced no representable
+    /// only where the partial reply kept it, which a reply cut before its
+    /// end never does. `None` when the turn has produced no representable
     /// content.
     pub fn assistant_message(&self, current_tool_call: Option<ToolCall>) -> Option<Message> {
         let mut calls: Vec<ToolCall> = self

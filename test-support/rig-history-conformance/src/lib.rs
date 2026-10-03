@@ -1804,11 +1804,12 @@ pub fn h12_edits<F: HistoryFixture>(fixture: &F) {
     }
 }
 
-/// H13. A turn a runtime rolls back (`CompletionResponse::continued`), at
-/// its end or cut off just before its finish, keeps its origin and the
-/// provider items of the blocks that closed, so it replays to the same
-/// model. A block closes once the next one starts, so a cut turn loses at
-/// most its last block.
+/// H13. A turn a runtime rolls back (`CompletionResponse::continued`) keeps
+/// its origin. At its end it keeps the provider items of its blocks, so it
+/// replays to the same model. Cut off before its finish it keeps every
+/// block but the last, and no provider item at all, so it replays
+/// canonically; a block closes once the next one starts. A turn the
+/// provider ended keeps an item that needs the one after it only with it.
 pub fn h13_rollback<F: HistoryFixture>(fixture: &F) {
     let wire = fixture.wire(fixture.model());
     let Some(frames) = fixture.reply(Shape::Rich, Mode::Streaming) else {
@@ -1838,30 +1839,26 @@ pub fn h13_rollback<F: HistoryFixture>(fixture: &F) {
         return;
     };
     let closed = blocks.saturating_sub(1);
-    let kept: Vec<AssistantContent> = cut_off
-        .choice
-        .iter()
-        .take(closed)
-        .map(AssistantContent::canonical)
-        .collect();
-    let expected: Vec<AssistantContent> = whole
-        .choice
-        .iter()
-        .take(closed)
-        .map(AssistantContent::canonical)
-        .collect();
+    let kept: Vec<AssistantContent> = cut_off.choice.iter().take(closed).map(canonical).collect();
+    let expected: Vec<AssistantContent> = whole.choice.iter().take(closed).map(canonical).collect();
     assert_eq!(
         kept, expected,
         "a reply cut after {cut} frames keeps every block but the last"
     );
     rolled_back(fixture, &cut_off, "cut before its finish");
-    // At every cut, an item that needs the one after it is replayed only
-    // with it.
     let describe = wire.describe();
     let target = describe.replay.expect("a replay target");
     for cut in 1..count {
-        let (response, _) = cut_at(cut);
+        let (response, ended) = cut_at(cut);
         let turn = response.continued(response.choice.clone());
+        if !ended {
+            assert!(
+                turn.content.iter().all(|block| !holds_item(block)),
+                "a reply cut after {cut} frames keeps a provider item: {:?}",
+                turn.content
+            );
+            continue;
+        }
         let items: Vec<Option<Value>> = turn
             .content
             .iter()
@@ -1873,10 +1870,30 @@ pub fn h13_rollback<F: HistoryFixture>(fixture: &F) {
             {
                 assert!(
                     items.get(at + 1).is_some_and(Option::is_some),
-                    "a reply cut after {cut} frames keeps {item} without the item it needs"
+                    "a reply ended after {cut} frames keeps {item} without the item it needs"
                 );
             }
         }
+    }
+}
+
+/// `block` with no provider item, an opaque item no longer replaying.
+fn canonical(block: &AssistantContent) -> AssistantContent {
+    match block {
+        AssistantContent::Opaque(opaque) => AssistantContent::Opaque(rig_core::message::Opaque {
+            replay: false,
+            ..opaque.clone()
+        }),
+        block => block.canonical(),
+    }
+}
+
+/// Whether `block` holds a provider item that replays: a native, or an
+/// opaque item that replays.
+fn holds_item(block: &AssistantContent) -> bool {
+    match block {
+        AssistantContent::Opaque(opaque) => opaque.replay,
+        block => block.native_item().is_some(),
     }
 }
 

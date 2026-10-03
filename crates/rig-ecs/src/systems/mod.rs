@@ -2086,8 +2086,8 @@ fn abandon_turn(
         call.prefix.clone()
     };
     let diagnostic_id = &call.id;
-    // A streamed prefix keeps the stream's origin and the provider items of
-    // its closed blocks; the run answers its calls, so it stops to use tools.
+    // A streamed prefix keeps the stream's origin but no provider item; the
+    // run answers its calls, so it stops to use tools.
     let message = if call.prefix.is_empty() {
         outs.head.message(content.clone())
     } else {

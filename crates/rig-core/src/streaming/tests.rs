@@ -348,11 +348,11 @@ fn delivered_content_keeps_a_text_part_still_open() {
     );
 }
 
-/// A part still open cuts what a stream delivered: what ended after it keeps
-/// no provider item, so a call never replays without the reasoning it
-/// follows.
+/// What a stream delivered keeps no provider item, with or without a part
+/// still open: the stream has not ended, so a call never replays without
+/// the reasoning it follows.
 #[test]
-fn delivered_blocks_after_an_unfinished_part_keep_no_provider_item() {
+fn delivered_blocks_keep_no_provider_item() {
     let text = AssistantContent::text("hi").with_native(serde_json::json!({"id": "msg_1"}));
     let stream = |reasoning: bool| {
         let mut events = Vec::new();
@@ -372,6 +372,7 @@ fn delivered_blocks_after_an_unfinished_part_keep_no_provider_item() {
             .expect("a stream prefix in order")
             .into_items()
     };
-    assert_eq!(delivered(&stream(false)), vec![text.clone()]);
-    assert_eq!(delivered(&stream(true)), vec![AssistantContent::text("hi")]);
+    for open in [false, true] {
+        assert_eq!(delivered(&stream(open)), vec![AssistantContent::text("hi")]);
+    }
 }

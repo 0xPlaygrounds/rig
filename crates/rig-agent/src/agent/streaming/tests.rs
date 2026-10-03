@@ -5822,7 +5822,7 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
 
 /// A turn abandoned mid-stream, before its terminal record, keeps its
 /// origin on the retry: the same model gets its reasoning back as
-/// reasoning, with the provider items of the blocks that closed.
+/// reasoning, with no provider item, since the reply never ended.
 #[tokio::test]
 async fn an_abandoned_streamed_turn_replays_as_the_same_model() {
     let model = MockCompletionModel::from_stream_turns([
@@ -5870,5 +5870,12 @@ async fn an_abandoned_streamed_turn_replays_as_the_same_model() {
             AssistantContent::Reasoning(reasoning) if reasoning.text == "delta reason"
         )),
         "the same model reads its reasoning as reasoning: {rolled_back:?}"
+    );
+    assert!(
+        rolled_back
+            .content
+            .iter()
+            .all(|block| block.native_item().is_none()),
+        "a turn cut before its end keeps no provider item: {rolled_back:?}"
     );
 }

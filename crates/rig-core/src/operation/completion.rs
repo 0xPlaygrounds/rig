@@ -824,8 +824,10 @@ impl Turn {
     /// wire that asked for it); a part that has not ended is not among them,
     /// and parts from the first incomplete one on keep no provider item.
     pub fn snapshot(&self) -> Vec<AssistantContent> {
-        self.clone_cut()
-            .ordered(self.choice.iter().cloned().enumerate().collect())
+        self.ordered(
+            self.choice.iter().cloned().enumerate().collect(),
+            self.first_incomplete,
+        )
     }
 
     /// Who the reply is from.
@@ -837,7 +839,8 @@ impl Turn {
     /// the consumer already took of a text part still open, and the
     /// provider's end when it arrived. A reply the provider did not end is a
     /// failed turn: `failure` is the error that ended it, and without one the
-    /// caller stopped reading.
+    /// caller stopped reading. Unless the provider ended the reply and the
+    /// consumer took every part, no block keeps its provider item.
     pub(crate) fn partial(
         &self,
         end: Option<&Finish>,
@@ -857,17 +860,16 @@ impl Turn {
                 }
             }
         }
-        // An item the reply never finished may be the partner a later one
-        // needs: blocks from the first open item on replay canonically.
-        let mut cut = self.clone_cut();
-        if let Some(first) = self.open.values().map(|draft| draft.part.index()).min() {
-            cut.cut_at(first);
-        }
-        // So may an item that closed but whose end the consumer has not yet
-        // taken, such as reasoning that closes with the call after it.
-        if let Some(first) = self.choice.iter().position(Option::is_none) {
-            cut.cut_at(first);
-        }
+        // A turn the consumer has not wholly taken replays only its canonical
+        // fields, as pi drops an unfinished turn's provider data: no item of
+        // it can then need a partner that never arrived.
+        let unfinished =
+            end.is_none() || !self.open.is_empty() || self.choice.iter().any(Option::is_none);
+        let canonical_from = if unfinished {
+            Some(0)
+        } else {
+            self.first_incomplete
+        };
         let parts = self
             .choice
             .iter()
@@ -881,16 +883,36 @@ impl Turn {
                 (index, part)
             })
             .collect();
-        response.choice = cut.ordered(parts);
+        response.choice = self.ordered(parts, canonical_from);
         response
     }
 
-    /// The ordering state of this turn, which a partial view cuts further.
-    fn clone_cut(&self) -> Cut<'_> {
-        Cut {
-            by_index: self.by_index.as_ref(),
-            first_incomplete: self.first_incomplete,
+    /// `parts` by position, in wire-index order on a wire that asked for
+    /// it, each from position `canonical_from` on with no provider item.
+    fn ordered(
+        &self,
+        parts: Vec<(usize, Option<AssistantContent>)>,
+        canonical_from: Option<usize>,
+    ) -> Vec<AssistantContent> {
+        let mut parts: Vec<(usize, AssistantContent)> = parts
+            .into_iter()
+            .filter_map(|(position, part)| {
+                let part = part?;
+                Some(match canonical_from {
+                    Some(first) if position >= first => (position, canonical(part)),
+                    _ => (position, part),
+                })
+            })
+            .collect();
+        if let Some(by_index) = &self.by_index {
+            parts.sort_by_key(|(position, _)| {
+                (
+                    by_index.get(position).copied().unwrap_or(usize::MAX),
+                    *position,
+                )
+            });
         }
+        parts.into_iter().map(|(_, part)| part).collect()
     }
 
     fn response(&self, end: Finish, reply: Reply) -> CompletionResponse {
@@ -941,44 +963,6 @@ pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
             ..opaque
         }),
         block => block.canonical(),
-    }
-}
-
-/// A turn's ordering and its first incomplete position, for a partial view
-/// that cuts it further.
-struct Cut<'a> {
-    by_index: Option<&'a BTreeMap<usize, usize>>,
-    first_incomplete: Option<usize>,
-}
-
-impl Cut<'_> {
-    fn cut_at(&mut self, position: usize) {
-        self.first_incomplete = Some(
-            self.first_incomplete
-                .map_or(position, |first| first.min(position)),
-        );
-    }
-
-    fn ordered(&self, parts: Vec<(usize, Option<AssistantContent>)>) -> Vec<AssistantContent> {
-        let mut parts: Vec<(usize, AssistantContent)> = parts
-            .into_iter()
-            .filter_map(|(position, part)| {
-                let part = part?;
-                Some(match self.first_incomplete {
-                    Some(first) if position >= first => (position, canonical(part)),
-                    _ => (position, part),
-                })
-            })
-            .collect();
-        if let Some(by_index) = self.by_index {
-            parts.sort_by_key(|(position, _)| {
-                (
-                    by_index.get(position).copied().unwrap_or(usize::MAX),
-                    *position,
-                )
-            });
-        }
-        parts.into_iter().map(|(_, part)| part).collect()
     }
 }
 

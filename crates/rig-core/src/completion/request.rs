@@ -348,9 +348,9 @@ impl CompletionResponse {
     /// cut the reply short and answers its calls itself (an agent rolling a
     /// turn back over an invalid call). It keeps the origin, and stops to
     /// call tools, since the runtime answers them. A block keeps its provider
-    /// item only when this response holds the same block with it: the fold
-    /// already dropped the items of blocks from the first unfinished one on,
-    /// which may need a partner that never arrived.
+    /// item only when this response holds the same block with it. A response
+    /// the provider did not end, or one the consumer has not wholly taken,
+    /// holds no provider item, so its turn replays canonically.
     pub fn continued(&self, content: Vec<AssistantContent>) -> AssistantMessage {
         let content = content
             .into_iter()

@@ -357,11 +357,11 @@ fn reasoning_never_goes_back_without_the_item_after_it() {
     }
 }
 
-/// #2647 by rollback: a reply cut while reasoning is done but the item
-/// after it is not keeps neither item, and one cut after both keeps both;
-/// the terminal then backfills the ciphertext Azure states only there.
+/// #2647 by rollback: a reply cut before its terminal keeps no provider
+/// item, whether or not the call after the reasoning is done; the terminal
+/// keeps both and backfills the ciphertext Azure states only there.
 #[test]
-fn reasoning_completes_with_the_item_after_it_and_takes_the_terminal_ciphertext() {
+fn a_reply_cut_before_its_terminal_keeps_no_item_and_the_terminal_takes_the_ciphertext() {
     let mut events = streamed_call();
     if let Some(item) = events[2]["item"].as_object_mut() {
         item.shift_remove("encrypted_content");
@@ -374,28 +374,31 @@ fn reasoning_completes_with_the_item_after_it_and_takes_the_terminal_ciphertext(
         )
         .0
     };
-    let waiting = partial(5);
-    assert!(
-        waiting
-            .choice
-            .iter()
-            .all(|block| block.native_item().is_none()),
-        "reasoning waits for its call: {:?}",
-        waiting.choice
-    );
-    let both = partial(7);
-    assert!(
-        both.choice
-            .iter()
-            .all(|block| block.native_item().is_some()),
-        "both complete together: {:?}",
-        both.choice
-    );
+    assert!(!partial(7).choice.is_empty(), "both items ended");
+    for cut in [3, 5, 7] {
+        let cut_off = partial(cut);
+        assert!(
+            cut_off
+                .choice
+                .iter()
+                .all(|block| block.native_item().is_none()),
+            "cut {cut}: {:?}",
+            cut_off.choice
+        );
+    }
     let last = events.len() - 1;
     events[last]["response"]["output"] = json!([
         {"type": "reasoning", "id": "rs_1", "summary": [{"type": "summary_text", "text": "plan"}], "encrypted_content": "enc"},
     ]);
     let response = streamed(&events);
+    assert!(
+        response
+            .choice
+            .iter()
+            .all(|block| block.native_item().is_some()),
+        "{:?}",
+        response.choice
+    );
     assert_eq!(
         response.choice[0]
             .native_item()

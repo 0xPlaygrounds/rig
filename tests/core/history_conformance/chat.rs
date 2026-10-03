@@ -398,32 +398,38 @@ pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
                     fields.extend(item.clone());
                 }
             }
-            AssistantContent::Reasoning(block) => match native {
-                Some(item) if item.get("type").is_some() => {
-                    has_parts = true;
-                    parts.push(item.clone());
-                }
-                Some(Value::Object(item)) => {
-                    let mut field = None;
-                    for (key, value) in item {
-                        if value.is_string() {
-                            field.get_or_insert(key.clone());
-                        } else {
-                            fields.insert(key.clone(), value.clone());
-                        }
+            AssistantContent::Reasoning(block) => {
+                // A block with no item is rebuilt under the dialect's field.
+                let field = match native {
+                    Some(item) if item.get("type").is_some() => {
+                        has_parts = true;
+                        parts.push(item.clone());
+                        None
                     }
-                    if let Some(field) = field {
-                        match reasoning.iter_mut().find(|(name, _)| *name == field) {
-                            Some((_, joined)) => {
-                                joined.push('\n');
-                                joined.push_str(&block.text);
+                    Some(Value::Object(item)) => {
+                        let mut field = None;
+                        for (key, value) in item {
+                            if value.is_string() {
+                                field.get_or_insert(key.clone());
+                            } else {
+                                fields.insert(key.clone(), value.clone());
                             }
-                            None => reasoning.push((field, block.text.clone())),
                         }
+                        field
+                    }
+                    Some(_) => None,
+                    None => dialect.quirks.reasoning_field.map(str::to_owned),
+                };
+                if let Some(field) = field {
+                    match reasoning.iter_mut().find(|(name, _)| *name == field) {
+                        Some((_, joined)) => {
+                            joined.push('\n');
+                            joined.push_str(&block.text);
+                        }
+                        None => reasoning.push((field, block.text.clone())),
                     }
                 }
-                _ => {}
-            },
+            }
             AssistantContent::Opaque(opaque) if opaque.replay => {
                 if opaque.item.get("type").is_some() {
                     has_parts = true;
