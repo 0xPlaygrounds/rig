@@ -44,9 +44,7 @@ fn main() -> anyhow::Result<()> {
     // Complete SDK preparation before borrowing the execution world. A host
     // with an already-prepared PredictionService can inject that instead.
     runtime.block_on(client.inner())?;
-    let model = client
-        .clone()
-        .completion(rig_vertexai::completion::GEMINI_2_5_FLASH_LITE);
+    let model = client.clone().completion("gemini-2.5-flash-lite");
     let handler = Hosted {
         handler: ErasedHandler::new(ModelAdapter::new("vertex", model)),
         runtime: runtime.handle().clone(),

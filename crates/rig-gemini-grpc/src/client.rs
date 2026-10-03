@@ -13,11 +13,10 @@
 use std::fmt::Debug;
 use tonic::metadata::errors::InvalidMetadataValue;
 use tonic::metadata::{Ascii, MetadataValue};
-use tonic::service::Interceptor;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
-use tonic::{Request, Status};
 
 use super::GenerativeServiceClient;
+pub use crate::auth::ApiKeyInterceptor;
 use crate::completion::GenerateContent;
 use crate::embedding::Embeddings;
 use rig_core::Model;
@@ -61,25 +60,6 @@ impl Debug for GeminiGrpc {
             .field("api_key", &"******")
             .field("channel", &"Channel")
             .finish()
-    }
-}
-
-/// Adds API-key and client-identification metadata to outgoing requests.
-#[derive(Clone)]
-pub struct ApiKeyInterceptor {
-    api_key: MetadataValue<Ascii>,
-    client_id: MetadataValue<Ascii>,
-}
-
-impl Interceptor for ApiKeyInterceptor {
-    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
-        request
-            .metadata_mut()
-            .insert("x-goog-api-key", self.api_key.clone());
-        request
-            .metadata_mut()
-            .insert("x-goog-api-client", self.client_id.clone());
-        Ok(request)
     }
 }
 

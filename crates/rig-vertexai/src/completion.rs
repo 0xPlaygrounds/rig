@@ -25,22 +25,7 @@ use rig_core::operation::Completion;
 use rig_core::providers::gemini::completion as rest;
 use rig_core::wire::{Descriptor, Mode, Wire};
 
-/// `gemini-1.5-pro`
-pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
-/// `gemini-1.5-flash`
-pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
-/// `gemini-1.5-pro-latest`
-pub const GEMINI_1_5_PRO_LATEST: &str = "gemini-1.5-pro-latest";
-/// `gemini-1.5-flash-latest`
-pub const GEMINI_1_5_FLASH_LATEST: &str = "gemini-1.5-flash-latest";
-/// `gemini-2.0-flash-exp`
-pub const GEMINI_2_0_FLASH_EXP: &str = "gemini-2.0-flash-exp";
-/// `gemini-2.5-flash-lite`
-pub const GEMINI_2_5_FLASH_LITE: &str = "gemini-2.5-flash-lite";
-/// `gemini-2.5-flash`
-pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
-/// `gemini-2.5-pro`
-pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
+pub use rig_core::providers::gemini::completion::GEMINI_2_5_FLASH;
 
 /// The `GenerateContent` endpoint for one model.
 #[derive(Clone, Debug, PartialEq)]

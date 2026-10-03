@@ -12,6 +12,7 @@
 //! # }
 //! ```
 
+mod auth;
 pub mod client;
 pub mod completion;
 pub mod embedding;
@@ -38,15 +39,3 @@ pub use proto::{
     Content, EmbedContentRequest, EmbedContentResponse, GenerateContentRequest,
     GenerateContentResponse, Part, generative_service_client::GenerativeServiceClient,
 };
-
-/// The usage the REST wire reads from this reply's JSON.
-impl From<&proto::GenerateContentResponse> for rig_core::completion::Usage {
-    fn from(response: &proto::GenerateContentResponse) -> Self {
-        rest::to_rest(response)
-            .ok()
-            .and_then(|json| json.get("usageMetadata").map(usage_of))
-            .unwrap_or_default()
-    }
-}
-
-use rig_core::providers::gemini::completion::gemini_api_types::usage_of;
