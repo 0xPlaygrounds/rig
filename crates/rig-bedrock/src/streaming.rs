@@ -6,10 +6,10 @@
 //! a hosted tool's use and result keep their Converse JSON as the provider
 //! item, set only when the block is complete: at its `contentBlockStop`, or
 //! in a whole reply. A hosted (`server_tool_use`) call is an opaque item
-//! that replays to the same model with its result, never a call Rig runs. A block this crate
-//! cannot send back is a marker naming its kind. The SDK's `Unknown`
-//! variants carry no payload, so an item this SDK version does not model is
-//! a marker too.
+//! that replays to the same model with its result, never a call Rig runs.
+//! A block this crate cannot send back is a marker naming its kind. The
+//! SDK's `Unknown` variants carry no payload, so an item this SDK version
+//! does not model is a marker too.
 
 use std::collections::BTreeMap;
 
