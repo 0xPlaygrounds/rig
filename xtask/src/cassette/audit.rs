@@ -123,11 +123,21 @@ impl Audit {
                         }
                         Some("toolcall") => {
                             let streamed = arguments.remove(&part).unwrap_or_default();
-                            let parsed = match streamed.trim() {
-                                "" => Some(Value::Object(serde_json::Map::new())),
-                                json => serde_json::from_str(json).ok(),
-                            };
-                            parsed.as_ref() == content.pointer("/function/arguments")
+                            // Arguments that were not a JSON object end as the
+                            // text they arrived as, verbatim.
+                            match content
+                                .pointer("/function/invalid_arguments")
+                                .and_then(Value::as_str)
+                            {
+                                Some(raw) => raw == streamed,
+                                None => {
+                                    let parsed = match streamed.trim() {
+                                        "" => Some(Value::Object(serde_json::Map::new())),
+                                        json => serde_json::from_str(json).ok(),
+                                    };
+                                    parsed.as_ref() == content.pointer("/function/arguments")
+                                }
+                            }
                         }
                         _ => continue,
                     };

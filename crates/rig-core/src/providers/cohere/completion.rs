@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 pub(crate) const PROVIDER_NAME: &str = "cohere";
 
 /// The whole `/v2/chat` reply. Only `message` and `finish_reason` build the
-/// turn; the usage stays as Cohere sent it, read by [`usage_of`].
+/// turn; the usage stays as Cohere sent it, read by `usage_of`.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     #[serde(default)]

@@ -269,7 +269,7 @@ impl ChatUsage {
 
 impl ChatUsage {
     /// This accounting normalized for a dialect with `quirks`, as the chat
-    /// wire reads it ([`UsageCounts`]).
+    /// wire reads it (`UsageCounts`).
     pub fn to_normalized_for(&self, quirks: &super::Quirks) -> crate::completion::Usage {
         UsageCounts::read(&serde_json::to_value(self).unwrap_or_default()).normalized(quirks)
     }

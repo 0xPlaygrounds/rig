@@ -384,7 +384,8 @@ fn conformance_compiles_exactly_its_executed_targets() {
         BTreeSet::from([
             "streaming_conformance",
             "streaming_conformance_websocket",
-            "driver_adoption"
+            "driver_adoption",
+            "history_conformance"
         ])
     );
     assert!(c.steps[0].args.windows(2).any(|w| w == ["--retries", "0"]));

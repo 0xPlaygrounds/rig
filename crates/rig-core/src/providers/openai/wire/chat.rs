@@ -794,7 +794,7 @@ impl crate::completion::ReplayTarget for Chat {
     /// Chat reads no images in assistant messages, images in tool results
     /// only on a dialect that says so, and tools where the dialect takes
     /// them. Which models read user images follows each provider's
-    /// documented model rules ([`reads_images`]).
+    /// documented model rules (`reads_images`).
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         let quirks = &self.provider.dialect.quirks;
         let user_images = reads_images(&self.provider.dialect, model);

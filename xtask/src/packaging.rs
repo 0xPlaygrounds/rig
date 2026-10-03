@@ -64,11 +64,18 @@ const SIZE_CEILING: u64 = 8 * 1024 * 1024;
 /// with the reason. Code a build script writes into `OUT_DIR` is not on disk
 /// to scan, so the one crate with a build script needs its generated code's
 /// dependency spelled out here.
-const GENERATED_CODE_DEPENDENCIES: &[(&str, &str, &str)] = &[(
-    "rig-gemini-grpc",
-    "tonic-prost",
-    "named by the tonic service code build.rs generates into OUT_DIR",
-)];
+const GENERATED_CODE_DEPENDENCIES: &[(&str, &str, &str)] = &[
+    (
+        "rig-gemini-grpc",
+        "tonic-prost",
+        "named by the tonic service code build.rs generates into OUT_DIR",
+    ),
+    (
+        "rig-gemini-grpc",
+        "prost-types",
+        "names the google.protobuf well-known types the generated messages hold",
+    ),
+];
 
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     let metadata = metadata(workspace, &["--no-deps"])?;
