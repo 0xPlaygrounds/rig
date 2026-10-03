@@ -9,7 +9,7 @@
 //! ```
 
 use crate::client::BedrockRuntime;
-use crate::types::assistant_content::PROVIDER_NAME;
+use crate::completion::PROVIDER_NAME;
 use crate::types::errors::sdk_error;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;

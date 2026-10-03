@@ -16,7 +16,7 @@ use rig_core::wire::{Capabilities, Decoder, Descriptor, Flow, Mode, Out, Wire, W
 use serde::{Deserialize, Serialize};
 
 use crate::client::BedrockRuntime;
-use crate::types::assistant_content::PROVIDER_NAME;
+use crate::completion::PROVIDER_NAME;
 use crate::types::errors::sdk_error;
 
 #[derive(Serialize)]

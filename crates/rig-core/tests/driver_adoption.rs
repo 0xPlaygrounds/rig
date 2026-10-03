@@ -1397,7 +1397,6 @@ fn runtime_turns_come_from_folds() {
 /// moves its encoder onto `AssistantContent::replay` and deletes its entry;
 /// the list only shrinks.
 const PENDING_REPLAY_ADOPTION: &[&str] = &[
-    "rig-bedrock/src/types/assistant_content.rs",
     "rig-core/src/providers/internal/rebuild.rs",
 ];
 

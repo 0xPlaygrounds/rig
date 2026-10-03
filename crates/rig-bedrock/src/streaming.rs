@@ -1,638 +1,481 @@
-//! The Converse reply decoder. A stream arrives as SDK events; a whole reply
-//! is the SDK's output, or its JSON when the SDK could not read it, written
-//! block by block through the same helpers, so both fold into the same turn.
+//! The Converse reply decoder. It reads the JSON Bedrock sent through
+//! [`Lenient`]: a stream's events one by one, and a whole reply as the
+//! events that would have streamed it, so both fold into the same turn.
 //!
-//! Every Converse content block becomes a block. Reasoning, cited text, and
-//! a hosted tool's use and result keep their Converse JSON as the provider
-//! item, set only when the block is complete: at its `contentBlockStop`, or
-//! in a whole reply. A hosted (`server_tool_use`) call is an opaque item
-//! that replays to the same model with its result, never a call Rig runs.
-//! A block this crate cannot send back is a marker naming its kind. The
-//! SDK's `Unknown` variants carry no payload, so an item this SDK version
-//! does not model is a marker too.
+//! Every Converse content block becomes a block, its Converse JSON assembled
+//! as its deltas arrive. Signed or redacted reasoning, cited text, a client
+//! call with object input, and every block Rig has no canonical form for
+//! keep that JSON as the provider item, set only when the block is
+//! complete: at its `contentBlockStop`, or in a whole reply, where the item
+//! is the block as Bedrock sent it. A hosted tool's typed `toolUse` and its
+//! `toolResult` are opaque items that replay to the same model together,
+//! never a call Rig runs.
 
 use std::collections::BTreeMap;
 
-use crate::completion::ConverseFrame;
-use crate::types::assistant_content::finish;
-use crate::types::{block, json};
-use aws_sdk_bedrockruntime::operation::converse::ConverseOutput;
-use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig_core::completion::{FinishReason, Usage};
 use rig_core::error::ProviderError;
+use rig_core::json_utils::Lenient;
 use rig_core::message::{DocumentSourceKind, Image, ImageMediaType};
-use rig_core::operation::{Block, CallFragment, Completion};
+use rig_core::operation::{Block, CallFragment, Completion, Finish};
 use rig_core::wire::{Flow, Out, WireEvent};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
-/// The buffer index of a Converse content block: every signed index,
-/// negative ones included, maps to a distinct one.
-fn block_index(content_block_index: i32) -> usize {
-    (i64::from(content_block_index) - i64::from(i32::MIN)) as usize
-}
+use crate::completion::ConverseFrame;
+use crate::types::errors;
 
-/// What a stream has stated of one block that becomes whole at its stop.
-enum Draft {
-    /// Text, and the citations Converse attached to it.
-    Text { text: String, citations: Vec<Value> },
-    /// Reasoning text and its signature, or its redacted bytes.
-    Reasoning {
-        text: String,
-        signature: Option<String>,
-        redacted: Option<Vec<u8>>,
-    },
-    /// A hosted tool's call: its input arrives as JSON text.
-    Hosted {
-        id: String,
-        name: String,
-        kind: String,
-        input: String,
-    },
-    /// A hosted tool's result; `modeled` is false once a part arrived that
-    /// this SDK version does not model.
-    Result {
-        id: String,
-        status: Option<String>,
-        kind: Option<String>,
-        content: Vec<Value>,
-        modeled: bool,
-    },
-    /// An image, written whole at its stop.
+/// What an open block is. The writer holds its JSON; an image is written
+/// whole at its stop.
+enum Open {
+    Text,
+    Reasoning,
+    Call,
+    Hosted,
+    Opaque,
     Image {
-        format: aws_bedrock::ImageFormat,
-        source: Option<aws_bedrock::ImageSource>,
+        format: String,
+        source: Option<Value>,
     },
 }
 
 /// One Converse reply's state: a whole reply or a stream of events.
 #[derive(Default)]
 pub struct StreamState {
-    drafts: BTreeMap<usize, Draft>,
-    stop_reason: Option<aws_bedrock::StopReason>,
-    /// The provider's JSON of the stream's message-level events, by event
-    /// type: the response's `raw`.
+    open: BTreeMap<usize, Open>,
+    reason: Option<String>,
+    /// The stream's message-level events, by type: the response's `raw`.
     raw: Map<String, Value>,
 }
 
-impl StreamState {
-    /// The block at `index` stopped: it becomes whole.
-    fn stop(&mut self, out: &mut Out<'_, Completion>, index: usize) -> Result<(), ProviderError> {
-        let Some(draft) = self.drafts.remove(&index) else {
-            if out.is_open(index) {
-                out.finish(index)?;
-            }
-            return Ok(());
-        };
-        match draft {
-            Draft::Text { text, citations } => {
-                let cited = (!citations.is_empty()).then(|| {
-                    serde_json::json!({ "citationsContent": {
-                        "content": [{ "text": text }],
-                        "citations": citations,
-                    } })
-                });
-                finish_text(out, index, cited)
-            }
-            Draft::Reasoning {
-                text,
-                signature,
-                redacted,
-            } => finish_reasoning(out, index, &text, signature.as_deref(), redacted.as_deref()),
-            Draft::Hosted {
-                id,
-                name,
-                kind,
-                input,
-            } => {
-                // Converse takes a JSON object as a tool's input.
-                let input = serde_json::from_str::<Value>(&input)
-                    .ok()
-                    .filter(Value::is_object)
-                    .unwrap_or_else(|| Value::Object(Map::new()));
-                out.finish_with(index, block::tool_use_json(&id, &name, input, Some(&kind)))
-            }
-            Draft::Result {
-                id,
-                status,
-                kind,
-                content,
-                modeled,
-            } => {
-                if !modeled {
-                    return out.close(index);
-                }
-                let item =
-                    block::tool_result_json(&id, content, status.as_deref(), kind.as_deref());
-                out.finish_with(index, item)
-            }
-            Draft::Image { format, source } => image(out, index, &format, source.as_ref()),
+/// The one key of a Converse union and its value.
+fn member(value: &Value) -> Option<(&str, &Value)> {
+    let (key, value) = value.as_object()?.iter().next()?;
+    Some((key.as_str(), value))
+}
+
+/// Append `text` to the string at `pointer` in `item`, starting it when
+/// absent.
+fn append(item: &mut Value, pointer: &str, text: &str) {
+    let Some((parent, key)) = pointer.rsplit_once('/') else {
+        return;
+    };
+    if let Some(Value::Object(fields)) = item.pointer_mut(parent) {
+        match fields.entry(key).or_insert_with(|| json!("")) {
+            Value::String(value) => value.push_str(text),
+            value => *value = json!(text),
         }
     }
+}
 
-    fn text(&mut self, index: usize) -> &mut Draft {
-        self.drafts.entry(index).or_insert_with(|| Draft::Text {
-            text: String::new(),
-            citations: Vec::new(),
+impl StreamState {
+    /// Write one event in delivery order; the reply's end at `metadata`.
+    fn event(
+        &mut self,
+        event: &Value,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<Option<Finish>, ProviderError> {
+        let Some((kind, payload)) = member(event) else {
+            return Ok(None);
+        };
+        let index = payload
+            .u64("contentBlockIndex")
+            .and_then(|index| usize::try_from(index).ok())
+            .unwrap_or(0);
+        match kind {
+            "contentBlockStart" => self.start(out, index, payload.get("start"))?,
+            "contentBlockDelta" => self.delta(out, index, payload.get("delta"))?,
+            "contentBlockStop" => self.stop(out, index, None)?,
+            "messageStop" => self.reason = payload.str("stopReason").map(str::to_owned),
+            "metadata" => return self.end(out, payload.get("usage")).map(Some),
+            "messageStart" => {}
+            kind if kind.ends_with("Exception") => return Err(errors::exception(kind, payload)),
+            kind => skip(kind),
+        }
+        Ok(None)
+    }
+
+    /// Converse starts tool-use, tool-result and image blocks, and any
+    /// block it adds later.
+    fn start(
+        &mut self,
+        out: &mut Out<'_, Completion>,
+        index: usize,
+        start: Option<&Value>,
+    ) -> Result<(), ProviderError> {
+        let Some((kind, body)) = start.and_then(member) else {
+            return Ok(());
+        };
+        let item = json!({ kind: body });
+        let open = match kind {
+            // A call that never names its tool is dropped at its end, since
+            // nothing can answer it.
+            "toolUse" if body.str("type").is_none() => {
+                let fragment = CallFragment {
+                    id: body.str("toolUseId"),
+                    name: body.str("name"),
+                    arguments: None,
+                };
+                out.fragment(Some(index), fragment)?;
+                out.edit(index, |slot| *slot = item)?;
+                Open::Call
+            }
+            "image" => Open::Image {
+                format: body.str("format").unwrap_or_default().to_owned(),
+                source: None,
+            },
+            kind => {
+                out.open(index, Block::Opaque { replay: true }, item)?;
+                if kind == "toolUse" {
+                    Open::Hosted
+                } else {
+                    Open::Opaque
+                }
+            }
+        };
+        self.open.insert(index, open);
+        Ok(())
+    }
+
+    fn delta(
+        &mut self,
+        out: &mut Out<'_, Completion>,
+        index: usize,
+        delta: Option<&Value>,
+    ) -> Result<(), ProviderError> {
+        let Some((kind, body)) = delta.and_then(member) else {
+            return Ok(());
+        };
+        if !self.open.contains_key(&index) {
+            let (block, item, open) = match kind {
+                "text" | "citation" => (
+                    Block::Text,
+                    json!({ "citationsContent": { "content": [{ "text": "" }], "citations": [] } }),
+                    Open::Text,
+                ),
+                "reasoningContent" if body.get("redactedContent").is_some() => (
+                    Block::Reasoning { redacted: true },
+                    json!({ "reasoningContent": { "redactedContent": "" } }),
+                    Open::Reasoning,
+                ),
+                "reasoningContent" => (
+                    Block::Reasoning { redacted: false },
+                    json!({ "reasoningContent": { "reasoningText": { "text": "" } } }),
+                    Open::Reasoning,
+                ),
+                "toolUse" => {
+                    self.start(out, index, Some(&json!({ "toolUse": {} })))?;
+                    return self.delta(out, index, delta);
+                }
+                kind => {
+                    skip(kind);
+                    return Ok(());
+                }
+            };
+            out.open(index, block, item)?;
+            self.open.insert(index, open);
+        }
+        let text = body.as_str().or_else(|| body.str("text"));
+        match (kind, self.open.get_mut(&index)) {
+            ("text", Some(Open::Text)) => {
+                if let Some(text) = text {
+                    out.push(index, text)?;
+                    out.edit(index, |item| {
+                        append(item, "/citationsContent/content/0/text", text);
+                    })?;
+                }
+            }
+            ("citation", Some(Open::Text)) => out.edit(index, |item| {
+                if let Some(Value::Array(citations)) =
+                    item.pointer_mut("/citationsContent/citations")
+                {
+                    citations.push(body.clone());
+                }
+            })?,
+            ("reasoningContent", Some(Open::Reasoning)) => {
+                if let Some(text) = text {
+                    out.push(index, text)?;
+                }
+                out.edit(index, |item| {
+                    for key in ["text", "signature"] {
+                        if let Some(fragment) = body.str(key) {
+                            let pointer = format!("/reasoningContent/reasoningText/{key}");
+                            append(item, &pointer, fragment);
+                        }
+                    }
+                    // Encoded once whole: base64 of each chunk would not
+                    // concatenate.
+                    if let (Some(chunk), Some(Value::String(bytes))) = (
+                        body.str("redactedContent"),
+                        item.pointer_mut("/reasoningContent/redactedContent"),
+                    ) {
+                        let mut whole = BASE64_STANDARD.decode(&*bytes).unwrap_or_default();
+                        whole.extend(BASE64_STANDARD.decode(chunk).unwrap_or_default());
+                        *bytes = BASE64_STANDARD.encode(whole);
+                    }
+                })?;
+            }
+            ("toolUse", Some(open @ (Open::Call | Open::Hosted))) => {
+                let input = body.str("input").unwrap_or_default();
+                if matches!(open, Open::Call) {
+                    let fragment = CallFragment {
+                        id: None,
+                        name: None,
+                        arguments: Some(input),
+                    };
+                    out.fragment(Some(index), fragment)?;
+                }
+                out.edit(index, |item| append(item, "/toolUse/input", input))?;
+            }
+            ("toolResult", Some(Open::Opaque)) => out.edit(index, |item| {
+                if let Some(Value::Object(result)) = item.get_mut("toolResult")
+                    && let Value::Array(content) =
+                        result.entry("content").or_insert_with(|| json!([]))
+                {
+                    content.extend(body.as_array().into_iter().flatten().cloned());
+                }
+            })?,
+            ("image", Some(Open::Image { source, .. })) => *source = body.get("source").cloned(),
+            (kind, _) => skip(kind),
+        }
+        Ok(())
+    }
+
+    /// The block at `index` stopped: it becomes whole, with `whole` as its
+    /// item when it came in a whole reply.
+    fn stop(
+        &mut self,
+        out: &mut Out<'_, Completion>,
+        index: usize,
+        whole: Option<&Value>,
+    ) -> Result<(), ProviderError> {
+        let open = match self.open.remove(&index) {
+            Some(Open::Image { format, source }) => {
+                return image(out, index, &format, source.as_ref());
+            }
+            Some(open) => open,
+            None => return Ok(()),
+        };
+        let call = matches!(open, Open::Call | Open::Hosted);
+        out.edit(index, |item| {
+            // Converse takes a JSON object as a tool's input; a call's input
+            // is the one its arguments were read from.
+            let input = item
+                .at("/toolUse/input")
+                .and_then(Value::as_str)
+                .filter(|input| !input.trim().is_empty())
+                .unwrap_or("{}");
+            let input = serde_json::from_str::<Value>(input)
+                .ok()
+                .filter(Value::is_object)
+                .or_else(|| matches!(open, Open::Hosted).then(|| json!({})));
+            let kept = match open {
+                Open::Text => item
+                    .at("/citationsContent/citations")
+                    .and_then(Value::as_array)
+                    .is_some_and(|citations| !citations.is_empty()),
+                // Unsigned reasoning keeps no item: it is rebuilt from its
+                // text, as text for a family that rejects unsigned reasoning.
+                Open::Reasoning => {
+                    item.at("/reasoningContent/reasoningText/signature")
+                        .is_some()
+                        || item.at("/reasoningContent/redactedContent").is_some()
+                }
+                Open::Call | Open::Hosted => input.is_some(),
+                Open::Opaque | Open::Image { .. } => true,
+            };
+            match (kept, input, whole) {
+                (false, ..) => *item = Value::Null,
+                (true, Some(input), _) if call => {
+                    if let Some(Value::Object(fields)) = item.get_mut("toolUse") {
+                        fields.insert("input".to_owned(), input);
+                    }
+                }
+                (true, _, Some(whole)) => whole.clone_into(item),
+                (true, ..) => {}
+            }
+        })?;
+        out.finish(index)
+    }
+
+    /// The reply's end: an image the stream never stopped is written as it
+    /// arrived, and the writer closes every other open block as incomplete.
+    fn end(
+        &mut self,
+        out: &mut Out<'_, Completion>,
+        usage: Option<&Value>,
+    ) -> Result<Finish, ProviderError> {
+        let images: Vec<usize> = self
+            .open
+            .iter()
+            .filter_map(|(index, open)| matches!(open, Open::Image { .. }).then_some(*index))
+            .collect();
+        for index in images {
+            self.stop(out, index, None)?;
+        }
+        Ok(Finish {
+            usage: usage.map(self::usage).unwrap_or_default(),
+            reason: self.reason.as_deref().map(finish_reason),
+            ..Finish::default()
         })
     }
 
-    fn reasoning(
+    /// A whole reply, written as the events that would have streamed it.
+    fn whole(
         &mut self,
-        index: usize,
-    ) -> Option<(&mut String, &mut Option<String>, &mut Option<Vec<u8>>)> {
-        let draft = self
-            .drafts
-            .entry(index)
-            .or_insert_with(|| Draft::Reasoning {
-                text: String::new(),
-                signature: None,
-                redacted: None,
-            });
-        match draft {
-            Draft::Reasoning {
-                text,
-                signature,
-                redacted,
-            } => Some((text, signature, redacted)),
-            Draft::Text { .. }
-            | Draft::Hosted { .. }
-            | Draft::Result { .. }
-            | Draft::Image { .. } => None,
-        }
-    }
-
-    /// Write one Converse event in delivery order.
-    #[deny(clippy::wildcard_enum_match_arm)]
-    fn event(
-        &mut self,
-        event: aws_bedrock::ConverseStreamOutput,
+        document: &Value,
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
-        use aws_bedrock::{
-            ContentBlockDelta as Delta, ContentBlockStart as Start, ConverseStreamOutput as Event,
-            ReasoningContentBlockDelta as Thought, ToolResultBlockDelta as ResultDelta,
-        };
-        match event {
-            Event::ContentBlockStart(event) => {
-                let index = block_index(event.content_block_index);
-                match event.start {
-                    Some(Start::ToolUse(start)) => match start.r#type {
-                        None => call(
-                            &mut out,
-                            index,
-                            Some(&start.tool_use_id),
-                            Some(&start.name),
-                            None,
-                        )?,
-                        Some(kind) => {
-                            let kind = kind.as_str().to_owned();
-                            let item = block::tool_use_json(
-                                &start.tool_use_id,
-                                &start.name,
-                                Value::Object(Map::new()),
-                                Some(&kind),
-                            );
-                            out.open(index, Block::Opaque { replay: true }, item)?;
-                            self.drafts.insert(
-                                index,
-                                Draft::Hosted {
-                                    id: start.tool_use_id,
-                                    name: start.name,
-                                    kind,
-                                    input: String::new(),
-                                },
-                            );
-                        }
-                    },
-                    Some(Start::ToolResult(result)) => {
-                        let status = result
-                            .status
-                            .as_ref()
-                            .map(|status| status.as_str().to_owned());
-                        let item = block::tool_result_json(
-                            &result.tool_use_id,
-                            Vec::new(),
-                            status.as_deref(),
-                            result.r#type.as_deref(),
-                        );
-                        out.open(index, Block::Opaque { replay: true }, item)?;
-                        self.drafts.insert(
-                            index,
-                            Draft::Result {
-                                id: result.tool_use_id,
-                                status,
-                                kind: result.r#type,
-                                content: Vec::new(),
-                                modeled: true,
-                            },
-                        );
-                    }
-                    Some(Start::Image(image)) => {
-                        self.drafts.insert(
-                            index,
-                            Draft::Image {
-                                format: image.format,
-                                source: None,
-                            },
-                        );
-                    }
-                    Some(_) | None => unknown(&mut out, index, "content block start")?,
-                }
+        let content = document
+            .at("/output/message")
+            .map_or(&[][..], |message| message.arr("content"));
+        for (index, block) in content.iter().enumerate() {
+            for event in restated(index, block) {
+                self.event(&event, &mut out)?;
             }
-            Event::ContentBlockDelta(event) => {
-                let index = block_index(event.content_block_index);
-                let not_started = || {
-                    ProviderError::Response(format!(
-                        "Converse sent a delta for block {} it did not start",
-                        event.content_block_index
-                    ))
-                };
-                match event.delta {
-                    Some(Delta::Text(fragment)) => {
-                        open_once(&mut out, index, Block::Text)?;
-                        if let Draft::Text { text, .. } = self.text(index) {
-                            text.push_str(&fragment);
-                        }
-                        out.push(index, &fragment)?;
-                    }
-                    Some(Delta::Citation(citation)) => {
-                        open_once(&mut out, index, Block::Text)?;
-                        match block::citation_delta_json(&citation) {
-                            Some(citation) => {
-                                if let Draft::Text { citations, .. } = self.text(index) {
-                                    citations.push(citation);
-                                }
-                            }
-                            None => skip("citation"),
-                        }
-                    }
-                    Some(Delta::ToolUse(fragment)) => match self.drafts.get_mut(&index) {
-                        Some(Draft::Hosted { input, .. }) => input.push_str(&fragment.input),
-                        _ => call(&mut out, index, None, None, Some(&fragment.input))?,
-                    },
-                    Some(Delta::ReasoningContent(thought)) => match thought {
-                        Thought::Text(fragment) => {
-                            open_once(&mut out, index, Block::Reasoning { redacted: false })?;
-                            if let Some((text, ..)) = self.reasoning(index) {
-                                text.push_str(&fragment);
-                            }
-                            out.push(index, &fragment)?;
-                        }
-                        Thought::Signature(fragment) => {
-                            open_once(&mut out, index, Block::Reasoning { redacted: false })?;
-                            if let Some((_, signature, _)) = self.reasoning(index) {
-                                signature.get_or_insert_default().push_str(&fragment);
-                            }
-                        }
-                        Thought::RedactedContent(blob) => {
-                            open_once(&mut out, index, Block::Reasoning { redacted: true })?;
-                            if let Some((.., redacted)) = self.reasoning(index) {
-                                // Encoded once whole: base64 of each chunk would
-                                // not concatenate.
-                                redacted
-                                    .get_or_insert_default()
-                                    .extend_from_slice(blob.as_ref());
-                            }
-                        }
-                        Thought::Unknown { .. } | _ => skip("reasoning delta"),
-                    },
-                    Some(Delta::Image(image)) => {
-                        let Some(Draft::Image { source, .. }) = self.drafts.get_mut(&index) else {
-                            return Err(not_started());
-                        };
-                        *source = image.source;
-                    }
-                    Some(Delta::ToolResult(parts)) => {
-                        let Some(Draft::Result {
-                            content, modeled, ..
-                        }) = self.drafts.get_mut(&index)
-                        else {
-                            return Err(not_started());
-                        };
-                        for part in parts {
-                            match part {
-                                ResultDelta::Json(value) => content
-                                    .push(serde_json::json!({ "json": json::to_value(value) })),
-                                ResultDelta::Text(text) => {
-                                    content.push(serde_json::json!({ "text": text }));
-                                }
-                                ResultDelta::Unknown { .. } | _ => *modeled = false,
-                            }
-                        }
-                    }
-                    Some(_) | None => unknown(&mut out, index, "content block delta")?,
-                }
-            }
-            Event::ContentBlockStop(event) => {
-                self.stop(&mut out, block_index(event.content_block_index))?
-            }
-            Event::MessageStart(_) => {}
-            Event::MessageStop(event) => {
-                self.stop_reason = Some(event.stop_reason);
-            }
-            Event::Metadata(metadata) => {
-                // A block the stream never stopped is not complete: images
-                // are written as they arrived, and the end closes the rest
-                // with no provider item.
-                let images: Vec<usize> = self
-                    .drafts
-                    .iter()
-                    .filter_map(|(index, draft)| {
-                        matches!(draft, Draft::Image { .. }).then_some(*index)
-                    })
-                    .collect();
-                for index in images {
-                    self.stop(&mut out, index)?;
-                }
-                if !self.raw.is_empty() {
-                    out.raw(Value::Object(std::mem::take(&mut self.raw)));
-                }
-                let end = finish(metadata.usage.as_ref(), self.stop_reason.as_ref());
-                return Ok(out.end(end));
-            }
-            Event::Unknown { .. } | _ => skip("stream event"),
+            self.stop(&mut out, index, Some(block))?;
         }
-        Ok(Flow::More)
+        self.reason = document.str("stopReason").map(str::to_owned);
+        let end = self.end(&mut out, document.get("usage"))?;
+        Ok(out.end(end))
     }
 }
 
-/// Finish the text at `index`: with `cited`, the whole cited block, as its
-/// provider item.
-fn finish_text(
-    out: &mut Out<'_, Completion>,
-    index: usize,
-    cited: Option<Value>,
-) -> Result<(), ProviderError> {
-    match cited {
-        Some(item) => out.finish_with(index, item),
-        None => out.finish(index),
+/// The stream events of the whole block at `index`, its stop aside.
+fn restated(index: usize, block: &Value) -> Vec<Value> {
+    let delta = |delta: Value| json!({ "contentBlockDelta": { "contentBlockIndex": index, "delta": delta } });
+    let start = |start: Value| json!({ "contentBlockStart": { "contentBlockIndex": index, "start": start } });
+    let Some((kind, body)) = member(block) else {
+        return Vec::new();
+    };
+    // A started block's streamed field arrives as its delta.
+    let (field, streamed) = match kind {
+        "text" => return vec![delta(json!({ "text": body }))],
+        "citationsContent" => {
+            let content = body.arr("content").iter();
+            let text = content.map(|part| delta(json!({ "text": part.get("text") })));
+            let citations = body.arr("citations").iter();
+            let citations = citations.map(|citation| delta(json!({ "citation": citation })));
+            return text.chain(citations).collect();
+        }
+        "reasoningContent" => {
+            let body = body.get("reasoningText").unwrap_or(body);
+            return vec![delta(json!({ "reasoningContent": body }))];
+        }
+        "toolUse" => {
+            let input = body.get("input").map(Value::to_string);
+            ("input", json!({ "toolUse": { "input": input } }))
+        }
+        "toolResult" => ("content", json!({ "toolResult": body.get("content") })),
+        "image" => (
+            "source",
+            json!({ "image": { "source": body.get("source") } }),
+        ),
+        _ => return vec![start(block.clone())],
+    };
+    let mut opened = body.clone();
+    if let Value::Object(fields) = &mut opened {
+        fields.shift_remove(field);
     }
+    vec![start(json!({ kind: opened })), delta(streamed)]
 }
 
-/// Finish the reasoning at `index` with its Converse block as the provider
-/// item. Reasoning with no text, signature or bytes is no content.
-fn finish_reasoning(
-    out: &mut Out<'_, Completion>,
-    index: usize,
-    text: &str,
-    signature: Option<&str>,
-    redacted: Option<&[u8]>,
-) -> Result<(), ProviderError> {
-    match (redacted, signature) {
-        (Some(bytes), _) => out.finish_with(index, block::redacted_json(bytes)),
-        (None, None) if text.is_empty() => out.finish(index),
-        (None, signature) => out.finish_with(index, block::reasoning_json(text, signature)),
-    }
-}
-
-/// Write the image at `index`, or a marker when Converse sent no bytes or
-/// a format Rig does not name.
+/// Write the image at `index`, or an item that does not replay when
+/// Converse sent no bytes or a format Rig does not name.
 fn image(
     out: &mut Out<'_, Completion>,
     index: usize,
-    format: &aws_bedrock::ImageFormat,
-    source: Option<&aws_bedrock::ImageSource>,
+    format: &str,
+    source: Option<&Value>,
 ) -> Result<(), ProviderError> {
-    use aws_bedrock::ImageFormat as Format;
     let media_type = match format {
-        Format::Gif => Some(ImageMediaType::GIF),
-        Format::Jpeg => Some(ImageMediaType::JPEG),
-        Format::Png => Some(ImageMediaType::PNG),
-        Format::Webp => Some(ImageMediaType::WEBP),
+        "gif" => Some(ImageMediaType::GIF),
+        "jpeg" => Some(ImageMediaType::JPEG),
+        "png" => Some(ImageMediaType::PNG),
+        "webp" => Some(ImageMediaType::WEBP),
         _ => None,
     };
-    let (Some(media_type), Some(aws_bedrock::ImageSource::Bytes(blob))) = (media_type, source)
-    else {
-        return marker(out, index, "image");
+    let data = source.and_then(|source| source.str("bytes"));
+    let (Some(media_type), Some(data)) = (media_type, data) else {
+        let item = json!({ "image": { "format": format, "source": source } });
+        return out.whole(index, Block::Opaque { replay: false }, item, "");
     };
     let image = Image {
         data: DocumentSourceKind::Base64(String::new()),
         media_type: Some(media_type),
         ..Image::default()
     };
-    out.whole(
-        index,
-        Block::Image(image),
-        Value::Null,
-        &BASE64_STANDARD.encode(blob.as_ref()),
-    )
-}
-
-/// A block with no canonical meaning Rig can send back, kept as a marker
-/// naming its `kind`.
-fn marker(out: &mut Out<'_, Completion>, index: usize, kind: &str) -> Result<(), ProviderError> {
-    out.whole(
-        index,
-        Block::Opaque { replay: false },
-        serde_json::json!({ "type": kind }),
-        "",
-    )
-}
-
-/// A part this SDK version does not model: its block is a marker.
-fn unknown(out: &mut Out<'_, Completion>, index: usize, item: &str) -> Result<(), ProviderError> {
-    skip(item);
-    if !out.is_open(index) {
-        out.open(
-            index,
-            Block::Opaque { replay: false },
-            serde_json::json!({ "type": "unknown" }),
-        )?;
-    }
-    Ok(())
+    out.whole(index, Block::Image(image), Value::Null, data)
 }
 
 fn skip(item: &str) {
-    tracing::warn!(item, "a Converse item this SDK version does not model");
+    tracing::warn!(item, "a Converse item this crate does not model");
 }
 
-/// Open the item at `index` as `block` unless an earlier delta opened it:
-/// Converse starts only tool-use, tool-result and image blocks explicitly.
-fn open_once(
-    out: &mut Out<'_, Completion>,
-    index: usize,
-    block: Block,
-) -> Result<(), ProviderError> {
-    if !out.is_open(index) {
-        out.open(index, block, Value::Null)?;
-    }
-    Ok(())
-}
-
-/// One fragment of the client call at `index`. A call that never names
-/// its tool is dropped at its end, since nothing can answer it.
-fn call(
-    out: &mut Out<'_, Completion>,
-    index: usize,
-    id: Option<&str>,
-    name: Option<&str>,
-    arguments: Option<&str>,
-) -> Result<(), ProviderError> {
-    out.fragment(
-        Some(index),
-        CallFragment {
-            id,
-            name,
-            arguments,
-        },
-    )
-}
-
-/// Write one whole Converse block at `index`.
-#[deny(clippy::wildcard_enum_match_arm)]
-fn whole_block(
-    out: &mut Out<'_, Completion>,
-    index: usize,
-    content: aws_bedrock::ContentBlock,
-) -> Result<(), ProviderError> {
-    use aws_bedrock::{ContentBlock as Content, ReasoningContentBlock as Reasoning};
-    let item = block::to_json(&content);
-    match content {
-        Content::Text(text) => {
-            out.open(index, Block::Text, Value::Null)?;
-            out.push(index, &text)?;
-            out.finish(index)
-        }
-        Content::CitationsContent(cited) => {
-            out.open(index, Block::Text, Value::Null)?;
-            for part in cited.content.unwrap_or_default() {
-                match part {
-                    aws_bedrock::CitationGeneratedContent::Text(text) => out.push(index, &text)?,
-                    aws_bedrock::CitationGeneratedContent::Unknown { .. } | _ => {
-                        skip("cited content");
-                    }
-                }
-            }
-            finish_text(out, index, item)
-        }
-        Content::ReasoningContent(Reasoning::ReasoningText(reasoning)) => {
-            out.open(index, Block::Reasoning { redacted: false }, Value::Null)?;
-            out.push(index, &reasoning.text)?;
-            finish_reasoning(
-                out,
-                index,
-                &reasoning.text,
-                reasoning.signature.as_deref(),
-                None,
-            )
-        }
-        Content::ReasoningContent(Reasoning::RedactedContent(blob)) => {
-            out.open(index, Block::Reasoning { redacted: true }, Value::Null)?;
-            finish_reasoning(out, index, "", None, Some(blob.as_ref()))
-        }
-        Content::ToolUse(client) if client.r#type.is_none() => {
-            let input = json::to_value(client.input).to_string();
-            call(
-                out,
-                index,
-                Some(&client.tool_use_id),
-                Some(&client.name),
-                Some(&input),
-            )?;
-            out.finish(index)
-        }
-        Content::ToolUse(_) | Content::ToolResult(_) => match item {
-            Some(item) => out.whole(index, Block::Opaque { replay: true }, item, ""),
-            None => marker(out, index, "tool_result"),
-        },
-        Content::Image(image) => self::image(out, index, &image.format, image.source.as_ref()),
-        Content::Audio(_) => marker(out, index, "audio"),
-        Content::CachePoint(_) => marker(out, index, "cache_point"),
-        Content::Document(_) => marker(out, index, "document"),
-        Content::GuardContent(_) => marker(out, index, "guard_content"),
-        Content::SearchResult(_) => marker(out, index, "search_result"),
-        Content::Video(_) => marker(out, index, "video"),
-        Content::ReasoningContent(_) | _ => {
-            skip("content block");
-            marker(out, index, "unknown")
-        }
+/// Every stop reason Converse documents. An end of turn or a stop sequence
+/// is `Stop`, the token limit and an exceeded context window are `Length`,
+/// guardrail and content-filter interventions are `ContentFilter`, and any
+/// other reason keeps its wire spelling in `Other`, which fails the turn.
+fn finish_reason(reason: &str) -> FinishReason {
+    match reason {
+        "end_turn" | "stop_sequence" => FinishReason::Stop,
+        "max_tokens" | "model_context_window_exceeded" => FinishReason::Length,
+        "tool_use" => FinishReason::ToolCalls,
+        "content_filtered" | "guardrail_intervened" => FinishReason::ContentFilter,
+        other => FinishReason::Other(other.to_owned()),
     }
 }
 
-/// A whole Converse reply, written block by block.
-#[deny(clippy::wildcard_enum_match_arm)]
-fn whole(output: ConverseOutput, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
-    match output.output {
-        Some(aws_bedrock::ConverseOutput::Message(message)) => {
-            for (index, content) in message.content.into_iter().enumerate() {
-                whole_block(&mut out, index, content)?;
-            }
-        }
-        Some(_) => skip("converse output"),
-        None => {}
+/// Rig's input is Bedrock's `inputTokens` plus its cache reads and writes,
+/// and its total input plus output, which is `totalTokens`.
+fn usage(usage: &Value) -> Usage {
+    let cache_read = usage.u64("cacheReadInputTokens");
+    let cache_write = usage.u64("cacheWriteInputTokens");
+    let input = [usage.u64("inputTokens"), cache_read, cache_write]
+        .into_iter()
+        .flatten()
+        .fold(0, u64::saturating_add);
+    let output = usage.u64("outputTokens").unwrap_or(0);
+    Usage {
+        input_tokens: Some(input),
+        output_tokens: Some(output),
+        total_tokens: Some(input.saturating_add(output)),
+        cached_input_tokens: cache_read,
+        cache_creation_input_tokens: cache_write,
+        tool_use_prompt_tokens: None,
+        reasoning_tokens: None,
     }
-    Ok(out.end(finish(output.usage.as_ref(), Some(&output.stop_reason))))
-}
-
-/// A whole reply the SDK could not read, from the JSON Bedrock sent: each
-/// block that still converts, a marker for the rest, and the stop reason
-/// and usage counts that hold the type Converse documents.
-fn whole_json(document: &Value, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
-    let content = document
-        .pointer("/output/message/content")
-        .and_then(Value::as_array);
-    for (index, item) in content.into_iter().flatten().enumerate() {
-        match block::from_json(item) {
-            Some(content) => whole_block(&mut out, index, content)?,
-            None => marker(&mut out, index, "unknown")?,
-        }
-    }
-    let stop_reason = document
-        .get("stopReason")
-        .and_then(Value::as_str)
-        .map(aws_bedrock::StopReason::from);
-    let usage = document.get("usage").and_then(|usage| {
-        let count = |key: &str| {
-            let count = usage.get(key)?.as_i64()?;
-            i32::try_from(count).ok()
-        };
-        aws_bedrock::TokenUsage::builder()
-            .input_tokens(count("inputTokens").unwrap_or(0))
-            .output_tokens(count("outputTokens").unwrap_or(0))
-            .total_tokens(count("totalTokens").unwrap_or(0))
-            .set_cache_read_input_tokens(count("cacheReadInputTokens"))
-            .set_cache_write_input_tokens(count("cacheWriteInputTokens"))
-            .build()
-            .ok()
-    });
-    Ok(out.end(finish(usage.as_ref(), stop_reason.as_ref())))
 }
 
 impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamState {
     type Event = ConverseFrame;
 
     fn classify(&self, frame: ConverseFrame) -> WireEvent<Self::Event> {
-        // The SDK handles byte decoding; only unknown union variants need
-        // classification here.
-        match &frame {
-            ConverseFrame::Event(event) if event.is_unknown() => {
-                WireEvent::unrecognized("unknown", format!("{event:?}"))
-            }
-            _ => WireEvent::Known(frame),
-        }
+        WireEvent::Known(frame)
     }
 
-    /// EOF without Bedrock's `Metadata` event is truncation.
+    /// EOF without Bedrock's `metadata` event is truncation.
     fn decode(
         &mut self,
-        event: ConverseFrame,
-        out: Out<'id, Completion>,
+        frame: ConverseFrame,
+        mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
-        match event {
-            ConverseFrame::Opened { .. } => Ok(Flow::More),
-            ConverseFrame::Whole(output) => whole(*output, out),
-            ConverseFrame::Document(document) => whole_json(&document, out),
-            ConverseFrame::Event(event) => self.event(event, out),
-            ConverseFrame::Raw(Value::Object(event)) => {
-                for (kind, payload) in event {
-                    if matches!(kind.as_str(), "messageStart" | "messageStop" | "metadata") {
-                        self.raw.insert(kind, payload);
-                    }
-                }
-                Ok(Flow::More)
-            }
-            ConverseFrame::Raw(_) => Ok(Flow::More),
+        let event = match frame {
+            ConverseFrame::Whole(document) => return self.whole(&document, out),
+            ConverseFrame::Event(event) => event,
+        };
+        if let Some((kind @ ("messageStart" | "messageStop" | "metadata"), payload)) =
+            member(&event)
+        {
+            self.raw.insert(kind.to_owned(), payload.clone());
         }
+        let Some(end) = self.event(&event, &mut out)? else {
+            return Ok(Flow::More);
+        };
+        if !self.raw.is_empty() {
+            out.raw(Value::Object(std::mem::take(&mut self.raw)));
+        }
+        Ok(out.end(end))
     }
 }
 

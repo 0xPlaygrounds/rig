@@ -47,13 +47,28 @@ impl WireIds {
     /// The spelling of every call and result in `history` for `model` on
     /// `target`: a provider id as it stands, and an id rig issued as its
     /// `tool-<n>` alias passed through the target's id rules, so every id a
-    /// request sends is one the wire accepts.
+    /// request sends is one the wire accepts. No alias takes an id a hosted
+    /// item holds ([`ReplayTarget::hosted_pair`]).
+    ///
+    /// [`ReplayTarget::hosted_pair`]: crate::completion::ReplayTarget::hosted_pair
     pub fn for_target(
         history: &[Message],
         target: &dyn crate::completion::ReplayTarget,
         model: &str,
     ) -> Self {
-        Self::spelled(history, std::iter::empty(), |alias| {
+        let hosted = history
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) => Some(&turn.content),
+                Message::User { .. } | Message::System { .. } => None,
+            })
+            .flatten()
+            .filter_map(|block| match block {
+                AssistantContent::Opaque(opaque) => target.hosted_pair(&opaque.item),
+                _ => None,
+            })
+            .map(|(_, id)| id);
+        Self::spelled(history, hosted, |alias| {
             target.normalize_tool_call_id(alias, model, None)
         })
     }

@@ -69,7 +69,7 @@ providers/gemini/model_listing.rs | let page: Value = serde_json::from_slice(bod
 providers/gemini/transcription.rs | let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?; | Reads the caller's own `additional_params` on the REQUEST side, before anything is sent; it decodes no reply and cannot triage a frame.
 rig-bedrock/src/embedding.rs | .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json)); | InvokeModel returns the model's whole JSON body as an opaque blob; the transport decodes that one document into the typed reply before any frame exists, and a malformed body is the frame's error, never skipped.
 rig-bedrock/src/image.rs | serde_json::from_str::<TextToImageResponse>(&body) | The unary InvokeModel reply is one opaque JSON blob with no frames to triage; its typed decode fails the call with a ProviderError, never skipped.
-rig-bedrock/src/streaming.rs | let input = serde_json::from_str::<Value>(&input) | Reads a hosted tool use's accumulated input text, already delivered by the classified SDK events, as the object its provider item holds; text that is not an object becomes `{}`, nothing is skipped.
+rig-bedrock/src/streaming.rs | let input = serde_json::from_str::<Value>(input) | Reads a tool use's accumulated input text, already delivered by its classified events, as the object its provider item holds; text that is not an object keeps a client call's item off and gives a hosted use `{}`, nothing is skipped.
 
 # --- vertexai: SDK reply restated as the REST chunk ------------------------
 

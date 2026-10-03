@@ -1,8 +1,9 @@
 //! The history conformance suite for the Bedrock Converse wire, on a Claude
-//! model and on Nova. Each reply is Converse JSON that the AWS SDK reads
-//! over a canned HTTP exchange, so the frames are the SDK's own output and
-//! stream events; each request body is the JSON the SDK sends, with the
-//! model it addresses in `$path`.
+//! model and on Nova. Each reply is the Converse JSON the transport hands
+//! the decoder; each request body is the JSON the transport sends in place
+//! of the SDK's serialization, with the model it addresses in `$path`. The
+//! tests after the suite drive both through the AWS SDK over a canned HTTP
+//! exchange.
 
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -26,10 +27,11 @@ use rig_bedrock::completion::{
     ANTHROPIC_CLAUDE_SONNET_4_5, Converse, ConverseFrame, ConverseRequest,
 };
 use rig_core::completion::CompletionRequest;
-use rig_core::driver::{Exchange, Model, Opening, Transport};
-use rig_core::error::{EncodeError, ProviderError};
-use rig_core::wire::{Mode, Wire};
-use rig_history_conformance::{Ablation, Ending, HistoryFixture, Shape};
+use rig_core::driver::Model;
+use rig_core::error::EncodeError;
+use rig_core::message::AssistantContent;
+use rig_core::wire::{Mode, Operation, Wire};
+use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Shape};
 use serde_json::{Value, json};
 
 /// One canned HTTP exchange: the reply it gives, and the request it got.
@@ -88,30 +90,6 @@ impl HttpClient for Canned {
     }
 }
 
-/// The runtime, keeping every frame it hands the decoder.
-#[derive(Clone)]
-struct Keep {
-    runtime: BedrockRuntime,
-    frames: Arc<Mutex<Vec<ConverseFrame>>>,
-}
-
-impl Transport<Converse> for Keep {
-    fn send(&self, payload: ConverseRequest, exchange: Exchange) -> Opening<ConverseFrame> {
-        let sent = Transport::<Converse>::send(&self.runtime, payload, exchange);
-        let frames = Arc::clone(&self.frames);
-        Opening::new(async move {
-            let opened = sent.await?;
-            Ok(opened.map_frames(move |stream| {
-                stream.inspect(move |frame: &Result<ConverseFrame, ProviderError>| {
-                    if let Ok(frame) = frame {
-                        frames.lock().expect("frames").push(frame.clone());
-                    }
-                })
-            }))
-        })
-    }
-}
-
 fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -120,15 +98,19 @@ fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
         .block_on(future)
 }
 
-/// The frames the SDK reads a unary Converse `document` into.
+/// The frame carrying the whole unary reply `document`.
 fn unary_frames(document: Value) -> Vec<ConverseFrame> {
-    let body = serde_json::to_vec(&document).expect("JSON");
-    frames(Mode::Unary, Canned::new("application/json", body))
+    vec![ConverseFrame::Whole(document)]
 }
 
-/// The frames the SDK reads a Converse stream of `events` into, each
-/// `{"<event type>": <payload>}`.
+/// The frames of a Converse stream of `events`, each `{"<event type>":
+/// <payload>}`.
 fn streamed_frames(events: Vec<Value>) -> Vec<ConverseFrame> {
+    events.into_iter().map(ConverseFrame::Event).collect()
+}
+
+/// The event-stream body carrying `events`.
+fn event_stream(events: &[Value]) -> Vec<u8> {
     let mut body = Vec::new();
     for event in events {
         let (kind, payload) = event
@@ -143,98 +125,24 @@ fn streamed_frames(events: Vec<Value>) -> Vec<ConverseFrame> {
             .add_header(Header::new(
                 ":event-type",
                 HeaderValue::String(kind.clone().into()),
-            ))
-            .add_header(Header::new(
-                ":content-type",
-                HeaderValue::String("application/json".into()),
             ));
         aws_smithy_eventstream::frame::write_message_to(&message, &mut body)
             .expect("an event message");
     }
-    frames(
-        Mode::Streaming,
-        Canned::new("application/vnd.amazon.eventstream", body),
-    )
+    body
 }
 
-fn frames(mode: Mode, canned: Canned) -> Vec<ConverseFrame> {
-    let keep = Keep {
-        runtime: canned.runtime(),
-        frames: Arc::default(),
+/// The JSON body `payload` sends in `mode`, with its request path as
+/// `$path`. The transport sends this body as it stands
+/// (`the_transport_sends_the_encoded_body`).
+fn sent_body(payload: ConverseRequest, mode: Mode) -> Value {
+    let operation = match mode {
+        Mode::Unary => "converse",
+        Mode::Streaming => "converse-stream",
     };
-    let model = Model::new(Converse::new(CLAUDE), keep.clone());
-    block_on(async {
-        let request = CompletionRequest::new("restate");
-        match mode {
-            Mode::Unary => drop(model.call(request).await),
-            Mode::Streaming => {
-                let mut stream = model.stream(request).expect("the stream opens");
-                while stream.next().await.is_some() {}
-            }
-        }
-    });
-    keep.frames.lock().expect("frames").clone()
-}
-
-/// The JSON body `payload` sends in `mode`, with its request path,
-/// percent-decoded, as `$path`.
-fn sent_body(payload: ConverseRequest, mode: Mode) -> Result<Value, EncodeError> {
-    let canned = Canned::new("application/json", b"{}".to_vec());
-    let client = canned.client();
-    let ConverseRequest {
-        model,
-        request,
-        guardrail,
-    } = payload;
-    let additional = request.additional_params();
-    let inference = request.inference_config();
-    let fail = |error: ProviderError| EncodeError::request(error.to_string());
-    let tools = request.tools_config().map_err(fail)?;
-    let output = request.output_config().map_err(fail)?;
-    let system = request.system_prompt().map_err(fail)?;
-    let messages = request.messages().map_err(fail)?;
-    block_on(async {
-        match mode {
-            Mode::Unary => drop(
-                client
-                    .converse()
-                    .model_id(model)
-                    .set_additional_model_request_fields(additional)
-                    .set_inference_config(Some(inference))
-                    .set_tool_config(tools)
-                    .set_system(system)
-                    .set_messages(Some(messages))
-                    .set_output_config(output)
-                    .set_guardrail_config(guardrail)
-                    .send()
-                    .await,
-            ),
-            Mode::Streaming => drop(
-                client
-                    .converse_stream()
-                    .model_id(model)
-                    .set_additional_model_request_fields(additional)
-                    .set_inference_config(Some(inference))
-                    .set_tool_config(tools)
-                    .set_system(system)
-                    .set_messages(Some(messages))
-                    .set_output_config(output)
-                    .send()
-                    .await,
-            ),
-        }
-    });
-    let (uri, body) = canned.sent.lock().expect("sent").take().expect("a request");
-    let mut body: Value = serde_json::from_slice(&body)?;
-    let path = uri
-        .split_once("://")
-        .and_then(|(_, rest)| rest.split_once('/'))
-        .map(|(_, path)| format!("/{path}"))
-        .unwrap_or(uri);
-    if let Value::Object(fields) = &mut body {
-        fields.insert("$path".to_owned(), Value::String(percent_decoded(&path)));
-    }
-    Ok(body)
+    let mut body = payload.body;
+    body["$path"] = json!(format!("/model/{}/{operation}", payload.model));
+    body
 }
 
 fn percent_decoded(text: &str) -> String {
@@ -346,7 +254,8 @@ fn events(content: &[Value], stop_reason: &str) -> Vec<Value> {
                 events.push(start(index, json!({ "toolResult": opened })));
                 events.push(delta(index, json!({ "toolResult": body["content"] })));
             }
-            other => panic!("no stream carries a `{other}` block"),
+            // A block Converse adds later starts whole.
+            _ => events.push(start(index, block.clone())),
         }
         events.push(stop(index));
     }
@@ -423,11 +332,19 @@ impl BedrockHistory {
                 ],
                 "tool_use",
             ),
-            // The SDK reads an item and a field it does not model as its
-            // payload-less `Unknown`, or not at all, and cannot send one
-            // back: the invented shape cannot reach the decoder or the
-            // request.
-            Shape::Unknown => return None,
+            Shape::Unknown => (
+                vec![
+                    json!({ "x_rig_invented": { "a": 1 } }),
+                    json!({ "toolUse": {
+                        "toolUseId": "tooluse_3",
+                        "name": "lookup",
+                        "input": { "q": "rig" },
+                        "x_rig_field": 1,
+                    } }),
+                    json!({ "text": "done" }),
+                ],
+                "tool_use",
+            ),
         })
     }
 }
@@ -457,7 +374,7 @@ impl HistoryFixture for BedrockHistory {
         request: CompletionRequest,
         mode: Mode,
     ) -> Result<Value, EncodeError> {
-        sent_body(wire.encode(request, mode)?, mode)
+        Ok(sent_body(wire.encode(request, mode)?, mode))
     }
 
     fn reply(&self, shape: Shape, mode: Mode) -> Option<Vec<ConverseFrame>> {
@@ -514,23 +431,74 @@ impl HistoryFixture for BedrockHistory {
         .collect()
     }
 
-    /// Only a union's member is required: the SDK refuses a union with
-    /// none, and fills any other missing field with its default. A call
-    /// that names no tool is dropped.
+    /// Nothing is required: every field is read leniently.
     fn ablation(&self) -> Option<Ablation<ConverseFrame>> {
         let (content, stop_reason) = self.content(Shape::Rich)?;
         Some(Ablation {
             document: document(content, stop_reason),
-            required: &[
-                "/output/message",
-                "/output/message/content/*/*",
-                "/output/message/content/*/reasoningContent/*",
-                "/output/message/content/*/citationsContent/content/*/*",
-                "/output/message/content/*/citationsContent/citations/*/location/*",
-                "/output/message/content/*/toolResult/content/*/*",
-            ],
+            required: &[],
             frames: unary_frames,
         })
+    }
+
+    fn finish_reason_pointer(&self) -> Option<&'static str> {
+        Some("/stopReason")
+    }
+
+    fn decode_item(&self, block: &AssistantContent) -> Option<AssistantContent> {
+        let item = block.native_item()?.clone();
+        let frames = unary_frames(document(vec![item], "end_turn"));
+        let wire = Converse::new(self.model);
+        let response = rig_core::test_utils::history::decode(&wire, Mode::Unary, frames).ok()?;
+        response.choice.into_iter().next()
+    }
+
+    /// Converse indexes every block: two calls under one index follow each
+    /// other, and a whole reply lists them.
+    fn calls_reply(&self, shape: CallShape, mode: Mode) -> Option<Vec<ConverseFrame>> {
+        let calls = [("a1", "Paris"), ("b2", "Rome")];
+        match (shape, mode) {
+            (CallShape::ReusedIndex, Mode::Streaming) => {
+                let mut events = Vec::new();
+                for (id, city) in calls {
+                    events.push(start(
+                        0,
+                        json!({ "toolUse": { "toolUseId": id, "name": "weather" } }),
+                    ));
+                    let input = json!({ "city": city }).to_string();
+                    events.push(delta(0, json!({ "toolUse": { "input": input } })));
+                    events.push(stop(0));
+                }
+                events.push(json!({ "messageStop": { "stopReason": "tool_use" } }));
+                events.push(json!({ "metadata": { "usage": usage() } }));
+                Some(streamed_frames(events))
+            }
+            (CallShape::WholeList, Mode::Unary) => {
+                let content = calls
+                    .iter()
+                    .map(|(id, city)| json!({ "toolUse": { "toolUseId": id, "name": "weather", "input": { "city": city } } }))
+                    .collect();
+                Some(unary_frames(document(content, "tool_use")))
+            }
+            _ => None,
+        }
+    }
+
+    fn empty_reply(&self, mode: Mode) -> Option<Vec<ConverseFrame>> {
+        Some(match mode {
+            Mode::Unary => unary_frames(document(Vec::new(), "end_turn")),
+            Mode::Streaming => streamed_frames(events(&[], "end_turn")),
+        })
+    }
+
+    fn error_frame(&self) -> Option<ConverseFrame> {
+        Some(ConverseFrame::Event(
+            json!({ "throttlingException": { "message": "slow down" } }),
+        ))
+    }
+
+    fn strict_roles(&self) -> bool {
+        true
     }
 }
 
@@ -556,40 +524,11 @@ mod nova {
     }
 }
 
-/// The SDK's reading of a whole reply holding `block`, and the response it
-/// decodes to.
-fn decoded_block(
-    block: Value,
-) -> (
-    aws_sdk_bedrockruntime::types::ContentBlock,
-    rig_core::completion::CompletionResponse,
-) {
-    let frames = unary_frames(document(vec![block.clone()], "end_turn"));
-    let sdk = frames
-        .iter()
-        .find_map(|frame| match frame {
-            ConverseFrame::Whole(output) => output
-                .output
-                .as_ref()
-                .and_then(|output| output.as_message().ok())
-                .and_then(|message| message.content.first().cloned()),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("the SDK reads {block}"));
-    let response =
-        rig_core::test_utils::history::decode(&Converse::new(CLAUDE), Mode::Unary, frames)
-            .unwrap_or_else(|error| panic!("{block} decodes: {error}"));
-    (sdk, response)
-}
-
-/// Every Converse content block becomes a block, an invented one too: the
-/// SDK reads an invented block as its payload-less `Unknown`, which is a
-/// marker, and drops an invented field. A block Rig cannot send back is a
-/// marker naming its kind; the blocks a turn keeps hold their JSON.
+/// Every Converse content block becomes a block. A block Rig has no
+/// canonical form for, an invented one too, replays to the same model as
+/// Bedrock sent it; the blocks a turn keeps hold their JSON.
 #[test]
-#[allow(clippy::wildcard_enum_match_arm)]
 fn every_converse_block_becomes_a_block() {
-    use aws_sdk_bedrockruntime::types::ContentBlock as Content;
     use rig_core::message::{AssistantContent, Opaque};
     let cited = json!({ "citationsContent": {
         "content": [{ "text": "cited" }],
@@ -597,74 +536,97 @@ fn every_converse_block_becomes_a_block() {
     } });
     let hosted =
         json!({ "toolResult": { "toolUseId": "srv_1", "content": [{ "text": "found" }] } });
-    let samples = [
+    let opaque = [
         json!({ "audio": { "format": "mp3", "source": { "bytes": "bXAz" } } }),
         json!({ "cachePoint": { "type": "default" } }),
-        cited.clone(),
         json!({ "document": { "format": "txt", "name": "doc", "source": { "text": "body" } } }),
         json!({ "guardContent": { "text": { "text": "guarded" } } }),
-        json!({ "image": { "format": "png", "source": { "bytes": "cG5n" } } }),
-        reasoning("thought", Some("sig")),
         json!({ "searchResult": { "source": "web", "title": "t", "content": [{ "text": "found" }] } }),
-        json!({ "text": "hello" }),
-        hosted.clone(),
-        json!({ "toolUse": { "toolUseId": "tooluse_1", "name": "lookup", "input": {}, "x_rig_field": 1 } }),
         json!({ "video": { "format": "mp4", "source": { "bytes": "bXA0" } } }),
         json!({ "x_rig_invented": { "a": 1 } }),
+        hosted.clone(),
     ];
-    let index = |block: &Content| match block {
-        Content::Audio(_) => 0,
-        Content::CachePoint(_) => 1,
-        Content::CitationsContent(_) => 2,
-        Content::Document(_) => 3,
-        Content::GuardContent(_) => 4,
-        Content::Image(_) => 5,
-        Content::ReasoningContent(_) => 6,
-        Content::SearchResult(_) => 7,
-        Content::Text(_) => 8,
-        Content::ToolResult(_) => 9,
-        Content::ToolUse(_) => 10,
-        Content::Video(_) => 11,
-        _ => 12,
+    let decoded = |block: Value| {
+        rig_core::test_utils::history::decode(
+            &Converse::new(CLAUDE),
+            Mode::Unary,
+            unary_frames(document(vec![block.clone()], "end_turn")),
+        )
+        .unwrap_or_else(|error| panic!("{block} decodes: {error}"))
     };
-    let decoded: Vec<_> = samples.into_iter().map(decoded_block).collect();
-    let blocks: Vec<Content> = decoded.iter().map(|(block, _)| block.clone()).collect();
-    rig_core::test_utils::history::assert_every_variant(&blocks, index, 13);
-    let marker = |kind: &str| {
-        AssistantContent::Opaque(Opaque {
-            item: json!({ "type": kind }),
-            replay: false,
-        })
-    };
-    for (block, response) in &decoded {
-        let choice = &response.choice;
-        match index(block) {
-            0 => assert_eq!(choice, &[marker("audio")]),
-            1 => assert_eq!(choice, &[marker("cache_point")]),
-            2 => assert_eq!(choice[0].native_item(), Some(&cited)),
-            3 => assert_eq!(choice, &[marker("document")]),
-            4 => assert_eq!(choice, &[marker("guard_content")]),
-            5 => assert!(
-                matches!(&choice[..], [AssistantContent::Image(_)]),
-                "{choice:?}"
+    for block in opaque {
+        let response = decoded(block.clone());
+        assert_eq!(
+            response.choice,
+            [AssistantContent::Opaque(Opaque {
+                item: block,
+                replay: true
+            })]
+        );
+    }
+    assert_eq!(decoded(cited.clone()).choice[0].native_item(), Some(&cited));
+    let signed = reasoning("thought", Some("sig"));
+    assert_eq!(
+        decoded(signed.clone()).choice[0].native_item(),
+        Some(&signed)
+    );
+    assert_eq!(
+        decoded(json!({ "text": "hello" })).choice,
+        [AssistantContent::text("hello")]
+    );
+    let image = decoded(json!({ "image": { "format": "png", "source": { "bytes": "cG5n" } } }));
+    assert!(
+        matches!(&image.choice[..], [AssistantContent::Image(_)]),
+        "{:?}",
+        image.choice
+    );
+    let call = json!({ "toolUse": { "toolUseId": "tooluse_1", "name": "lookup", "input": {}, "x_rig_field": 1 } });
+    let response = decoded(call.clone());
+    assert_eq!(response.tool_calls().count(), 1);
+    assert_eq!(response.choice[0].native_item(), Some(&call));
+}
+
+/// The transport sends the encoded body as it stands, in place of the
+/// SDK's serialization, to the model's Converse path.
+#[test]
+fn the_transport_sends_the_encoded_body() {
+    for mode in [Mode::Unary, Mode::Streaming] {
+        let canned = match mode {
+            Mode::Unary => Canned::new(
+                "application/json",
+                serde_json::to_vec(&document(vec![json!({ "text": "ok" })], "end_turn"))
+                    .expect("JSON"),
             ),
-            6 => assert_eq!(
-                choice[0].native_item(),
-                Some(&reasoning("thought", Some("sig")))
+            Mode::Streaming => Canned::new(
+                "application/vnd.amazon.eventstream",
+                event_stream(&events(&[json!({ "text": "ok" })], "end_turn")),
             ),
-            7 => assert_eq!(choice, &[marker("search_result")]),
-            8 => assert_eq!(choice, &[AssistantContent::text("hello")]),
-            9 => assert_eq!(
-                choice,
-                &[AssistantContent::Opaque(Opaque {
-                    item: hosted.clone(),
-                    replay: true
-                })]
-            ),
-            10 => assert_eq!(response.tool_calls().count(), 1),
-            11 => assert_eq!(choice, &[marker("video")]),
-            _ => assert_eq!(choice, &[marker("unknown")]),
-        }
+        };
+        let mut request = CompletionRequest::new("hi");
+        request.temperature = Some(0.5);
+        let wire = Converse::new(CLAUDE).with_prompt_caching();
+        let prepared = rig_core::operation::Completion::prepare(request.clone(), &wire.describe())
+            .expect("prepares");
+        let expected = sent_body(wire.encode(prepared, mode).expect("encodes"), mode);
+        let model = Model::new(wire, canned.runtime());
+        let text = block_on(async {
+            match mode {
+                Mode::Unary => model.call(request).await.expect("a reply").text(),
+                Mode::Streaming => {
+                    let mut stream = model.stream(request).expect("the stream opens");
+                    while stream.next().await.is_some() {}
+                    stream.finish().await.expect("the stream ends").text()
+                }
+            }
+        });
+        assert_eq!(text, "ok");
+        let (uri, body) = canned.sent.lock().expect("sent").take().expect("a request");
+        let mut body: Value = serde_json::from_slice(&body).expect("a JSON body");
+        let path = uri
+            .split_once("amazonaws.com")
+            .map_or(uri.as_str(), |(_, path)| path);
+        body["$path"] = json!(percent_decoded(path));
+        assert_eq!(body, expected, "{mode:?}");
     }
 }
 
@@ -698,28 +660,11 @@ fn raw_is_the_json_bedrock_sent() {
             "serviceTier": { "type": "flex" },
         } }),
     ];
-    let mut body = Vec::new();
-    for event in &stream {
-        let (kind, payload) = event
-            .as_object()
-            .and_then(|event| event.iter().next())
-            .expect("an event");
-        let message = Message::new(serde_json::to_vec(payload).expect("JSON"))
-            .add_header(Header::new(
-                ":message-type",
-                HeaderValue::String("event".into()),
-            ))
-            .add_header(Header::new(
-                ":event-type",
-                HeaderValue::String(kind.clone().into()),
-            ));
-        aws_smithy_eventstream::frame::write_message_to(&message, &mut body).expect("a message");
-    }
     let unary = Canned::new(
         "application/json",
         serde_json::to_vec(&whole).expect("JSON"),
     );
-    let streamed = Canned::new("application/vnd.amazon.eventstream", body);
+    let streamed = Canned::new("application/vnd.amazon.eventstream", event_stream(&stream));
     let (unary, streamed) = block_on(async {
         let unary = Model::new(Converse::new(CLAUDE), unary.runtime())
             .call(CompletionRequest::new("hi"))
@@ -732,6 +677,7 @@ fn raw_is_the_json_bedrock_sent() {
         (unary, stream.finish().await.expect("the stream ends"))
     });
     assert_eq!(unary.raw, whole);
+    assert!(unary.stop().is_failure());
     assert_eq!(
         streamed.raw,
         json!({
@@ -743,8 +689,7 @@ fn raw_is_the_json_bedrock_sent() {
 }
 
 /// A reply the SDK cannot read, here for a field of an unexpected type,
-/// decodes from the JSON Bedrock sent: each block that converts is kept,
-/// with the stop reason and usage.
+/// decodes from the JSON Bedrock sent like any other.
 #[test]
 fn a_reply_the_sdk_cannot_read_decodes_from_its_json() {
     let content = vec![
@@ -752,19 +697,22 @@ fn a_reply_the_sdk_cannot_read_decodes_from_its_json() {
         json!({ "text": "Looking it up." }),
         call("tooluse_1", json!({ "q": "rig" })),
     ];
-    let read = document(content.clone(), "tool_use");
+    let read = document(content, "tool_use");
     let mut unread = read.clone();
     unread["metrics"]["latencyMs"] = json!("5");
-    let decode = |document: Value| {
-        rig_core::test_utils::history::decode(
-            &Converse::new(CLAUDE),
-            Mode::Unary,
-            unary_frames(document),
+    let decode = |document: &Value| {
+        let canned = Canned::new(
+            "application/json",
+            serde_json::to_vec(document).expect("JSON"),
+        );
+        block_on(
+            Model::new(Converse::new(CLAUDE), canned.runtime()).call(CompletionRequest::new("q")),
         )
         .expect("the reply decodes")
     };
-    let (expected, response) = (decode(read), decode(unread));
+    let (expected, response) = (decode(&read), decode(&unread));
     assert_eq!(response.choice, expected.choice);
     assert_eq!(response.usage, expected.usage);
+    assert_eq!(response.raw, unread);
     assert!(response.tool_calls().count() == 1);
 }
