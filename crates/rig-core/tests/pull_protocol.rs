@@ -94,10 +94,13 @@ impl Serve for Answer {
             assert_eq!(&*scope, "scope");
         }
         if self.streaming {
-            Reply::written(|mut out| async move {
-                out.text("original").await.unwrap();
-                out.finish("proof", Finish::default()).await.unwrap();
-            })
+            Reply::written(
+                rig_core::message::Origin::new("proof", "proof", "proof"),
+                |mut out| async move {
+                    out.text("original").await.unwrap();
+                    out.finish(Finish::default()).await.unwrap();
+                },
+            )
         } else {
             let EffectKind::Custom { payload, .. } = kind else {
                 panic!("custom")

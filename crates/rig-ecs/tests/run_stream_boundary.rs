@@ -53,26 +53,26 @@ impl Serve for FinishingName {
             ))));
         };
 
-        Reply::written(move |mut writer| async move {
-            writer
-                .tool_call("wrong", serde_json::json!({"x": 2, "y": 3}))
-                .await
-                .expect("stream open");
-            gate.await.expect("test releases producer");
-            writer
-                .finish(
-                    "boundary",
-                    rig_core::operation::Finish {
+        Reply::written(
+            rig_core::message::Origin::new("boundary", "boundary", "boundary"),
+            move |mut writer| async move {
+                writer
+                    .tool_call("wrong", serde_json::json!({"x": 2, "y": 3}))
+                    .await
+                    .expect("stream open");
+                gate.await.expect("test releases producer");
+                writer
+                    .finish(rig_core::operation::Finish {
                         usage: ProviderUsage {
                             total_tokens: Some(7),
                             ..ProviderUsage::default()
                         },
                         ..rig_core::operation::Finish::default()
-                    },
-                )
-                .await
-                .expect("stream open");
-        })
+                    })
+                    .await
+                    .expect("stream open");
+            },
+        )
     }
 }
 
@@ -331,13 +331,16 @@ impl Serve for NameThenGate {
             .take()
             .expect("one request");
 
-        Reply::written(move |mut writer| async move {
-            writer
-                .tool_call("unavailable_tool", serde_json::json!({}))
-                .await
-                .expect("stream open");
-            let _ = gate.await;
-        })
+        Reply::written(
+            rig_core::message::Origin::new("writer", "writer", "writer"),
+            move |mut writer| async move {
+                writer
+                    .tool_call("unavailable_tool", serde_json::json!({}))
+                    .await
+                    .expect("stream open");
+                let _ = gate.await;
+            },
+        )
     }
 }
 

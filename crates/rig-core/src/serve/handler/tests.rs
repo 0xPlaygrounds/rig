@@ -165,14 +165,17 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
     let seen = Arc::new(Mutex::new(Seen::default()));
     let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let finished_in_writer = finished.clone();
-    let reply = Reply::written(move |mut writer| async move {
-        writer.text("prefix").await.expect("consumer present");
-        writer
-            .finish("test", Finish::default())
-            .await
-            .expect("consumer present");
-        finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
-    })
+    let reply = Reply::written(
+        crate::message::Origin::new("test", "test", "test"),
+        move |mut writer| async move {
+            writer.text("prefix").await.expect("consumer present");
+            writer
+                .finish(Finish::default())
+                .await
+                .expect("consumer present");
+            finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
     .observed(
         true,
         Some(Observed {
@@ -182,12 +185,14 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
         None,
     );
     let mut stream = reply.into_stream();
-    assert!(matches!(
-        stream
-            .as_mut()
-            .poll_next(&mut Context::from_waker(noop_waker_ref())),
-        Poll::Ready(Some(Ok(_)))
-    ));
+    for _ in 0..2 {
+        assert!(matches!(
+            stream
+                .as_mut()
+                .poll_next(&mut Context::from_waker(noop_waker_ref())),
+            Poll::Ready(Some(Ok(_)))
+        ));
+    }
     assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
     assert!(seen.lock().expect("seen").outcomes.is_empty());
     drop(stream);
@@ -201,10 +206,28 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
 }
 
 #[test]
-fn dropping_the_writer_without_finishing_is_truncation() {
-    let reply = Reply::written(|mut writer| async move {
+fn a_written_reply_names_its_origin_before_its_first_item() {
+    let origin = crate::message::Origin::new("example.api", "example", "example-1");
+    let Reply::Stream(stream) = Reply::written(origin.clone(), |mut writer| async move {
         writer.text("prefix").await.expect("open");
-    });
+    }) else {
+        panic!("a written reply is a stream");
+    };
+    let first: Vec<_> = block_on(stream.take(2).collect());
+    assert!(
+        matches!(first.as_slice(), [Ok(Relayed::Origin(sent)), Ok(Relayed::Item(_))] if *sent == origin),
+        "{first:?}"
+    );
+}
+
+#[test]
+fn dropping_the_writer_without_finishing_is_truncation() {
+    let reply = Reply::written(
+        crate::message::Origin::new("test", "test", "test"),
+        |mut writer| async move {
+            writer.text("prefix").await.expect("open");
+        },
+    );
     assert_eq!(
         block_on(reply.into_outcome()).expect_err("truncated"),
         stream_truncated()
@@ -272,14 +295,14 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
 fn a_writer_reports_the_request_id_and_document_of_the_reply_it_relays() {
     let finished = |request_id: &'static str| {
         let items: Vec<_> = block_on(
-            Reply::written(move |mut writer| async move {
-                writer.request_id(request_id);
-                writer.raw(serde_json::json!({"id": "body"}));
-                writer
-                    .finish("relay", Finish::default())
-                    .await
-                    .expect("open");
-            })
+            Reply::written(
+                crate::message::Origin::new("relay", "relay", "relay"),
+                move |mut writer| async move {
+                    writer.request_id(request_id);
+                    writer.raw(serde_json::json!({"id": "body"}));
+                    writer.finish(Finish::default()).await.expect("open");
+                },
+            )
             .into_stream()
             .collect(),
         );
@@ -300,16 +323,20 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     let (release, wait) = futures::channel::oneshot::channel::<()>();
     let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let finished = completed.clone();
-    let mut stream = Reply::written(move |writer| async move {
-        writer
-            .finish("writer", Finish::default())
-            .await
-            .expect("open");
-        wait.await.expect("released");
-        finished.store(true, std::sync::atomic::Ordering::SeqCst);
-    })
+    let mut stream = Reply::written(
+        crate::message::Origin::new("writer", "writer", "writer"),
+        move |writer| async move {
+            writer.finish(Finish::default()).await.expect("open");
+            wait.await.expect("released");
+            finished.store(true, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
     .into_stream();
     let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(matches!(
+        stream.as_mut().poll_next(&mut cx),
+        std::task::Poll::Ready(Some(Ok(Relayed::Origin(_))))
+    ));
     assert!(matches!(
         stream.as_mut().poll_next(&mut cx),
         std::task::Poll::Ready(Some(Ok(Relayed::Done(_))))

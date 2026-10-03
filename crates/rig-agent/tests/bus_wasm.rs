@@ -66,17 +66,20 @@ impl Serve for Echo {
                 }
                 let cancelled = self.stream_cancelled.clone();
                 let local = Rc::clone(&self.served);
-                Reply::written(move |mut out| async move {
-                    let _local = local; // The returned stream itself is !Send.
-                    let _cancelled = Cancelled(cancelled);
-                    loop {
-                        if out.text("tick ").await.is_err() {
-                            return;
+                Reply::written(
+                    rig_core::message::Origin::new("writer", "writer", "writer"),
+                    move |mut out| async move {
+                        let _local = local; // The returned stream itself is !Send.
+                        let _cancelled = Cancelled(cancelled);
+                        loop {
+                            if out.text("tick ").await.is_err() {
+                                return;
+                            }
+                            // Yield so the consumer can run.
+                            yield_now().await;
                         }
-                        // Yield so the consumer can run.
-                        yield_now().await;
-                    }
-                })
+                    },
+                )
             }
             other => Reply::Outcome(Err(rig_core::error::ErrorReport::new(
                 ErrorKind::HandlerUnavailable,

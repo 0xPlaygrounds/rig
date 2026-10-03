@@ -68,14 +68,14 @@ impl Serve for Streamer {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        Reply::written(|mut writer| async move {
-            writer.text("hel").await.expect("open");
-            writer.text("lo").await.expect("open");
-            writer
-                .finish("test", Finish::default())
-                .await
-                .expect("open");
-        })
+        Reply::written(
+            crate::message::Origin::new("test", "test", "test"),
+            |mut writer| async move {
+                writer.text("hel").await.expect("open");
+                writer.text("lo").await.expect("open");
+                writer.finish(Finish::default()).await.expect("open");
+            },
+        )
     }
 }
 
@@ -350,8 +350,8 @@ async fn a_layer_over_a_streaming_handler_sees_the_folded_outcome_in_after() {
         .await;
     assert_eq!(
         items.len(),
-        5,
-        "a start, two fragments, an end, the response: {items:?}"
+        6,
+        "the origin, a start, two fragments, an end, the response: {items:?}"
     );
     let folded = folded.lock().expect("folded").clone().expect("after ran");
     let Ok(Outcome::Completion(response)) = folded else {
@@ -364,7 +364,8 @@ async fn a_layer_over_a_streaming_handler_sees_the_folded_outcome_in_after() {
     // The record holds the fold and the events, tapped on the inner hop.
     let outcomes = tap.outcomes.lock().expect("outcomes");
     assert!(matches!(&outcomes[0], Ok(Outcome::Completion(_))));
-    assert_eq!(tap.events.lock().expect("events").len(), items.len() - 1);
+    // Every item but the origin and the response is an event.
+    assert_eq!(tap.events.lock().expect("events").len(), items.len() - 2);
 }
 
 #[tokio::test]

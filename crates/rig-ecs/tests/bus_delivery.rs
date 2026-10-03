@@ -545,38 +545,38 @@ impl Serve for BatchedStream {
         let mut gates = std::mem::take(&mut *self.gates.lock().unwrap());
         let error = self.error.clone();
         let produced = self.produced.clone();
-        Reply::written(move |mut writer| async move {
-            loop {
-                let gate = gates.pop_front();
-                let Some(gate) = gate else {
-                    break;
-                };
-                let pieces = gate.await.unwrap();
-                for piece in pieces {
-                    writer.text(piece).await.unwrap();
-                }
-                if gates.is_empty() {
-                    if let Some(error) = &error {
-                        writer.error(error.clone()).await.unwrap();
-                        drop(writer);
-                    } else {
-                        writer
-                            .finish(
-                                "batched",
-                                rig_core::operation::Finish {
+        Reply::written(
+            rig_core::message::Origin::new("batched", "batched", "batched"),
+            move |mut writer| async move {
+                loop {
+                    let gate = gates.pop_front();
+                    let Some(gate) = gate else {
+                        break;
+                    };
+                    let pieces = gate.await.unwrap();
+                    for piece in pieces {
+                        writer.text(piece).await.unwrap();
+                    }
+                    if gates.is_empty() {
+                        if let Some(error) = &error {
+                            writer.error(error.clone()).await.unwrap();
+                            drop(writer);
+                        } else {
+                            writer
+                                .finish(rig_core::operation::Finish {
                                     usage: Usage::default(),
                                     ..rig_core::operation::Finish::default()
-                                },
-                            )
-                            .await
-                            .unwrap();
+                                })
+                                .await
+                                .unwrap();
+                        }
+                        produced.fetch_add(1, Ordering::SeqCst);
+                        return;
                     }
                     produced.fetch_add(1, Ordering::SeqCst);
-                    return;
                 }
-                produced.fetch_add(1, Ordering::SeqCst);
-            }
-        })
+            },
+        )
     }
 }
 
@@ -1839,9 +1839,12 @@ fn implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item() {
     );
     let prefix = futures::executor::block_on(async {
         use futures::TryStreamExt;
-        Reply::written(|mut writer| async move {
-            writer.text("prefix").await.unwrap();
-        })
+        Reply::written(
+            rig_core::message::Origin::new("writer", "writer", "writer"),
+            |mut writer| async move {
+                writer.text("prefix").await.unwrap();
+            },
+        )
         .into_stream()
         .try_collect::<Vec<_>>()
         .await
@@ -1856,7 +1859,10 @@ fn implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item() {
         batch: 1,
         id,
         kind: DeliveryKind::Stream {
-            items: prefix.len(),
+            items: prefix
+                .iter()
+                .filter(|item| matches!(item, rig_core::streaming::Relayed::Item(_)))
+                .count(),
         },
     });
     original.resolve(id, Err(rig_core::serve::cancelled()));

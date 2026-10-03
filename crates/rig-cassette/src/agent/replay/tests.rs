@@ -414,10 +414,13 @@ impl Serve for CutShort {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        Reply::written(|mut out| async move {
-            let _ = out.text("partial").await;
-            // Dropped here, before any `Final`.
-        })
+        Reply::written(
+            rig_core::message::Origin::new("writer", "writer", "writer"),
+            |mut out| async move {
+                let _ = out.text("partial").await;
+                // Dropped here, before any `Final`.
+            },
+        )
     }
 }
 

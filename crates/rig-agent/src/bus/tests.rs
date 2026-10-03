@@ -856,15 +856,18 @@ async fn dropping_the_stream_cancels_the_handler() {
             }
             let sends = self.sends.clone();
             let cancelled = self.cancelled.clone();
-            CoreReply::written(move |mut out| async move {
-                let _cancelled = Cancelled(cancelled);
-                loop {
-                    if out.text("x").await.is_err() {
-                        return;
+            CoreReply::written(
+                rig_core::message::Origin::new("writer", "writer", "writer"),
+                move |mut out| async move {
+                    let _cancelled = Cancelled(cancelled);
+                    loop {
+                        if out.text("x").await.is_err() {
+                            return;
+                        }
+                        sends.fetch_add(1, Ordering::SeqCst);
                     }
-                    sends.fetch_add(1, Ordering::SeqCst);
-                }
-            })
+                },
+            )
         }
     }
     let sends = Arc::new(AtomicUsize::new(0));
@@ -1691,22 +1694,22 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
         }
 
         async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> CoreReply {
-            CoreReply::written(|mut out| async move {
-                let _ = out.reasoning("thinking").await;
-                let _ = out.text("hel").await;
-                let _ = out.text("lo").await;
-                let _ = out.tool_call("add", json!({"x": 1})).await;
-                let _ = out.text("after").await;
-                let _ = out
-                    .finish(
-                        "writer",
-                        rig_core::operation::Finish {
+            CoreReply::written(
+                rig_core::message::Origin::new("writer", "writer", "writer"),
+                |mut out| async move {
+                    let _ = out.reasoning("thinking").await;
+                    let _ = out.text("hel").await;
+                    let _ = out.text("lo").await;
+                    let _ = out.tool_call("add", json!({"x": 1})).await;
+                    let _ = out.text("after").await;
+                    let _ = out
+                        .finish(rig_core::operation::Finish {
                             usage: rig_core::completion::Usage::default(),
                             ..rig_core::operation::Finish::default()
-                        },
-                    )
-                    .await;
-            })
+                        })
+                        .await;
+                },
+            )
         }
     }
 

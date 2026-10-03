@@ -65,16 +65,19 @@ impl Serve for EmptyStream {
     }
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
         let error = self.error;
-        Reply::written(move |mut out| async move {
-            if error {
-                let _ = out
-                    .error(ErrorReport::new(
-                        ErrorKind::Response,
-                        "first item is an error",
-                    ))
-                    .await;
-            }
-        })
+        Reply::written(
+            rig_core::message::Origin::new("writer", "writer", "writer"),
+            move |mut out| async move {
+                if error {
+                    let _ = out
+                        .error(ErrorReport::new(
+                            ErrorKind::Response,
+                            "first item is an error",
+                        ))
+                        .await;
+                }
+            },
+        )
     }
 }
 
@@ -995,10 +998,13 @@ impl Serve for Truncating {
     }
 
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
-        Reply::written(|mut out| async move {
-            let _ = out.text("partial ").await;
-            let _ = out.text("answer").await;
-        })
+        Reply::written(
+            rig_core::message::Origin::new("writer", "writer", "writer"),
+            |mut out| async move {
+                let _ = out.text("partial ").await;
+                let _ = out.text("answer").await;
+            },
+        )
     }
 }
 

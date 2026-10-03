@@ -79,20 +79,22 @@ mod slow_stream {
         }
 
         async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
-            Reply::written(|mut out| async move {
-                for word in ["one", "two", "three"] {
-                    if out.text(word).await.is_err() {
-                        return;
+            Reply::written(
+                rig_core::message::Origin::new("mock", "mock", "mock"),
+                |mut out| async move {
+                    for word in ["one", "two", "three"] {
+                        if out.text(word).await.is_err() {
+                            return;
+                        }
+                        tokio::time::sleep(Duration::from_millis(50)).await;
                     }
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                }
-                let _ = out
-                    .finish(
-                        "mock",
-                        rig_core::test_utils::mock_final(rig_core::completion::Usage::default()),
-                    )
-                    .await;
-            })
+                    let _ = out
+                        .finish(rig_core::test_utils::mock_final(
+                            rig_core::completion::Usage::default(),
+                        ))
+                        .await;
+                },
+            )
         }
     }
 

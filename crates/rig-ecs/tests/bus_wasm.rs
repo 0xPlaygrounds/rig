@@ -82,27 +82,27 @@ impl Serve for BrowserModel {
                 let sends = self.sends.clone();
                 let cap = self.cap;
                 let local = Rc::clone(&self.served);
-                Reply::written(move |mut out| async move {
-                    let _local = local; // The returned stream itself is !Send.
-                    loop {
-                        if out.text("tick ").await.is_err() {
-                            return;
+                Reply::written(
+                    rig_core::message::Origin::new("browser", "browser", "browser"),
+                    move |mut out| async move {
+                        let _local = local; // The returned stream itself is !Send.
+                        loop {
+                            if out.text("tick ").await.is_err() {
+                                return;
+                            }
+                            if sends.fetch_add(1, Ordering::SeqCst) + 1 >= cap {
+                                break;
+                            }
                         }
-                        if sends.fetch_add(1, Ordering::SeqCst) + 1 >= cap {
-                            break;
-                        }
-                    }
-                    out.raw(serde_json::json!({ "provider": "browser" }));
-                    let _ = out
-                        .finish(
-                            "browser",
-                            Finish {
+                        out.raw(serde_json::json!({ "provider": "browser" }));
+                        let _ = out
+                            .finish(Finish {
                                 usage: Usage::default(),
                                 ..Finish::default()
-                            },
-                        )
-                        .await;
-                })
+                            })
+                            .await;
+                    },
+                )
             }
             other => Reply::Outcome(Err(ErrorReport::new(
                 ErrorKind::HandlerUnavailable,
@@ -340,21 +340,21 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let local = Rc::new(Cell::new(false));
         let finished = local.clone();
         let (release, wait) = futures::channel::oneshot::channel::<()>();
-        let mut stream = Reply::written(move |mut writer| async move {
-            writer.raw(serde_json::json!({ "provider": "local" }));
-            writer
-                .finish(
-                    "local",
-                    Finish {
+        let mut stream = Reply::written(
+            rig_core::message::Origin::new("local", "local", "local"),
+            move |mut writer| async move {
+                writer.raw(serde_json::json!({ "provider": "local" }));
+                writer
+                    .finish(Finish {
                         usage: Usage::default(),
                         ..Finish::default()
-                    },
-                )
-                .await
-                .unwrap();
-            wait.await.unwrap();
-            finished.set(true);
-        })
+                    })
+                    .await
+                    .unwrap();
+                wait.await.unwrap();
+                finished.set(true);
+            },
+        )
         .into_stream();
         let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
         assert!(matches!(

@@ -475,10 +475,13 @@ impl Serve for Truncating {
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if call == 0 {
-            return Reply::written(move |mut writer| async move {
-                writer.text("par").await.expect("open stream");
-                // The connection drops here: no terminal record.
-            });
+            return Reply::written(
+                rig_core::message::Origin::new("writer", "writer", "writer"),
+                move |mut writer| async move {
+                    writer.text("par").await.expect("open stream");
+                    // The connection drops here: no terminal record.
+                },
+            );
         }
         Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
             done(),

@@ -2,9 +2,11 @@
 //! ends.
 //!
 //! ```
+//! use rig_core::message::Origin;
 //! use rig_core::serve::Reply;
 //!
-//! let reply = Reply::written(|mut writer| async move {
+//! let origin = Origin::new("example.api", "example", "example-1");
+//! let reply = Reply::written(origin, |mut writer| async move {
 //!     let _ = writer.text("hello").await;
 //! });
 //! # let _ = reply;
@@ -29,6 +31,7 @@ use crate::wasm_compat::WasmCompatSend;
 /// leaves a truncated stream.
 pub struct StreamWriter {
     events: mpsc::Sender<Result<Relayed, ErrorReport>>,
+    origin: Origin,
     turn: Turn,
     items: std::collections::VecDeque<Result<Item<StreamEvent>, ProviderError>>,
     raw: serde_json::Value,
@@ -40,15 +43,21 @@ impl Reply {
     /// private receiver. No task is spawned. The bridge has zero shared
     /// capacity and one sender-reserved slot; it is not a rendezvous channel.
     /// Dropping the returned stream drops the writing future and receiver.
-    pub fn written<F, Fut>(write: F) -> Self
+    /// `origin` names what the reply comes from; it is the stream's first
+    /// item, so a consumer that stops early still knows it.
+    pub fn written<F, Fut>(origin: Origin, write: F) -> Self
     where
         F: FnOnce(StreamWriter) -> Fut,
         Fut: Future<Output = ()> + WasmCompatSend + 'static,
     {
-        let (events, mut receiver) = mpsc::channel(0);
+        let (mut events, mut receiver) = mpsc::channel(0);
+        // The sender's reserved slot holds the origin until the consumer
+        // polls.
+        let _ = events.try_send(Ok(Relayed::Origin(origin.clone())));
         let writer = StreamWriter {
             events,
-            turn: Turn::relayed(""),
+            turn: Turn::new(origin.clone()),
+            origin,
             items: std::collections::VecDeque::new(),
             raw: serde_json::Value::Null,
             request_id: None,
@@ -134,28 +143,18 @@ impl StreamWriter {
         self.events.send(Err(report)).await.map_err(|_| SinkClosed)
     }
 
-    /// End the reply as `provider` ended it: closes the parts still open,
-    /// then sends the response the reply folds into. The returned stream
+    /// End the reply: closes the parts still open, then sends the response
+    /// the reply folds into, under the writer's origin. The returned stream
     /// ends when the writing future also finishes.
-    pub async fn finish(
-        mut self,
-        provider: impl Into<String>,
-        finish: Finish,
-    ) -> Result<(), SinkClosed> {
+    pub async fn finish(mut self, finish: Finish) -> Result<(), SinkClosed> {
         self.turn.close_open(&mut self.items);
         self.flush().await?;
-        let provider = provider.into();
-        // A written reply is from no wire: it names its provider as its API
-        // and, when the end names none, as its model.
-        let model = finish.model.clone().unwrap_or_else(|| provider.clone());
-        self.turn
-            .set_origin(Origin::new(provider.clone(), provider.clone(), model));
         let reply = WireReply {
-            provider,
+            provider: self.origin.provider.clone(),
             raw: std::mem::take(&mut self.raw),
             provider_request_id: self.request_id.take(),
         };
-        let turn = std::mem::replace(&mut self.turn, Turn::relayed(""));
+        let turn = std::mem::replace(&mut self.turn, Turn::new(self.origin.clone()));
         let item = match turn.finish(finish, reply) {
             Ok(response) => Ok(Relayed::Done(Box::new(response))),
             Err(error) => Err(ErrorReport::from(&error)),

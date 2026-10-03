@@ -323,7 +323,8 @@ impl Buffered {
                 Err(futures::channel::mpsc::TryRecvError::Empty) => Poll::Pending,
                 Err(futures::channel::mpsc::TryRecvError::Closed) => Poll::Ready(None),
             };
-            if matches!(polled, Poll::Ready(Some(_)))
+            // The origin is not one of the recorded items.
+            if matches!(&polled, Poll::Ready(Some(item)) if !matches!(item, Ok(Relayed::Origin(_))))
                 && let Some(remaining) = remaining
             {
                 *remaining -= 1;
@@ -365,7 +366,7 @@ fn cancelled_prefix(
             return Poll::Pending;
         }
         let item = stream.as_mut().poll_next(cx);
-        if matches!(item, Poll::Ready(Some(_))) {
+        if matches!(&item, Poll::Ready(Some(item)) if !matches!(item, Ok(Relayed::Origin(_)))) {
             remaining -= 1;
         }
         item
