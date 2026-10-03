@@ -232,6 +232,10 @@ impl crate::completion::ReplayTarget for GenerateContent {
         accepts(model)
     }
 
+    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+        encodes(media, false)
+    }
+
     fn normalize_tool_call_id(
         &self,
         id: &str,
@@ -258,6 +262,55 @@ pub fn accepts(model: &str) -> crate::completion::Accepts {
     crate::completion::Accepts {
         tool_result_images: gemini_major(model).is_none_or(|major| major >= 3),
         ..crate::completion::Accepts::ALL
+    }
+}
+
+/// Whether a GenerateContent wire takes `media`: data or a URL of a media
+/// type Gemini reads. A YouTube video needs no media type, a file id is
+/// never taken, and a text document's data is left to the adapter, which
+/// sends its text. A function response takes image data, and a URL only when
+/// `response_files`: Vertex AI declares `fileData` there and the Gemini API
+/// does not.
+pub fn encodes(media: crate::completion::Media<'_>, response_files: bool) -> bool {
+    use crate::completion::{Media, Place};
+    use crate::message::{DocumentMediaType, DocumentSourceKind as Source};
+    match media {
+        Media::Image(image, place) => {
+            reads_image(image.media_type.as_ref(), place)
+                && match image.data {
+                    Source::Base64(_) | Source::String(_) => true,
+                    Source::Url(_) => place != Place::ToolResult || response_files,
+                    _ => false,
+                }
+        }
+        Media::Audio(audio) => {
+            audio.media_type.is_some() && matches!(audio.data, Source::Url(_) | Source::Base64(_))
+        }
+        Media::Video(video) => match &video.data {
+            Source::Url(url) if url.starts_with("https://www.youtube.com") => true,
+            data => {
+                video.media_type.is_some() && matches!(data, Source::Url(_) | Source::Base64(_))
+            }
+        },
+        Media::Document(document) => match (&document.media_type, &document.data) {
+            (None, _) => false,
+            (Some(_), Source::Url(_) | Source::String(_)) => true,
+            (Some(media_type), Source::Base64(_)) => *media_type == DocumentMediaType::PDF,
+            (Some(_), _) => false,
+        },
+    }
+}
+
+/// Whether Gemini reads an image of `media_type` at `place`: JPEG, PNG,
+/// WEBP, HEIC or HEIF, and only the first three in a function response.
+pub(crate) fn reads_image(
+    media_type: Option<&crate::message::ImageMediaType>,
+    place: crate::completion::Place,
+) -> bool {
+    use crate::message::ImageMediaType::{HEIC, HEIF, JPEG, PNG, WEBP};
+    match place {
+        crate::completion::Place::ToolResult => matches!(media_type, Some(JPEG | PNG | WEBP)),
+        _ => matches!(media_type, Some(JPEG | PNG | WEBP | HEIC | HEIF)),
     }
 }
 
@@ -679,7 +732,7 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
+    use crate::message::{DocumentSourceKind, MessageError, MimeType};
     use crate::{
         message,
         providers::gemini::gemini_api_types::{CodeExecutionResult, ExecutableCode},
@@ -853,101 +906,46 @@ pub mod gemini_api_types {
         }
     }
 
-    /// Convert a URL, base64 or raw media source into a Gemini part.
-    /// Accept untagged strings as base64 only when `string_is_data` is true.
-    /// Reject other sources with a conversion error naming `kind`.
-    fn media_source_to_part_kind(
-        kind: &str,
-        mime_type: String,
+    /// `source` as a Gemini part of `mime_type`: a URL as file data, and
+    /// base64 data, or a string when `string_is_data`, inline.
+    /// [`super::encodes`] refuses every other form, so the adapter passes
+    /// none.
+    fn media_part(
+        mime_type: Option<String>,
         source: DocumentSourceKind,
         string_is_data: bool,
-    ) -> Result<PartKind, message::MessageError> {
-        match source {
-            DocumentSourceKind::Url(file_uri) => Ok(PartKind::FileData(FileData {
-                mime_type: Some(mime_type),
+    ) -> Result<Part, MessageError> {
+        let part = match (mime_type, source) {
+            (mime_type, DocumentSourceKind::Url(file_uri)) => PartKind::FileData(FileData {
+                mime_type,
                 file_uri,
-            })),
-            DocumentSourceKind::Base64(data) => Ok(PartKind::InlineData(Blob { mime_type, data })),
-            DocumentSourceKind::String(data) if string_is_data => {
-                Ok(PartKind::InlineData(Blob { mime_type, data }))
-            }
-            DocumentSourceKind::String(_) => Err(message::MessageError::ConversionError(format!(
-                "Strings cannot be used as Gemini {kind} inputs"
-            ))),
-            DocumentSourceKind::Raw(bytes) => {
-                use base64::Engine;
-                Ok(PartKind::InlineData(Blob {
-                    mime_type,
-                    data: base64::engine::general_purpose::STANDARD.encode(bytes),
-                }))
-            }
-            DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(format!(
-                "Provider file IDs are not supported for Gemini {kind} inputs"
-            ))),
-            DocumentSourceKind::Unknown => Err(message::MessageError::ConversionError(format!(
-                "Gemini {kind} input has no body"
-            ))),
-        }
-    }
-
-    impl TryFrom<(ImageMediaType, DocumentSourceKind)> for PartKind {
-        type Error = message::MessageError;
-        fn try_from(
-            (mime_type, doc_src): (ImageMediaType, DocumentSourceKind),
-        ) -> Result<Self, Self::Error> {
-            media_source_to_part_kind("image", mime_type.to_mime_type().to_string(), doc_src, true)
-        }
-    }
-
-    /// Convert a message image into a Gemini part.
-    ///
-    /// Gemini takes images identically in either role, so the user and
-    /// assistant conversions share this.
-    fn image_to_part(image: message::Image) -> Result<Part, message::MessageError> {
-        let message::Image {
-            data, media_type, ..
-        } = image;
-
-        let Some(media_type) = media_type else {
-            return Err(message::MessageError::ConversionError(
-                "Media type for image is required for Gemini".to_string(),
-            ));
-        };
-
-        match media_type {
-            message::ImageMediaType::JPEG
-            | message::ImageMediaType::PNG
-            | message::ImageMediaType::WEBP
-            | message::ImageMediaType::HEIC
-            | message::ImageMediaType::HEIF => Ok(Part {
-                thought: Some(false),
-                thought_signature: None,
-                part: PartKind::try_from((media_type, data))?,
-                additional_params: None,
             }),
-            _ => Err(message::MessageError::ConversionError(format!(
-                "Unsupported image media type {media_type:?}"
-            ))),
-        }
+            (Some(mime_type), DocumentSourceKind::Base64(data)) => {
+                PartKind::InlineData(Blob { mime_type, data })
+            }
+            (Some(mime_type), DocumentSourceKind::String(data)) if string_is_data => {
+                PartKind::InlineData(Blob { mime_type, data })
+            }
+            _ => return Err(unsendable()),
+        };
+        Ok(Part {
+            thought: Some(false),
+            part,
+            ..Default::default()
+        })
     }
 
-    fn gemini_tool_result_image_mime_type(
-        media_type: Option<&ImageMediaType>,
-    ) -> Result<&'static str, MessageError> {
-        let media_type = media_type.ok_or_else(|| {
-            MessageError::ConversionError(
-                "Image media type is required for Gemini tool results".to_string(),
-            )
-        })?;
+    /// The error for media [`super::encodes`] refuses.
+    fn unsendable() -> MessageError {
+        MessageError::ConversionError("Gemini cannot receive this media in its form".to_owned())
+    }
 
-        match media_type {
-            ImageMediaType::JPEG | ImageMediaType::PNG | ImageMediaType::WEBP => {
-                Ok(media_type.to_mime_type())
-            }
-            _ => Err(MessageError::ConversionError(format!(
-                "Unsupported image media type {media_type:?} for Gemini tool results; supported types are JPEG, PNG, and WEBP"
-            ))),
-        }
+    /// An image as a Gemini part, in either role.
+    fn image_to_part(image: message::Image) -> Result<Part, MessageError> {
+        let mime_type = image
+            .media_type
+            .map(|media_type| media_type.to_mime_type().to_owned());
+        media_part(mime_type, image.data, true)
     }
 
     /// A user part as Gemini takes it. A tool result carries `id`, its
@@ -983,14 +981,27 @@ pub mod gemini_api_types {
                         // The adapter leaves images here only for a model
                         // that reads them (Gemini 3 on). Gemini rejects
                         // synthetic `$ref` links for inline function-response
-                        // media, so the parts keep their order directly.
+                        // media, so the parts keep their order directly. A
+                        // URL is sent as file data, which Vertex AI reads.
                         message::ToolResultContent::Image(image) => {
-                            let mime_type =
-                                gemini_tool_result_image_mime_type(image.media_type.as_ref())?
-                                    .to_owned();
-                            parts.push(match image.data {
-                                DocumentSourceKind::Base64(data)
-                                | DocumentSourceKind::String(data) => FunctionResponsePart {
+                            let mime_type = image
+                                .media_type
+                                .map(|media_type| media_type.to_mime_type().to_owned());
+                            parts.push(match (mime_type, image.data) {
+                                (mime_type, DocumentSourceKind::Url(file_uri)) => {
+                                    FunctionResponsePart {
+                                        inline_data: None,
+                                        file_data: Some(FileData {
+                                            mime_type,
+                                            file_uri,
+                                        }),
+                                    }
+                                }
+                                (
+                                    Some(mime_type),
+                                    DocumentSourceKind::Base64(data)
+                                    | DocumentSourceKind::String(data),
+                                ) => FunctionResponsePart {
                                     inline_data: Some(FunctionResponseInlineData {
                                         mime_type,
                                         data,
@@ -998,31 +1009,7 @@ pub mod gemini_api_types {
                                     }),
                                     file_data: None,
                                 },
-                                DocumentSourceKind::Raw(bytes) => {
-                                    use base64::Engine;
-                                    FunctionResponsePart {
-                                        inline_data: Some(FunctionResponseInlineData {
-                                            mime_type,
-                                            data: base64::engine::general_purpose::STANDARD
-                                                .encode(bytes),
-                                            display_name: None,
-                                        }),
-                                        file_data: None,
-                                    }
-                                }
-                                DocumentSourceKind::Url(file_uri) => FunctionResponsePart {
-                                    inline_data: None,
-                                    file_data: Some(FileData {
-                                        mime_type: Some(mime_type),
-                                        file_uri,
-                                    }),
-                                },
-                                DocumentSourceKind::FileId(_) | DocumentSourceKind::Unknown => {
-                                    return Err(message::MessageError::ConversionError(
-                                        "A Gemini tool result image needs its data or a URL"
-                                            .to_string(),
-                                    ));
-                                }
+                                _ => return Err(unsendable()),
                             });
                         }
                     }
@@ -1054,154 +1041,41 @@ pub mod gemini_api_types {
             message::UserContent::Document(message::Document {
                 data, media_type, ..
             }) => {
-                let Some(media_type) = media_type else {
-                    return Err(MessageError::ConversionError(
-                        "A mime type is required for document inputs to Gemini".to_string(),
-                    ));
-                };
-
-                // For text-like documents (RAG context), convert inline content to plain text.
-                // URL-backed files should stay as file_data references so Gemini can fetch them.
-                if matches!(
-                    media_type,
-                    message::DocumentMediaType::TXT
-                        | message::DocumentMediaType::RTF
-                        | message::DocumentMediaType::HTML
-                        | message::DocumentMediaType::CSS
-                        | message::DocumentMediaType::MARKDOWN
-                        | message::DocumentMediaType::CSV
-                        | message::DocumentMediaType::XML
-                        | message::DocumentMediaType::Javascript
-                        | message::DocumentMediaType::Python
-                ) {
-                    use base64::Engine;
-                    let part = match data {
-                        DocumentSourceKind::String(text) => PartKind::Text(text),
-                        DocumentSourceKind::Base64(data) => {
-                            let text = String::from_utf8(
-                                base64::engine::general_purpose::STANDARD
-                                    .decode(&data)
-                                    .map_err(|e| {
-                                        MessageError::ConversionError(format!(
-                                            "Failed to decode base64: {e}"
-                                        ))
-                                    })?,
-                            )
-                            .map_err(|e| {
-                                MessageError::ConversionError(format!(
-                                    "Invalid UTF-8 in document: {e}"
-                                ))
-                            })?;
-                            PartKind::Text(text)
-                        }
-                        DocumentSourceKind::Url(file_uri) => PartKind::FileData(FileData {
-                            mime_type: Some(media_type.to_mime_type().to_string()),
-                            file_uri,
-                        }),
-                        DocumentSourceKind::Raw(_) => {
-                            return Err(MessageError::ConversionError(
-                                "Raw files not supported, encode as base64 first".to_string(),
-                            ));
-                        }
-                        DocumentSourceKind::FileId(_) => {
-                            return Err(MessageError::ConversionError(
-                                "Provider file IDs are not supported for Gemini documents"
-                                    .to_string(),
-                            ));
-                        }
-                        DocumentSourceKind::Unknown => {
-                            return Err(MessageError::ConversionError(
-                                "Document has no body".to_string(),
-                            ));
-                        }
-                    };
-
-                    Ok(Part {
-                        thought: Some(false),
-                        part,
-                        ..Default::default()
-                    })
-                } else if !media_type.is_code() {
-                    let part = media_source_to_part_kind(
-                        "document",
-                        media_type.to_mime_type().to_string(),
+                // A text document goes as text, so that RAG context reads
+                // as prose.
+                match (media_type, data) {
+                    (Some(media_type), DocumentSourceKind::String(text))
+                        if media_type != message::DocumentMediaType::PDF =>
+                    {
+                        Ok(Part::from(text))
+                    }
+                    (media_type, data) => media_part(
+                        media_type.map(|media_type| media_type.to_mime_type().to_owned()),
                         data,
                         true,
-                    )?;
-
-                    Ok(Part {
-                        thought: Some(false),
-                        part,
-                        ..Default::default()
-                    })
-                } else {
-                    Err(message::MessageError::ConversionError(format!(
-                        "Unsupported document media type {media_type:?}"
-                    )))
+                    ),
                 }
             }
-
             message::UserContent::Audio(message::Audio {
                 data, media_type, ..
-            }) => {
-                let Some(media_type) = media_type else {
-                    return Err(MessageError::ConversionError(
-                        "A mime type is required for audio inputs to Gemini".to_string(),
-                    ));
-                };
-
-                let part = media_source_to_part_kind(
-                    "audio",
-                    media_type.to_mime_type().to_string(),
-                    data,
-                    false,
-                )?;
-
-                Ok(Part {
-                    thought: Some(false),
-                    part,
-                    ..Default::default()
-                })
-            }
+            }) => media_part(
+                media_type.map(|media_type| media_type.to_mime_type().to_owned()),
+                data,
+                false,
+            ),
             message::UserContent::Video(message::Video {
                 data,
                 media_type,
                 additional_params,
                 ..
-            }) => {
-                let mime_type = media_type.map(|media_ty| media_ty.to_mime_type().to_string());
-
-                let part = match data {
-                    // YouTube links are the one Gemini video source that
-                    // needs no MIME type: the service resolves the media
-                    // itself. Every other source must declare one.
-                    DocumentSourceKind::Url(file_uri)
-                        if file_uri.starts_with("https://www.youtube.com") =>
-                    {
-                        PartKind::FileData(FileData {
-                            mime_type,
-                            file_uri,
-                        })
-                    }
-                    data => {
-                        let mime_type = mime_type.ok_or_else(|| {
-                            MessageError::ConversionError(
-                                "A mime type is required for non-Youtube video inputs to Gemini"
-                                    .to_string(),
-                            )
-                        })?;
-
-                        media_source_to_part_kind("video", mime_type, data, false)?
-                    }
-                };
-
-                Ok(Part {
-                    thought: Some(false),
-                    thought_signature: None,
-                    part,
-                    additional_params,
-                })
-            }
+            }) => Ok(Part {
+                additional_params,
+                ..media_part(
+                    media_type.map(|media_type| media_type.to_mime_type().to_owned()),
+                    data,
+                    false,
+                )?
+            }),
         }
     }
 

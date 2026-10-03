@@ -1133,38 +1133,46 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
     assert_eq!(inline_data.display_name, None);
 }
 
+/// A function response carries JPEG, PNG and WEBP images only, so the
+/// adapter replaces every other type there.
 #[test]
-fn tool_result_rejects_unsupported_image_media_types() {
-    use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
+fn tool_results_carry_only_jpeg_png_and_webp() {
+    use crate::completion::{Media, Place};
+    use crate::message::{DocumentSourceKind, Image, ImageMediaType};
 
+    let image = |media_type| Image {
+        data: DocumentSourceKind::base64("aW1hZ2U="),
+        media_type: Some(media_type),
+        ..Image::default()
+    };
+    for media_type in [
+        ImageMediaType::JPEG,
+        ImageMediaType::PNG,
+        ImageMediaType::WEBP,
+    ] {
+        assert!(super::encodes(
+            Media::Image(&image(media_type), Place::ToolResult),
+            false
+        ));
+    }
     for media_type in [
         ImageMediaType::GIF,
         ImageMediaType::HEIC,
         ImageMediaType::HEIF,
         ImageMediaType::SVG,
     ] {
-        let message = message::Message::User {
-            content: vec![message::UserContent::ToolResult(ToolResult {
-                is_error: false,
-                call: crate::message::CallId::from_wire(""),
-                name: crate::message::ToolName::new("image_tool".to_string()).expect("tool name"),
-                content: vec![ToolResultContent::image_base64(
-                    "image-data",
-                    Some(media_type),
-                    None,
-                )],
-            })],
-        };
-
-        let error =
-            to_content(message).expect_err("unsupported tool result image type should be rejected");
         assert!(
-            error
-                .to_string()
-                .contains("supported types are JPEG, PNG, and WEBP"),
-            "unexpected error: {error}"
+            !super::encodes(
+                Media::Image(&image(media_type.clone()), Place::ToolResult),
+                false
+            ),
+            "{media_type:?}"
         );
     }
+    assert!(super::encodes(
+        Media::Image(&image(ImageMediaType::HEIC), Place::User),
+        false
+    ));
 }
 
 #[test]

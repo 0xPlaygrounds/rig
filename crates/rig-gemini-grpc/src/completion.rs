@@ -93,6 +93,11 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         rig_core::providers::gemini::completion::accepts(model)
     }
 
+    /// The media the Gemini API takes, as on the REST wire.
+    fn encodes(&self, _model: &str, media: rig_core::completion::Media<'_>) -> bool {
+        rig_core::providers::gemini::completion::encodes(media, false)
+    }
+
     fn normalize_tool_call_id(
         &self,
         id: &str,

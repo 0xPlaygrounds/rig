@@ -353,8 +353,8 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     );
 }
 
-/// Messages go through the shared Gemini conversion. Raw image bytes, text
-/// documents and media inside a tool result are all sent.
+/// Adapted messages go through the shared Gemini conversion. Raw image
+/// bytes, text documents and media inside a tool result are all sent.
 #[test]
 fn create_grpc_request_transcodes_the_shared_gemini_content() {
     use rig_core::message::{
@@ -363,8 +363,12 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
     };
 
     let encode = |content: Vec<UserContent>| {
-        let request = CompletionRequest::new(message::Message::User { content });
-        create_grpc_request("gemini-2.5-flash", request)
+        let mut request = CompletionRequest::new("next");
+        request.chat_history = rig_core::completion::adapt(
+            &[message::Message::User { content }],
+            &GenerateContent::new(GEMINI_2_5_FLASH),
+        );
+        create_grpc_request(GEMINI_2_5_FLASH, request)
     };
     let image = Image {
         data: DocumentSourceKind::Raw(vec![1, 2, 3]),
@@ -394,16 +398,19 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
         ]
     );
 
-    let request = encode(vec![UserContent::ToolResult(ToolResult {
-        is_error: false,
-        call: rig_core::message::CallId::from_wire("call_1"),
-        name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
-        content: vec![ToolResultContent::Image(Image {
-            data: DocumentSourceKind::Base64("AQID".to_owned()),
-            ..image
+    let request = CompletionRequest::new(message::Message::User {
+        content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
+            call: rig_core::message::CallId::from_wire("call_1"),
+            name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
+            content: vec![ToolResultContent::Image(Image {
+                data: DocumentSourceKind::Base64("AQID".to_owned()),
+                ..image
+            })],
         })],
-    })])
-    .expect("tool-result media rides the function response");
+    });
+    let request = create_grpc_request(GEMINI_2_5_FLASH, request)
+        .expect("tool-result media rides the function response");
     let Some(proto::part::Data::FunctionResponse(response)) = request
         .contents
         .iter()
@@ -423,6 +430,56 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
             )),
         }]
     );
+}
+
+/// Gemini's `FunctionResponsePart` declares inline data only, so a URL
+/// image a tool returns reaches Gemini 3 in the user turn after the results.
+#[test]
+fn a_url_tool_result_image_follows_the_results_on_gemini_3() {
+    use rig_core::message::{Image, ImageMediaType, ToolResultContent, UserContent};
+    const URL: &str = "https://example.com/shot.png";
+    let model = "gemini-3-flash-preview";
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("shoot").expect("a tool name"),
+            serde_json::json!({}),
+        ),
+    );
+    let image = Image {
+        data: message::DocumentSourceKind::url(URL),
+        media_type: Some(ImageMediaType::PNG),
+        ..Default::default()
+    };
+    let history = vec![
+        message::Message::user("q"),
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            message::AssistantContent::ToolCall(call.clone()),
+        ])),
+        message::Message::User {
+            content: vec![UserContent::ToolResult(
+                call.result(vec![ToolResultContent::Image(image)]),
+            )],
+        },
+    ];
+    let mut request = CompletionRequest::new("next");
+    request.chat_history = rig_core::completion::adapt(&history, &GenerateContent::new(model));
+    let request = create_grpc_request(model, request).expect("the history encodes");
+    let data: Vec<_> = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .filter_map(|part| part.data.as_ref())
+        .collect();
+    let response = data
+        .iter()
+        .position(|data| matches!(data, proto::part::Data::FunctionResponse(_)))
+        .expect("the result is sent");
+    let file = data
+        .iter()
+        .position(|data| matches!(data, proto::part::Data::FileData(file) if file.file_uri == URL))
+        .expect("the image is sent");
+    assert!(response < file, "{data:?}");
 }
 
 #[test]
