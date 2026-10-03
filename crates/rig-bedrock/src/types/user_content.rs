@@ -1,8 +1,9 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::error::ProviderError;
-use rig_core::message::UserContent;
+use rig_core::message::{UserContent, Video, VideoMediaType};
 
+use super::source::{self, Source};
 use super::{document, image, tool};
 use crate::completion::Family;
 
@@ -53,9 +54,35 @@ pub(crate) fn to_aws(
                 aws_bedrock::ContentBlock::Document(doc),
             ])
         }
-        UserContent::Audio(_) => Err(ProviderError::Provider("Audio is not supported".into())),
-        UserContent::Video(_) => Err(ProviderError::Provider("Video is not supported".into())),
+        UserContent::Video(video) => {
+            Ok(vec![aws_bedrock::ContentBlock::Video(self::video(video)?)])
+        }
+        UserContent::Audio(_) => Err(ProviderError::request("Converse takes no audio")),
     }
+}
+
+/// The Converse video block for `video`, in a format Converse lists.
+pub(crate) fn video(video: Video) -> Result<aws_bedrock::VideoBlock, ProviderError> {
+    let format = match video.media_type {
+        Some(VideoMediaType::MP4) => aws_bedrock::VideoFormat::Mp4,
+        Some(VideoMediaType::MPEG) => aws_bedrock::VideoFormat::Mpeg,
+        Some(VideoMediaType::MOV) => aws_bedrock::VideoFormat::Mov,
+        Some(VideoMediaType::WEBM) => aws_bedrock::VideoFormat::Webm,
+        Some(VideoMediaType::AVI) | None => {
+            return Err(ProviderError::request(
+                "Converse takes no video in this format",
+            ));
+        }
+    };
+    let source = match source::of(video.data)? {
+        Source::Bytes(blob) => aws_bedrock::VideoSource::Bytes(blob),
+        Source::Stored(location) => aws_bedrock::VideoSource::S3Location(location),
+    };
+    aws_bedrock::VideoBlock::builder()
+        .format(format)
+        .source(source)
+        .build()
+        .map_err(ProviderError::request)
 }
 
 #[cfg(test)]

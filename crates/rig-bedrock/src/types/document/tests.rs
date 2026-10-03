@@ -1,6 +1,5 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_core::error::ProviderError;
 use rig_core::message::{Document, DocumentMediaType, DocumentSourceKind};
 
 use crate::types::document;
@@ -64,17 +63,24 @@ fn test_base64_document_to_aws_document() {
     assert_eq!(aws_document_bytes, document_data);
 }
 
+/// A text format Converse does not list goes as plain text; a string
+/// document is refused, since Converse rejects a document's text source.
 #[test]
-fn test_unsupported_document_to_aws_document() {
-    let rig_document = Document {
-        data: DocumentSourceKind::Base64("data".into()),
-        media_type: Some(DocumentMediaType::Javascript),
+fn unlisted_text_formats_go_as_txt() {
+    let document = |data, media_type| Document {
+        data,
+        media_type: Some(media_type),
         additional_params: None,
     };
-    let aws_document: Result<aws_bedrock::DocumentBlock, _> = document::to_aws(rig_document);
-    assert_eq!(
-        aws_document.err().unwrap().to_string(),
-        ProviderError::Provider("Unsupported media type application/x-javascript".into())
-            .to_string()
+    let script = document::to_aws(document(
+        DocumentSourceKind::Base64("bGV0IGEgPSAxOw==".into()),
+        DocumentMediaType::Javascript,
+    ))
+    .unwrap();
+    assert_eq!(script.format, aws_bedrock::DocumentFormat::Txt);
+    let text = document(
+        DocumentSourceKind::String("notes".into()),
+        DocumentMediaType::TXT,
     );
+    assert!(document::to_aws(text).is_err());
 }

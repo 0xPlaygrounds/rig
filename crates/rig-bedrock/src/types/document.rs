@@ -1,62 +1,48 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::error::ProviderError;
-use rig_core::message::{Document, DocumentMediaType, DocumentSourceKind, MimeType};
+use rig_core::message::{Document, DocumentMediaType};
 
-use base64::{Engine, prelude::BASE64_STANDARD};
 use sha2::{Digest, Sha256};
 
-/// The Converse document block for `document`.
+use super::source::{self, Source};
+
+/// The Converse document block for `document`, as base64 data or an S3
+/// object. Converse rejects a document's text source, so a string document
+/// is an error.
 pub(crate) fn to_aws(
     Document {
         data, media_type, ..
     }: Document,
 ) -> Result<aws_bedrock::DocumentBlock, ProviderError> {
-    let document_media_type = media_type.map(document_format).transpose()?;
-
-    let document_source = match data {
-        DocumentSourceKind::Base64(blob) => {
-            let bytes = BASE64_STANDARD
-                .decode(blob)
-                .map_err(ProviderError::request)?;
-
-            aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(bytes))
-        }
-        // Use the byte source for string documents to avoid SDK text-source
-        // compatibility limitations.
-        DocumentSourceKind::String(str) => {
-            aws_bedrock::DocumentSource::Bytes(aws_smithy_types::Blob::new(str.as_bytes()))
-        }
-        doc => {
-            return Err(ProviderError::request(format!(
-                "Unsupported document kind: {doc}"
-            )));
-        }
+    let format = media_type
+        .map(document_format)
+        .ok_or_else(|| ProviderError::request("Converse needs a document's format"))?;
+    let source = match source::of(data)? {
+        Source::Bytes(blob) => aws_bedrock::DocumentSource::Bytes(blob),
+        Source::Stored(location) => aws_bedrock::DocumentSource::S3Location(location),
     };
-
-    let document_name = document_name(&document_source);
     aws_bedrock::DocumentBlock::builder()
-        .source(document_source)
-        .name(document_name)
-        .set_format(document_media_type)
+        .name(document_name(&source))
+        .source(source)
+        .format(format)
         .build()
         .map_err(|e| ProviderError::Provider(e.to_string()))
 }
 
-/// The Converse format for `media_type`: PDF, plain text, HTML, Markdown or
-/// CSV.
-fn document_format(
-    media_type: DocumentMediaType,
-) -> Result<aws_bedrock::DocumentFormat, ProviderError> {
+/// The Converse format for `media_type`. A text format Converse does not
+/// list is plain text.
+fn document_format(media_type: DocumentMediaType) -> aws_bedrock::DocumentFormat {
     match media_type {
-        DocumentMediaType::PDF => Ok(aws_bedrock::DocumentFormat::Pdf),
-        DocumentMediaType::TXT => Ok(aws_bedrock::DocumentFormat::Txt),
-        DocumentMediaType::HTML => Ok(aws_bedrock::DocumentFormat::Html),
-        DocumentMediaType::MARKDOWN => Ok(aws_bedrock::DocumentFormat::Md),
-        DocumentMediaType::CSV => Ok(aws_bedrock::DocumentFormat::Csv),
-        e => Err(ProviderError::Provider(format!(
-            "Unsupported media type {}",
-            e.to_mime_type()
-        ))),
+        DocumentMediaType::PDF => aws_bedrock::DocumentFormat::Pdf,
+        DocumentMediaType::HTML => aws_bedrock::DocumentFormat::Html,
+        DocumentMediaType::MARKDOWN => aws_bedrock::DocumentFormat::Md,
+        DocumentMediaType::CSV => aws_bedrock::DocumentFormat::Csv,
+        DocumentMediaType::TXT
+        | DocumentMediaType::RTF
+        | DocumentMediaType::CSS
+        | DocumentMediaType::XML
+        | DocumentMediaType::Javascript
+        | DocumentMediaType::Python => aws_bedrock::DocumentFormat::Txt,
     }
 }
 

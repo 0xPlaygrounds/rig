@@ -16,7 +16,9 @@ use crate::{
     types::{
         assistant_content::PROVIDER_NAME,
         completion_request::AwsCompletionRequest,
+        document,
         errors::{sdk_error, stream_error},
+        image, source, user_content,
     },
 };
 
@@ -343,6 +345,30 @@ impl rig_core::completion::ReplayTarget for Converse {
             assistant_images: false,
             tool_result_images: images,
             tools: true,
+        }
+    }
+
+    /// Converse carries images in its four formats, documents in a format it
+    /// lists, and inline data, which must be valid base64. Only Nova reads S3
+    /// objects and video. Converse rejects a document's text source and
+    /// takes no audio, so a string document goes as its text.
+    fn encodes(&self, model: &str, media: rig_core::completion::Media<'_>) -> bool {
+        use rig_core::completion::Media;
+        let family = self.family(model);
+        let stored = |data: &rig_core::message::DocumentSourceKind| {
+            family == Family::Nova || !source::is_stored(data)
+        };
+        match media {
+            Media::Image(image, _) => stored(&image.data) && image::to_aws(image.clone()).is_ok(),
+            Media::Document(document) => {
+                stored(&document.data) && document::to_aws(document.clone()).is_ok()
+            }
+            Media::Video(video) => {
+                family == Family::Nova
+                    && self.accepts(model).user_images
+                    && user_content::video(video.clone()).is_ok()
+            }
+            Media::Audio(_) => false,
         }
     }
 
