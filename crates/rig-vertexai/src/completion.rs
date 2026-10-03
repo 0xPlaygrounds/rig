@@ -134,6 +134,12 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
     fn call_id_slot(&self) -> Option<&'static str> {
         rest::CALL_ID_SLOT
     }
+
+    /// Tools in `additional_params` or a cached content count, as on the
+    /// REST wire.
+    fn declares_tools(&self, request: &rig_core::completion::CompletionRequest) -> bool {
+        rest::declares_tools(request)
+    }
 }
 
 /// Both modes send the unary RPC; a streamed call re-emits its reply.

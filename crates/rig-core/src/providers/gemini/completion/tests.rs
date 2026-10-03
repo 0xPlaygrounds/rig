@@ -2059,3 +2059,71 @@ fn function_responses_and_user_text_go_in_separate_contents() {
         ]
     );
 }
+
+/// A Gemini alias names no version, so it is the current generation: a
+/// rebuilt call to it carries ids and the placeholder signature Gemini 3
+/// requires, and its function responses take images.
+#[test]
+fn an_alias_is_the_current_gemini() {
+    for model in [
+        "gemini-flash-latest",
+        "gemini-pro-latest",
+        "models/gemini-flash-latest",
+    ] {
+        assert!(gemini_3_or_later(model), "{model}");
+        assert!(requires_tool_call_id(model), "{model}");
+        assert!(accepts(model).tool_result_images, "{model}");
+        let call = message::ToolCall::from_wire(
+            "call-1",
+            message::ToolFunction::new(
+                crate::message::ToolName::new("lookup").expect("tool name"),
+                json!({"q": 1}),
+            ),
+        );
+        let content = to_content_for(model, message::Message::from(call)).unwrap();
+        assert_eq!(
+            parts(&content)[0]["thoughtSignature"],
+            "skip_thought_signature_validator",
+            "{model}: {content}"
+        );
+    }
+    assert!(!gemini_3_or_later("gemini-2.5-flash"));
+    assert!(!gemini_3_or_later("claude-opus-5"));
+}
+
+/// A turn left with nothing to send, such as reasoning edited to blank, is
+/// no content: Gemini rejects one with no parts.
+#[test]
+fn a_turn_with_nothing_to_send_is_no_content() {
+    let turn = message::AssistantMessage::new(vec![message::AssistantContent::reasoning("")]);
+    let contents = contents_for(
+        vec![
+            message::Message::user("q"),
+            message::Message::Assistant(turn),
+            message::Message::user("next"),
+        ],
+        "gemini-3-flash-preview",
+    )
+    .unwrap();
+    assert!(
+        contents.iter().all(|content| !parts(content).is_empty()),
+        "{contents:?}"
+    );
+}
+
+/// Tools declared in `additional_params` or held by a cached content count
+/// as declared, so the history's calls stay calls.
+#[test]
+fn tools_in_a_cache_or_additional_params_are_declared() {
+    let mut request = CompletionRequest::new("q");
+    assert!(!declares_tools(&request));
+    assert!(ReplayTarget::declares_tools(
+        &wire("gemini-3-flash-preview").with_cached_content("cachedContents/abc"),
+        &request
+    ));
+    request.additional_params = Some(json!({"cachedContent": "cachedContents/abc"}));
+    assert!(declares_tools(&request));
+    request.additional_params =
+        Some(json!({"tools": [{"functionDeclarations": [{"name": "lookup"}]}]}));
+    assert!(declares_tools(&request));
+}

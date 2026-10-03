@@ -982,7 +982,7 @@ fn a_part_cut_off_before_its_end_keeps_no_provider_item() {
 
 /// Round 4 NEW-3: a part that carries only a thought signature, as a
 /// stream's last chunk can, joins the text before it, so the signature
-/// replays to the same model; with no text before it, it replays nothing.
+/// replays to the same model.
 #[test]
 fn a_signature_only_part_joins_the_text_before_it() {
     use crate::wire::{Operation, Wire};
@@ -1021,4 +1021,113 @@ fn a_signature_only_part_joins_the_text_before_it() {
         json!([{"text": "Answer", "thoughtSignature": "c2ln"}]),
         "{body}"
     );
+}
+
+/// The request body the REST wire sends `model` to continue `response`.
+fn replayed(model: &str, response: &crate::completion::CompletionResponse) -> serde_json::Value {
+    use crate::wire::{Operation, Wire};
+    let wire = crate::providers::gemini::GeminiConfig::new("k").completion(model);
+    let mut history = vec![
+        crate::message::Message::user("q"),
+        response.message().expect("a turn"),
+    ];
+    let calls: Vec<_> = response.tool_calls().cloned().collect();
+    let mut request = if calls.is_empty() {
+        history.push(crate::message::Message::user("n"));
+        crate::completion::CompletionRequest::from(history)
+    } else {
+        history.push(crate::message::Message::User {
+            content: calls
+                .iter()
+                .map(|call| {
+                    crate::message::UserContent::ToolResult(
+                        call.result(vec![crate::message::ToolResultContent::text("ok")]),
+                    )
+                })
+                .collect(),
+        });
+        crate::completion::CompletionRequest::from(history)
+    };
+    request.tools = calls
+        .iter()
+        .map(|call| crate::completion::ToolDefinition {
+            name: call.function.name.clone(),
+            description: "a tool".to_owned(),
+            parameters: json!({"type": "object"}),
+        })
+        .collect();
+    let request = crate::operation::Completion::prepare(request, &wire.describe())
+        .expect("the history prepares");
+    let encoded = wire
+        .encode(request, crate::wire::Mode::Unary)
+        .expect("the history encodes");
+    crate::test_utils::json_body(&encoded.request)
+}
+
+/// A signature sent alone signs the block beside it whatever its kind: the
+/// call before it, or the text after it when it comes first.
+#[test]
+fn a_signature_only_part_signs_the_block_beside_it() {
+    let wire =
+        crate::providers::gemini::GeminiConfig::new("k").completion("gemini-3-flash-preview");
+    let chunk = |parts: serde_json::Value, finish: Option<&str>| {
+        let mut candidate = json!({"content": {"role": "model", "parts": parts}});
+        if let Some(finish) = finish {
+            candidate["finishReason"] = json!(finish);
+        }
+        WireFrame::Text(json!({"candidates": [candidate], "modelVersion": "m"}).to_string())
+    };
+    let after_call = crate::test_utils::history::decode(
+        &wire,
+        crate::wire::Mode::Streaming,
+        [
+            chunk(
+                json!([{"functionCall": {"name": "lookup", "args": {"q": 1}, "id": "a"}}]),
+                None,
+            ),
+            chunk(json!([{"thoughtSignature": "c2lnLWNhbGw="}]), Some("STOP")),
+        ],
+    )
+    .expect("the reply decodes");
+    let body = replayed("gemini-3-flash-preview", &after_call);
+    assert_eq!(
+        body["contents"][1]["parts"][0]["thoughtSignature"], "c2lnLWNhbGw=",
+        "{body}"
+    );
+    let leading = crate::test_utils::history::decode(
+        &wire,
+        crate::wire::Mode::Unary,
+        [chunk(
+            json!([{"thoughtSignature": "c2lnLWxlYWQ="}, {"text": "Answer"}]),
+            Some("STOP"),
+        )],
+    )
+    .expect("the reply decodes");
+    let body = replayed("gemini-3-flash-preview", &leading);
+    assert_eq!(
+        body["contents"][1]["parts"],
+        json!([{"text": "Answer", "thoughtSignature": "c2lnLWxlYWQ="}]),
+        "{body}"
+    );
+}
+
+/// A reply part that is not an object is no part Gemini takes back, so it
+/// never replays.
+#[test]
+fn a_part_that_is_not_an_object_never_replays() {
+    for odd in [json!(null), json!("stray")] {
+        let response = decoded(json!({
+            "candidates": [{
+                "content": {"role": "model", "parts": [odd.clone(), {"text": "hi"}]},
+                "finishReason": "STOP"
+            }]
+        }))
+        .expect("the reply decodes");
+        let body = replayed("gemini-2.5-flash", &response);
+        assert_eq!(
+            body["contents"][1]["parts"],
+            json!([{"text": "hi"}]),
+            "{odd}: {body}"
+        );
+    }
 }

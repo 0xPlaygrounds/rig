@@ -58,6 +58,10 @@ pub struct GenerateContentDecoder {
     /// The text or thought run later parts continue, and whether it is
     /// thought.
     open: Option<(usize, bool)>,
+    /// The index of the block written last.
+    last: Option<usize>,
+    /// A signature sent alone before any block, which the next block takes.
+    signature: Option<String>,
 }
 
 impl GenerateContentDecoder {
@@ -221,6 +225,13 @@ impl GenerateContentDecoder {
     ) -> Result<(), ProviderError> {
         self.close(out)?;
         let index = out.fresh_index();
+        let mut item = item;
+        if let (Some(signature), Some(fields)) = (self.signature.take(), item.as_object_mut()) {
+            fields
+                .entry("thoughtSignature")
+                .or_insert(Value::String(signature));
+        }
+        self.last = Some(index);
         let run = match &block {
             Block::Text => Some(false),
             Block::Reasoning { .. } => Some(true),
@@ -233,12 +244,13 @@ impl GenerateContentDecoder {
     }
 
     /// Write one part of the candidate's content. A part this decoder does
-    /// not model is an opaque item that replays; one with no data is kept as
-    /// one that does not, except that a signature alone joins the open run,
-    /// as Gemini attaches it to the part before.
+    /// not model is an opaque item that replays; one with no data, or that
+    /// is not an object, is kept as one that does not. A signature alone
+    /// joins the block before it, as Gemini attaches it to the part before,
+    /// or the next block when it comes first.
     fn part(&mut self, part: Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         let Value::Object(fields) = &part else {
-            return self.open(Block::Opaque { replay: true }, part, "", out);
+            return self.open(Block::Opaque { replay: false }, part, "", out);
         };
         let thought = part.bool("thought") == Some(true);
         let signature = part
@@ -293,7 +305,11 @@ impl GenerateContentDecoder {
         }
         let bare = ["thought", "thoughtSignature", "partMetadata"];
         let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
-        if !data && let (Some(signature), Some((index, _))) = (signature, self.open) {
+        if !data && let Some(signature) = signature {
+            let Some(index) = self.open.map(|(index, _)| index).or(self.last) else {
+                self.signature = Some(signature.to_owned());
+                return Ok(());
+            };
             return out.edit(index, |item| {
                 if let Some(item) = item.as_object_mut() {
                     item.insert("thoughtSignature".to_owned(), Value::from(signature));

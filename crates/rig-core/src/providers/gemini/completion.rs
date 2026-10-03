@@ -242,6 +242,22 @@ impl ReplayTarget for GenerateContent {
     fn call_id_slot(&self) -> Option<&'static str> {
         CALL_ID_SLOT
     }
+
+    fn declares_tools(&self, request: &crate::completion::CompletionRequest) -> bool {
+        self.cached_content.is_some() || declares_tools(request)
+    }
+}
+
+/// Whether `request` declares tools on a GenerateContent wire: in `tools`,
+/// in the `tools` of its `additional_params`, or through a `cachedContent`
+/// handle there, since a cache holds its function declarations.
+pub fn declares_tools(request: &crate::completion::CompletionRequest) -> bool {
+    let params = request.additional_params.as_ref();
+    !request.tools.is_empty()
+        || params.is_some_and(|params| !params.arr("tools").is_empty())
+        || params
+            .and_then(Value::as_object)
+            .is_some_and(|params| present(params, &CACHED_CONTENT).is_some())
 }
 
 /// Where a GenerateContent part holds its call's id, on every wire that
@@ -249,8 +265,10 @@ impl ReplayTarget for GenerateContent {
 pub const CALL_ID_SLOT: Option<&str> = Some("/functionCall/id");
 
 /// The major version of a Gemini model id, read past a `models/` prefix:
-/// `gemini-<major>…` or `gemini-live-<major>…`. An alias such as
-/// `gemini-flash-latest` names none.
+/// `gemini-<major>…` or `gemini-live-<major>…`, or `None` for an id that is
+/// not Gemini's. A Gemini id that names no version, such as the alias
+/// `gemini-flash-latest`, is the current generation (`u32::MAX`), so every
+/// rule reads an alias as the newest model.
 fn gemini_major(model: &str) -> Option<u32> {
     let model = model.to_ascii_lowercase();
     let model = model.strip_prefix("models/").unwrap_or(&model);
@@ -259,11 +277,15 @@ fn gemini_major(model: &str) -> Option<u32> {
     let end = rest
         .find(|c: char| !c.is_ascii_digit())
         .unwrap_or(rest.len());
-    rest.get(..end)?.parse().ok()
+    Some(
+        rest.get(..end)
+            .and_then(|major| major.parse().ok())
+            .unwrap_or(u32::MAX),
+    )
 }
 
 /// Whether `model` is Gemini 3 or later, which validates the thought
-/// signatures of function calls.
+/// signatures of function calls. A Gemini alias counts as current.
 pub(super) fn gemini_3_or_later(model: &str) -> bool {
     gemini_major(model).is_some_and(|major| major >= 3)
 }
@@ -277,9 +299,9 @@ pub fn requires_tool_call_id(model: &str) -> bool {
 
 /// What `model` reads on every Gemini wire (REST, Vertex AI, gRPC and
 /// Interactions): images in every role, and images inside function
-/// responses only from Gemini 3 on. A model that names no Gemini version
-/// (an alias, or Claude behind Vertex AI) is assumed to read them, as pi
-/// assumes.
+/// responses only from Gemini 3 on. A Gemini alias reads them as the
+/// current generation, and a model that is not Gemini (Claude behind
+/// Vertex AI) is assumed to read them, as pi assumes.
 pub fn accepts(model: &str) -> Accepts {
     Accepts {
         tool_result_images: gemini_major(model).is_none_or(|major| major >= 3),
@@ -540,7 +562,8 @@ fn contents(
     let with_ids = requires_tool_call_id(model);
     let mut contents = Vec::with_capacity(history.len());
     let mut push = |role: &str, parts: Vec<Value>| {
-        if !parts.is_empty() || role == "model" {
+        // Gemini rejects a content with no parts, as pi skips one.
+        if !parts.is_empty() {
             contents.push(json!({ "parts": parts, "role": role }));
         }
     };
