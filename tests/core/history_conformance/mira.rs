@@ -1,8 +1,7 @@
-//! Perplexity: text with the citations and search results its replies
-//! carry beside the message. It takes no tools, so calls and results reach
-//! it as text.
+//! Mira's gateway: text only, with every message's content one string.
+//! It takes no tools and its models read no images.
 
-use rig_core::providers::openai::wire::PERPLEXITY;
+use rig_core::providers::openai::wire::MIRA;
 use serde_json::{Value, json};
 
 use super::chat::ChatHistory;
@@ -19,10 +18,10 @@ fn rich_deltas() -> Vec<Value> {
 }
 
 pub const FIXTURE: ChatHistory = ChatHistory {
-    dialect: &PERPLEXITY,
-    model: "sonar-pro",
-    other_model: "sonar",
-    text_only_model: None,
+    dialect: &MIRA,
+    model: "gpt-4o",
+    other_model: "claude-3.5-sonnet",
+    text_only_model: Some("llama-3.3-70b"),
     rich,
     rich_deltas,
     interleaved: None,
@@ -30,6 +29,6 @@ pub const FIXTURE: ChatHistory = ChatHistory {
 };
 
 rig_core::history_conformance_suite! {
-    wire: "perplexity",
+    wire: "mira",
     fixture: FIXTURE,
 }

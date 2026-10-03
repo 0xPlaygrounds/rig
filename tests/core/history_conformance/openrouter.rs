@@ -4,7 +4,7 @@
 use rig_core::providers::openai::wire::OPENROUTER;
 use serde_json::{Value, json};
 
-use super::chat::{ChatHistory, call, call_deltas};
+use super::chat::{ChatHistory, call, call_deltas, interleaved_under};
 
 fn encrypted() -> Value {
     json!({"type": "reasoning.encrypted", "data": "sig", "id": "rs_1",
@@ -43,6 +43,10 @@ fn rich_deltas() -> Vec<Value> {
     deltas
 }
 
+fn interleaved() -> Vec<Value> {
+    interleaved_under("reasoning")
+}
+
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &OPENROUTER,
     model: "google/gemini-2.5-flash-image",
@@ -50,6 +54,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     text_only_model: None,
     rich,
     rich_deltas,
+    interleaved: Some(interleaved),
     has_items: true,
 };
 

@@ -29,6 +29,17 @@ fn rich_deltas() -> Vec<Value> {
     ]
 }
 
+fn interleaved() -> Vec<Value> {
+    let mut whole = call();
+    whole["index"] = json!(0);
+    vec![
+        json!({"role": "assistant", "content": [thinking("plan the lookup")]}),
+        json!({"content": "looking it up"}),
+        json!({"content": [thinking("check the arguments")]}),
+        json!({"tool_calls": [whole]}),
+    ]
+}
+
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &MISTRAL,
     model: "magistral-medium-latest",
@@ -36,6 +47,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     text_only_model: Some("codestral-latest"),
     rich,
     rich_deltas,
+    interleaved: Some(interleaved),
     has_items: true,
 };
 

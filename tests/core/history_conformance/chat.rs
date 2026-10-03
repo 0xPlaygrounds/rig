@@ -23,6 +23,10 @@ pub struct ChatHistory {
     pub rich: fn() -> Value,
     /// The same message as the deltas a stream sends.
     pub rich_deltas: fn() -> Vec<Value>,
+    /// The deltas of a stream whose blocks are `[reasoning, text,
+    /// reasoning, call]`, on a dialect with reasoning. One message holds one
+    /// reasoning and one text, so only a stream can interleave them.
+    pub interleaved: Option<fn() -> Vec<Value>>,
     /// Whether the dialect's messages carry items an invented type and field
     /// can sit on: content parts or tool calls.
     pub has_items: bool,
@@ -36,6 +40,18 @@ pub fn call() -> Value {
         "type": "function",
         "function": {"name": "lookup", "arguments": "{\"q\":\"rig\"}"},
     })
+}
+
+/// A stream that reasons, answers, reasons again under `key`, and calls.
+pub fn interleaved_under(key: &str) -> Vec<Value> {
+    let mut whole = call();
+    whole["index"] = json!(0);
+    vec![
+        json!({"role": "assistant", key: "plan the lookup"}),
+        json!({"content": "looking it up"}),
+        json!({key: "check the arguments"}),
+        json!({"tool_calls": [whole]}),
+    ]
 }
 
 /// The call's two stream fragments: its opening and its arguments.
@@ -138,15 +154,17 @@ impl HistoryFixture for ChatHistory {
         http_body(&wire.encode(request, mode)?)
     }
 
-    /// Chat carries a message's reasoning in one field (or Mistral's
-    /// thinking parts) and its text in one content, and rig decodes one
-    /// reasoning and one text block per message, as pi's
-    /// `openai-completions` does, so `[reasoning, text, reasoning, call]`
-    /// has no Chat form.
+    /// A whole message carries its reasoning in one field (or Mistral's
+    /// thinking parts) and its text in one content, so `[reasoning, text,
+    /// reasoning, call]` has a Chat form only as a stream, where a block
+    /// closes when the next one starts.
     fn reply(&self, shape: Shape, mode: Mode) -> Option<Vec<WireFrame>> {
         match shape {
             Shape::Rich => Some(self.reply_of((self.rich)(), (self.rich_deltas)(), mode)),
-            Shape::Interleaved => None,
+            Shape::Interleaved => match (self.interleaved, mode) {
+                (Some(deltas), Mode::Streaming) => Some(self.stream(deltas(), "tool_calls")),
+                _ => None,
+            },
             Shape::Unknown if self.has_items => {
                 let call = json!({"id": "abcDEF999", "type": "function",
                     "function": {"name": "lookup", "arguments": "{}"}, "x_rig_field": true});
@@ -186,6 +204,7 @@ impl HistoryFixture for ChatHistory {
     fn finishes(&self) -> Vec<(&'static str, Vec<WireFrame>, Ending)> {
         [
             ("stop", Ending::Success),
+            ("end", Ending::Success),
             ("length", Ending::Success),
             ("model_length", Ending::Success),
             ("tool_calls", Ending::Success),
@@ -236,7 +255,9 @@ impl HistoryFixture for ChatHistory {
 /// text joined into `content` (a part array when a block is a content
 /// part), reasoning under the field its item names, the fields beside it,
 /// an opaque item's fields, and each call's item with its canonical name
-/// and arguments as JSON text. Images are never sent back.
+/// and arguments as JSON text. A text block whose item is message fields
+/// (an answer's audio) sends them beside the text. Images are never sent
+/// back.
 pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
     let mut message = Map::new();
     message.insert("role".to_owned(), "assistant".into());
@@ -246,9 +267,15 @@ pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
     for content in &turn.content {
         let native = content.native_item();
         match content {
-            AssistantContent::Text(block) if !block.text.trim().is_empty() => {
-                text.push_str(&block.text);
-                parts.push(json!({"type": "text", "text": block.text}));
+            AssistantContent::Text(block) => {
+                if !block.text.trim().is_empty() {
+                    text.push_str(&block.text);
+                    parts.push(json!({"type": "text", "text": block.text}));
+                }
+                if let Some(Value::Object(item)) = native.filter(|item| item.get("type").is_none())
+                {
+                    fields.extend(item.clone());
+                }
             }
             AssistantContent::Reasoning(block) => match native {
                 Some(item) if item.get("type").is_some() => {
@@ -293,9 +320,7 @@ pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
                 item["function"]["arguments"] = json!(call.function.arguments_value().to_string());
                 calls.push(item);
             }
-            AssistantContent::Text(_)
-            | AssistantContent::Image(_)
-            | AssistantContent::Opaque(_) => {}
+            AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
         }
     }
     if has_parts {

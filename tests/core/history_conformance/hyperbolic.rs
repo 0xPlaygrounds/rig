@@ -1,8 +1,7 @@
-//! Perplexity: text with the citations and search results its replies
-//! carry beside the message. It takes no tools, so calls and results reach
-//! it as text.
+//! Hyperbolic: text only, for it takes no tools, so calls and results
+//! reach it as text.
 
-use rig_core::providers::openai::wire::PERPLEXITY;
+use rig_core::providers::openai::wire::HYPERBOLIC;
 use serde_json::{Value, json};
 
 use super::chat::ChatHistory;
@@ -19,9 +18,9 @@ fn rich_deltas() -> Vec<Value> {
 }
 
 pub const FIXTURE: ChatHistory = ChatHistory {
-    dialect: &PERPLEXITY,
-    model: "sonar-pro",
-    other_model: "sonar",
+    dialect: &HYPERBOLIC,
+    model: rig_core::providers::hyperbolic::LLAMA_3_3_70B,
+    other_model: rig_core::providers::hyperbolic::QWEN_2_5_72B,
     text_only_model: None,
     rich,
     rich_deltas,
@@ -30,6 +29,6 @@ pub const FIXTURE: ChatHistory = ChatHistory {
 };
 
 rig_core::history_conformance_suite! {
-    wire: "perplexity",
+    wire: "hyperbolic",
     fixture: FIXTURE,
 }

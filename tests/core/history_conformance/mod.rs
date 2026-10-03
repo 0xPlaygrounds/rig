@@ -7,22 +7,34 @@
 
 pub mod anthropic;
 pub mod anthropic_moonshot;
+pub mod azure;
 pub mod chat;
 pub mod chatgpt;
 pub mod cohere;
 pub mod copilot;
 pub mod deepseek;
+pub mod doubleword;
 pub mod gemini_interactions;
 pub mod gemini_rest;
 pub mod groq;
+pub mod huggingface;
+pub mod hyperbolic;
+pub mod llamacpp;
+pub mod minimax;
+pub mod mira;
 pub mod mistral;
 pub mod mock;
+pub mod moonshot;
 pub mod ollama;
 pub mod openai_chat;
 pub mod openai_responses;
 pub mod openrouter;
 pub mod perplexity;
+pub mod together;
+pub mod venice;
 pub mod xai;
+pub mod xiaomimimo;
+pub mod zai;
 
 /// The wires whose suites compiled into this binary.
 pub const SUITE_WIRES: &[&str] = &[
@@ -43,4 +55,16 @@ pub const SUITE_WIRES: &[&str] = &[
     openrouter::HISTORY_WIRE,
     perplexity::HISTORY_WIRE,
     xai::HISTORY_WIRE,
+    azure::HISTORY_WIRE,
+    hyperbolic::HISTORY_WIRE,
+    mira::HISTORY_WIRE,
+    together::HISTORY_WIRE,
+    huggingface::HISTORY_WIRE,
+    llamacpp::HISTORY_WIRE,
+    venice::HISTORY_WIRE,
+    doubleword::HISTORY_WIRE,
+    zai::HISTORY_WIRE,
+    minimax::HISTORY_WIRE,
+    moonshot::HISTORY_WIRE,
+    xiaomimimo::HISTORY_WIRE,
 ];

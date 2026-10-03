@@ -1,10 +1,10 @@
-//! DeepSeek: reasoning under `reasoning_content`, sent back empty when a
-//! turn has none, and calls it streams whole. Its models read no images.
+//! Moonshot's Chat half: Kimi reasoning under `reasoning_content`, text,
+//! and a tool call. Kimi K2 before K2.5 reads no images.
 
-use rig_core::providers::openai::wire::DEEPSEEK;
+use rig_core::providers::openai::wire::MOONSHOT;
 use serde_json::{Value, json};
 
-use super::chat::{ChatHistory, call, interleaved_under};
+use super::chat::{ChatHistory, call, call_deltas, interleaved_under};
 
 fn rich() -> Value {
     json!({
@@ -16,14 +16,13 @@ fn rich() -> Value {
 }
 
 fn rich_deltas() -> Vec<Value> {
-    let mut whole = call();
-    whole["index"] = json!(0);
-    vec![
-        json!({"role": "assistant", "content": null, "reasoning_content": "plan "}),
+    let mut deltas = vec![
+        json!({"role": "assistant", "reasoning_content": "plan "}),
         json!({"reasoning_content": "the lookup"}),
         json!({"content": "looking it up"}),
-        json!({"tool_calls": [whole]}),
-    ]
+    ];
+    deltas.extend(call_deltas());
+    deltas
 }
 
 fn interleaved() -> Vec<Value> {
@@ -31,10 +30,10 @@ fn interleaved() -> Vec<Value> {
 }
 
 pub const FIXTURE: ChatHistory = ChatHistory {
-    dialect: &DEEPSEEK,
-    model: "deepseek-v4-flash",
-    other_model: "deepseek-v4-pro",
-    text_only_model: None,
+    dialect: &MOONSHOT,
+    model: rig_core::providers::moonshot::KIMI_K2_6,
+    other_model: rig_core::providers::moonshot::KIMI_K3,
+    text_only_model: Some("kimi-k2-0905-preview"),
     rich,
     rich_deltas,
     interleaved: Some(interleaved),
@@ -42,6 +41,6 @@ pub const FIXTURE: ChatHistory = ChatHistory {
 };
 
 rig_core::history_conformance_suite! {
-    wire: "deepseek",
+    wire: "moonshot",
     fixture: FIXTURE,
 }

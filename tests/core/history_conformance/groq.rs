@@ -4,7 +4,7 @@
 use rig_core::providers::openai::wire::GROQ;
 use serde_json::{Value, json};
 
-use super::chat::{ChatHistory, call};
+use super::chat::{ChatHistory, call, interleaved_under};
 
 fn rich() -> Value {
     json!({
@@ -27,6 +27,10 @@ fn rich_deltas() -> Vec<Value> {
     ]
 }
 
+fn interleaved() -> Vec<Value> {
+    interleaved_under("reasoning")
+}
+
 pub const FIXTURE: ChatHistory = ChatHistory {
     dialect: &GROQ,
     model: "openai/gpt-oss-120b",
@@ -34,6 +38,7 @@ pub const FIXTURE: ChatHistory = ChatHistory {
     text_only_model: Some("llama-3.3-70b-versatile"),
     rich,
     rich_deltas,
+    interleaved: Some(interleaved),
     has_items: true,
 };
 
