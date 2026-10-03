@@ -1269,6 +1269,7 @@ impl<'id> Out<'id, Completion> {
 
     /// A whole block of an already assembled response, at the next
     /// position, its native kept as given.
+    #[cfg(any(test, feature = "test-utils"))]
     pub(crate) fn content(&mut self, content: AssistantContent) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
