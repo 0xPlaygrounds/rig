@@ -27,6 +27,7 @@ struct Seen {
 struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
+    fn origin(&mut self, _origin: &crate::message::Origin) {}
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         self.0.lock().expect("seen").outcomes.push(outcome.clone());
     }
@@ -335,6 +336,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
     );
     struct AtomicObserver(Arc<Mutex<Vec<Observation>>>);
     impl Observe for AtomicObserver {
+        fn origin(&mut self, _origin: &crate::message::Origin) {}
         fn outcome(&mut self, _: &Result<Outcome, ErrorReport>) {
             panic!("a terminal item must carry its answer in stream_item");
         }
@@ -487,6 +489,7 @@ fn replacing_observer_replaces_only_observer_derived_provider_context() {
 }
 
 impl Observe for ProviderObserver {
+    fn origin(&mut self, _origin: &crate::message::Origin) {}
     fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
         Some(self.0.clone())
     }

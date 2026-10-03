@@ -139,6 +139,7 @@ struct Tapped {
 }
 
 impl super::super::Observe for Arc<Tapped> {
+    fn origin(&mut self, _origin: &crate::message::Origin) {}
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         self.outcomes
             .lock()

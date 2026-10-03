@@ -1893,6 +1893,7 @@ struct Counting {
 }
 
 impl rig_core::serve::Recorder for Counting {
+    fn origin(&self, _id: EffectId, _origin: &rig_core::message::Origin) {}
     fn adapter_context(
         &self,
         id: rig_core::effect::EffectId,

@@ -35,6 +35,7 @@ struct Seen {
 }
 struct Observer(Arc<Mutex<Seen>>);
 impl Observe for Observer {
+    fn origin(&mut self, _origin: &rig_core::message::Origin) {}
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         self.0
             .lock()

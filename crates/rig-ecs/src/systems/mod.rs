@@ -2590,7 +2590,7 @@ fn reprompt_for(
             let feedback = reprompt_missing_fields(name, &missing);
             let reprompt = MessageParts::User {
                 content: vec![UserContent::ToolResult(
-                    call.result(vec![ToolResultContent::text(feedback)]),
+                    call.error_result(vec![ToolResultContent::text(feedback)]),
                 )],
             };
             Some((reprompt, vec![ToolResultStatus::Skipped]))

@@ -1350,8 +1350,9 @@ impl ChatDecoder {
 
     /// Finish the call at wire `index`, through [`CallKind::of`], with the
     /// call as its native; with `probe`, only when its arguments are already
-    /// a complete object. A call the output budget cut short closes with no
-    /// native: the provider never stated it complete. A custom call's
+    /// a complete object. A call the output budget cut short before its
+    /// arguments were a whole object closes with no native: the provider
+    /// never stated it complete. A custom call's
     /// arguments are its `{"input"}`; a call of a kind rig cannot answer is
     /// kept as an item that is never sent back.
     #[deny(clippy::wildcard_enum_match_arm)]
@@ -1387,7 +1388,11 @@ impl ChatDecoder {
         let closed = if probe {
             out.close_if_complete(index)?
         } else if cut {
-            out.close(index)?;
+            // Arguments that are already a whole object were stated whole,
+            // budget or not; only a call the cut left unfinished has no item.
+            if !out.close_if_complete(index)? {
+                out.close(index)?;
+            }
             true
         } else {
             out.finish(index)?;

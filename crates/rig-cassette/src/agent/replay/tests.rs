@@ -791,9 +791,13 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     let (seen, kept) = record(EffectLogRecorder::keeping_stream_events()).await;
     let recorded = kept[0].events.as_ref().expect("events kept");
     assert_eq!(
-        recorded.len() + 1,
+        recorded.len() + 2,
         seen,
-        "every item the consumer received, then the response"
+        "the origin, every item the consumer received, then the response"
+    );
+    assert!(
+        kept[0].stream_origin.is_some(),
+        "the stream's origin is kept"
     );
     assert!(
         matches!(kept[0].outcome, Ok(Outcome::Completion(_))),
@@ -1028,6 +1032,8 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     super::register_all(&log, &mut driver).expect("fresh keys");
     let _task = spawn(driver);
     let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+    let origin = within(stream.next()).await.expect("the stream's origin");
+    assert!(matches!(origin, Ok(Relayed::Origin(_))), "{origin:?}");
     let replayed = within(stream.next()).await.expect("the recorded event");
     assert_eq!(replayed.expect("the event"), Relayed::Item(first));
     let then = within(stream.next()).await.expect("then the error");

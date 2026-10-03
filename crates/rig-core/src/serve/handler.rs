@@ -203,8 +203,10 @@ pub trait Observe: Send + Sync {
     fn event(&mut self, item: &Item<StreamEvent>);
     /// An error item in a kept stream.
     fn stream_error(&mut self, _error: &ErrorReport) {}
-    /// Who a streamed reply is from, before its first item.
-    fn origin(&mut self, _origin: &crate::message::Origin) {}
+    /// Who a streamed reply is from, before its first item. Required, so a
+    /// recording observer cannot drop it: a replayed stream cut short needs
+    /// it to know its origin.
+    fn origin(&mut self, origin: &crate::message::Origin);
     /// Observe one stream item together with its first folded outcome, if any.
     /// Drivers that snapshot recording concurrently with cancellation can override
     /// this operation to make the item and its answer one observation boundary.

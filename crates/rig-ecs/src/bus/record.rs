@@ -246,6 +246,15 @@ impl rig_core::serve::Observe for WorldObserver {
         }
     }
 
+    fn origin(&mut self, origin: &rig_core::message::Origin) {
+        let state = self.observed.lock();
+        if !state.closed
+            && let Some(recording) = &self.recording
+        {
+            recording.origin(self.id, origin);
+        }
+    }
+
     fn event(&mut self, item: &Item<StreamEvent>) {
         let state = self.observed.lock();
         if !state.closed
