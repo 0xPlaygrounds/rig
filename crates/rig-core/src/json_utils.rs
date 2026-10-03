@@ -333,3 +333,95 @@ where
 
 #[cfg(test)]
 mod tests;
+
+/// Lenient reads of a provider reply: each accessor gives `None`, or an
+/// empty slice, for a field that is missing or of another type, and never
+/// fails. Decoders read replies through it, so a field no block or finish
+/// needs can never fail a reply.
+///
+/// ```
+/// use rig_core::json_utils::Lenient;
+/// use serde_json::json;
+///
+/// let reply = json!({"id": "r1", "usage": {"input_tokens": "7"}, "output": null});
+/// assert_eq!(reply.str("id"), Some("r1"));
+/// assert_eq!(reply.at("/usage/input_tokens").and_then(Lenient::as_u64_lenient), Some(7));
+/// assert!(reply.arr("output").is_empty());
+/// ```
+pub trait Lenient {
+    /// The string at `key`.
+    fn str(&self, key: &str) -> Option<&str>;
+    /// The unsigned integer at `key`, from a number or a numeric string.
+    fn u64(&self, key: &str) -> Option<u64>;
+    /// The integer at `key`, from a number or a numeric string.
+    fn i64(&self, key: &str) -> Option<i64>;
+    /// The number at `key`, from a number or a numeric string.
+    fn f64(&self, key: &str) -> Option<f64>;
+    /// The boolean at `key`.
+    fn bool(&self, key: &str) -> Option<bool>;
+    /// The object at `key`.
+    fn obj(&self, key: &str) -> Option<&serde_json::Map<String, serde_json::Value>>;
+    /// The array at `key`, empty when absent or of another type.
+    fn arr(&self, key: &str) -> &[serde_json::Value];
+    /// The value at a JSON pointer, `None` for `null`.
+    fn at(&self, pointer: &str) -> Option<&serde_json::Value>;
+    /// This value as an unsigned integer, from a number or a numeric string.
+    fn as_u64_lenient(&self) -> Option<u64>;
+}
+
+impl Lenient for serde_json::Value {
+    fn str(&self, key: &str) -> Option<&str> {
+        self.get(key)?.as_str()
+    }
+
+    fn u64(&self, key: &str) -> Option<u64> {
+        self.get(key)?.as_u64_lenient()
+    }
+
+    fn i64(&self, key: &str) -> Option<i64> {
+        match self.get(key)? {
+            serde_json::Value::Number(number) => number.as_i64(),
+            serde_json::Value::String(text) => text.trim().parse().ok(),
+            _ => None,
+        }
+    }
+
+    fn f64(&self, key: &str) -> Option<f64> {
+        match self.get(key)? {
+            serde_json::Value::Number(number) => number.as_f64(),
+            serde_json::Value::String(text) => text.trim().parse().ok(),
+            _ => None,
+        }
+    }
+
+    fn bool(&self, key: &str) -> Option<bool> {
+        self.get(key)?.as_bool()
+    }
+
+    fn obj(&self, key: &str) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        self.get(key)?.as_object()
+    }
+
+    fn arr(&self, key: &str) -> &[serde_json::Value] {
+        self.get(key)
+            .and_then(serde_json::Value::as_array)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    fn at(&self, pointer: &str) -> Option<&serde_json::Value> {
+        self.pointer(pointer).filter(|value| !value.is_null())
+    }
+
+    fn as_u64_lenient(&self) -> Option<u64> {
+        match self {
+            serde_json::Value::Number(number) => number.as_u64().or_else(|| {
+                number
+                    .as_f64()
+                    .filter(|float| *float >= 0.0 && float.fract() == 0.0)
+                    .map(|float| float as u64)
+            }),
+            serde_json::Value::String(text) => text.trim().parse().ok(),
+            _ => None,
+        }
+    }
+}

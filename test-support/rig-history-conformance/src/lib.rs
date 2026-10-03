@@ -413,6 +413,7 @@ pub fn sent<F: HistoryFixture>(
 ) -> Result<Value, String> {
     let wire = fixture.wire(model);
     let mut request = CompletionRequest::new("next");
+    request.tools = tools_of(&history);
     request.chat_history = history;
     request.chat_history.push(Message::user("next"));
     let prepared = Completion::prepare(request, &wire.describe()).map_err(|e| e.to_string())?;
@@ -421,12 +422,48 @@ pub fn sent<F: HistoryFixture>(
         .map_err(|error| error.to_string())
 }
 
+/// A definition for every tool `history` calls or answers, as a request
+/// that continues a tool loop declares them.
+pub fn tools_of(history: &[Message]) -> Vec<rig_core::completion::ToolDefinition> {
+    let mut names: Vec<ToolName> = Vec::new();
+    for message in history {
+        let found: Vec<ToolName> = match message {
+            Message::Assistant(turn) => turn
+                .tool_calls()
+                .map(|call| call.function.name.clone())
+                .collect(),
+            Message::User { content } => content
+                .iter()
+                .filter_map(|part| match part {
+                    UserContent::ToolResult(result) => Some(result.name.clone()),
+                    _ => None,
+                })
+                .collect(),
+            Message::System { .. } => Vec::new(),
+        };
+        for name in found {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    names
+        .into_iter()
+        .map(|name| rig_core::completion::ToolDefinition {
+            name,
+            description: "a tool the history calls".to_owned(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+        })
+        .collect()
+}
+
 /// `history`, which ends in a user message, as the adapter shapes it for
 /// `model` on the fixture's wire, read from the request the driver
 /// prepares.
 fn adapted<F: HistoryFixture>(fixture: &F, model: &str, history: &[Message]) -> Vec<Message> {
     let wire = fixture.wire(model);
     let mut request = CompletionRequest::new("next").model(model);
+    request.tools = tools_of(history);
     request.chat_history = history.to_vec();
     Completion::prepare(request, &wire.describe())
         .unwrap_or_else(|error| panic!("the history prepares for {model}: {error}"))

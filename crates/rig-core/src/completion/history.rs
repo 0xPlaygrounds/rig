@@ -409,10 +409,6 @@ pub(crate) fn adapt_for(
                         .content
                         .into_iter()
                         .map(|block| match block {
-                            // The capability holds for the model's own turns too.
-                            AssistantContent::Image(_) if !accepts.assistant_images => {
-                                AssistantContent::Text(Text::new(ASSISTANT_IMAGE_OMITTED))
-                            }
                             AssistantContent::Image(image) if image.native.is_none() => {
                                 let image = sendable_image(image);
                                 if matches!(image.data, DocumentSourceKind::Unknown)
@@ -561,6 +557,9 @@ fn assistant(
                         call.id = ids.claim(&call.id, wanted);
                         AssistantContent::ToolCall(call)
                     }
+                    // The capability holds for the model's own turns too: an
+                    // image it made but does not read back is left out.
+                    AssistantContent::Image(_) if !accepts.assistant_images => return None,
                     block => block,
                 }
             } else {
