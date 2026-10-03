@@ -12,8 +12,8 @@ use base64::prelude::BASE64_STANDARD;
 use rig_core::completion::{CompletionRequest, Message, Replay};
 use rig_core::error::EncodeError;
 use rig_core::message::{
-    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
-    ToolChoice, ToolResultContent, UserContent, Video, VideoMediaType,
+    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, MimeType, ToolChoice,
+    ToolResultContent, UserContent, Video,
 };
 use rig_core::providers::internal::wire_ids::WireIds;
 use serde_json::{Value, json};
@@ -312,36 +312,31 @@ fn source(data: &DocumentSourceKind) -> Result<(Value, Vec<u8>), EncodeError> {
     Ok((json!({ "bytes": BASE64_STANDARD.encode(&bytes) }), bytes))
 }
 
-/// A Converse media block in `format`, which `None` says Converse does
-/// not list.
-fn media(format: Option<&str>, data: &DocumentSourceKind) -> Result<Value, EncodeError> {
-    let format =
-        format.ok_or_else(|| EncodeError::request("Converse takes no media in this format"))?;
+/// A Converse media block of `data` in the format the MIME subtype of
+/// `mime` names, when Converse lists it.
+fn media(
+    mime: Option<&str>,
+    listed: &[&str],
+    data: &DocumentSourceKind,
+) -> Result<Value, EncodeError> {
+    let format = mime
+        .and_then(|mime| mime.split_once('/'))
+        .map(|(_, format)| format)
+        .filter(|format| listed.contains(format))
+        .ok_or_else(|| EncodeError::request("Converse takes no media in this format"))?;
     Ok(json!({ "format": format, "source": source(data)?.0 }))
 }
 
 /// The Converse image block for `image`: PNG, JPEG, GIF or WEBP.
 pub(crate) fn image(image: &Image) -> Result<Value, EncodeError> {
-    let format = match &image.media_type {
-        Some(ImageMediaType::JPEG) => Some("jpeg"),
-        Some(ImageMediaType::PNG) => Some("png"),
-        Some(ImageMediaType::GIF) => Some("gif"),
-        Some(ImageMediaType::WEBP) => Some("webp"),
-        _ => None,
-    };
-    media(format, &image.data)
+    let mime = image.media_type.as_ref().map(MimeType::to_mime_type);
+    media(mime, &["jpeg", "png", "gif", "webp"], &image.data)
 }
 
 /// The Converse video block for `video`, in a format Converse lists.
 pub(crate) fn video(video: &Video) -> Result<Value, EncodeError> {
-    let format = match &video.media_type {
-        Some(VideoMediaType::MP4) => Some("mp4"),
-        Some(VideoMediaType::MPEG) => Some("mpeg"),
-        Some(VideoMediaType::MOV) => Some("mov"),
-        Some(VideoMediaType::WEBM) => Some("webm"),
-        _ => None,
-    };
-    media(format, &video.data)
+    let mime = video.media_type.as_ref().map(MimeType::to_mime_type);
+    media(mime, &["mp4", "mpeg", "mov", "webm"], &video.data)
 }
 
 /// The Converse document block for `document`. A text format Converse does
@@ -349,17 +344,17 @@ pub(crate) fn video(video: &Video) -> Result<Value, EncodeError> {
 /// is byte-stable across turns and runs, which prompt-cache prefixes and
 /// recorded replays rely on.
 pub(crate) fn document(document: &Document) -> Result<Value, EncodeError> {
-    let format = document
+    let mime = document
         .media_type
         .as_ref()
         .map(|media_type| match media_type {
-            DocumentMediaType::PDF => "pdf",
-            DocumentMediaType::HTML => "html",
-            DocumentMediaType::MARKDOWN => "md",
-            DocumentMediaType::CSV => "csv",
-            _ => "txt",
+            DocumentMediaType::PDF | DocumentMediaType::HTML | DocumentMediaType::CSV => {
+                media_type.to_mime_type()
+            }
+            DocumentMediaType::MARKDOWN => "text/md",
+            _ => "text/txt",
         });
-    let mut block = media(format, &document.data)?;
+    let mut block = media(mime, &["pdf", "html", "csv", "md", "txt"], &document.data)?;
     let (_, bytes) = source(&document.data)?;
     let digest: String = Sha256::digest(&bytes)
         .iter()

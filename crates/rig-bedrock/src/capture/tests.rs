@@ -51,14 +51,14 @@ fn events_read_whole_messages_across_chunks() {
     );
 }
 
-/// The capture hands out what was read since its last take, once.
-#[test]
-fn a_capture_takes_what_it_read() {
-    let capture = Capture::new(Vec::new());
-    lock(&capture.read).extend_from_slice(br#"{"stopReason":"end_turn"}"#);
-    assert_eq!(
-        capture.document(),
-        Some(json!({ "stopReason": "end_turn" }))
-    );
-    assert!(capture.take().is_empty());
+/// A body reads as the bytes it carries, then ends.
+#[tokio::test]
+async fn a_body_reads_as_its_bytes() {
+    let mut body = SdkBody::from(r#"{"stopReason":"end_turn"}"#);
+    let mut read = Vec::new();
+    while let Some(bytes) = chunk(&mut body).await {
+        read.extend(bytes.expect("bytes"));
+    }
+    assert_eq!(read, br#"{"stopReason":"end_turn"}"#);
+    assert!(Capture::new(Vec::new()).reply().is_none());
 }

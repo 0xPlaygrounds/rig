@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::client::BedrockRuntime;
 use crate::completion::PROVIDER_NAME;
 use crate::types::errors::sdk_error;
+use rig_core::Model;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +51,17 @@ pub const COHERE_EMBED_MULTILINGUAL_V3: &str = "cohere.embed-multilingual-v3";
 pub struct Embeddings {
     pub model: String,
     pub ndims: Option<usize>,
+}
+
+impl BedrockRuntime {
+    /// The embedding model for `model`, `ndims` wide when set.
+    pub fn embedding(
+        &self,
+        model: impl Into<String>,
+        ndims: Option<usize>,
+    ) -> Model<Embeddings, Self> {
+        Model::new(Embeddings::new(model, ndims), self.clone())
+    }
 }
 
 impl Embeddings {

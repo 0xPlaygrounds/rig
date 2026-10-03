@@ -1,13 +1,12 @@
 //! The HTTP bodies of one Converse call, at the SDK's boundary: the request
 //! body this crate built goes out in place of the SDK's serialization, and
-//! a copy of the response body the SDK reads comes back, so a reply is the
-//! JSON Bedrock sent rather than a re-serialization of the SDK's types. A
-//! unary body is one JSON document; a stream's body is event-stream
-//! messages, each carrying one event's or exception's JSON.
+//! a successful reply's body is read here rather than by the SDK, so a
+//! reply is the JSON Bedrock sent rather than a re-serialization of the
+//! SDK's types. A unary body is one JSON document; a stream's body is
+//! event-stream messages, each carrying one event's or exception's JSON.
 
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::task::{Context, Poll};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use aws_smithy_eventstream::frame::{DecodedFrame, MessageFrameDecoder};
 use aws_smithy_runtime_api::box_error::BoxError;
@@ -20,15 +19,16 @@ use aws_smithy_types::body::SdkBody;
 use aws_smithy_types::config_bag::ConfigBag;
 use aws_smithy_types::event_stream::Message;
 use bytes::{Bytes, BytesMut};
-use http_body::{Body, Frame, SizeHint};
+use http_body::Body;
+use rig_core::error::ProviderError;
 use serde_json::Value;
 
-/// An interceptor that sends `body` and keeps a copy of each response body
-/// the SDK reads.
+/// An interceptor that sends `body` and takes a successful reply's body
+/// from the SDK.
 #[derive(Clone, Debug)]
 pub(crate) struct Capture {
     body: Bytes,
-    read: Arc<Mutex<Vec<u8>>>,
+    reply: Arc<Mutex<Option<SdkBody>>>,
 }
 
 impl Capture {
@@ -36,23 +36,28 @@ impl Capture {
     pub(crate) fn new(body: Vec<u8>) -> Self {
         Self {
             body: Bytes::from(body),
-            read: Arc::default(),
+            reply: Arc::default(),
         }
     }
 
-    /// The body bytes read since the last call.
-    pub(crate) fn take(&self) -> Vec<u8> {
-        std::mem::take(&mut *lock(&self.read))
-    }
-
-    /// The whole body read so far as JSON, when it is JSON.
-    pub(crate) fn document(&self) -> Option<Value> {
-        serde_json::from_slice(&self.take()).ok()
+    /// The successful reply's body, once.
+    pub(crate) fn reply(&self) -> Option<SdkBody> {
+        self.reply
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
     }
 }
 
-fn lock(bytes: &Mutex<Vec<u8>>) -> MutexGuard<'_, Vec<u8>> {
-    bytes.lock().unwrap_or_else(PoisonError::into_inner)
+/// The next bytes of `body`, as they arrive.
+pub(crate) async fn chunk(body: &mut SdkBody) -> Option<Result<Bytes, ProviderError>> {
+    let frame = std::future::poll_fn(|cx| Pin::new(&mut *body).poll_frame(cx)).await?;
+    Some(match frame {
+        Ok(frame) => Ok(frame.into_data().unwrap_or_default()),
+        Err(error) => Err(ProviderError::Http(
+            rig_core::http_client::Error::instance(std::io::Error::other(error)).into(),
+        )),
+    })
 }
 
 impl Intercept for Capture {
@@ -75,58 +80,23 @@ impl Intercept for Capture {
         Ok(())
     }
 
-    /// Each attempt's body replaces the copy of the one before it.
+    /// A success's body is this crate's to read; the SDK reads an error's.
     fn modify_before_deserialization(
         &self,
         context: &mut BeforeDeserializationInterceptorContextMut<'_>,
         _runtime_components: &RuntimeComponents,
         _cfg: &mut ConfigBag,
     ) -> Result<(), BoxError> {
-        lock(&self.read).clear();
         let response = context.response_mut();
-        let body = response.take_body();
-        *response.body_mut() = SdkBody::from_body_1_x(Tee {
-            body,
-            sink: Arc::clone(&self.read),
-        });
+        if response.status().is_success() {
+            let body = std::mem::replace(response.body_mut(), SdkBody::empty());
+            *self.reply.lock().unwrap_or_else(PoisonError::into_inner) = Some(body);
+        }
         Ok(())
     }
 }
 
-/// A body that copies each data frame it passes on into `sink`.
-struct Tee {
-    body: SdkBody,
-    sink: Arc<Mutex<Vec<u8>>>,
-}
-
-impl Body for Tee {
-    type Data = Bytes;
-    type Error = aws_smithy_types::body::Error;
-
-    fn poll_frame(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<Frame<Bytes>, Self::Error>>> {
-        let this = self.get_mut();
-        let polled = Pin::new(&mut this.body).poll_frame(cx);
-        if let Poll::Ready(Some(Ok(frame))) = &polled
-            && let Some(data) = frame.data_ref()
-        {
-            lock(&this.sink).extend_from_slice(data);
-        }
-        polled
-    }
-
-    fn is_end_stream(&self) -> bool {
-        Body::is_end_stream(&self.body)
-    }
-
-    fn size_hint(&self) -> SizeHint {
-        Body::size_hint(&self.body)
-    }
-}
-
-/// Reads a stream's captured bytes into its messages' JSON.
+/// Reads a stream's bytes into its messages' JSON.
 #[derive(Default)]
 pub(crate) struct Events {
     buffer: BytesMut,

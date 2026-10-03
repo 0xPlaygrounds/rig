@@ -13,6 +13,7 @@ use crate::completion::PROVIDER_NAME;
 use crate::types::errors::sdk_error;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
+use rig_core::Model;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
@@ -32,6 +33,13 @@ pub const STABILITY_STABLE_IMAGE_ULTRA_1_0: &str = "stability.stable-image-ultra
 #[derive(Clone, Debug, PartialEq)]
 pub struct Images {
     pub model: String,
+}
+
+impl BedrockRuntime {
+    /// The image-generation model for `model`.
+    pub fn image_generation(&self, model: impl Into<String>) -> Model<Images, Self> {
+        Model::new(Images::new(model), self.clone())
+    }
 }
 
 impl Images {

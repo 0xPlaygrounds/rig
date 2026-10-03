@@ -50,19 +50,6 @@ pub(crate) fn exception(kind: &str, payload: &serde_json::Value) -> ProviderErro
     )
 }
 
-/// Converts a stream the SDK could not read on, which no exception message
-/// explained.
-pub(crate) fn stream_error<E: ProvideErrorMetadata, R>(error: SdkError<E, R>) -> ProviderError {
-    let message = error.message().map(str::to_owned);
-    reply(
-        message,
-        error.code().map(str::to_owned),
-        None,
-        None,
-        STREAM_FAILED,
-    )
-}
-
 const STREAM_FAILED: &str = "Bedrock event stream failed";
 
 /// The trimmed, nonempty UTF-8 body the SDK retained. It carries the

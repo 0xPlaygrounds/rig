@@ -13,6 +13,8 @@
 //! # let _ = model;
 //! ```
 
+use aws_sdk_bedrockruntime::config::http::HttpResponse;
+use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
 use aws_sdk_bedrockruntime::types::GuardrailTrace;
 use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTarget};
@@ -24,11 +26,11 @@ use rig_core::operation::Completion;
 use rig_core::wire::{Descriptor, Mode, Wire};
 use serde_json::{Value, json};
 
-use crate::capture::{Capture, Events};
+use crate::capture::{self, Capture, Events};
 use crate::client::BedrockRuntime;
 use crate::request;
 use crate::streaming::StreamState;
-use crate::types::errors::{sdk_error, stream_error};
+use crate::types::errors::sdk_error;
 
 /// Stable descriptor name reported on normalized Bedrock responses.
 pub const PROVIDER_NAME: &str = "aws_bedrock";
@@ -351,6 +353,20 @@ impl ReplayTarget for Converse {
     }
 }
 
+/// The request id of a sent Converse call, and its failure, if the SDK
+/// read one.
+fn sent<O: RequestId, E: ProvideErrorMetadata>(
+    sent: Result<O, SdkError<E, HttpResponse>>,
+) -> (Option<String>, Option<ProviderError>) {
+    match sent {
+        Ok(output) => (output.request_id().map(str::to_owned), None),
+        Err(error) => (
+            error.request_id().map(str::to_owned),
+            Some(sdk_error(error)),
+        ),
+    }
+}
+
 impl Transport<Converse> for BedrockRuntime {
     fn send(&self, payload: ConverseRequest, exchange: Exchange) -> Opening<ConverseFrame> {
         let ConverseRequest { model, body } = payload;
@@ -361,31 +377,29 @@ impl Transport<Converse> for BedrockRuntime {
         let runtime = self.clone();
         Opening::new(async move {
             let client = runtime.inner().await;
-            if exchange.mode == Mode::Unary {
-                let sent = client
-                    .converse()
-                    .model_id(model)
-                    .customize()
-                    .interceptor(capture.clone())
-                    .send()
-                    .await;
-                // The SDK reads a reply strictly, and a field of an
-                // unexpected type fails the whole of it; a success is decoded
-                // from its JSON either way.
-                let request_id = match sent {
-                    Ok(output) => output.request_id().map(str::to_owned),
-                    Err(error) => {
-                        let read = error
-                            .raw_response()
-                            .filter(|raw| raw.status().is_success())
-                            .map(|raw| raw.headers().get("x-amzn-requestid").map(str::to_owned));
-                        match read {
-                            Some(request_id) => request_id,
-                            None => return Ok(Opened::failed(sdk_error(error))),
-                        }
-                    }
-                };
-                let Some(document) = capture.document() else {
+            let unary = exchange.mode == Mode::Unary;
+            let interceptor = capture.clone();
+            let (request_id, failure) = if unary {
+                let call = client.converse().model_id(model).customize();
+                sent(call.interceptor(interceptor).send().await)
+            } else {
+                let call = client.converse_stream().model_id(model).customize();
+                sent(call.interceptor(interceptor).send().await)
+            };
+            // A success's body is never the SDK's to read, so the SDK fails a
+            // unary call it could not deserialize; the reply is decoded here.
+            let Some(mut body) = capture.reply() else {
+                let failure = failure.unwrap_or_else(|| {
+                    ProviderError::Response("Converse sent no reply".to_owned())
+                });
+                return Ok(Opened::failed(failure));
+            };
+            if unary {
+                let mut bytes = Vec::new();
+                while let Some(chunk) = capture::chunk(&mut body).await {
+                    bytes.extend(chunk?);
+                }
+                let Ok(document) = serde_json::from_slice::<Value>(&bytes) else {
                     return Ok(Opened::failed(ProviderError::Response(
                         "Converse sent a reply that is not JSON".to_owned(),
                     )));
@@ -395,34 +409,17 @@ impl Transport<Converse> for BedrockRuntime {
                     .with_request_id(request_id)
                     .with_document(document));
             }
-            let sent = client
-                .converse_stream()
-                .model_id(model)
-                .customize()
-                .interceptor(capture.clone())
-                .send()
-                .await;
-            let mut response = match sent {
-                Ok(response) => response,
-                Err(error) => return Ok(Opened::failed(sdk_error(error))),
-            };
-            // Events do not carry the request id: it is the operation's
-            // metadata.
-            let request_id = response.request_id().map(str::to_owned);
             let frames = async_stream::stream! {
                 let mut events = Events::default();
-                loop {
-                    // The SDK reads the body; each event is read from the
-                    // bytes it read, an exception message included.
-                    let received = response.stream.recv().await;
-                    for event in events.read(&capture.take()) {
-                        yield Ok(ConverseFrame::Event(event));
-                    }
-                    match received {
-                        Ok(Some(_)) => {}
-                        Ok(None) => break,
+                while let Some(chunk) = capture::chunk(&mut body).await {
+                    match chunk {
+                        Ok(chunk) => {
+                            for event in events.read(&chunk) {
+                                yield Ok(ConverseFrame::Event(event));
+                            }
+                        }
                         Err(error) => {
-                            yield Err(stream_error(error));
+                            yield Err(error);
                             break;
                         }
                     }
