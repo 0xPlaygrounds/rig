@@ -863,8 +863,11 @@ fn finalize_mistral(map: &mut Map<String, Value>) {
             message
                 .entry("content")
                 .or_insert_with(|| Value::String(String::new()));
-        } else if let Some(content) = message.get_mut("content") {
-            mistral_content(content);
+        } else {
+            let user = message.get("role").and_then(Value::as_str) == Some("user");
+            if let Some(content) = message.get_mut("content") {
+                mistral_content(content, user);
+            }
         }
     }
 }
@@ -902,9 +905,11 @@ fn mistral_chunk(part: &Value) -> Value {
     }
 }
 
-/// Flatten a text-only part array to a string, and convert a mixed one to
-/// Mistral content chunks. Anything else stays as it is.
-fn mistral_content(content: &mut Value) {
+/// A part array as Mistral content: a lone text part as a string, a
+/// user's parts as one chunk each (pi keeps them apart), another role's
+/// text joined by newlines, and a mixed array as chunks. Anything else
+/// stays as it is.
+fn mistral_content(content: &mut Value, user: bool) {
     let Some(parts) = content.as_array_mut() else {
         return;
     };
@@ -913,8 +918,8 @@ fn mistral_content(content: &mut Value) {
         Some(_) => false,
         None => part_text(part).is_some(),
     };
-    if parts.iter().all(textual) {
-        flatten_text_content_parts(content, "", false);
+    if parts.iter().all(textual) && (parts.len() < 2 || !user) {
+        flatten_text_content_parts(content, "\n", false);
         return;
     }
     for part in parts {
@@ -1146,6 +1151,29 @@ impl crate::completion::ReplayTarget for Chat {
     /// In array mode a result's parts go as an array.
     fn result_parts(&self, _model: &str) -> bool {
         self.tool_result_array_content
+    }
+
+    /// A Chat message needs content or calls, as pi's rebuild does: text
+    /// only when it is not empty or its item carries audio, reasoning only
+    /// as a content part (Mistral's thinking), an opaque item only as a
+    /// typed part, and never an image.
+    fn sends_alone(&self, block: &AssistantContent) -> bool {
+        let ids = crate::providers::internal::wire_ids::WireIds::default();
+        match (block, block.replay(self, &ids)) {
+            (AssistantContent::ToolCall(_), _) => true,
+            (AssistantContent::Text(text), Replay::Item(item)) => {
+                !text.text.is_empty() || item.get("audio").is_some()
+            }
+            (AssistantContent::Text(text), _) => !text.text.is_empty(),
+            (AssistantContent::Reasoning(_), Replay::Item(item)) => item.get("type").is_some(),
+            (AssistantContent::Reasoning(_), Replay::Identity(identity)) => {
+                identity.get("type").and_then(Value::as_str) == Some("thinking")
+            }
+            (AssistantContent::Opaque(opaque), _) => opaque.item.get("type").is_some(),
+            (AssistantContent::Reasoning(_), Replay::Rebuild) | (AssistantContent::Image(_), _) => {
+                false
+            }
+        }
     }
 }
 

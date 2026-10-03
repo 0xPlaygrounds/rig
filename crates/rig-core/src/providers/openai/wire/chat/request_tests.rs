@@ -429,7 +429,8 @@ fn rig_issued_ids_are_spelled_once_per_request() {
 }
 
 /// A reasoning-only turn is no message (pi skips one with neither content
-/// nor calls), and an unedited block's own field replays beside the text.
+/// nor calls), so the user messages around it become one, and an unedited
+/// block's own field replays beside the text.
 #[test]
 fn reasoning_replays_under_its_own_field() {
     let origin = crate::message::Origin::new("openai.chat", "openai", "gpt-4o-mini");
@@ -449,7 +450,10 @@ fn reasoning_replays_under_its_own_field() {
     ]));
     assert_eq!(
         alone["messages"],
-        json!([{"role": "user", "content": "q"}, {"role": "user", "content": "again"}])
+        json!([{"role": "user", "content": [
+            {"type": "text", "text": "q"},
+            {"type": "text", "text": "again"}
+        ]}])
     );
     let beside = body(CompletionRequest::from(vec![
         Message::user("q"),

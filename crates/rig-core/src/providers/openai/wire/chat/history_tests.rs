@@ -1260,3 +1260,59 @@ fn index_less_id_less_calls_split_once_whole() {
         response.choice
     );
 }
+
+/// R6-NEW-7: a same-model turn of only reasoning makes no Chat message
+/// (pi skips one with neither content nor calls), so `adapt` drops it and
+/// the user messages around it become one; a Mistral thinking part is
+/// content, so a thinking-only Mistral turn still goes back.
+#[test]
+fn a_turn_with_nothing_chat_can_send_leaves_no_adjacent_users() {
+    let roles = |body: &Value| -> Vec<String> {
+        body["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|message| message["role"].as_str().map(str::to_owned))
+            .collect()
+    };
+    let llama = wire(&LLAMACPP, "qwen3");
+    let reasoning_only = decode(
+        &llama,
+        Mode::Unary,
+        vec![whole(
+            json!({"role": "assistant", "content": "", "reasoning_content": "Let me think"}),
+            "length",
+        )],
+    )
+    .expect("the reply decodes");
+    assert_eq!(reasoning_only.stop(), StopReason::Length);
+    let body = sent(
+        &llama,
+        vec![
+            Message::user("q"),
+            Message::Assistant(turn_of(&reasoning_only)),
+        ],
+    );
+    assert_eq!(roles(&body), ["user"], "{body}");
+
+    let mistral = wire(&MISTRAL, "magistral-medium-latest");
+    let thinking_only = decode(
+        &mistral,
+        Mode::Unary,
+        vec![whole(
+            json!({"role": "assistant", "content": [
+                {"type": "thinking", "thinking": [{"type": "text", "text": "plan"}]}
+            ]}),
+            "length",
+        )],
+    )
+    .expect("the reply decodes");
+    let body = sent(
+        &mistral,
+        vec![
+            Message::user("q"),
+            Message::Assistant(turn_of(&thinking_only)),
+        ],
+    );
+    assert_eq!(roles(&body), ["user", "assistant", "user"], "{body}");
+}

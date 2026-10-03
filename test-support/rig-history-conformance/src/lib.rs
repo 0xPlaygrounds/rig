@@ -2043,6 +2043,8 @@ pub fn h17_generated_histories<F: HistoryFixture>(fixture: &F) {
         let mut problems = generated::pairing(&body);
         if fixture.strict_roles() {
             problems.extend(generated::alternation(&body));
+        } else {
+            problems.extend(generated::adjacent_users(&body));
         }
         problems
     };

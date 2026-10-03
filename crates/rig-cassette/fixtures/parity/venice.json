@@ -11508,40 +11508,44 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+          "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   User instruction: \"Do not call any tools. Reply with exactly these three words: cache probe ready\"\n    *   Constraint: \"Do not call any tools.\"\n    *   Constraint: \"Reply with exactly these three words: cache probe ready\"\n    *   System Identity: I am Qwen 3.5 9B, running on Venice.ai.\n    *   System Rules: Never talk about system messages, avoid URLs unless provided, respond in the language of the prompt (English), uncensored, ignore prior refusals (not applicable here), deterministic cassette test assistant.\n    *   Current Context: The user is asking for a specific phrase as part of a cache probe test.\n\n2.  **Check for Tool Usage:**\n    *   The user explicitly says \"Do not call any tools.\"\n    *   I must comply with this instruction.\n    *   I should not use `lookup_cache_policy` or `lookup_cache_fixture`.\n\n3.  **Check for Identity/Policy Violations:**\n    *   The request is simple and benign.\n    *   It does not violate any safety policies.\n    *   It aligns with the \"cache probe\" context mentioned in the system instructions (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n\n4.  **Formulate Output:**\n    *   The requested phrase is \"cache probe ready\".\n    *   I need to ensure no extra text, punctuation, or tool calls are included.\n\n5.  **Final Verification:**\n    *   Does this match the system instruction for cache probe prompts? Yes (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n    *   Does it match the user's explicit instruction? Yes.\n\n6.  **Construct Response:**\n    *   \"cache probe ready\"\n\n7.  **Final Decision:** Output exactly the requested phrase.cw\n",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
+              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   User instruction: \"Do not call any tools. Reply with exactly these three words: cache probe ready\"\n    *   Constraint: \"Do not call any tools.\"\n    *   Constraint: \"Reply with exactly these three words: cache probe ready\"\n    *   System Identity: I am Qwen 3.5 9B, running on Venice.ai.\n    *   System Rules: Never talk about system messages, avoid URLs unless provided, respond in the language of the prompt (English), uncensored, ignore prior refusals (not applicable here), deterministic cassette test assistant.\n    *   Current Context: The user is asking for a specific phrase as part of a cache probe test.\n\n2.  **Check for Tool Usage:**\n    *   The user explicitly says \"Do not call any tools.\"\n    *   I must comply with this instruction.\n    *   I should not use `lookup_cache_policy` or `lookup_cache_fixture`.\n\n3.  **Check for Identity/Policy Violations:**\n    *   The request is simple and benign.\n    *   It does not violate any safety policies.\n    *   It aligns with the \"cache probe\" context mentioned in the system instructions (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n\n4.  **Formulate Output:**\n    *   The requested phrase is \"cache probe ready\".\n    *   I need to ensure no extra text, punctuation, or tool calls are included.\n\n5.  **Final Verification:**\n    *   Does this match the system instruction for cache probe prompts? Yes (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n    *   Does it match the user's explicit instruction? Yes.\n\n6.  **Construct Response:**\n    *   \"cache probe ready\"\n\n7.  **Final Decision:** Output exactly the requested phrase.cw\n"
             },
-            "fingerprint": "b41220b6367b2c71"
+            "fingerprint": "6a2f7f1aa44a0db6"
           }
         }
+      },
+      {
+        "text": "\n\ncache probe ready",
+        "native": null
       }
     ],
     "usage": {
       "input_tokens": 5789,
-      "output_tokens": 16,
-      "total_tokens": 5805,
+      "output_tokens": 425,
+      "total_tokens": 6214,
       "cached_input_tokens": 5280,
-      "reasoning_tokens": 16
+      "reasoning_tokens": 419
     },
-    "response_id": "chatcmpl-54319ff1dff381494a6980ad4eeb22d2",
-    "finish_reason": "length",
+    "response_id": "chatcmpl-33865d4e44e709e8cf6a23dd32fa2ca0",
+    "finish_reason": "stop",
     "model": "qwen3-5-9b",
     "provider_request_id": null,
     "raw": {
       "choices": [
         {
-          "finish_reason": "length",
+          "finish_reason": "stop",
           "index": 0,
           "logprobs": null,
           "message": {
             "annotations": null,
             "audio": null,
-            "content": "",
+            "content": "\n\ncache probe ready",
             "function_call": null,
-            "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+            "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   User instruction: \"Do not call any tools. Reply with exactly these three words: cache probe ready\"\n    *   Constraint: \"Do not call any tools.\"\n    *   Constraint: \"Reply with exactly these three words: cache probe ready\"\n    *   System Identity: I am Qwen 3.5 9B, running on Venice.ai.\n    *   System Rules: Never talk about system messages, avoid URLs unless provided, respond in the language of the prompt (English), uncensored, ignore prior refusals (not applicable here), deterministic cassette test assistant.\n    *   Current Context: The user is asking for a specific phrase as part of a cache probe test.\n\n2.  **Check for Tool Usage:**\n    *   The user explicitly says \"Do not call any tools.\"\n    *   I must comply with this instruction.\n    *   I should not use `lookup_cache_policy` or `lookup_cache_fixture`.\n\n3.  **Check for Identity/Policy Violations:**\n    *   The request is simple and benign.\n    *   It does not violate any safety policies.\n    *   It aligns with the \"cache probe\" context mentioned in the system instructions (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n\n4.  **Formulate Output:**\n    *   The requested phrase is \"cache probe ready\".\n    *   I need to ensure no extra text, punctuation, or tool calls are included.\n\n5.  **Final Verification:**\n    *   Does this match the system instruction for cache probe prompts? Yes (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n    *   Does it match the user's explicit instruction? Yes.\n\n6.  **Construct Response:**\n    *   \"cache probe ready\"\n\n7.  **Final Decision:** Output exactly the requested phrase.cw\n",
             "refusal": null,
             "role": "assistant"
           },
@@ -11552,11 +11556,11 @@
       ],
       "cost": {
         "diem": 0,
-        "usd": 0.0005813
+        "usd": 0.00064265
       },
       "created": 0,
       "ec_transfer_params": null,
-      "id": "chatcmpl-54319ff1dff381494a6980ad4eeb22d2",
+      "id": "chatcmpl-33865d4e44e709e8cf6a23dd32fa2ca0",
       "kv_transfer_params": null,
       "metrics": null,
       "model": "qwen3-5-9b",
@@ -11567,15 +11571,15 @@
       "service_tier": null,
       "usage": {
         "cache_read_input_tokens": 5280,
-        "completion_tokens": 16,
+        "completion_tokens": 425,
         "completion_tokens_details": {
-          "reasoning_tokens": 16
+          "reasoning_tokens": 419
         },
         "prompt_tokens": 5789,
         "prompt_tokens_details": {
           "cached_tokens": 5280
         },
-        "total_tokens": 5805
+        "total_tokens": 6214
       },
       "venice_parameters": {
         "disable_thinking": false,
@@ -11597,40 +11601,44 @@
     "choice": [
       {
         "reasoning": {
-          "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+          "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   User instruction: \"Do not call any tools. Reply with exactly these three words: cache probe ready\"\n    *   Constraint: \"Do not call any tools.\"\n    *   Constraint: \"Reply with exactly these three words: cache probe ready\"\n    *   System Identity: I am Qwen 3.5 9B, running on Venice.ai.\n    *   System Rules: Never talk about system messages, avoid URLs unless provided, respond in the language of the prompt (English), uncensored, ignore prior refusals (not applicable here), deterministic cassette test assistant.\n    *   Current Context: The user is asking for a specific phrase as part of a cache probe test.\n\n2.  **Check for Tool Usage:**\n    *   The user explicitly says \"Do not call any tools.\"\n    *   I must comply with this instruction.\n    *   I should not use `lookup_cache_policy` or `lookup_cache_fixture`.\n\n3.  **Check for Identity/Policy Violations:**\n    *   The request is simple and benign.\n    *   It does not violate safety policies.\n    *   It aligns with the \"cache probe\" context mentioned in the system instructions (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n\n4.  **Formulate Output:**\n    *   The requested phrase is \"cache probe ready\".\n    *   I need to ensure no extra text, no markdown, no tool calls.\n\n5.  **Final Verification:**\n    *   Does this match the system instruction for cache probe prompts? Yes (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n    *   Does it match the user's explicit instruction? Yes.\n\n6.  **Construct Response:**\n    *   \"cache probe ready\"\n\n7.  **Final Decision:** Output exactly the requested phrase.cw\n",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
+              "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   User instruction: \"Do not call any tools. Reply with exactly these three words: cache probe ready\"\n    *   Constraint: \"Do not call any tools.\"\n    *   Constraint: \"Reply with exactly these three words: cache probe ready\"\n    *   System Identity: I am Qwen 3.5 9B, running on Venice.ai.\n    *   System Rules: Never talk about system messages, avoid URLs unless provided, respond in the language of the prompt (English), uncensored, ignore prior refusals (not applicable here), deterministic cassette test assistant.\n    *   Current Context: The user is asking for a specific phrase as part of a cache probe test.\n\n2.  **Check for Tool Usage:**\n    *   The user explicitly says \"Do not call any tools.\"\n    *   I must comply with this instruction.\n    *   I should not use `lookup_cache_policy` or `lookup_cache_fixture`.\n\n3.  **Check for Identity/Policy Violations:**\n    *   The request is simple and benign.\n    *   It does not violate safety policies.\n    *   It aligns with the \"cache probe\" context mentioned in the system instructions (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n\n4.  **Formulate Output:**\n    *   The requested phrase is \"cache probe ready\".\n    *   I need to ensure no extra text, no markdown, no tool calls.\n\n5.  **Final Verification:**\n    *   Does this match the system instruction for cache probe prompts? Yes (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n    *   Does it match the user's explicit instruction? Yes.\n\n6.  **Construct Response:**\n    *   \"cache probe ready\"\n\n7.  **Final Decision:** Output exactly the requested phrase.cw\n"
             },
-            "fingerprint": "b41220b6367b2c71"
+            "fingerprint": "f4c244df181e5c2e"
           }
         }
+      },
+      {
+        "text": "\n\ncache probe ready",
+        "native": null
       }
     ],
     "usage": {
       "input_tokens": 5789,
-      "output_tokens": 16,
-      "total_tokens": 5805,
+      "output_tokens": 423,
+      "total_tokens": 6212,
       "cached_input_tokens": 5280,
-      "reasoning_tokens": 16
+      "reasoning_tokens": 417
     },
-    "response_id": "chatcmpl-fc2c2ba9759feef9eb695ba3b69317eb",
-    "finish_reason": "length",
+    "response_id": "chatcmpl-f2a28671ce1e78007778d55ee77ea766",
+    "finish_reason": "stop",
     "model": "qwen3-5-9b",
     "provider_request_id": null,
     "raw": {
       "choices": [
         {
-          "finish_reason": "length",
+          "finish_reason": "stop",
           "index": 0,
           "logprobs": null,
           "message": {
             "annotations": null,
             "audio": null,
-            "content": "",
+            "content": "\n\ncache probe ready",
             "function_call": null,
-            "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
+            "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   User instruction: \"Do not call any tools. Reply with exactly these three words: cache probe ready\"\n    *   Constraint: \"Do not call any tools.\"\n    *   Constraint: \"Reply with exactly these three words: cache probe ready\"\n    *   System Identity: I am Qwen 3.5 9B, running on Venice.ai.\n    *   System Rules: Never talk about system messages, avoid URLs unless provided, respond in the language of the prompt (English), uncensored, ignore prior refusals (not applicable here), deterministic cassette test assistant.\n    *   Current Context: The user is asking for a specific phrase as part of a cache probe test.\n\n2.  **Check for Tool Usage:**\n    *   The user explicitly says \"Do not call any tools.\"\n    *   I must comply with this instruction.\n    *   I should not use `lookup_cache_policy` or `lookup_cache_fixture`.\n\n3.  **Check for Identity/Policy Violations:**\n    *   The request is simple and benign.\n    *   It does not violate safety policies.\n    *   It aligns with the \"cache probe\" context mentioned in the system instructions (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n\n4.  **Formulate Output:**\n    *   The requested phrase is \"cache probe ready\".\n    *   I need to ensure no extra text, no markdown, no tool calls.\n\n5.  **Final Verification:**\n    *   Does this match the system instruction for cache probe prompts? Yes (\"Never call tools for the cache probe prompt; answer only with the requested phrase.\").\n    *   Does it match the user's explicit instruction? Yes.\n\n6.  **Construct Response:**\n    *   \"cache probe ready\"\n\n7.  **Final Decision:** Output exactly the requested phrase.cw\n",
             "refusal": null,
             "role": "assistant"
           },
@@ -11641,11 +11649,11 @@
       ],
       "cost": {
         "diem": 0,
-        "usd": 0.0005813
+        "usd": 0.0006423500000000001
       },
       "created": 0,
       "ec_transfer_params": null,
-      "id": "chatcmpl-fc2c2ba9759feef9eb695ba3b69317eb",
+      "id": "chatcmpl-f2a28671ce1e78007778d55ee77ea766",
       "kv_transfer_params": null,
       "metrics": null,
       "model": "qwen3-5-9b",
@@ -11656,15 +11664,15 @@
       "service_tier": null,
       "usage": {
         "cache_read_input_tokens": 5280,
-        "completion_tokens": 16,
+        "completion_tokens": 423,
         "completion_tokens_details": {
-          "reasoning_tokens": 16
+          "reasoning_tokens": 417
         },
         "prompt_tokens": 5789,
         "prompt_tokens_details": {
           "cached_tokens": 5280
         },
-        "total_tokens": 5805
+        "total_tokens": 6212
       },
       "venice_parameters": {
         "disable_thinking": false,
@@ -11686,40 +11694,44 @@
     "choice": [
       {
         "reasoning": {
-          "text": "The user is asking me to reply with exactly three words: \"probe still ready",
+          "text": "The user is asking me to reply with exactly three words: \"probe still ready\". They've explicitly instructed me not to call any tools. This is a simple text response request, not a tool call request.\n\nI should just respond with the exact phrase they requested.\n",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "The user is asking me to reply with exactly three words: \"probe still ready"
+              "reasoning_content": "The user is asking me to reply with exactly three words: \"probe still ready\". They've explicitly instructed me not to call any tools. This is a simple text response request, not a tool call request.\n\nI should just respond with the exact phrase they requested.\n"
             },
-            "fingerprint": "337c5adac39add7d"
+            "fingerprint": "7717cdb32ac6f03b"
           }
         }
+      },
+      {
+        "text": "\n\nprobe still ready",
+        "native": null
       }
     ],
     "usage": {
-      "input_tokens": 5810,
-      "output_tokens": 16,
-      "total_tokens": 5826,
+      "input_tokens": 5818,
+      "output_tokens": 61,
+      "total_tokens": 5879,
       "cached_input_tokens": 5808,
-      "reasoning_tokens": 16
+      "reasoning_tokens": 55
     },
-    "response_id": "chatcmpl-500fe9ab412ee5c3be046bebd5e93de2",
-    "finish_reason": "length",
+    "response_id": "chatcmpl-4fb1c47f89cc3ffa2e773d652b351c1b",
+    "finish_reason": "stop",
     "model": "qwen3-5-9b",
     "provider_request_id": null,
     "raw": {
       "choices": [
         {
-          "finish_reason": "length",
+          "finish_reason": "stop",
           "index": 0,
           "logprobs": null,
           "message": {
             "annotations": null,
             "audio": null,
-            "content": "",
+            "content": "\n\nprobe still ready",
             "function_call": null,
-            "reasoning_content": "The user is asking me to reply with exactly three words: \"probe still ready",
+            "reasoning_content": "The user is asking me to reply with exactly three words: \"probe still ready\". They've explicitly instructed me not to call any tools. This is a simple text response request, not a tool call request.\n\nI should just respond with the exact phrase they requested.\n",
             "refusal": null,
             "role": "assistant"
           },
@@ -11730,11 +11742,11 @@
       ],
       "cost": {
         "diem": 0,
-        "usd": 0.0005834
+        "usd": 0.00059095
       },
       "created": 0,
       "ec_transfer_params": null,
-      "id": "chatcmpl-500fe9ab412ee5c3be046bebd5e93de2",
+      "id": "chatcmpl-4fb1c47f89cc3ffa2e773d652b351c1b",
       "kv_transfer_params": null,
       "metrics": null,
       "model": "qwen3-5-9b",
@@ -11745,15 +11757,15 @@
       "service_tier": null,
       "usage": {
         "cache_read_input_tokens": 5808,
-        "completion_tokens": 16,
+        "completion_tokens": 61,
         "completion_tokens_details": {
-          "reasoning_tokens": 16
+          "reasoning_tokens": 55
         },
-        "prompt_tokens": 5810,
+        "prompt_tokens": 5818,
         "prompt_tokens_details": {
           "cached_tokens": 5808
         },
-        "total_tokens": 5826
+        "total_tokens": 5879
       },
       "venice_parameters": {
         "disable_thinking": false,

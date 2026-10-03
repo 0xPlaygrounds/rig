@@ -79,6 +79,10 @@ const GROQ_CACHE_SUPPORT: CacheSupport = CacheSupport {
 /// would need.
 const GROQ_PADDING_REPETITIONS: usize = 60;
 
+/// Room for a reasoning model to finish thinking and answer in text, so
+/// each turn's reply goes back and the next request extends it.
+const ANSWERING_MAX_TOKENS: u64 = 1024;
+
 fn probe() -> CacheProbe {
     CacheProbe::new("groq prompt caching")
         .with_padding(GROQ_PADDING_REPETITIONS, "groq prompt caching")
@@ -90,7 +94,11 @@ async fn blocking_probe_surfaces_the_cache_read_groq_reports() {
 
     with_groq_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe(model, &probe()).await;
+        let probe = CacheProbe {
+            max_tokens: ANSWERING_MAX_TOKENS,
+            ..probe()
+        };
+        let observation = run_cache_probe(model, &probe).await;
         assert_cache_read_is_surfaced(&observation, &GROQ_CACHE_SUPPORT, "blocking probe");
     })
     .await;

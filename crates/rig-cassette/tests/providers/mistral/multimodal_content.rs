@@ -770,9 +770,9 @@ async fn blocking_agent_sends_audio() -> Result<()> {
 // =====================================================================
 
 #[tokio::test]
-async fn blocking_text_only_content_still_flattens_to_a_string() -> Result<()> {
+async fn blocking_text_only_content_keeps_each_part() -> Result<()> {
     with_mistral_multimodal_cassette(
-        "multimodal_content/blocking_text_only_content_still_flattens_to_a_string",
+        "multimodal_content/blocking_text_only_content_keeps_each_part",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
                 .preamble("Answer in one short sentence.")
@@ -790,21 +790,25 @@ async fn blocking_text_only_content_still_flattens_to_a_string() -> Result<()> {
     )
     .await?;
 
-    // The control for every cell above: text-only content keeps Mistral's
-    // plain-string form, so the fix cannot have changed the shape of the
-    // requests every other Mistral fixture already pins.
+    // As pi sends it: each text part is its own chunk, never glued to the
+    // next.
     assert_recorded_contains(
-        "multimodal_content/blocking_text_only_content_still_flattens_to_a_string",
-        "\"content\":\"Name the capital of France. Answer with one word.\"",
-        "text-only content must still be joined into one plain string",
+        "multimodal_content/blocking_text_only_content_keeps_each_part",
+        "\"text\":\" Answer with one word.\",\"type\":\"text\"",
+        "each text part must be its own text chunk",
+    );
+    assert_recorded_lacks(
+        "multimodal_content/blocking_text_only_content_keeps_each_part",
+        "France. Answer",
+        "text parts must not be joined",
     );
     Ok(())
 }
 
 #[tokio::test]
-async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> {
+async fn streaming_text_only_content_keeps_each_part() -> Result<()> {
     with_mistral_multimodal_cassette(
-        "multimodal_content/streaming_text_only_content_still_flattens_to_a_string",
+        "multimodal_content/streaming_text_only_content_keeps_each_part",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
                 .preamble("Answer in one short sentence.")
@@ -824,17 +828,17 @@ async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> 
     .await?;
 
     assert_recorded_contains(
-        "multimodal_content/streaming_text_only_content_still_flattens_to_a_string",
-        "\"content\":\"Name the capital of France. Answer with one word.\"",
-        "text-only content must still be joined into one plain string on the streaming path too",
+        "multimodal_content/streaming_text_only_content_keeps_each_part",
+        "\"text\":\" Answer with one word.\",\"type\":\"text\"",
+        "each text part must be its own text chunk on the streaming path too",
     );
     Ok(())
 }
 
 #[tokio::test]
-async fn blocking_text_document_still_flattens_into_the_prompt() -> Result<()> {
+async fn blocking_text_document_stays_text() -> Result<()> {
     with_mistral_multimodal_cassette(
-        "multimodal_content/blocking_text_document_still_flattens_into_the_prompt",
+        "multimodal_content/blocking_text_document_stays_text",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
                 .preamble("Answer with just the word.")
@@ -852,17 +856,17 @@ async fn blocking_text_document_still_flattens_into_the_prompt() -> Result<()> {
     )
     .await?;
 
-    // A document with no media type converts to a *text* part upstream, so it
-    // is still flattened — the fix must not promote it to a chunk array.
+    // A document with no media type is text: it goes as a text chunk beside
+    // the question, never as a Mistral document chunk.
     assert_recorded_contains(
-        "multimodal_content/blocking_text_document_still_flattens_into_the_prompt",
+        "multimodal_content/blocking_text_document_stays_text",
         "WALRUS-4412",
         "a text document must still reach the prompt",
     );
     assert_recorded_lacks(
-        "multimodal_content/blocking_text_document_still_flattens_into_the_prompt",
+        "multimodal_content/blocking_text_document_stays_text",
         "\"type\":\"document_url\"",
-        "a text document is not a Mistral document chunk; it flattens into the prompt text",
+        "a text document is not a Mistral document chunk",
     );
     Ok(())
 }

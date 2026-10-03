@@ -253,6 +253,15 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         let _ = model;
         false
     }
+
+    /// Whether `block` on its own makes an assistant message this wire
+    /// sends. A turn with no such block carries nothing, so [`adapt`] drops
+    /// it and the user messages around it become one. By default every
+    /// block does.
+    fn sends_alone(&self, block: &AssistantContent) -> bool {
+        let _ = block;
+        true
+    }
 }
 
 /// Which side of a hosted-tool pair an opaque item is.
@@ -491,7 +500,11 @@ pub(crate) fn adapt_for(
                         .collect(),
                     ..adapted
                 };
-                let emptied = adapted.content.is_empty() && !turn.content.is_empty();
+                let emptied = !turn.content.is_empty()
+                    && !adapted
+                        .content
+                        .iter()
+                        .any(|block| target.sends_alone(block));
                 shaped.push((!emptied).then_some(Message::Assistant(adapted)));
             }
         }

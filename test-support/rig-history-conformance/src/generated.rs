@@ -121,6 +121,25 @@ pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
             history.push(Message::system("steer"));
         }
         let turn = match own.get(rng.below(own.len() + 1)) {
+            // The model's own turn with only its reasoning left, as a reply
+            // cut while thinking is.
+            Some(turn)
+                if rng.chance(10)
+                    && turn
+                        .content
+                        .iter()
+                        .any(|block| matches!(block, AssistantContent::Reasoning(_))) =>
+            {
+                AssistantMessage {
+                    content: turn
+                        .content
+                        .iter()
+                        .filter(|block| matches!(block, AssistantContent::Reasoning(_)))
+                        .cloned()
+                        .collect(),
+                    ..turn.clone()
+                }
+            }
             Some(turn) if rng.chance(50) => turn.clone(),
             _ => other_turn(rng),
         };
@@ -305,6 +324,25 @@ pub(crate) fn alternation(body: &Value) -> Vec<String> {
         .windows(2)
         .filter(|pair| pair[0] == pair[1])
         .map(|pair| format!("two `{}` messages in a row", pair[0]))
+        .collect()
+}
+
+/// Two user messages in a row in `body`'s `messages`, which no
+/// message-shaped wire needs: the adapter joins them. Gemini's `contents`
+/// are left out, since it splits a user turn's function responses from its
+/// text by design.
+pub(crate) fn adjacent_users(body: &Value) -> Vec<String> {
+    let messages = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    messages
+        .windows(2)
+        .filter(|pair| {
+            pair.iter()
+                .all(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+        })
+        .map(|_| "two user messages in a row".to_owned())
         .collect()
 }
 
