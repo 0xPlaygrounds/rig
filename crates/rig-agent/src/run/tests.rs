@@ -1,6 +1,6 @@
 use super::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use super::*;
-use rig_core::message::{ToolFunction, ToolResultContent};
+use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
 use serde_json::json;
 
 #[test]
@@ -489,6 +489,68 @@ fn tool_roundtrip_threads_history_and_usage() {
     assert_eq!(response.completion_calls[1].usage, usage(20, 7));
     // prompt, assistant tool call, tool result, final assistant text
     assert_eq!(response.messages.len(), 4);
+}
+
+/// A turn that calls `add` and ends with `stop` at `finish`.
+fn ended_call_turn(stop: StopReason, finish: FinishReason) -> ModelTurn {
+    ModelTurn::new(
+        rig_core::message::AssistantMessage {
+            stop: Some(stop),
+            ..Default::default()
+        },
+        vec![
+            AssistantContent::text("checking"),
+            tool_call("call_1", "add"),
+        ],
+        Usage::default(),
+        tool_names(&["add"]),
+        tool_names(&["add"]),
+        hand_raw(),
+    )
+    .with_finish_reason(Some(finish))
+}
+
+/// A turn that ends in an error runs none of its tool calls: the run ends
+/// with the turn's stop reason, and the turn stays in the run's messages.
+#[test]
+fn a_failed_turn_runs_no_tools_and_ends_the_run() {
+    let mut run = AgentRun::new("add things").max_turns(2);
+    expect_call_model(&mut run);
+    let reason = "Provider finish_reason: pause_turn_unmapped";
+    expect_continue(
+        run.model_response(ended_call_turn(
+            StopReason::Error(reason.to_owned()),
+            FinishReason::Other("pause_turn_unmapped".to_owned()),
+        ))
+        .expect("model_response should succeed"),
+    );
+    let error = run.next_step().expect_err("the failed turn ends the run");
+    assert!(
+        matches!(&error, PromptError::Provider(ProviderError::Response(message))
+            if message.contains("none of its tool calls ran") && message.contains(reason)),
+        "{error}"
+    );
+    let kept = run.messages().last().expect("the failed turn is kept");
+    assert!(
+        matches!(kept, Message::Assistant(turn)
+            if turn.stop.as_ref().is_some_and(StopReason::is_failure)
+                && turn.tool_calls().count() == 1),
+        "{kept:?}"
+    );
+}
+
+/// A turn the token limit ended is finished, so its complete call runs.
+#[test]
+fn a_length_turn_with_a_complete_call_runs_it() {
+    let mut run = AgentRun::new("add things").max_turns(2);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(ended_call_turn(StopReason::Length, FinishReason::Length))
+            .expect("model_response should succeed"),
+    );
+    let calls = expect_call_tools(&mut run);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].tool_call.function.name, "add");
 }
 
 #[test]

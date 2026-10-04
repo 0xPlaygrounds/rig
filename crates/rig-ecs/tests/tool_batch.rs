@@ -12,6 +12,8 @@
 //! | a tool child despawned fails the run `Cancelled` | `despawning_a_tool_child_fails_the_run_cancelled` |
 //! | `Resolution::Repair` written by a system renames the call and dispatches it | `a_system_repairs_an_invalid_call_to_a_granted_tool` |
 //! | `Resolution::Retry` retries the turn with feedback and the invalid-peer notice | `a_system_retries_an_invalid_call_with_feedback` |
+//! | a turn that ends in an error runs none of its calls, fails the run and stays in its history | `a_failed_turn_runs_no_tools_and_fails_the_run` |
+//! | a turn the token limit ended runs its complete call | `a_length_turn_with_a_complete_call_runs_it` |
 
 use crate::run_support;
 
@@ -50,9 +52,16 @@ fn add_system<M>(
 
 /// An app with a scripted model and the adder granted to one agent.
 fn tooling(turns: Vec<Vec<AssistantContent>>) -> (bevy_app::App, Entity, Arc<Adder>, RequestsSeen) {
+    tooling_replies(turns.into_iter().map(reply).collect())
+}
+
+/// [`tooling`] over whole replies.
+fn tooling_replies(
+    replies: Vec<rig_core::completion::CompletionResponse>,
+) -> (bevy_app::App, Entity, Arc<Adder>, RequestsSeen) {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (agent, requests) = scripted_agent(&mut app, MODEL, turns);
+    let (agent, requests) = replied_agent(&mut app, MODEL, replies);
     let adder = Arc::new(Adder::new(ADD));
     let tool = register(&mut app, ADD, Arc::clone(&adder));
     app.world_mut()
@@ -1235,4 +1244,68 @@ fn a_call_with_malformed_arguments_is_answered_without_dispatch() {
             .is_some_and(|text| text.contains("not a JSON object"))),
         "{result:?}"
     );
+}
+
+/// A turn calling `add` that ends with `finish`, failed with `error` when
+/// one is given.
+fn ended_call_reply(
+    finish: rig_core::completion::FinishReason,
+    error: Option<&str>,
+) -> rig_core::completion::CompletionResponse {
+    let mut response = reply(vec![
+        AssistantContent::text("checking"),
+        call("c1", "add", serde_json::json!({"x": 1, "y": 2})),
+    ])
+    .with_finish_reason(finish);
+    response.error = error.map(str::to_owned);
+    response
+}
+
+#[test]
+fn a_failed_turn_runs_no_tools_and_fails_the_run() {
+    let reason = "Provider finish_reason: pause_turn_unmapped";
+    let (mut app, agent, adder, requests) = tooling_replies(vec![ended_call_reply(
+        rig_core::completion::FinishReason::Other("pause_turn_unmapped".to_owned()),
+        Some(reason),
+    )]);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add once", false, None);
+    ended(&mut app, run, "the failed turn ends the run");
+    match app.world().get::<Failed>(run) {
+        Some(Failed(Failure::Provider(report))) => {
+            let report = report.to_string();
+            assert!(report.contains("none of its tool calls ran"), "{report}");
+            assert!(report.contains(reason), "{report}");
+        }
+        other => panic!("the run did not fail on the turn: {other:?}"),
+    }
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 0, "no tool ran");
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    let history = graph_messages(app.world_mut(), run);
+    assert!(
+        history
+            .iter()
+            .any(|message| matches!(message, Message::Assistant(turn)
+            if turn.stop.as_ref().is_some_and(rig_core::message::StopReason::is_failure)
+                && turn.tool_calls().count() == 1)),
+        "the failed turn is kept: {history:?}"
+    );
+}
+
+#[test]
+fn a_length_turn_with_a_complete_call_runs_it() {
+    let (mut app, agent, adder, _) = tooling_replies(vec![
+        ended_call_reply(rig_core::completion::FinishReason::Length, None),
+        reply(vec![AssistantContent::text("3")]),
+    ]);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add once", false, None);
+    ended(&mut app, run, "answered");
+    assert_eq!(
+        app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
+        Some("3")
+    );
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 1, "the call ran");
 }

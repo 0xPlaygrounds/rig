@@ -42,7 +42,7 @@ pub mod streamed;
 
 pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
-use rig_core::completion::message::unanswered_failure;
+use rig_core::completion::message::turn_failure;
 use rig_core::json_utils;
 use rig_core::structured_output;
 use transcript::{
@@ -871,6 +871,21 @@ impl AgentRun {
                     has_tool_calls,
                     skipped,
                 } = turn_state;
+                // A failed turn runs no tool and finalizes no output; reasoning
+                // alone is not an answer. A failed turn's calls never run, and
+                // the turn stays in the run's messages for display, as pi
+                // keeps it.
+                let finish = self
+                    .completion_calls
+                    .last()
+                    .and_then(|call| call.finish_reason.as_ref());
+                if let Some(message) = turn_failure(&items, head.stop.as_ref(), finish) {
+                    if has_tool_calls {
+                        self.new_messages.extend(assistant_turn(head, items));
+                    }
+                    return Err(ProviderError::Response(message).into());
+                }
+
                 // The first output-tool call is the answer, not executable work;
                 // sibling calls must not run after finalization.
                 if has_tool_calls
@@ -952,16 +967,6 @@ impl AgentRun {
                     let content = response::finalize_output_tool_choice(&items, &output)
                         .unwrap_or_else(|| vec![AssistantContent::text(output)]);
                     return Ok(self.finish(content, output_tool_calls));
-                }
-
-                // Reasoning alone is not an answer. Reject answerless cut or failed
-                // turns before committing history, but retain valid empty turns.
-                let finish = self
-                    .completion_calls
-                    .last()
-                    .and_then(|call| call.finish_reason.as_ref());
-                if let Some(message) = unanswered_failure(&items, head.stop.as_ref(), finish) {
-                    return Err(ProviderError::Response(message).into());
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.

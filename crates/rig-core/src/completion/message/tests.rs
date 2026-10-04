@@ -268,28 +268,55 @@ fn a_stored_call_with_any_arguments_shape_loads() {
 
 #[test]
 fn an_unanswered_turn_fails_its_run_only_when_cut_or_failed() {
-    use super::{AssistantContent, StopReason, unanswered_failure};
+    use super::{AssistantContent, StopReason, turn_failure};
     use crate::completion::FinishReason;
     let empty: Vec<AssistantContent> = vec![AssistantContent::reasoning("thinking")];
     let answered = vec![AssistantContent::text("hi")];
     let failed = StopReason::Error("refused".into());
     assert_eq!(
-        unanswered_failure(
+        turn_failure(
             &empty,
             Some(&StopReason::Length),
             Some(&FinishReason::Length)
         ),
         Some(FinishReason::Length.no_answer_message())
     );
-    assert!(unanswered_failure(&empty, Some(&failed), None).is_some_and(|m| m.contains("refused")));
+    assert!(turn_failure(&empty, Some(&failed), None).is_some_and(|m| m.contains("refused")));
     assert_eq!(
-        unanswered_failure(&empty, Some(&StopReason::Stop), Some(&FinishReason::Stop)),
+        turn_failure(&empty, Some(&StopReason::Stop), Some(&FinishReason::Stop)),
         None
     );
     assert_eq!(
-        unanswered_failure(&answered, Some(&failed), Some(&FinishReason::Length)),
+        turn_failure(&answered, Some(&failed), Some(&FinishReason::Length)),
         None
     );
+}
+
+/// A turn that will not replay runs none of its tool calls, whatever else
+/// it holds; a call in a turn the token limit ended is finished and runs.
+#[test]
+fn a_failed_turn_with_calls_fails_its_run() {
+    use super::{AssistantContent, StopReason, ToolName, turn_failure};
+    use crate::completion::FinishReason;
+    let call = AssistantContent::tool_call(
+        "call_1",
+        ToolName::new("lookup").expect("a tool name"),
+        serde_json::json!({}),
+    );
+    let turn = vec![AssistantContent::text("checking"), call];
+    for stop in [
+        StopReason::Error("Provider finish_reason: pause".into()),
+        StopReason::Aborted("the stream ended".into()),
+    ] {
+        let message = turn_failure(&turn, Some(&stop), None).expect("the run fails");
+        assert!(message.contains("none of its tool calls ran"), "{message}");
+    }
+    for (stop, finish) in [
+        (StopReason::Length, FinishReason::Length),
+        (StopReason::ToolUse, FinishReason::ToolCalls),
+    ] {
+        assert_eq!(turn_failure(&turn, Some(&stop), Some(&finish)), None);
+    }
 }
 
 /// One answer rule (round-5 F2): whitespace text is no answer, so a turn the
@@ -297,7 +324,7 @@ fn an_unanswered_turn_fails_its_run_only_when_cut_or_failed() {
 /// the empty-turn rule agrees with it.
 #[test]
 fn a_whitespace_answer_is_no_answer() {
-    use super::{AssistantContent, StopReason, turn_delivered_no_answer, unanswered_failure};
+    use super::{AssistantContent, StopReason, turn_delivered_no_answer, turn_failure};
     use crate::completion::FinishReason;
     let cut = vec![
         AssistantContent::reasoning("thinking").with_native(serde_json::json!({"signature": "s"})),
@@ -305,7 +332,7 @@ fn a_whitespace_answer_is_no_answer() {
     ];
     assert!(cut[1].is_blank());
     assert!(
-        unanswered_failure(&cut, Some(&StopReason::Length), Some(&FinishReason::Length)).is_some(),
+        turn_failure(&cut, Some(&StopReason::Length), Some(&FinishReason::Length)).is_some(),
         "a turn cut by the budget with only whitespace text fails"
     );
     let whitespace = vec![AssistantContent::text("  ")];

@@ -2241,9 +2241,11 @@ fn provider_failed(
 }
 
 /// Read completed turns without pending invalid calls into [`TurnRead`].
-/// Unsupported outcomes and truncated, answerless responses fail the run;
-/// provider errors retry within budget or fail. Unpermitted ordinary tool calls
-/// create invalid-call entities and leave the turn unread until resolved.
+/// Unsupported outcomes and the turns
+/// [`turn_failure`](rig_core::completion::message::turn_failure) fails end the
+/// run, a failed turn with calls kept in its history; provider errors retry
+/// within budget or fail. Unpermitted ordinary tool calls create invalid-call
+/// entities and leave the turn unread until resolved.
 pub fn read_turn(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf, &Outputs), Unread>,
@@ -2263,6 +2265,7 @@ pub fn read_turn(
     provider_retries: Query<&ProviderRetries>,
     subjects: crate::bus::Subjects,
     witness: Option<Res<crate::bus::Witnessing>>,
+    mut assets: ResMut<BinaryAssets>,
 ) {
     let mut turns: Vec<_> = turns
         .iter()
@@ -2313,11 +2316,26 @@ pub fn read_turn(
                 continue;
             }
         };
-        if let Some(message) = rig_core::completion::message::unanswered_failure(
+        if let Some(message) = rig_core::completion::message::turn_failure(
             &outs.content,
             Some(&response.stop()),
             response.finish_reason().as_ref(),
         ) {
+            // A failed turn's calls never run; the turn stays in the run's
+            // history for display, as pi keeps it.
+            let calls = outs
+                .content
+                .iter()
+                .any(|block| matches!(block, AssistantContent::ToolCall(_)));
+            if calls {
+                let head = AssistantHead::of(&response.head());
+                let kept = MessageParts::assistant(head.message(outs.content.clone()))
+                    .and_then(|turn| spawn_deferred(&mut commands, &mut assets, run, turn));
+                if let Err(error) = kept {
+                    fail_content(&mut commands, run, error);
+                    continue;
+                }
+            }
             let report = rig_core::error::ErrorReport::from(
                 &rig_core::error::ProviderError::Response(message),
             );
