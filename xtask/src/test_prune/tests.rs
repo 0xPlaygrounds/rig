@@ -91,3 +91,12 @@ fn the_manifest_reads_back_as_written() {
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0].covered, "rig-core a::tests::y, rig::core core::z");
 }
+
+#[test]
+fn the_keep_list_names_a_test_by_its_first_two_words() {
+    let keep = parse_keep("# a comment\n\nrig-core a::tests::x   the reason\nonly-one\n");
+    assert_eq!(
+        keep,
+        BTreeSet::from([("rig-core".to_owned(), "a::tests::x".to_owned())])
+    );
+}

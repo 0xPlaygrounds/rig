@@ -614,6 +614,10 @@ cargo xtask tests prune --check          # fail when it would delete more or the
 cargo xtask coverage --check --mutants   # confirm no baseline-killed mutant survives
 ```
 
+A test the mutation gate shows is the one reliable killer of a mutant (the
+other named killers kill it only by chance) is kept by listing it in
+`crates/rig-cassette/coverage/prune-keep-tests.txt` with its reason.
+
 Delete the helpers the compiler then reports unused. A test renamed or
 merged into a table-driven test leaves `mutants.tsv` naming a gone killer;
 the prune then fails until the mutation baseline is rewritten for that

@@ -46,6 +46,8 @@ pub(crate) const USAGE: &str = "\
 pub(crate) const MANIFEST: &str = "crates/rig-cassette/coverage/pruned-tests.tsv";
 const LINES: &str = "crates/rig-cassette/coverage/lines.tsv";
 const MUTANTS: &str = "crates/rig-cassette/coverage/mutants.tsv";
+/// The tests kept by hand, each with its reason.
+pub(crate) const KEEP: &str = "crates/rig-cassette/coverage/prune-keep-tests.txt";
 
 /// The packages whose tests are candidates. Every other package's tests
 /// stay; rig-cassette's belong to `cassette prune`, and xtask and the
@@ -118,6 +120,10 @@ const PREAMBLE: &str = "\
 #     token, in an earlier kept contract test; every other contract test
 #     always stays.
 #     Doc examples are not tests here and always stay.
+#
+# Kept by hand: crates/rig-cassette/coverage/prune-keep-tests.txt lists a
+# test with its reason, such as the one deterministic killer of a mutant the
+# mutation gate showed another named killer kills only by chance.
 #
 # The selection is cassette prune's: greedy set cover over the regions and
 # mutants the credited tests do not hold, taking the candidate covering the
@@ -463,7 +469,16 @@ impl Model {
             elements: interner.len(),
             fixtures: 0,
             protected: BTreeSet::new(),
-            forced: forced(&located),
+            forced: {
+                let mut forced = forced(&located);
+                let keep = read_keep(root)?;
+                for (index, id) in candidates.iter().enumerate() {
+                    if keep.contains(id) {
+                        forced.insert(index);
+                    }
+                }
+                forced
+            },
         };
         for (all, place) in candidate_all.iter().zip(&located) {
             let elements = all
@@ -733,6 +748,28 @@ fn list(root: &Path) -> Result<BTreeSet<TestId>, String> {
         .filter_map(|line| line.split_once(' '))
         .map(|(binary, test)| (binary.to_owned(), test.trim().to_owned()))
         .collect())
+}
+
+/// The tests of the keep list: the first two words (binary id and test) of
+/// every line that is not blank or a comment; none when the file is absent.
+fn read_keep(root: &Path) -> Result<BTreeSet<TestId>, String> {
+    let text = match std::fs::read_to_string(root.join(KEEP)) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(error) => return Err(format!("{KEEP}: {error}")),
+    };
+    Ok(parse_keep(&text))
+}
+
+pub(crate) fn parse_keep(text: &str) -> BTreeSet<TestId> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let mut words = line.split_whitespace();
+            Some((words.next()?.to_owned(), words.next()?.to_owned()))
+        })
+        .collect()
 }
 
 fn read(root: &Path, relative: &str) -> Result<String, String> {
