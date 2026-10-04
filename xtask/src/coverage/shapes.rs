@@ -12,6 +12,11 @@
 //! skeletons, with the same discriminators kept; it is stored as a stable
 //! hash. Each one is stored with its count of recordings and the first
 //! fixture that holds it.
+//!
+//! A reply shape is also held by a reply bank entry that the `runtime`
+//! target decodes: a verbatim provider reply with its source, so it counts
+//! as a recording. A request fact needs a cassette, since its acceptance
+//! needs a live request.
 
 #[cfg(test)]
 mod tests;
@@ -671,6 +676,23 @@ pub(crate) fn parse(text: &str) -> Result<Shapes> {
         );
     }
     Ok(shapes)
+}
+
+/// The example of a shape only the reply bank holds: `bank:` and the
+/// entry's source interaction.
+pub(crate) const BANKED: &str = "bank:";
+
+/// Add the reply shapes `banked` holds (each with its entry's source) that
+/// no cassette records, as one recording each.
+pub(crate) fn add_banked(shapes: &mut Shapes, banked: BTreeMap<ShapeKey, String>) {
+    for (key, source) in banked {
+        if key.kind == Kind::Reply {
+            shapes.entry(key).or_insert_with(|| Recorded {
+                recordings: 1,
+                example: format!("{BANKED}{source}"),
+            });
+        }
+    }
 }
 
 /// Every baseline shape that no recording holds any more.

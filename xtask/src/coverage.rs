@@ -8,8 +8,10 @@
 //! Without `--check` the measured parts overwrite their baseline files. With
 //! `--check` they are compared instead, and the command fails when a file's
 //! line or branch coverage drops, a baseline-killed mutant survives, or a
-//! shape loses its last recording. Line coverage and shapes run by default;
-//! mutation is opt-in with `--mutants` because it takes hours.
+//! shape loses its last recording. A reply shape's recordings include the
+//! reply bank entries the `runtime` target decodes; a request fact's are
+//! cassettes only. Line coverage and shapes run by default; mutation is
+//! opt-in with `--mutants` because it takes hours.
 //!
 //! ```console
 //! cargo xtask coverage --check             # lines and shapes, as CI runs it
@@ -196,8 +198,9 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<()> {
         let (measured, lost) = match part {
             Part::Lines => lines::measure(root, baseline.as_deref(), options.runs)?,
             Part::Shapes => {
-                let current =
+                let mut current =
                     shapes::collect(&root.join("crates/rig-cassette/fixtures/cassettes"))?;
+                shapes::add_banked(&mut current, crate::cassette::bank::held_shapes(root)?);
                 for (provider, (requests, replies)) in shapes::summary(&current) {
                     println!("shapes {provider}: {requests} request facts, {replies} reply shapes");
                 }

@@ -183,3 +183,23 @@ fn a_named_function_delta_is_a_call_and_a_server_tool_is_not() {
     );
     assert!(server.calls.is_empty(), "the provider runs its own tools");
 }
+
+#[test]
+fn the_decode_targets_sweeps_name_the_providers_whose_replies_hold_shapes() {
+    let source = "macro_rules! sweeps {\n    ($($provider:ident),* $(,)?) => {};\n}\n\nsweeps!(\n    anthropic, openai,\n    xai,\n);\n";
+    assert_eq!(
+        swept_providers(source),
+        Some(BTreeSet::from(["anthropic", "openai", "xai"]))
+    );
+    assert_eq!(swept_providers("sweeps!();"), None);
+    assert_eq!(swept_providers("fn main() {}\nsweeps!(\n);\n"), None);
+}
+
+#[test]
+fn the_committed_bank_holds_reply_shapes_only_for_swept_providers() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let held = held_shapes(&root).unwrap();
+    assert!(held.keys().all(|key| key.kind == Kind::Reply));
+    assert!(held.keys().any(|key| key.provider == "openai"));
+    assert!(!held.keys().any(|key| key.provider == "bedrock"));
+}

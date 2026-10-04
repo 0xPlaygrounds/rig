@@ -27,6 +27,11 @@
 //!
 //! `--check` fails when the committed bank differs from the one a rewrite
 //! would write.
+//!
+//! The coverage gate counts a bank entry as a recording of its reply shape
+//! when the `runtime` target's `decode` tests decode it ([`held_shapes`]):
+//! the entry is a verbatim provider reply with its source, and a decoded
+//! reply pins its provider's decoder as a cassette would.
 
 #[cfg(test)]
 mod tests;
@@ -37,11 +42,14 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::coverage::shapes::{self, Exchange, NameValue, hash};
+use crate::coverage::shapes::{self, Exchange, Kind, NameValue, ShapeKey, hash};
 
 const CASSETTES: &str = "crates/rig-cassette/fixtures/cassettes";
 /// The bank's directory, relative to the workspace root.
 pub(crate) const BANK: &str = "crates/rig-cassette/fixtures/bank";
+/// The target that decodes every bank reply of the providers its
+/// `sweeps!` invocation names, relative to the workspace root.
+pub(crate) const DECODE: &str = "crates/rig-cassette/tests/runtime/decode.rs";
 
 const PREAMBLE: &str = "\
 # The reply bank, written by `cargo xtask cassette bank`. One real recorded
@@ -588,4 +596,41 @@ fn read_texts(dir: &Path) -> Result<BTreeMap<String, String>, String> {
 /// Whether `source` (`<fixture>#<n>`) names a fixture under `cassettes`.
 fn source_exists(cassettes: &Path, source: &str) -> bool {
     cassettes.join(fixture_of(source)).is_file()
+}
+
+/// The reply shapes the bank holds for the coverage gate, each with the
+/// source of its first entry: every entry of a provider the `decode`
+/// target sweeps. That target fails on an entry it cannot decode, so each
+/// of these replies passes through its provider's decoder in every replay.
+pub(crate) fn held_shapes(root: &Path) -> Result<BTreeMap<ShapeKey, String>, String> {
+    let source =
+        std::fs::read_to_string(root.join(DECODE)).map_err(|error| format!("{DECODE}: {error}"))?;
+    let swept = swept_providers(&source)
+        .ok_or_else(|| format!("{DECODE}: no `sweeps!(...)` invocation names a provider"))?;
+    let mut held = BTreeMap::new();
+    for entry in read(&root.join(BANK))? {
+        if swept.contains(entry.provider.as_str()) {
+            held.entry(ShapeKey {
+                provider: entry.provider,
+                encoder: entry.encoder,
+                kind: Kind::Reply,
+                shape: entry.shape,
+            })
+            .or_insert(entry.source);
+        }
+    }
+    Ok(held)
+}
+
+/// The providers the `sweeps!(...)` invocation of the decode target names;
+/// `None` when there is no such invocation or it names none.
+pub(crate) fn swept_providers(source: &str) -> Option<BTreeSet<&str>> {
+    let (_, rest) = source.split_once("\nsweeps!(")?;
+    let (list, _) = rest.split_once(')')?;
+    let providers: BTreeSet<&str> = list
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect();
+    (!providers.is_empty()).then_some(providers)
 }

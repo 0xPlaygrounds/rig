@@ -9,7 +9,7 @@
 
 mod acceptance;
 mod audit;
-mod bank;
+pub(crate) mod bank;
 mod goldens;
 mod owner;
 mod prune;

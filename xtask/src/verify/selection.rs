@@ -362,9 +362,16 @@ pub(super) fn plan(
             )?;
             continue;
         }
-        // The reply bank is data the runtime scenarios read.
+        // The reply bank is data the runtime scenarios read, and it holds
+        // reply shapes for the coverage gate.
         if path.starts_with("crates/rig-cassette/fixtures/bank/") {
             add(&mut out, all, "bank", "the reply bank changed")?;
+            add(
+                &mut out,
+                all,
+                "coverage",
+                "the reply bank holds reply shapes",
+            )?;
             if !out.iter().any(|c| c.id == "provider-runtime") {
                 out.push(provider_check(
                     "rig-cassette",

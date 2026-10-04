@@ -5,6 +5,10 @@
 //! bank read off the bytes: the tools it calls, how the turn ended, and a
 //! status error for a rejection. Bedrock answers through the AWS SDK, not
 //! an HTTP client the bank can stand in for, and has no decoder here.
+//!
+//! Every reply of a provider `sweeps!` names must decode. The coverage gate
+//! reads that list and counts those replies as recordings of their reply
+//! shapes, so a cassette holding only a decoded reply shape can go.
 
 use rig::completion::{AssistantContent, FinishReason};
 use rig::providers::anthropic::wire::AnthropicConfig;
@@ -225,6 +229,10 @@ async fn sweep(provider: &str) -> usize {
     let mut failures = Vec::new();
     for entry in bank::entries(provider).iter() {
         let Some(decoded) = decode(entry).await else {
+            failures.push(format!(
+                "{}: no decoder for `{}`",
+                entry.source, entry.encoder
+            ));
             continue;
         };
         decoded_count += 1;

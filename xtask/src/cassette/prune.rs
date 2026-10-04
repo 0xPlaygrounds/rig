@@ -10,7 +10,8 @@
 //! copy of a runtime scenario), `verify` and `world_replay`. The selection
 //! keeps the fewest candidates whose union, with the always-kept tests,
 //! holds everything the coverage gate measures; see [`select`] and the
-//! manifest's preamble for the rule.
+//! manifest's preamble for the rule. A reply shape the reply bank holds
+//! for a decoded provider needs no cassette; a request fact does.
 //!
 //! A rewrite needs `target/coverage/per-test.tsv` from
 //! `cargo xtask coverage --per-test`. It deletes the fixtures and goldens it
@@ -106,11 +107,15 @@ const PREAMBLE: &str = "\
 # cassette_cache_prefix, chat_parity, world_replay, world_replay_world, the
 # cassette-safety scans and the restatement sweeps) stay but are not credited,
 # since what they cover depends on the files that exist. Shapes: every request
-# fact and reply shape of crates/rig-cassette/coverage/shapes.tsv. Acceptance:
-# every fact of fixtures/acceptance.toml keeps a live recording. The reply bank
-# carries an entry forward when its source fixture goes. Mutants: the mutation
-# baseline is measured against the crate unit tests and conformance targets
-# only, never a cassette test or a golden, so no deletion here can lose a kill.
+# fact and reply shape of crates/rig-cassette/coverage/shapes.tsv, except the
+# reply shapes the reply bank holds: a bank entry is a verbatim provider reply
+# with its source, kept when its fixture goes, and the runtime target's decode
+# tests decode every entry of the providers they sweep, so it counts as that
+# shape's recording. A request fact needs a cassette, since acceptance needs a
+# live request. Acceptance: every fact of fixtures/acceptance.toml keeps a live
+# recording. Mutants: the mutation baseline is measured against the crate unit
+# tests and conformance targets only, never a cassette test or a golden, so no
+# deletion here can lose a kill.
 #
 # Goldens. A golden goes with its producer. A kept producer's golden stays only
 # when something other than its producer reads it, or it is the smallest golden
@@ -497,10 +502,17 @@ impl Model {
             .iter()
             .filter_map(|fixture| fixture_ids.get(fixture).copied())
             .collect();
+        // A reply shape a decoded bank entry holds keeps its recording
+        // whichever fixtures go.
+        let banked: BTreeSet<Element> = super::bank::held_shapes(root)?
+            .into_keys()
+            .map(Element::Shape)
+            .collect();
         let held: BTreeSet<&Element> = protected
             .iter()
             .filter_map(|id| fixture_keys.get(*id))
             .flatten()
+            .chain(&banked)
             .collect();
         let mut fixture_elements: Vec<Vec<usize>> = vec![Vec::new(); fixtures.len()];
         for (id, keys) in fixture_keys.iter().enumerate() {

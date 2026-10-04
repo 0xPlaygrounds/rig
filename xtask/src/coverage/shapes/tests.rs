@@ -301,3 +301,46 @@ fn the_corpus_is_read_document_by_document() {
     assert_eq!(request.1.recordings, 2);
     assert_eq!(request.1.example, "groq/scenario/a.yaml#0");
 }
+
+#[test]
+fn a_banked_reply_shape_counts_only_where_no_cassette_records_it() {
+    let key = |kind: Kind, shape: &str| ShapeKey {
+        provider: "openai".to_owned(),
+        encoder: "POST /v1/responses".to_owned(),
+        kind,
+        shape: shape.to_owned(),
+    };
+    let recorded = Recorded {
+        recordings: 3,
+        example: "openai/a.yaml#0".to_owned(),
+    };
+    let mut shapes = Shapes::from([(key(Kind::Reply, "00aa"), recorded.clone())]);
+    add_banked(
+        &mut shapes,
+        BTreeMap::from([
+            (key(Kind::Reply, "00aa"), "openai/b.yaml#1".to_owned()),
+            (key(Kind::Reply, "00bb"), "openai/c.yaml#2".to_owned()),
+            (key(Kind::Request, "$ {}"), "openai/d.yaml#0".to_owned()),
+        ]),
+    );
+    assert_eq!(shapes.get(&key(Kind::Reply, "00aa")), Some(&recorded));
+    assert_eq!(
+        shapes.get(&key(Kind::Reply, "00bb")),
+        Some(&Recorded {
+            recordings: 1,
+            example: "bank:openai/c.yaml#2".to_owned(),
+        })
+    );
+    assert!(!shapes.contains_key(&key(Kind::Request, "$ {}")));
+    let baseline = shapes.clone();
+    let mut current = Shapes::new();
+    assert_eq!(lost(&baseline, &current).len(), 2);
+    add_banked(
+        &mut current,
+        BTreeMap::from([
+            (key(Kind::Reply, "00aa"), "openai/b.yaml#1".to_owned()),
+            (key(Kind::Reply, "00bb"), "openai/c.yaml#2".to_owned()),
+        ]),
+    );
+    assert!(lost(&baseline, &current).is_empty());
+}

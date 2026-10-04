@@ -488,7 +488,13 @@ baseline of it in `crates/rig-cassette/coverage/`:
   and the skeleton of the whole body or of each stream event: JSON keys and
   types kept, values erased except discriminators such as `type` and
   `finish_reason`, and each array collapsed to the set of its element
-  skeletons.
+  skeletons. A reply shape is also recorded by a reply bank entry of a
+  provider the `runtime` target's `decode` tests sweep (every provider but
+  Bedrock); its example is then `bank:<source>`. The entry is a verbatim
+  provider reply with its source, the bank keeps it when its fixture goes,
+  and `decode` fails on an entry it cannot decode, so it pins the decoder as
+  a cassette would. A request fact needs a cassette, since its acceptance
+  needs a live request.
 - `mutants.tsv`: a fixed sample of the `cargo mutants` mutants of the replay
   core, each run against its crate's unit tests and conformance targets, with
   its outcome, how many tests failed on it and the first three of them. A mutant is in the sample when
@@ -503,7 +509,8 @@ cargo xtask coverage --per-test         # every test's lines and branches, in ta
 
 `--check` fails when an unchanged file loses a covered line or branch, a
 changed file's line or branch ratio falls, a mutant the baseline killed
-survives, or a request fact or reply shape loses its last recording. It
+survives, or a request fact or reply shape loses its last recording (a
+cassette, or for a reply shape a decoded bank entry). It
 leaves each measurement in `target/coverage/`. When a change moves coverage
 on purpose, rewrite the affected baseline file and review its diff with the
 change. The lines part needs `cargo-llvm-cov`, the `llvm-tools` component,
@@ -527,9 +534,10 @@ deleted files.
   fixture that stays.
 - The elements are every line and branch of `lines.tsv` (from each test's own
   coverage, `cargo xtask coverage --per-test`), every request fact and reply
-  shape of `shapes.tsv`, and every fact of the acceptance index. The tests
-  that sweep a corpus directory stay but are not credited, since what they
-  cover depends on the files that exist.
+  shape of `shapes.tsv` but the reply shapes the reply bank holds, and every
+  fact of the acceptance index. The tests that sweep a corpus directory stay
+  but are not credited, since what they cover depends on the files that
+  exist.
 - Greedy set cover over the elements the always-kept tests do not hold: the
   candidate covering the most is taken, then the one with smaller fixtures,
   then the alphabetically first; then every taken test the others make

@@ -941,6 +941,7 @@ fn cassettes_and_the_bank_select_the_bank_check() {
         &["crates/rig-cassette/fixtures/bank/pinned.txt"],
     );
     assert!(bank.contains("provider-runtime"), "{bank:?}");
+    assert!(bank.contains("coverage"), "{bank:?}");
     assert!(!bank.contains("full-tests"), "{bank:?}");
     assert!(!ids("--changed", &["crates/rig-ecs/src/lib.rs"]).contains("bank"));
 }
