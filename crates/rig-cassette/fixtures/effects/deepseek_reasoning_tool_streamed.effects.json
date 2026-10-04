@@ -364,23 +364,6 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
-              "native": {
-                "item": {
-                  "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add."
-                },
-                "fingerprint": "cf96ce7b3f7a048c"
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -421,6 +404,23 @@
                   "type": "function"
                 },
                 "fingerprint": "f54db5ab5ae957fa"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add."
+                },
+                "fingerprint": "cf96ce7b3f7a048c"
               }
             }
           }

@@ -2,11 +2,27 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -50,6 +66,14 @@
         }
       },
       {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 14,
         "id": 0,
         "kind": {
@@ -70,15 +94,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -94,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -118,7 +134,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -138,45 +154,29 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 42,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
-        "batch": 26,
+        "batch": 42,
         "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 3
-        }
-      },
-      {
-        "batch": 36,
-        "id": 0,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 37,
-        "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
         "batch": 43,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 49,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -184,7 +184,7 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 50,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -192,7 +192,7 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 50,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -563,23 +563,6 @@
         {
           "item": "event",
           "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "text": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
-              "native": {
-                "item": {
-                  "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add."
-                },
-                "fingerprint": "cf96ce7b3f7a048c"
-              }
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "start",
             "part": 1,
             "kind": "tool_call"
@@ -620,6 +603,23 @@
                   "type": "function"
                 },
                 "fingerprint": "f54db5ab5ae957fa"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add."
+                },
+                "fingerprint": "cf96ce7b3f7a048c"
               }
             }
           }

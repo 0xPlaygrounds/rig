@@ -1595,11 +1595,9 @@ impl ChatDecoder {
         if let Some(delta) = choice.obj("delta") {
             self.delta(delta, out)?;
         }
-        // A finish states the message complete.
-        if self.finish.is_some() {
-            self.close_writing(out)?;
-            self.close_reasoning(out)?;
-        }
+        // Text and reasoning stay open until the stream ends, as pi closes
+        // its blocks (`openai-completions.ts` around 680): a provider may
+        // still send either after the finish chunk.
         if self.finish == Some(FinishReason::ToolCalls) {
             self.close_calls(out, false)?;
         }

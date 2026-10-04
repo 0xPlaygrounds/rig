@@ -469,3 +469,67 @@ async fn text_is_not_delayed_by_a_buffered_call() {
         "both fragments stream before the call surfaces: {events:?}"
     );
 }
+
+/// Answer text after the finish chunk joins the text before it: the text
+/// stays open until the stream ends, so the turn holds one text block, as
+/// the whole reply does.
+#[tokio::test]
+async fn text_after_the_finish_chunk_joins_the_open_text() {
+    let (_, response) = stream(
+        &OPENAI,
+        &[
+            chunk(json!({"role": "assistant", "content": "Hel"}), Some("stop")),
+            text("lo"),
+            DONE.to_owned(),
+        ],
+    )
+    .await;
+    let response = response.expect("the reply folds");
+    assert_eq!(
+        response
+            .choice
+            .iter()
+            .map(AssistantContent::canonical)
+            .collect::<Vec<_>>(),
+        [AssistantContent::text("Hello")]
+    );
+}
+
+/// A reasoning detail after the finish chunk joins the reasoning before
+/// it, so the turn holds one reasoning block with its detail, as the whole
+/// reply does.
+#[tokio::test]
+async fn a_reasoning_detail_after_the_finish_chunk_joins_the_open_reasoning() {
+    let detail = json!({"type": "reasoning.encrypted", "id": "call_1", "data": "SIG",
+        "format": "google-gemini-v1", "index": 0});
+    let (_, response) = stream(
+        &OPENROUTER,
+        &[
+            chunk(
+                json!({"role": "assistant", "reasoning": "plan", "content": null}),
+                None,
+            ),
+            chunk(
+                json!({"tool_calls": [{"index": 0, "id": "call_1", "type": "function",
+                    "function": {"name": "f", "arguments": "{}"}}]}),
+                Some("tool_calls"),
+            ),
+            chunk(json!({"reasoning_details": [detail.clone()]}), None),
+            DONE.to_owned(),
+        ],
+    )
+    .await;
+    let response = response.expect("the reply folds");
+    let kinds: Vec<&str> = response
+        .choice
+        .iter()
+        .map(|block| match block {
+            AssistantContent::Reasoning(_) => "reasoning",
+            AssistantContent::ToolCall(_) => "call",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["reasoning", "call"], "{:?}", response.choice);
+    let reasoning = reasoning_of(&response);
+    assert_eq!(details_of(&reasoning[0]), json!([detail]));
+}
