@@ -32,8 +32,13 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
                 .env
                 .contains_key("CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER");
         }
+        if check.id == "coverage" {
+            probes.insert(("cargo", vec!["llvm-cov", "--version"]));
+            probes.insert(("cargo", vec!["nextest", "--version"]));
+        }
         if [
             "clippy",
+            "coverage",
             "doctests",
             "docs",
             "full-tests",

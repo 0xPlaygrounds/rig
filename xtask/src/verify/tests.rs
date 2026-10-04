@@ -893,3 +893,28 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
 }
+
+#[test]
+fn the_coverage_check_runs_the_cheap_gate_without_mutation() {
+    let all = checks::all();
+    let c = all.iter().find(|c| c.id == "coverage").unwrap();
+    assert_eq!(
+        c.steps,
+        vec![Step::new("cargo", &["xtask", "coverage", "--check"])]
+    );
+}
+
+#[test]
+fn sources_cassettes_and_the_baseline_select_the_coverage_gate() {
+    for path in [
+        "crates/rig-ecs/src/lib.rs",
+        "crates/rig-cassette/tests/corpus_hooks.rs",
+        "crates/rig-cassette/fixtures/cassettes/openai/websocket/example.yaml",
+        "crates/rig-cassette/coverage/lines.tsv",
+    ] {
+        assert!(ids("--changed", &[path]).contains("coverage"), "{path}");
+    }
+    let baseline = ids("--changed", &["crates/rig-cassette/coverage/shapes.tsv"]);
+    assert!(!baseline.contains("full-tests"), "{baseline:?}");
+    assert!(!ids("--changed", &["README.md"]).contains("coverage"));
+}

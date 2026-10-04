@@ -151,6 +151,27 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check derive
 
+  # The coverage gate's cheap parts: line and branch coverage of every
+  # production file, from an instrumented all-features run of the local
+  # nextest profile, and the cassette corpus's request skeletons and reply
+  # shapes, each against crates/rig-cassette/coverage. Mutation is too slow
+  # for every PR; `cargo xtask coverage --check --mutants` runs it locally.
+  # No warm cache: the instrumented build shares no artifacts with the rest.
+  coverage:
+    name: stable / coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          components: llvm-tools
+          nextest: "true"
+          protoc: "true"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo xtask verify --check coverage
+
   # Every interleaving of the bus's wait/wake models under loom.
   loom:
     name: stable / loom models

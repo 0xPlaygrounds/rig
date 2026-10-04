@@ -352,6 +352,46 @@ Record a cell with the ordinary record mode and an exact test name. Set
 the tree, and `RIG_HISTORY_SURVIVAL_CENSUS` or `RIG_PORTABILITY_REPORT` to
 write the census and the forwarded-field report to a file.
 
+## Coverage Gate
+
+`cargo xtask coverage` measures what the tests cover and keeps a compact
+baseline of it in `crates/rig-cassette/coverage/`:
+
+- `lines.tsv`: line and branch coverage of every production file (the `src/`
+  trees of the facade and `crates/*`, without test modules, test helpers and
+  proc-macro crates). It comes from `cargo llvm-cov nextest` over the
+  workspace with all features under the `local` profile. A baseline keeps only
+  what three instrumented runs all covered, so a branch that a race reaches
+  in some runs is not held against a later one.
+- `shapes.tsv`: per provider and encoder (method and path template), every
+  request skeleton and reply shape the cassettes record, with its count of
+  recordings and one example fixture. A request skeleton keeps the body's
+  JSON keys and types, erases the values and collapses each array to the set
+  of its element skeletons. A reply shape is the status, the framing, and the
+  same skeleton of the body or of each stream event, keeping discriminators
+  such as `type` and `finish_reason`.
+- `mutants.tsv`: a fixed sample of the `cargo mutants` mutants of the replay
+  core, each run against its crate's unit tests and conformance targets, with
+  its outcome and the tests that failed on it. A mutant is in the sample when
+  the hash of its position-free name is divisible by the sample size.
+
+```sh
+cargo xtask coverage --check            # lines and shapes: CI's `verify --check coverage`
+cargo xtask coverage --check --mutants  # also mutation: run it in a PR that deletes tests
+cargo xtask coverage [--only lines,shapes,mutants] [--sample N] [--jobs N]  # rewrite the baseline
+cargo xtask coverage --per-test         # every test's lines and branches, in target/coverage/per-test.tsv
+```
+
+`--check` fails when an unchanged file loses a covered line or branch, a
+changed file's line or branch ratio falls, a mutant the baseline killed
+survives, or a request skeleton or reply shape loses its last recording. It
+leaves each measurement in `target/coverage/`. When a change moves coverage
+on purpose, rewrite the affected baseline file and review its diff with the
+change. The lines part needs `cargo-llvm-cov`, the `llvm-tools` component,
+nextest and protoc, and builds the instrumented crates alone with
+`RUSTC_BOOTSTRAP`, since branch coverage is unstable in rustc. Mutation needs
+`cargo-mutants` and takes hours, so CI never runs it.
+
 ## Prompt Cache Testing
 
 Provider prompt caching is a **prefix match**: the cache key is derived from the exact request

@@ -362,6 +362,11 @@ pub(super) fn plan(
             )?;
             continue;
         }
+        // The coverage baseline is data the gate reads, not package source.
+        if path.starts_with("crates/rig-cassette/coverage/") {
+            add(&mut out, all, "coverage", "coverage baseline changed")?;
+            continue;
+        }
         if let Some(name) = provider(path) {
             if let Some(owner) = provider_owner(packages, name) {
                 if owner == "rig-cassette"
@@ -433,6 +438,19 @@ pub(super) fn plan(
     }
     if paths.iter().any(|p| p != "DEVELOPING.md") {
         add(&mut out, all, "fmt", "changed files must remain formatted")?;
+    }
+    // Rust sources move line and branch coverage; fixtures move the
+    // recorded shapes.
+    if paths
+        .iter()
+        .any(|p| p.ends_with(".rs") || p.starts_with("crates/rig-cassette/fixtures/cassettes/"))
+    {
+        add(
+            &mut out,
+            all,
+            "coverage",
+            "source or cassettes changed: coverage and shapes must not drop",
+        )?;
     }
     // The runtimes and the effective-policy hash: an edit to rig-ecs (the
     // hash, `Materialise`), rig-agent (the runner) or rig-core (the message

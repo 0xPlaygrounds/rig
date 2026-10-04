@@ -303,6 +303,11 @@ pub(super) fn all() -> Vec<Check> {
                 "binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption) + binary(history_conformance)",
             ])],
         ),
+        // The coverage gate's cheap parts: line and branch coverage per
+        // production file and the cassette shapes, against the baseline in
+        // crates/rig-cassette/coverage. Mutation (`--mutants`) takes hours and
+        // runs locally only, in PRs that delete tests.
+        check("coverage", vec![cargo(&["xtask", "coverage", "--check"])]),
         check(
             "derive",
             vec![cargo(&["test", "--locked", "-p", "rig-derive"])],
