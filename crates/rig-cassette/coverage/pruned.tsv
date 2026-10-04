@@ -8,13 +8,13 @@
 # bank, verify, world_replay, and every test of a provider file another target
 # compiles too), and so is every fixture or golden something outside the
 # candidates names or crates/rig-cassette/coverage/prune-keep.txt lists with
-# its reason. The kept candidates are chosen by greedy set
-# cover over what the gate measures that the always-kept tests do not hold:
-# the candidate covering the most such elements is taken, then the one with
-# smaller fixtures, then the alphabetically first; then every taken test the
-# others make redundant is dropped, latest first. A kept fixture keeps one of
-# its recording tests. A fixture goes when every test naming it goes, with its
-# `.requests.json` and `.clock.json`.
+# its reason. The kept candidates are chosen by greedy set cover over what the
+# gate measures that the always-kept tests do not hold: the candidate covering
+# the most such elements is taken, then the one with smaller fixtures, then the
+# alphabetically first; then every taken test the others make redundant is
+# dropped, latest first. A kept fixture keeps one of its recording tests. A
+# fixture goes when every test naming it goes, with its `.requests.json` and
+# `.clock.json`.
 #
 # The elements. Regions: every line and branch of crates/rig-cassette/coverage/
 # lines.tsv, from each test's own coverage (`cargo xtask coverage --per-test`).
