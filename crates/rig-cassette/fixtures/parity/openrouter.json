@@ -75,14 +75,14 @@
       }
     ],
     "usage": {
-      "input_tokens": 199,
+      "input_tokens": 196,
       "output_tokens": 24,
-      "total_tokens": 223,
+      "total_tokens": 220,
       "cached_input_tokens": 0,
       "cache_creation_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "response_id": "gen-1791019693-Izt6iu1QSJ3c67TFdd6R",
+    "response_id": "gen-1791080583-VJjxRZrEb2SRYgcD0NLb",
     "finish_reason": "stop",
     "model": "openai/gpt-4o",
     "provider_request_id": null,
@@ -102,7 +102,7 @@
         }
       ],
       "created": 0,
-      "id": "gen-1791019693-Izt6iu1QSJ3c67TFdd6R",
+      "id": "gen-1791080583-VJjxRZrEb2SRYgcD0NLb",
       "model": "openai/gpt-4o",
       "object": "chat.completion",
       "provider": "OpenAI",
@@ -115,21 +115,21 @@
           "image_tokens": 0,
           "reasoning_tokens": 0
         },
-        "cost": 0.0007375,
+        "cost": 0.00073,
         "cost_details": {
           "upstream_inference_completions_cost": 0.00024,
-          "upstream_inference_cost": 0.0007375,
-          "upstream_inference_prompt_cost": 0.0004975
+          "upstream_inference_cost": 0.00073,
+          "upstream_inference_prompt_cost": 0.00049
         },
         "is_byok": false,
-        "prompt_tokens": 199,
+        "prompt_tokens": 196,
         "prompt_tokens_details": {
           "audio_tokens": 0,
           "cache_write_tokens": 0,
           "cached_tokens": 0,
           "video_tokens": 0
         },
-        "total_tokens": 223
+        "total_tokens": 220
       }
     }
   },

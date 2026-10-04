@@ -122,19 +122,19 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "Your favorite color is teal, the tool returned the label crimson-harbor, and you chose the canary release lane.",
+        "text": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary.",
         "native": null
       }
     ],
     "usage": {
-      "input_tokens": 444,
+      "input_tokens": 446,
       "output_tokens": 26,
-      "total_tokens": 470
+      "total_tokens": 472
     },
-    "response_id": "chatcmpl-c405fb0f-9064-4e92-b1be-7aacd17a53cb",
+    "response_id": "chatcmpl-91637759-306b-4a11-b9d9-5017e0058f79",
     "finish_reason": "stop",
     "model": "qwen/qwen3.8-27b",
-    "provider_request_id": "req_01m40h90gme8dasc7zsd7pns5j",
+    "provider_request_id": "req_01m42bgnzcezhagfhq0cqej5n9",
     "raw": {
       "choices": [
         {
@@ -142,30 +142,30 @@
           "index": 0,
           "logprobs": null,
           "message": {
-            "content": "Your favorite color is teal, the tool returned the label crimson-harbor, and you chose the canary release lane.",
+            "content": "Your favorite color is teal, the tool's label is crimson-harbor, and the chosen release lane is canary.",
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-c405fb0f-9064-4e92-b1be-7aacd17a53cb",
+      "id": "chatcmpl-91637759-306b-4a11-b9d9-5017e0058f79",
       "model": "qwen/qwen3.8-27b",
       "object": "chat.completion",
       "service_tier": "on_demand",
-      "system_fingerprint": "fp_57c7e760a9",
+      "system_fingerprint": "fp_fea14bdc83",
       "usage": {
-        "completion_time": 0.051000784,
+        "completion_time": 0.05745318,
         "completion_tokens": 26,
-        "prompt_time": 0.038231801,
-        "prompt_tokens": 444,
-        "queue_time": 0.020256958,
-        "total_time": 0.089232585,
-        "total_tokens": 470
+        "prompt_time": 0.030502381,
+        "prompt_tokens": 446,
+        "queue_time": 0.005155072,
+        "total_time": 0.087955561,
+        "total_tokens": 472
       },
       "usage_breakdown": null,
       "x_groq": {
-        "id": "req_01m40h90gme8dasc7zsd7pns5j",
-        "seed": 1311730968
+        "id": "req_01m42bgnzcezhagfhq0cqej5n9",
+        "seed": 501587936
       }
     }
   },

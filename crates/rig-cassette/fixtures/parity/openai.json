@@ -18941,7 +18941,7 @@
     "choice": [
       {
         "tool_call": {
-          "id": "call_dFzBMP9nrJcZj2OGsjCy7jmi",
+          "id": "call_0KqeHFDJluRXQbRPKptFIbW9",
           "name": "add",
           "arguments": {
             "x": 17,
@@ -18953,25 +18953,25 @@
                 "arguments": "{\"x\":17,\"y\":25}",
                 "name": "add"
               },
-              "id": "call_dFzBMP9nrJcZj2OGsjCy7jmi",
+              "id": "call_0KqeHFDJluRXQbRPKptFIbW9",
               "type": "function"
             },
-            "fingerprint": "af58793664aa73ae"
+            "fingerprint": "2079e8e1de96af3a"
           }
         }
       }
     ],
     "usage": {
       "input_tokens": 291,
-      "output_tokens": 218,
-      "total_tokens": 509,
+      "output_tokens": 410,
+      "total_tokens": 701,
       "cached_input_tokens": 0,
-      "reasoning_tokens": 192
+      "reasoning_tokens": 384
     },
-    "response_id": "chatcmpl-EUq08ePeAOTdorhifvSyP6GRm3RTm",
+    "response_id": "chatcmpl-EV69zjD9aKozpnOvfOm2f9aF0TOMo",
     "finish_reason": "tool_calls",
     "model": "gpt-5-mini-2025-08-07",
-    "provider_request_id": "req_56955a0ba7e94c5a9a8594c9edc3d668",
+    "provider_request_id": "req_2f49ce6905fd42a7985638005fb66191",
     "raw": {
       "choices": [
         {
@@ -18988,7 +18988,7 @@
                   "arguments": "{\"x\":17,\"y\":25}",
                   "name": "add"
                 },
-                "id": "call_dFzBMP9nrJcZj2OGsjCy7jmi",
+                "id": "call_0KqeHFDJluRXQbRPKptFIbW9",
                 "type": "function"
               }
             ]
@@ -18996,17 +18996,17 @@
         }
       ],
       "created": 0,
-      "id": "chatcmpl-EUq08ePeAOTdorhifvSyP6GRm3RTm",
+      "id": "chatcmpl-EV69zjD9aKozpnOvfOm2f9aF0TOMo",
       "model": "gpt-5-mini-2025-08-07",
       "object": "chat.completion",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 218,
+        "completion_tokens": 410,
         "completion_tokens_details": {
           "accepted_prediction_tokens": 0,
           "audio_tokens": 0,
-          "reasoning_tokens": 192,
+          "reasoning_tokens": 384,
           "rejected_prediction_tokens": 0
         },
         "prompt_tokens": 291,
@@ -19014,7 +19014,7 @@
           "audio_tokens": 0,
           "cached_tokens": 0
         },
-        "total_tokens": 509
+        "total_tokens": 701
       }
     }
   },
@@ -19022,21 +19022,21 @@
     "mode": "unary",
     "choice": [
       {
-        "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42\"\n}",
+        "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Meetup\",\"summary\":\"The sum of 17 and 25 is 42.\"}",
         "native": null
       }
     ],
     "usage": {
       "input_tokens": 322,
-      "output_tokens": 493,
-      "total_tokens": 815,
+      "output_tokens": 676,
+      "total_tokens": 998,
       "cached_input_tokens": 0,
-      "reasoning_tokens": 448
+      "reasoning_tokens": 640
     },
-    "response_id": "chatcmpl-EUq0BrwDHMitF2edhmNBcIhxF3LIj",
+    "response_id": "chatcmpl-EV6A302Xe0KYLSMu2kapmLmr0IKee",
     "finish_reason": "stop",
     "model": "gpt-5-mini-2025-08-07",
-    "provider_request_id": "req_ae1c9bd2f5884257afb3a69b515a5249",
+    "provider_request_id": "req_35f0b5dba42b40fc968d5f17e1a9c386",
     "raw": {
       "choices": [
         {
@@ -19044,24 +19044,24 @@
           "index": 0,
           "message": {
             "annotations": [],
-            "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"meetup\",\n  \"summary\": \"The sum of 17 and 25 is 42\"\n}",
+            "content": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Meetup\",\"summary\":\"The sum of 17 and 25 is 42.\"}",
             "refusal": null,
             "role": "assistant"
           }
         }
       ],
       "created": 0,
-      "id": "chatcmpl-EUq0BrwDHMitF2edhmNBcIhxF3LIj",
+      "id": "chatcmpl-EV6A302Xe0KYLSMu2kapmLmr0IKee",
       "model": "gpt-5-mini-2025-08-07",
       "object": "chat.completion",
       "service_tier": "default",
       "system_fingerprint": null,
       "usage": {
-        "completion_tokens": 493,
+        "completion_tokens": 676,
         "completion_tokens_details": {
           "accepted_prediction_tokens": 0,
           "audio_tokens": 0,
-          "reasoning_tokens": 448,
+          "reasoning_tokens": 640,
           "rejected_prediction_tokens": 0
         },
         "prompt_tokens": 322,
@@ -19069,7 +19069,7 @@
           "audio_tokens": 0,
           "cached_tokens": 0
         },
-        "total_tokens": 815
+        "total_tokens": 998
       }
     }
   },

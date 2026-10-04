@@ -87,6 +87,28 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
     assert_eq!(body(request(vec![tool("add")]))["tool_choice"], "none");
 }
 
+/// `ToolChoice::None` keeps the history's calls and results as tool
+/// messages beside `tool_choice: "none"`, so switching the choice never
+/// rewrites the prompt prefix.
+#[test]
+fn tool_choice_none_keeps_tool_history() {
+    let mut request = with_tool(vec![
+        Message::user("q"),
+        calling(&["call_1"]),
+        Message::User {
+            content: vec![result("call_1", vec![ToolResultContent::text("R")])],
+        },
+        Message::user("next"),
+    ]);
+    request.tool_choice = Some(crate::message::ToolChoice::None);
+    let body = body(request);
+    assert_eq!(body["tool_choice"], "none");
+    let messages = body["messages"].as_array().expect("messages");
+    assert_eq!(messages[1]["tool_calls"][0]["id"], "call_1", "{body}");
+    assert_eq!(messages[2]["role"], "tool", "{body}");
+    assert_eq!(messages[2]["tool_call_id"], "call_1", "{body}");
+}
+
 /// The documents open the first user message after the leading system
 /// messages, so roles keep alternating.
 #[test]

@@ -645,6 +645,14 @@ pub trait HistoryFixture {
         false
     }
 
+    /// Whether the wire sends a `none` tool choice beside the request's
+    /// tools, so a `ToolChoice::None` request keeps its tool history (row
+    /// H8). Converse has no such choice, so Bedrock gets the history as
+    /// text.
+    fn sends_tool_choice_none(&self) -> bool {
+        true
+    }
+
     /// Whether the wire keeps provider items. A local runtime keeps none.
     fn keeps_natives(&self) -> bool {
         true
@@ -1371,6 +1379,50 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
         fixture
             .body(&wire, prepared, mode)
             .unwrap_or_else(|error| panic!("{mode:?}: the history without tools encodes: {error}"));
+    }
+    // `ToolChoice::None` with the tools declared keeps calls and results
+    // where the wire sends its own `none`, so switching the choice never
+    // rewrites the prompt prefix; elsewhere they go as text.
+    let keeps = replay.accepts(fixture.model()).tools && fixture.sends_tool_choice_none();
+    for mode in MODES {
+        let wire = fixture.wire(fixture.model());
+        let mut request = CompletionRequest::new("next");
+        request.chat_history = history[1..].to_vec();
+        request.tools = tools_of(&request.chat_history);
+        request.tool_choice = Some(rig_core::message::ToolChoice::None);
+        let prepared = Completion::prepare(request, &wire.describe())
+            .unwrap_or_else(|error| panic!("{mode:?}: the history prepares: {error}"));
+        let calls = prepared
+            .chat_history
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) => Some(turn.tool_calls().count()),
+                _ => None,
+            })
+            .sum::<usize>();
+        let results = prepared
+            .chat_history
+            .iter()
+            .filter_map(|message| match message {
+                Message::User { content } => Some(
+                    content
+                        .iter()
+                        .filter(|part| matches!(part, UserContent::ToolResult(_)))
+                        .count(),
+                ),
+                _ => None,
+            })
+            .sum::<usize>();
+        let expected = if keeps { (2, 2) } else { (0, 0) };
+        assert_eq!(
+            (calls, results),
+            expected,
+            "{mode:?}: ToolChoice::None keeps tool history: {keeps}: {:?}",
+            prepared.chat_history
+        );
+        fixture.body(&wire, prepared, mode).unwrap_or_else(|error| {
+            panic!("{mode:?}: the history with ToolChoice::None encodes: {error}")
+        });
     }
     // A system message that arrives while a call waits is held until it is
     // answered, then sent before the user's own text.

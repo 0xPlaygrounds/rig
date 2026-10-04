@@ -180,7 +180,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
+                "provider": "toolu_01623FuiDvidSehfrbdvVym1"
               },
               "function": {
                 "name": "add",
@@ -194,7 +194,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
+                  "id": "toolu_01623FuiDvidSehfrbdvVym1",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -202,7 +202,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "810a6a72371b04c2"
+                "fingerprint": "353ebca6d5e882de"
               }
             }
           ],
@@ -218,9 +218,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfezBn9Z4SCipr9e2y7jw"
+            "response_id": "msg_011CfgQ9uKPjwhMB8GWXpkGD"
           },
-          "provider_request_id": "req_011CfezBmphgs86Z5qWBvW4d",
+          "provider_request_id": "req_011CfgQ9tCvUP1Ax7Hrcgp86",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -233,7 +233,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
+                "id": "toolu_01623FuiDvidSehfrbdvVym1",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -243,7 +243,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfezBn9Z4SCipr9e2y7jw",
+            "id": "msg_011CfgQ9uKPjwhMB8GWXpkGD",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -331,7 +331,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
+                    "provider": "toolu_01623FuiDvidSehfrbdvVym1"
                   },
                   "function": {
                     "name": "add",
@@ -345,7 +345,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
+                      "id": "toolu_01623FuiDvidSehfrbdvVym1",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -353,7 +353,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": "810a6a72371b04c2"
+                    "fingerprint": "353ebca6d5e882de"
                   }
                 }
               ],
@@ -362,7 +362,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfezBn9Z4SCipr9e2y7jw"
+                "response_id": "msg_011CfgQ9uKPjwhMB8GWXpkGD"
               },
               "stop": "tool_use"
             },
@@ -372,7 +372,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
+                    "provider": "toolu_01623FuiDvidSehfrbdvVym1"
                   },
                   "name": "add",
                   "content": [
@@ -446,20 +446,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sum is 42! Now I'll use that result to build the final event object.",
+              "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
               "native": {
                 "item": {
-                  "text": "The sum is 42! Now I'll use that result to build the final event object.",
+                  "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
                   "type": "text"
                 },
-                "fingerprint": "60202e8396410f4a"
+                "fingerprint": "825688b45691ded4"
               }
             }
           ],
           "usage": {
-            "input_tokens": 839,
-            "output_tokens": 28,
-            "total_tokens": 867,
+            "input_tokens": 894,
+            "output_tokens": 30,
+            "total_tokens": 924,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -468,20 +468,20 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfezBtPM5SCqdfFHAddHK"
+            "response_id": "msg_011CfgQA1C7HE1o9KrnHKJCt"
           },
-          "provider_request_id": "req_011CfezBt1WpL7N132GmEbEt",
+          "provider_request_id": "req_011CfgQ9zqH6chkJR1EfCBfP",
           "finish_reason": "stop",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "The sum is 42! Now I'll use that result to build the final event object.",
+                "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
                 "type": "text"
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfezBtPM5SCqdfFHAddHK",
+            "id": "msg_011CfgQA1C7HE1o9KrnHKJCt",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -496,8 +496,8 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 839,
-              "output_tokens": 28,
+              "input_tokens": 894,
+              "output_tokens": 30,
               "service_tier": "standard"
             }
           }
@@ -544,7 +544,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
+                    "provider": "toolu_01623FuiDvidSehfrbdvVym1"
                   },
                   "function": {
                     "name": "add",
@@ -558,7 +558,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_0185VY35qhXAA3oQ6FTuYtzq",
+                      "id": "toolu_01623FuiDvidSehfrbdvVym1",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -566,7 +566,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": "810a6a72371b04c2"
+                    "fingerprint": "353ebca6d5e882de"
                   }
                 }
               ],
@@ -575,7 +575,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfezBn9Z4SCipr9e2y7jw"
+                "response_id": "msg_011CfgQ9uKPjwhMB8GWXpkGD"
               },
               "stop": "tool_use"
             },
@@ -585,7 +585,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_0185VY35qhXAA3oQ6FTuYtzq"
+                    "provider": "toolu_01623FuiDvidSehfrbdvVym1"
                   },
                   "name": "add",
                   "content": [
@@ -602,13 +602,13 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "The sum is 42! Now I'll use that result to build the final event object.",
+                  "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
                   "native": {
                     "item": {
-                      "text": "The sum is 42! Now I'll use that result to build the final event object.",
+                      "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
                       "type": "text"
                     },
-                    "fingerprint": "60202e8396410f4a"
+                    "fingerprint": "825688b45691ded4"
                   }
                 }
               ],
@@ -617,7 +617,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfezBtPM5SCqdfFHAddHK"
+                "response_id": "msg_011CfgQA1C7HE1o9KrnHKJCt"
               },
               "stop": "stop"
             },
@@ -691,26 +691,15 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "Of course! Let me call the `final_result` tool now with the structured event object.",
-              "native": {
-                "item": {
-                  "text": "Of course! Let me call the `final_result` tool now with the structured event object.",
-                  "type": "text"
-                },
-                "fingerprint": "04e448938a4d101f"
-              }
-            },
-            {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01WTdH4t3MfVCHSrJwNz4Wtn"
+                "provider": "toolu_01KJ6Wk9cHWBZJCtCN6izFYW"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "category": "Technology",
-                  "summary": "Join us for the Seattle Rust Meetup! 17 + 25 = 42 attendees are expected for an evening of Rust programming talks, demos, and networking.",
+                  "summary": "Join us at the Rust Meetup in Seattle! The sum of 17 and 25 is 42 — just like the answer to life, the universe, and everything. Come explore Rust with fellow enthusiasts!",
                   "title": "Rust Meetup Seattle"
                 }
               },
@@ -719,23 +708,23 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01WTdH4t3MfVCHSrJwNz4Wtn",
+                  "id": "toolu_01KJ6Wk9cHWBZJCtCN6izFYW",
                   "input": {
                     "category": "Technology",
-                    "summary": "Join us for the Seattle Rust Meetup! 17 + 25 = 42 attendees are expected for an evening of Rust programming talks, demos, and networking.",
+                    "summary": "Join us at the Rust Meetup in Seattle! The sum of 17 and 25 is 42 — just like the answer to life, the universe, and everything. Come explore Rust with fellow enthusiasts!",
                     "title": "Rust Meetup Seattle"
                   },
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": "314cbf3511f2dcca"
+                "fingerprint": "34c9d7887438d4e1"
               }
             }
           ],
           "usage": {
-            "input_tokens": 946,
-            "output_tokens": 151,
-            "total_tokens": 1097,
+            "input_tokens": 948,
+            "output_tokens": 140,
+            "total_tokens": 1088,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -744,25 +733,21 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfezByUSM8CYxki8o8f2k"
+            "response_id": "msg_011CfgQA7LD3sbkPb3Y4XjzQ"
           },
-          "provider_request_id": "req_011CfezBy7MAuT8axSXhG3Bv",
+          "provider_request_id": "req_011CfgQA6xt8KCn43w2CtBgf",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "Of course! Let me call the `final_result` tool now with the structured event object.",
-                "type": "text"
-              },
-              {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01WTdH4t3MfVCHSrJwNz4Wtn",
+                "id": "toolu_01KJ6Wk9cHWBZJCtCN6izFYW",
                 "input": {
                   "category": "Technology",
-                  "summary": "Join us for the Seattle Rust Meetup! 17 + 25 = 42 attendees are expected for an evening of Rust programming talks, demos, and networking.",
+                  "summary": "Join us at the Rust Meetup in Seattle! The sum of 17 and 25 is 42 — just like the answer to life, the universe, and everything. Come explore Rust with fellow enthusiasts!",
                   "title": "Rust Meetup Seattle"
                 },
                 "name": "final_result",
@@ -770,7 +755,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfezByUSM8CYxki8o8f2k",
+            "id": "msg_011CfgQA7LD3sbkPb3Y4XjzQ",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -785,8 +770,8 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 946,
-              "output_tokens": 151,
+              "input_tokens": 948,
+              "output_tokens": 140,
               "service_tier": "standard"
             }
           }

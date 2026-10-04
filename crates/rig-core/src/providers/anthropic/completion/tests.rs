@@ -3559,3 +3559,47 @@ fn adversarial_histories_encode_to_requests_anthropic_takes() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// `ToolChoice::None` keeps the history's `tool_use` and `tool_result`
+/// blocks beside `tool_choice: {"type": "none"}`, as pi sends it
+/// (`anthropic-messages.ts` around 1282), so switching the choice never
+/// rewrites the prompt prefix.
+#[test]
+fn tool_choice_none_keeps_tool_history() {
+    let lookup = || message::ToolName::new("lookup").expect("tool name");
+    let mut request = completion_request_with_history(
+        vec![
+            message::Message::user("q"),
+            message::Message::Assistant(message::AssistantMessage::new(vec![
+                message::AssistantContent::tool_call("toolu_a", lookup(), json!({"q": "a"})),
+            ])),
+            message::Message::tool_result(message::CallId::from_wire("toolu_a"), lookup(), "R"),
+            message::Message::user("next"),
+        ],
+        None,
+    );
+    request.tools = vec![generic_tool("lookup")];
+    request.tool_choice = Some(message::ToolChoice::None);
+    let value = request_body(Params {
+        model: CLAUDE_SONNET_4_6,
+        request,
+        prompt_caching: false,
+        automatic_caching: false,
+        automatic_caching_ttl: None,
+        static_prefix_cache_ttl: None,
+    })
+    .expect("the request encodes");
+    assert_eq!(value["tool_choice"], json!({"type": "none"}));
+    assert_eq!(
+        value["messages"][1]["content"][0]["type"], "tool_use",
+        "{value}"
+    );
+    assert_eq!(
+        value["messages"][1]["content"][0]["id"], "toolu_a",
+        "{value}"
+    );
+    assert_eq!(
+        value["messages"][2]["content"][0]["type"], "tool_result",
+        "{value}"
+    );
+}

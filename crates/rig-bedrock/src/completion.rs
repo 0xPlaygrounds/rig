@@ -21,7 +21,7 @@ use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTar
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::json_utils::Lenient;
-use rig_core::message::{Api, DocumentSourceKind, Origin};
+use rig_core::message::{Api, DocumentSourceKind, Origin, ToolChoice};
 use rig_core::operation::Completion;
 use rig_core::wire::{Descriptor, Mode, Wire};
 use serde_json::{Value, json};
@@ -334,9 +334,11 @@ impl ReplayTarget for Converse {
     }
 
     /// Only the request's tools reach Converse's `toolConfig`;
-    /// `additional_params` go to `additionalModelRequestFields`.
+    /// `additional_params` go to `additionalModelRequestFields`. Converse
+    /// has no `none` tool choice, so `ToolChoice::None` sends no
+    /// `toolConfig`, and Converse rejects tool blocks without one.
     fn declares_tools(&self, request: &CompletionRequest) -> bool {
-        !request.tools.is_empty()
+        !request.tools.is_empty() && !matches!(request.tool_choice, Some(ToolChoice::None))
     }
 
     fn sends_alone(&self, block: &rig_core::message::AssistantContent) -> bool {

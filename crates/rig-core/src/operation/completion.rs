@@ -128,9 +128,7 @@ impl Operation for Completion {
             stored,
             // A conversation the provider stores holds its own tools, so a
             // continuation that declares none still calls them.
-            tools: stored
-                || target.declares_tools(&request)
-                    && !matches!(request.tool_choice, Some(crate::message::ToolChoice::None)),
+            tools: stored || target.declares_tools(&request),
             context: (!target.drops_unbound_items(&request)).then(|| {
                 crate::completion::history::context_of(
                     &request,

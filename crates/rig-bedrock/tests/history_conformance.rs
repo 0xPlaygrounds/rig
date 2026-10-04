@@ -512,6 +512,12 @@ impl HistoryFixture for BedrockHistory {
     fn strict_roles(&self) -> bool {
         true
     }
+
+    /// Converse's `toolChoice` is `auto`, `any` or `tool`, and it rejects
+    /// tool blocks without a `toolConfig`.
+    fn sends_tool_choice_none(&self) -> bool {
+        false
+    }
 }
 
 mod claude {

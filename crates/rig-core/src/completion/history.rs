@@ -176,10 +176,11 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         false
     }
 
-    /// Whether `request` declares tools the model may call, in `tools`, in
-    /// the `tools` of its `additional_params`, or through tools the wire
-    /// adds. A request that declares none gets its history's calls and
-    /// results as text.
+    /// Whether `request` declares tools to the provider, in `tools`, in the
+    /// `tools` of its `additional_params`, or through tools the wire adds.
+    /// A request that declares none gets its history's calls and results as
+    /// text. `ToolChoice::None` still declares them: the wire sends its own
+    /// `none` choice beside the tool history.
     fn declares_tools(&self, request: &crate::completion::CompletionRequest) -> bool {
         declares_tools(request)
     }
@@ -411,8 +412,8 @@ pub(crate) struct Request<'a> {
     pub(crate) model: Option<&'a str>,
     /// Whether it continues a conversation the provider stores.
     pub(crate) stored: bool,
-    /// Whether it lets the model call tools: a request with none, or with
-    /// `ToolChoice::None`, gets calls and results as text.
+    /// Whether it carries tools ([`ReplayTarget::declares_tools`]): a
+    /// request with none gets calls and results as text.
     pub(crate) tools: bool,
     /// The fingerprint of its tools and system prompt ([`context_of`]).
     pub(crate) context: Option<crate::message::Fingerprint>,

@@ -169,7 +169,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "sc5kFufHO"
+                "provider": "GKPGB13d8"
               },
               "function": {
                 "name": "add",
@@ -184,10 +184,10 @@
                     "arguments": "{\"x\": 17, \"y\": 25}",
                     "name": "add"
                   },
-                  "id": "sc5kFufHO",
+                  "id": "GKPGB13d8",
                   "type": "function"
                 },
-                "fingerprint": "6da675e48e9aef14"
+                "fingerprint": "7db5f002ee444d33"
               }
             }
           ],
@@ -201,7 +201,7 @@
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RIlZtZ4cl8AqQtrus47SSfFH"
+            "response_id": "chatcmpl-R4nB8JzB8DxXIzKmXdAsYqmP"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -221,7 +221,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "sc5kFufHO",
+                      "id": "GKPGB13d8",
                       "type": "function"
                     }
                   ]
@@ -233,7 +233,7 @@
               "usd": 0.000121875
             },
             "created": 0,
-            "id": "chatcmpl-RIlZtZ4cl8AqQtrus47SSfFH",
+            "id": "chatcmpl-R4nB8JzB8DxXIzKmXdAsYqmP",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
@@ -313,7 +313,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "sc5kFufHO"
+                    "provider": "GKPGB13d8"
                   },
                   "function": {
                     "name": "add",
@@ -328,10 +328,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "sc5kFufHO",
+                      "id": "GKPGB13d8",
                       "type": "function"
                     },
-                    "fingerprint": "6da675e48e9aef14"
+                    "fingerprint": "7db5f002ee444d33"
                   }
                 }
               ],
@@ -340,7 +340,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RIlZtZ4cl8AqQtrus47SSfFH"
+                "response_id": "chatcmpl-R4nB8JzB8DxXIzKmXdAsYqmP"
               },
               "stop": "tool_use"
             },
@@ -350,7 +350,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "sc5kFufHO"
+                    "provider": "GKPGB13d8"
                   },
                   "name": "add",
                   "content": [
@@ -424,20 +424,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "```json\n{\n  \"event\": {\n    \"name\": \"Rust Meetup Seattle\",\n    \"summary\": \"The sum is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"date\": \"2026-10-03\"\n  }\n}\n```"
+              "text": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"start\": {\n      \"dateTime\": \"2026-10-04T18:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-04T20:00:00-07:00\"\n    }\n  }\n}"
             }
           ],
           "usage": {
-            "input_tokens": 1088,
-            "output_tokens": 63,
-            "total_tokens": 1151
+            "input_tokens": 1101,
+            "output_tokens": 132,
+            "total_tokens": 1233
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RfTsMFTBV1h6FfJuSXXWyXhH"
+            "response_id": "chatcmpl-RAlqfGMdab1s7QVB0hH6I0nx"
           },
           "finish_reason": "stop",
           "raw": {
@@ -447,7 +447,7 @@
                 "index": 0,
                 "logprobs": null,
                 "message": {
-                  "content": "```json\n{\n  \"event\": {\n    \"name\": \"Rust Meetup Seattle\",\n    \"summary\": \"The sum is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"date\": \"2026-10-03\"\n  }\n}\n```",
+                  "content": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"start\": {\n      \"dateTime\": \"2026-10-04T18:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-04T20:00:00-07:00\"\n    }\n  }\n}",
                   "name": null,
                   "reasoning_content": null,
                   "role": "assistant",
@@ -457,17 +457,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00011775
+              "usd": 0.00013621875
             },
             "created": 0,
-            "id": "chatcmpl-RfTsMFTBV1h6FfJuSXXWyXhH",
+            "id": "chatcmpl-RAlqfGMdab1s7QVB0hH6I0nx",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 63,
-              "prompt_tokens": 1088,
-              "total_tokens": 1151
+              "completion_tokens": 132,
+              "prompt_tokens": 1101,
+              "total_tokens": 1233
             },
             "venice_parameters": {
               "disable_thinking": false,
@@ -515,7 +515,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "sc5kFufHO"
+                    "provider": "GKPGB13d8"
                   },
                   "function": {
                     "name": "add",
@@ -530,10 +530,10 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "sc5kFufHO",
+                      "id": "GKPGB13d8",
                       "type": "function"
                     },
-                    "fingerprint": "6da675e48e9aef14"
+                    "fingerprint": "7db5f002ee444d33"
                   }
                 }
               ],
@@ -542,7 +542,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RIlZtZ4cl8AqQtrus47SSfFH"
+                "response_id": "chatcmpl-R4nB8JzB8DxXIzKmXdAsYqmP"
               },
               "stop": "tool_use"
             },
@@ -552,7 +552,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "sc5kFufHO"
+                    "provider": "GKPGB13d8"
                   },
                   "name": "add",
                   "content": [
@@ -569,7 +569,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "```json\n{\n  \"event\": {\n    \"name\": \"Rust Meetup Seattle\",\n    \"summary\": \"The sum is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"date\": \"2026-10-03\"\n  }\n}\n```"
+                  "text": "final_result{\n  \"event\": {\n    \"title\": \"Rust Meetup in Seattle\",\n    \"summary\": \"The sum of 17 and 25 is 42.\",\n    \"location\": \"Seattle, WA\",\n    \"start\": {\n      \"dateTime\": \"2026-10-04T18:00:00-07:00\"\n    },\n    \"end\": {\n      \"dateTime\": \"2026-10-04T20:00:00-07:00\"\n    }\n  }\n}"
                 }
               ],
               "origin": {
@@ -577,7 +577,7 @@
                 "provider": "venice",
                 "model": "mistral-small-3-2-24b-instruct",
                 "response_model": "mistral-small-3-2-24b-instruct",
-                "response_id": "chatcmpl-RfTsMFTBV1h6FfJuSXXWyXhH"
+                "response_id": "chatcmpl-RAlqfGMdab1s7QVB0hH6I0nx"
               },
               "stop": "stop"
             },
@@ -653,40 +653,40 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "U7bU7BY8f"
+                "provider": "X6RM5sLst"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
-                  "title": "Rust Meetup Seattle",
-                  "category": "Event",
-                  "summary": "The sum is 42."
+                  "title": "Rust Meetup in Seattle",
+                  "category": "Tech Meetup",
+                  "summary": "The sum of 17 and 25 is 42."
                 }
               },
               "native": {
                 "item": {
                   "function": {
-                    "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"Event\", \"summary\": \"The sum is 42.\"}",
+                    "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Tech Meetup\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
                     "name": "final_result"
                   },
-                  "id": "U7bU7BY8f",
+                  "id": "X6RM5sLst",
                   "type": "function"
                 },
-                "fingerprint": "8639c8076b5b2ff6"
+                "fingerprint": "8205249fc12326b3"
               }
             }
           ],
           "usage": {
-            "input_tokens": 1379,
-            "output_tokens": 33,
-            "total_tokens": 1412
+            "input_tokens": 1452,
+            "output_tokens": 44,
+            "total_tokens": 1496
           },
           "origin": {
             "api": "openai.chat",
             "provider": "venice",
             "model": "mistral-small-3-2-24b-instruct",
             "response_model": "mistral-small-3-2-24b-instruct",
-            "response_id": "chatcmpl-RkwqWfUvV9tObgnYpwgzoAQc"
+            "response_id": "chatcmpl-RalHmddSVPuddjFdaDYski7J"
           },
           "finish_reason": "tool_calls",
           "raw": {
@@ -703,10 +703,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\": \"Rust Meetup Seattle\", \"category\": \"Event\", \"summary\": \"The sum is 42.\"}",
+                        "arguments": "{\"title\": \"Rust Meetup in Seattle\", \"category\": \"Tech Meetup\", \"summary\": \"The sum of 17 and 25 is 42.\"}",
                         "name": "final_result"
                       },
-                      "id": "U7bU7BY8f",
+                      "id": "X6RM5sLst",
                       "type": "function"
                     }
                   ]
@@ -715,17 +715,17 @@
             ],
             "cost": {
               "diem": 0,
-              "usd": 0.00013753125
+              "usd": 0.00014712499999999998
             },
             "created": 0,
-            "id": "chatcmpl-RkwqWfUvV9tObgnYpwgzoAQc",
+            "id": "chatcmpl-RalHmddSVPuddjFdaDYski7J",
             "model": "mistral-small-3-2-24b-instruct",
             "object": "chat.completion",
             "service_tier": "default",
             "usage": {
-              "completion_tokens": 33,
-              "prompt_tokens": 1379,
-              "total_tokens": 1412
+              "completion_tokens": 44,
+              "prompt_tokens": 1452,
+              "total_tokens": 1496
             },
             "venice_parameters": {
               "disable_thinking": false,

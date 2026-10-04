@@ -193,3 +193,37 @@ fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
         "{contents:#}"
     );
 }
+
+/// `ToolChoice::None` reaches the RPC as the `NONE` calling mode, and the
+/// history keeps its function call and response, as pi maps the choice
+/// (`google-shared.ts` around 414).
+#[test]
+fn tool_choice_none_conversion() {
+    use rig_core::message::{ToolChoice, ToolName};
+    use rig_core::wire::Operation;
+    let mut request = rebuilt_call_history();
+    request.tools = vec![rig_core::completion::ToolDefinition {
+        name: ToolName::new("lookup").expect("a tool name"),
+        description: "a lookup".to_owned(),
+        parameters: serde_json::json!({"type": "object"}),
+    }];
+    request.tool_choice = Some(ToolChoice::None);
+    let wire = GenerateContent::new(GEMINI_2_5_FLASH);
+    let request = rig_core::operation::Completion::prepare(request, &wire.describe())
+        .expect("the request prepares");
+    let request = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let mode = request
+        .tool_config
+        .as_ref()
+        .and_then(|config| config.function_calling_config.as_ref())
+        .map(|config| config.mode.clone());
+    assert_eq!(
+        mode,
+        Some(vertexai::model::function_calling_config::Mode::None)
+    );
+    let parts = || request.contents.iter().flat_map(|content| &content.parts);
+    assert!(parts().any(|part| part.function_call().is_some()));
+    assert!(parts().any(|part| part.function_response().is_some()));
+}
