@@ -1129,3 +1129,25 @@ fn a_part_that_is_not_an_object_never_replays() {
         );
     }
 }
+
+/// Two thought parts with their own signatures stay two blocks, each with
+/// its signature: merged, the first signature would be lost.
+#[test]
+fn two_signed_thought_parts_keep_both_signatures() {
+    let response = decoded(json!({
+        "candidates": [{"content": {"role": "model", "parts": [
+            {"thought": true, "text": "one", "thoughtSignature": "b25l"},
+            {"thought": true, "text": "two", "thoughtSignature": "dHdv"},
+            {"text": "answer"}
+        ]}, "finishReason": "STOP"}],
+        "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1, "totalTokenCount": 2}
+    }))
+    .expect("the reply decodes");
+    let signatures: Vec<_> = response
+        .choice
+        .iter()
+        .filter_map(|block| block.native_item())
+        .filter_map(|item| item["thoughtSignature"].as_str())
+        .collect();
+    assert_eq!(signatures, ["b25l", "dHdv"], "{:?}", response.choice);
+}

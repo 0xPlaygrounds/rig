@@ -58,6 +58,8 @@ pub struct GenerateContentDecoder {
     /// The text or thought run later parts continue, and whether it is
     /// thought.
     open: Option<(usize, bool)>,
+    /// Whether the open run holds a signature.
+    signed: bool,
     /// The index of the block written last.
     last: Option<usize>,
     /// A signature sent alone before any block, which the next block takes.
@@ -232,6 +234,10 @@ impl GenerateContentDecoder {
                 .or_insert(Value::String(signature));
         }
         self.last = Some(index);
+        self.signed = item
+            .get("thoughtSignature")
+            .and_then(Value::as_str)
+            .is_some_and(|signature| !signature.is_empty());
         let run = match &block {
             Block::Text => Some(false),
             Block::Reasoning { .. } => Some(true),
@@ -261,8 +267,11 @@ impl GenerateContentDecoder {
             if text.is_empty() && signature.is_none() {
                 return Ok(());
             }
+            // A second signed part starts a block of its own, so each
+            // signature stays with the part that carried it.
             return match self.open {
-                Some((index, kind)) if kind == thought => {
+                Some((index, kind)) if kind == thought && !(self.signed && signature.is_some()) => {
+                    self.signed |= signature.is_some();
                     out.push(index, text)?;
                     out.edit(index, |item| merge_part(item, &part))
                 }
