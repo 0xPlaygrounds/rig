@@ -136,3 +136,60 @@ fn the_request_model_override_reaches_the_rpc() {
         .expect("the request encodes");
     assert_eq!(request.model, "gemini-3-pro-preview");
 }
+
+/// Vertex AI requires `FunctionResponse.response`. A result that is only an
+/// image names it by `$ref`, the image carrying that `displayName`.
+#[test]
+fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
+    use rig_core::message::{
+        AssistantContent, AssistantMessage, CallId, DocumentSourceKind, Image, ImageMediaType,
+        Message, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
+    };
+    use rig_core::wire::Operation;
+    let call = ToolCall::new(
+        CallId::from_wire("call_1"),
+        ToolFunction::new(
+            ToolName::new("shot").expect("a tool name"),
+            serde_json::json!({}),
+        ),
+    );
+    let image = Image {
+        data: DocumentSourceKind::Base64("iVBORw0KGgo=".to_owned()),
+        media_type: Some(ImageMediaType::PNG),
+        ..Image::default()
+    };
+    let mut request = CompletionRequest::new("next");
+    request.tools = vec![rig_core::completion::ToolDefinition {
+        name: ToolName::new("shot").expect("a tool name"),
+        description: "a screenshot".to_owned(),
+        parameters: serde_json::json!({"type": "object"}),
+    }];
+    request.chat_history = vec![
+        Message::user("shoot"),
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call.clone(),
+        )])),
+        Message::User {
+            content: vec![UserContent::ToolResult(
+                call.result(vec![ToolResultContent::Image(image)]),
+            )],
+        },
+    ];
+    let wire = GenerateContent::new("gemini-3-flash-preview");
+    let request = rig_core::operation::Completion::prepare(request, &wire.describe())
+        .expect("the request prepares");
+    let request = wire
+        .encode(request, Mode::Unary)
+        .expect("the history encodes");
+    let contents = serde_json::to_value(&request.contents).expect("JSON");
+    let response = &contents[2]["parts"][0]["functionResponse"];
+    assert_eq!(
+        response["response"],
+        serde_json::json!({"output": {"$ref": "rig_tool_result_image_0"}}),
+        "{contents:#}"
+    );
+    assert_eq!(
+        response["parts"][0]["inlineData"]["displayName"], "rig_tool_result_image_0",
+        "{contents:#}"
+    );
+}

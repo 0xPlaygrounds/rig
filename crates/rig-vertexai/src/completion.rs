@@ -67,8 +67,10 @@ impl Wire for GenerateContent {
         let contents = body
             .get_mut("contents")
             .and_then(serde_json::Value::as_array_mut);
+        let mut images = 0;
         for content in contents.into_iter().flatten() {
             standard_signatures(content);
+            referenced_media(content, &mut images);
         }
         body.insert("model".to_owned(), model.into());
         Ok(serde_json::from_value(serde_json::Value::Object(body))?)
@@ -95,6 +97,54 @@ fn standard_signatures(content: &mut serde_json::Value) {
         {
             *signature = serde_json::Value::String(BASE64.encode(bytes));
         }
+    }
+}
+
+/// Give every function response in `content` that states no `response` one
+/// naming its media parts, which Vertex AI requires: each part gets a
+/// `displayName` and the response refers to it by `$ref`, as Google's
+/// multimodal function responses spell it. `images` numbers the names
+/// across the request.
+fn referenced_media(content: &mut serde_json::Value, images: &mut usize) {
+    let parts = content
+        .get_mut("parts")
+        .and_then(serde_json::Value::as_array_mut);
+    for part in parts.into_iter().flatten() {
+        let Some(response) = part
+            .get_mut("functionResponse")
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            continue;
+        };
+        if response.contains_key("response") {
+            continue;
+        }
+        let mut refs = Vec::new();
+        let media = response
+            .get_mut("parts")
+            .and_then(serde_json::Value::as_array_mut);
+        for media in media.into_iter().flatten() {
+            let key = ["inlineData", "fileData"]
+                .into_iter()
+                .find(|key| media.get(*key).is_some());
+            let blob = key
+                .and_then(|key| media.get_mut(key))
+                .and_then(serde_json::Value::as_object_mut);
+            if let Some(blob) = blob {
+                let name = format!("rig_tool_result_image_{images}");
+                *images += 1;
+                blob.insert("displayName".to_owned(), name.clone().into());
+                refs.push(serde_json::json!({ "$ref": name }));
+            }
+        }
+        let output = match refs.len() {
+            1 => refs.pop().unwrap_or_default(),
+            _ => serde_json::Value::Array(refs),
+        };
+        response.insert(
+            "response".to_owned(),
+            serde_json::json!({ "output": output }),
+        );
     }
 }
 
