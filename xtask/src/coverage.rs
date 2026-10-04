@@ -29,7 +29,7 @@ use std::time::Instant;
 
 pub(crate) const USAGE: &str = "\
   coverage [--check] [--mutants] [--only lines,shapes,mutants] [--runs N]
-           [--sample N] [--jobs N]
+           [--sample N] [--jobs N] [--package P,...]
                               measure line/branch coverage, mutants and cassette
                               shapes; write the baseline, or compare with --check
   coverage --per-test         line/branch coverage of every test, under target/coverage
@@ -98,6 +98,8 @@ pub(crate) struct Options {
     pub(crate) sample: Option<u64>,
     /// Parallel cargo-mutants jobs.
     pub(crate) jobs: usize,
+    /// Mutate only these packages' groups; `None` mutates every group.
+    pub(crate) packages: Option<Vec<String>>,
     /// Instrumented runs whose common coverage is kept: three when writing
     /// the baseline, one when checking, unless `--runs` says otherwise.
     pub(crate) runs: usize,
@@ -119,6 +121,7 @@ impl Options {
         let mut sample = None;
         let mut jobs = 2;
         let mut runs = None;
+        let mut packages = None;
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             let mut value = |name: &str| {
@@ -140,6 +143,9 @@ impl Options {
                 "--sample" => sample = Some(positive("--sample", value("--sample")?)?),
                 "--jobs" => jobs = positive("--jobs", value("--jobs")?)?,
                 "--runs" => runs = Some(positive("--runs", value("--runs")?)?),
+                "--package" => {
+                    packages = Some(value("--package")?.split(',').map(str::to_owned).collect());
+                }
                 other => return Err(invalid(format!("unknown coverage option {other}\n{USAGE}"))),
             }
         }
@@ -156,6 +162,7 @@ impl Options {
             per_test,
             sample,
             jobs,
+            packages,
             runs: runs.unwrap_or(if check { 1 } else { 3 }),
         })
     }
@@ -181,6 +188,11 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<()> {
         } else {
             None
         };
+        // Mutation of some packages keeps the other packages' rows.
+        let previous = match (&baseline, &options.packages) {
+            (None, Some(_)) => std::fs::read_to_string(&path).ok(),
+            _ => None,
+        };
         let (measured, lost) = match part {
             Part::Lines => lines::measure(root, baseline.as_deref(), options.runs)?,
             Part::Shapes => {
@@ -197,7 +209,9 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<()> {
                 };
                 (shapes::render(&current), lost)
             }
-            Part::Mutants => mutants::measure(root, baseline.as_deref(), &options)?,
+            Part::Mutants => {
+                mutants::measure(root, baseline.as_deref(), previous.as_deref(), &options)?
+            }
         };
         println!(
             "coverage {:?}: measured in {:.0}s",

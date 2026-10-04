@@ -133,6 +133,25 @@ fn every_group_mutates_its_own_package() {
             "{}",
             group.package
         );
-        assert_eq!(group.test_args.first(), Some(&"--lib"));
     }
+    // rig-core's other targets include a nested Cargo build.
+    let core = &groups(None).unwrap()[0];
+    assert_eq!(core.package, "rig-core");
+    assert_eq!(core.test_args.first(), Some(&"--lib"));
+}
+
+#[test]
+fn a_package_restriction_selects_its_groups_and_their_mutants() {
+    let picked = groups(Some(&["rig-ecs".to_owned()])).unwrap();
+    assert_eq!(picked.len(), 1);
+    assert!(in_groups(
+        "crates/rig-ecs/src/systems/mod.rs: delete ! in f",
+        &picked
+    ));
+    assert!(!in_groups(
+        "crates/rig-core/src/a.rs: delete ! in f",
+        &picked
+    ));
+    assert!(groups(Some(&["rig-nope".to_owned()])).is_err());
+    assert_eq!(groups(None).unwrap().len(), GROUPS.len());
 }

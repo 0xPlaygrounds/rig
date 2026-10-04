@@ -1,6 +1,7 @@
 //! The mutation kill set of the replay core, from `cargo mutants` with
 //! nextest, each mutant tested against its crate's fast suites only: the
-//! crate's unit tests and its conformance targets.
+//! crate's unit tests and its conformance targets, and for rig-agent and
+//! rig-ecs every target of the crate, which together take about a second.
 //!
 //! The replay core has about four thousand mutants, and one rig-core mutant
 //! rebuilds rig-core and its test binaries, so the gate samples them. A
@@ -43,6 +44,8 @@ const EXCLUDE: &[&str] = &["**/tests.rs", "**/*_tests.rs", "**/tests/**"];
 pub(crate) struct Group {
     pub(crate) package: &'static str,
     pub(crate) files: &'static [&'static str],
+    /// Target selection for `cargo nextest run`; none runs every target of
+    /// the package.
     pub(crate) test_args: &'static [&'static str],
 }
 
@@ -74,12 +77,15 @@ pub(crate) const GROUPS: &[Group] = &[
     Group {
         package: "rig-agent",
         files: &["crates/rig-agent/src/run/**"],
-        test_args: &["--lib"],
+        // Every target: the integration suites take about a second.
+        test_args: &[],
     },
     Group {
         package: "rig-ecs",
         files: &["crates/rig-ecs/src/systems/**"],
-        test_args: &["--lib"],
+        // The systems are exercised by the `run` and `bus` targets, not by
+        // unit tests; every target takes about a second.
+        test_args: &[],
     },
 ];
 
@@ -407,24 +413,53 @@ fn test_group(
     Ok(tested)
 }
 
-/// Measure the kill set, print its totals, and compare with `baseline`.
+/// The groups `packages` names, or every group.
+pub(crate) fn groups(packages: Option<&[String]>) -> Result<Vec<&'static Group>> {
+    let Some(packages) = packages else {
+        return Ok(GROUPS.iter().collect());
+    };
+    packages
+        .iter()
+        .map(|package| {
+            GROUPS
+                .iter()
+                .find(|group| group.package == package)
+                .ok_or_else(|| invalid(format!("no mutation group for package {package:?}")))
+        })
+        .collect()
+}
+
+/// Whether `identity` is a mutant of one of `groups`.
+fn in_groups(identity: &str, groups: &[&Group]) -> bool {
+    groups
+        .iter()
+        .any(|group| identity.starts_with(&format!("crates/{}/", group.package)))
+}
+
+/// Measure the kill set, print its totals, and compare with `baseline`. A
+/// run restricted to some packages compares only their mutants, and when it
+/// writes, keeps the other packages' rows of `previous`.
 pub(crate) fn measure(
     root: &Path,
     baseline: Option<&str>,
+    previous: Option<&str>,
     options: &Options,
 ) -> Result<(String, Vec<String>)> {
     output(root, "cargo", &["mutants", "--version"])?;
+    let groups = groups(options.packages.as_deref())?;
     let baseline = baseline.map(parse).transpose()?;
+    let previous = previous.map(parse).transpose()?;
     let sample = options
         .sample
         .or(baseline.as_ref().map(|set| set.sample))
+        .or(previous.as_ref().map(|set| set.sample))
         .unwrap_or(DEFAULT_SAMPLE);
-    if let Some(baseline) = &baseline
-        && baseline.sample != sample
+    if let Some(known) = baseline.as_ref().or(previous.as_ref())
+        && known.sample != sample
     {
         return Err(invalid(format!(
             "--sample {sample} differs from the baseline's {}",
-            baseline.sample
+            known.sample
         )));
     }
     let mut current = KillSet {
@@ -432,7 +467,7 @@ pub(crate) fn measure(
         mutants: BTreeMap::new(),
     };
     let start = Instant::now();
-    for group in GROUPS {
+    for group in &groups {
         let listed = list(root, group)?;
         let chosen: Vec<(String, String)> = listed
             .iter()
@@ -468,8 +503,21 @@ pub(crate) fn measure(
         count(Outcome::Unviable),
         start.elapsed().as_secs_f64()
     );
-    let lost = baseline
-        .map(|baseline| survivors(&baseline, &current))
-        .unwrap_or_default();
+    let lost = match baseline {
+        Some(mut baseline) => {
+            baseline
+                .mutants
+                .retain(|identity, _| in_groups(identity, &groups));
+            survivors(&baseline, &current)
+        }
+        None => Vec::new(),
+    };
+    if let Some(previous) = previous {
+        for (identity, tested) in previous.mutants {
+            if !in_groups(&identity, &groups) {
+                current.mutants.insert(identity, tested);
+            }
+        }
+    }
     Ok((render(&current), lost))
 }

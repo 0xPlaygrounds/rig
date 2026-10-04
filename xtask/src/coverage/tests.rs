@@ -43,6 +43,10 @@ fn a_baseline_intersects_three_runs_and_a_check_runs_once() {
 fn numeric_options_must_be_positive() {
     assert_eq!(parse(&["--sample", "8"]).unwrap().sample, Some(8));
     assert_eq!(parse(&["--jobs", "3"]).unwrap().jobs, 3);
+    assert_eq!(
+        parse(&["--package", "rig-ecs,rig-agent"]).unwrap().packages,
+        Some(vec!["rig-ecs".to_owned(), "rig-agent".to_owned()])
+    );
     for args in [["--sample", "0"], ["--jobs", "x"], ["--runs", "-1"]] {
         assert!(parse(&args).is_err(), "{args:?}");
     }
