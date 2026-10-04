@@ -18,8 +18,8 @@ pub(super) fn untracked_inputs(root: &Path) -> Result<Vec<String>> {
     git_paths(root, &["ls-files", "--others", "--exclude-standard", "-z"])
 }
 
-/// The command for one step. Verification is always replay, checks the
-/// request snapshots and never rewrites them, and CLI or environment retry
+/// The command for one step. Verification is always replay, matches request
+/// bodies by shape, checks the request snapshots and never rewrites them, and CLI or environment retry
 /// overrides must not defeat the no-retry contract of the guards profile.
 /// Model downloads go under the target directory.
 pub(super) fn command(root: &Path, step: &Step, target: &Path) -> Command {
@@ -30,6 +30,7 @@ pub(super) fn command(root: &Path, step: &Step, target: &Path) -> Command {
         .envs(&step.env)
         .env("RIG_PROVIDER_TEST_MODE", "replay")
         .env("RIG_CASSETTE_SNAPSHOTS", "check")
+        .env("RIG_CASSETTE_MATCHING", "shape")
         .env("FASTEMBED_CACHE_DIR", &cache)
         .env("HF_HOME", &cache)
         .env_remove("RIG_REGENERATE_GOLDEN")

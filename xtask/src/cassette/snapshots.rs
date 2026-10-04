@@ -6,8 +6,10 @@
 //! writes the snapshot of a fixture whose requests differ from its recording
 //! and a snapshot nothing replays disappears. `--check` replays with
 //! `RIG_CASSETTE_SNAPSHOTS=check` and fails when a request differs from its
-//! snapshot. `--test TARGET` limits either to those targets, and a rewrite
-//! then deletes nothing first.
+//! snapshot. Both replay with `RIG_CASSETTE_MATCHING=shape`, so a request
+//! that keeps its recording's coarse shape is served and its difference
+//! lands in the snapshot. `--test TARGET` limits either to those targets,
+//! and a rewrite then deletes nothing first.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -81,6 +83,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         .current_dir(root)
         .env("RIG_PROVIDER_TEST_MODE", "replay")
         .env("RIG_CASSETTE_SNAPSHOTS", mode)
+        .env("RIG_CASSETTE_MATCHING", "shape")
         .env_remove("RIG_REGENERATE_GOLDEN")
         .status()
         .map_err(|error| format!("cargo nextest: {error}"))?;
