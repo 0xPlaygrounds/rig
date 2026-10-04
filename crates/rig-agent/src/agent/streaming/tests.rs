@@ -23,8 +23,8 @@ use crate::test_utils::{
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
 use rig_core::message::{
-    AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent, ToolChoice,
-    ToolResultContent, UserContent,
+    AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolChoice, ToolResultContent,
+    UserContent,
 };
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
@@ -240,7 +240,9 @@ fn tool_result_output_preserves_multimodal_tool_output() {
     let user_content = tool_result_output(
         rig_core::message::CallId::from_wire("call_1"),
         rig_core::message::ToolName::new("render_reference_image").expect("tool name"),
-        crate::tool::ToolOutput::content(content).expect("fixture content is non-empty"),
+        &crate::tool::ToolResult::success(
+            crate::tool::ToolOutput::content(content).expect("fixture content is non-empty"),
+        ),
     );
 
     let tool_result = match user_content {
@@ -252,7 +254,7 @@ fn tool_result_output_preserves_multimodal_tool_output() {
         tool_result
             .call
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("call_1")
     );
     assert_eq!(
@@ -260,7 +262,7 @@ fn tool_result_output_preserves_multimodal_tool_output() {
             .call
             .provider()
             .as_ref()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("call_1")
     );
     assert_eq!(tool_result.content.len(), 2);
@@ -311,14 +313,13 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
     // on `provider` as the dual-wire identifiers.
     if !matches!(
         history.get(1),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_1")
                         && tool_call.id.provider().as_ref().is_some_and(|provider| {
-                            provider.call_id == "call_1"
-                                && provider.item_id.as_deref() == Some("tool_call_1")
+                            provider.as_str() == "call_1"
                         })
             )
     ) {
@@ -333,10 +334,9 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if tool_result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
                         && tool_result.call.provider().as_ref().is_some_and(|provider| {
-                            provider.call_id == "call_1"
-                                && provider.item_id.as_deref() == Some("tool_call_1")
+                            provider.as_str() == "call_1"
                         })
             )
     ) {
@@ -352,7 +352,7 @@ fn history_contains_tool_call(history: &[Message], tool_name: &str) -> bool {
     history.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
@@ -367,7 +367,7 @@ fn history_contains_tool_call(history: &[Message], tool_name: &str) -> bool {
 /// provider boundary when the wire issued none), and the retry results
 /// answer exactly those ids.
 fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
-    let Message::Assistant { content, .. } = assistant else {
+    let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = assistant else {
         panic!("expected the assistant tool-call turn, got {assistant:?}");
     };
     let call_ids: Vec<&rig_core::message::CallId> = content
@@ -409,7 +409,7 @@ fn history_contains_text(history: &[Message], expected: &str) -> bool {
     history.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::Text(text) if text.text == expected
@@ -424,20 +424,16 @@ fn assistant_reasoning_precedes_tool_call(
     tool_name: &str,
 ) -> bool {
     history.iter().any(|message| {
-        let Message::Assistant { content, .. } = message else {
+        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
+        else {
             return false;
         };
 
-        let reasoning_index = content.iter().position(|item| {
-            matches!(
-                item,
-                AssistantContent::Reasoning(reasoning)
-                    if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|content| matches!(
-                        content,
-                        ReasoningContent::Text { text, .. }
-                            if text == expected_reasoning
-                    ))
-            )
+        // A replay to another model carries reasoning as text.
+        let reasoning_index = content.iter().position(|item| match item {
+            AssistantContent::Reasoning(reasoning) => reasoning.text == expected_reasoning,
+            AssistantContent::Text(text) => text.text == expected_reasoning,
+            _ => false,
         });
         let tool_index = content.iter().position(|item| {
             matches!(
@@ -458,20 +454,16 @@ fn assistant_reasoning_precedes_text_and_tool_call(
     tool_name: &str,
 ) -> bool {
     history.iter().any(|message| {
-        let Message::Assistant { content, .. } = message else {
+        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
+        else {
             return false;
         };
 
-        let reasoning_index = content.iter().position(|item| {
-            matches!(
-                item,
-                AssistantContent::Reasoning(reasoning)
-                    if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|content| matches!(
-                        content,
-                        ReasoningContent::Text { text, .. }
-                            if text == expected_reasoning
-                    ))
-            )
+        // A replay to another model carries reasoning as text.
+        let reasoning_index = content.iter().position(|item| match item {
+            AssistantContent::Reasoning(reasoning) => reasoning.text == expected_reasoning,
+            AssistantContent::Text(text) => text.text == expected_reasoning,
+            _ => false,
         });
         let text_index = content.iter().position(|item| {
             matches!(
@@ -670,7 +662,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     let tool_name = "missing".to_string();
     let advertised = BTreeSet::from([tool_name.clone()]);
     let turn = crate::agent::run::ModelTurn::new(
-        None,
+        rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::ToolCall(
             rig_core::message::ToolCall::new(
                 rig_core::message::CallId::from_wire("expected_call"),
@@ -1783,9 +1775,9 @@ impl AgentHook for TerminatingToolCallDeltaHook {
     }
 }
 
-fn text_metadata(content: &[AssistantContent]) -> Option<&rig_core::message::AdditionalParams> {
+fn text_metadata(content: &[AssistantContent]) -> Option<&serde_json::Value> {
     content.iter().find_map(|item| match item {
-        AssistantContent::Text(text) => text.additional_params.as_ref(),
+        AssistantContent::Text(text) => text.native.as_ref().map(|native| &native.item),
         _ => None,
     })
 }
@@ -1842,7 +1834,7 @@ async fn stream_prompt_continues_after_tool_call_turn() {
     let history = final_history.expect("expected final response history");
     assert!(history.iter().any(|message| matches!(
         message,
-        Message::Assistant { content, .. }
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. })
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::Text(text) if text.text == "done"
@@ -2138,7 +2130,7 @@ async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_i
         context
             .tool_call_id
             .as_ref()
-            .and_then(|id| id.provider().map(|provider| provider.call_id.as_str())),
+            .and_then(|id| id.provider().map(|provider| provider.as_str())),
         Some("provider_call_1")
     );
     assert!(context.is_streaming);
@@ -2200,7 +2192,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
         skipped_tool_result
             .call
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("call_1")
     );
     assert!(
@@ -2208,9 +2200,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
             .call
             .provider()
             .as_ref()
-            .is_some_and(|provider| {
-                provider.call_id == "call_1" && provider.item_id.as_deref() == Some("tool_call_1")
-            })
+            .is_some_and(|provider| { provider.as_str() == "call_1" })
     );
     assert!(skipped_tool_result.content.iter().any(|content| matches!(
         content,
@@ -2228,7 +2218,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
             if content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                    if result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
                         && result.content.iter().any(|content| matches!(
                             content,
                             ToolResultContent::Text(text)
@@ -2318,7 +2308,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
     assert_eq!(retry_history.len(), 3);
     assert!(matches!(
         retry_history.get(1),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::Text(text) if text.text == "checking "
@@ -2326,13 +2316,13 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_1")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                        if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -2343,7 +2333,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -2353,7 +2343,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_2")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -2426,7 +2416,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
         skipped_tool_result
             .call
             .provider()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some("call_2")
     );
     assert!(
@@ -2434,9 +2424,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
             .call
             .provider()
             .as_ref()
-            .is_some_and(|provider| {
-                provider.call_id == "call_2" && provider.item_id.as_deref() == Some("tool_call_2")
-            })
+            .is_some_and(|provider| { provider.as_str() == "call_2" })
     );
     assert_eq!(final_response_text.as_deref(), Some("continued"));
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
@@ -2447,7 +2435,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
     assert_eq!(follow_up_history.len(), 3);
     assert!(matches!(
         follow_up_history.get(1),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::Text(text) if text.text == "checking "
@@ -2455,13 +2443,13 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_1")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                        if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -2472,9 +2460,9 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_1")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_1")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_1"
+                                |provider| provider.as_str() == "call_1"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -2485,9 +2473,9 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_2")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_2")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_2"
+                                |provider| provider.as_str() == "call_2"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -2698,7 +2686,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
     let retry_history = requests[1].chat_history.clone();
     assert!(matches!(
         retry_history.get(1),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::Text(text) if text.text == "checking "
@@ -2706,7 +2694,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
+                        if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_0")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
@@ -2715,7 +2703,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 AssistantContent::ToolCall(tool_call)
                     if tool_call.id == rig_core::message::CallId::from_wire("tool_call_1")
                         && tool_call.function.name == "default_api"
-                        && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
+                        && tool_call.function.arguments_value() == serde_json::json!({"x": 2, "y": 3})
             ))
     ));
     assert!(matches!(
@@ -2725,9 +2713,9 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_0")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_0"
+                                |provider| provider.as_str() == "call_0"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -2943,7 +2931,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
     let follow_up_history = requests[1].chat_history.clone();
     assert!(matches!(
         follow_up_history.get(1),
-        Some(Message::Assistant { content, .. })
+        Some(Message::Assistant(rig_core::message::AssistantMessage { content, .. }))
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::Text(text) if text.text == "checking "
@@ -2951,7 +2939,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
+                        if tool_call.id.provider().map(|provider| provider.as_str()) == Some("call_0")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
@@ -2960,7 +2948,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 AssistantContent::ToolCall(tool_call)
                     if tool_call.id == rig_core::message::CallId::from_wire("tool_call_1")
                         && tool_call.function.name == "default_api"
-                        && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
+                        && tool_call.function.arguments_value() == serde_json::json!({"x": 2, "y": 3})
             ))
     ));
     assert!(matches!(
@@ -2970,9 +2958,9 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("call_0")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("call_0")
                             && result.call.provider().as_ref().is_some_and(
-                                |provider| provider.call_id == "call_0"
+                                |provider| provider.as_str() == "call_0"
                             )
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -3309,7 +3297,7 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
                     tool_result
                         .call
                         .provider()
-                        .map(|provider| provider.call_id.as_str())
+                        .map(|provider| provider.as_str())
                         .expect("explicit provider ID")
                         .to_owned(),
                 );
@@ -3766,7 +3754,10 @@ async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
         panic!("one call: {ended:?}");
     };
     assert_eq!(call.function.name, "add");
-    assert_eq!(call.function.arguments, serde_json::json!({"x": 1, "y": 2}));
+    assert_eq!(
+        call.function.arguments_value(),
+        serde_json::json!({"x": 1, "y": 2})
+    );
     assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
     assert_eq!(
         hook.observed(),
@@ -3929,9 +3920,14 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
     let rs_b = completed
         .iter()
         .find(|(part, _)| *part == 1)
-        .and_then(|(_, reasoning)| reasoning.open(reasoning.issuer()))
+        .map(|(_, reasoning)| reasoning)
         .expect("the second part ends");
-    assert_eq!(rs_b.id.as_deref(), Some("rs_b"));
+    assert_eq!(
+        rs_b.native
+            .as_ref()
+            .and_then(|native| native.item.get("id")),
+        Some(&serde_json::json!("rs_b"))
+    );
     assert_eq!(
         hook.observed(),
         vec![
@@ -4483,7 +4479,9 @@ async fn final_response_history_preserves_structured_text_metadata() {
     let assistant_content = history
         .iter()
         .find_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                Some(content)
+            }
             _ => None,
         })
         .expect("expected assistant message in history");
@@ -4522,7 +4520,9 @@ async fn tool_follow_up_history_preserves_structured_text_metadata() {
     let assistant_content = follow_up_history
         .iter()
         .find_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                Some(content)
+            }
             _ => None,
         })
         .expect("expected assistant message in follow-up history");
@@ -4709,13 +4709,11 @@ async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     );
 }
 
-/// rig#2322 — the narrowing that keeps the rule from failing benign runs:
-/// a provider-specific `Other` reason is **not** treated as truncation.
-///
-/// `Other` carries a provider's own wire spelling with no normalized
-/// meaning, so erroring on it would fail runs on stops rig does not model.
+/// A finish reason the wire does not map is a failure (stops fail closed;
+/// each wire maps its benign reasons to `Stop` itself), so an answerless
+/// turn ending in one fails the run instead of finishing with `""`.
 #[tokio::test]
-async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
+async fn empty_turn_with_an_unknown_finish_reason_fails_the_run() {
     let model =
         MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(Finish {
             reason: Some(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
@@ -4724,20 +4722,28 @@ async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
     let agent = AgentBuilder::new(model).build();
 
     let mut stream = agent.prompt("say nothing").stream();
-    let mut final_response_text = None;
-
+    let mut failure = None;
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_response_text = Some(res.output().to_owned());
-                break;
+                panic!(
+                    "a failed, answerless turn must not finish: {:?}",
+                    res.output()
+                );
             }
             Ok(_) => {}
-            Err(err) => panic!("an unmodeled finish reason must not error: {err:?}"),
+            Err(err) => {
+                failure = Some(err.to_string());
+                break;
+            }
         }
     }
-
-    assert_eq!(final_response_text.as_deref(), Some(""));
+    assert!(
+        failure
+            .as_deref()
+            .is_some_and(|error| error.contains("PROVIDER_SPECIFIC")),
+        "{failure:?}"
+    );
 }
 
 /// rig#2322 — a turn that spent its whole budget **thinking** and was cut
@@ -4939,12 +4945,7 @@ async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors()
                 content: rig_core::message::AssistantContent::Reasoning(reasoning),
                 ..
             }))) => {
-                streamed_reasoning.push_str(
-                    &reasoning
-                        .open(reasoning.issuer())
-                        .expect("sealed reasoning")
-                        .display_text(),
-                );
+                streamed_reasoning.push_str(&reasoning.text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                 panic!("the truncated reasoning-only turn should error")
@@ -5122,9 +5123,7 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
 
     // Should contain the assistant response
     anyhow::ensure!(
-        history
-            .iter()
-            .any(|m| matches!(m, Message::Assistant { .. })),
+        history.iter().any(|m| matches!(m, Message::Assistant(_))),
         "History should contain the assistant response"
     );
 
@@ -5262,7 +5261,9 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
     let assistant_messages = final_history
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                Some(content)
+            }
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -5281,11 +5282,8 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
     assert!(assistant_content.iter().any(|item| matches!(
         item,
         AssistantContent::Reasoning(reasoning)
-            if reasoning.open(reasoning.issuer()).expect("sealed reasoning").id.as_deref() == Some("rs_1")
-                && reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|content| matches!(
-                    content,
-                    ReasoningContent::Text { text, .. } if text == "reasoned step"
-                ))
+            if reasoning.native.as_ref().and_then(|native| native.item.get("id")) == Some(&serde_json::json!("rs_1"))
+                && reasoning.text == "reasoned step"
     )));
     let reasoning_index = assistant_content
         .iter()
@@ -5822,12 +5820,11 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
     );
 }
 
-/// A turn abandoned mid-stream, before its terminal record, keeps reasoning
-/// the issuing provider will accept on the retry: the stream arrived over
-/// the bus under a handler label, which names no issuer, but the origin
-/// sealed the reasoning it closed.
+/// A turn abandoned mid-stream, before its terminal record, keeps its
+/// origin on the retry: the same model gets its reasoning back as
+/// reasoning, with no provider item, since the reply never ended.
 #[tokio::test]
-async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
+async fn an_abandoned_streamed_turn_replays_as_the_same_model() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::reasoning("delta reason").with_reasoning_id("rs_1"),
@@ -5858,26 +5855,27 @@ async fn an_abandoned_streamed_turn_keeps_reasoning_its_provider_accepts() {
     }
 
     let requests = recorded.requests();
-    let reasoning: Vec<_> = requests[1]
+    let rolled_back = requests[1]
         .chat_history
         .iter()
-        .flat_map(|message| match message {
-            Message::Assistant { content, .. } => content.iter().collect::<Vec<_>>(),
-            _ => Vec::new(),
+        .find_map(|message| match message {
+            Message::Assistant(turn) => Some(turn),
+            Message::System { .. } | Message::User { .. } => None,
         })
-        .filter_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
-        .collect();
+        .expect("the retry carries the abandoned turn");
+    assert!(rolled_back.origin.is_some(), "{rolled_back:?}");
     assert!(
-        !reasoning.is_empty(),
-        "the retry carries the abandoned turn's reasoning"
+        rolled_back.content.iter().any(|block| matches!(
+            block,
+            AssistantContent::Reasoning(reasoning) if reasoning.text == "delta reason"
+        )),
+        "the same model reads its reasoning as reasoning: {rolled_back:?}"
     );
     assert!(
-        reasoning.iter().all(|reasoning| reasoning
-            .open(&rig_core::test_utils::MOCK_PROVIDER.into())
-            .is_some()),
-        "the issuing provider accepts it: {reasoning:?}"
+        rolled_back
+            .content
+            .iter()
+            .all(|block| block.native_item().is_none()),
+        "a turn cut before its end keeps no provider item: {rolled_back:?}"
     );
 }

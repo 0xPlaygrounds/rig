@@ -60,8 +60,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks
-                    .push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
@@ -100,7 +99,8 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     );
 }
 
-/// Thinking and a tool call in ONE stream (`think: true`): the reasoning part
+/// Thinking and a tool call in ONE stream (thinking is the daemon's default
+/// for this model): the reasoning part
 /// and the tool call survive aggregation as discrete siblings.
 #[tokio::test]
 async fn thinking_and_tool_call_in_one_stream() {
@@ -110,14 +110,13 @@ async fn thinking_and_tool_call_in_one_stream() {
             let model = client.completion(MODEL);
             let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .additional_params(serde_json::json!({ "think": true }));
+                .tool(rig::tool::tool_definition(&AlphaSignal));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
             assert!(
                 !run.reasoning_delta.is_empty() || !run.reasoning_blocks.is_empty(),
-                "think:true should surface reasoning on the stream"
+                "a thinking model should surface reasoning on the stream"
             );
             let streamed = run
                 .tool_calls
@@ -153,11 +152,8 @@ async fn thinking_and_tool_call_in_one_stream() {
                 .provider()
                 .expect("the daemon-issued call id must be preserved");
             assert_eq!(
-                streamed
-                    .id
-                    .provider()
-                    .map(|provider| provider.call_id.as_str()),
-                Some(provider.call_id.as_str()),
+                streamed.id.provider().map(|provider| provider.as_str()),
+                Some(provider.as_str()),
                 "the durable id adopts the daemon's call id"
             );
         },
@@ -182,7 +178,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .tool(rig::tool::tool_definition(&BetaSignal))
-            .additional_params(serde_json::json!({ "think": false }));
+            .additional_params(serde_json::json!({ "reasoning_effort": "none" }));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -213,7 +209,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} must keep its daemon-issued call id"
                 );
                 assert!(
-                    streamed.function.arguments.is_object(),
+                    streamed.function.invalid_arguments.is_none(),
                     "{name} arguments must assemble into an object, got {:?}",
                     streamed.function.arguments
                 );
@@ -268,7 +264,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
                     .to_string(),
             )
             .tool(rig::tool::tool_definition(&Adder))
-            .additional_params(serde_json::json!({ "think": false }));
+            .additional_params(serde_json::json!({ "reasoning_effort": "none" }));
         let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
@@ -290,14 +286,14 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
                 "the daemon-issued call id must be preserved"
             );
             assert!(
-                call.function.arguments.is_object(),
+                call.function.invalid_arguments.is_none(),
                 "each call's arguments must assemble uncorrupted, got {:?}",
                 call.function.arguments
             );
         }
         let argument_sets: std::collections::HashSet<String> = add_calls
             .iter()
-            .map(|call| call.function.arguments.to_string())
+            .map(|call| call.function.arguments_value().to_string())
             .collect();
         assert!(
             argument_sets.len() >= 2,
@@ -346,21 +342,20 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::user(
                     "/no_think Use the add tool to compute 2 + 3, then state the result.",
                 ),
-                rig::message::Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
+                rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                    AssistantContent::ToolCall(rig::message::ToolCall {
                         id: call_id.clone(),
-                        function: rig::message::ToolFunction {
-                            name: rig_core::message::ToolName::new("add").expect("tool name"),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
-                        },
-                        signature: None,
-                        additional_params: None,
-                    })],
-                },
+                        function: rig::message::ToolFunction::new(
+                            rig_core::message::ToolName::new("add").expect("tool name"),
+                            serde_json::json!({"x": 2, "y": 3}),
+                        ),
+                        native: None,
+                    }),
+                ])),
                 rig::message::Message::User {
                     content: vec![rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
+                            is_error: false,
                             call: call_id,
                             name: rig_core::message::ToolName::new("add".to_owned())
                                 .expect("tool name"),
@@ -377,7 +372,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     )
                     .tool(rig::tool::tool_definition(&Adder))
                     .messages(history)
-                    .additional_params(serde_json::json!({ "think": false }));
+                    .additional_params(serde_json::json!({ "reasoning_effort": "none" }));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),

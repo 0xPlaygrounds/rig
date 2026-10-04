@@ -2,9 +2,6 @@
 //! fixtures. The original tests remain independent baseline executions.
 
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
-};
 use rig_ecs::{
     agent::{AdditionalParams, MaxTokens, Temperature},
     bus::Streamed,
@@ -51,21 +48,17 @@ async fn streaming_smoke() {
                     STREAMING_PREAMBLE,
                     1,
                 );
-                let config = GenerationConfig {
-                    thinking_config: Some(ThinkingConfig {
-                        thinking_budget: None,
-                        thinking_level: Some(ThinkingLevel::Medium),
-                        include_thoughts: Some(true),
-                    }),
-                    ..Default::default()
-                };
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(
-                        serde_json::to_value(AdditionalParameters::default().with_config(config))
-                            .expect("thinking configuration"),
-                    )));
+                    .insert(AdditionalParams(Some(serde_json::json!({
+                        "generationConfig": {
+                            "thinkingConfig": {
+                                "thinkingLevel": "medium",
+                                "includeThoughts": true
+                            }
+                        }
+                    }))));
                 assert_nonempty_response(&ecs.prompt(STREAMING_PROMPT, true).await);
                 let mut streams = ecs.app.world_mut().query::<&Streamed>();
                 let stream = streams
@@ -104,11 +97,7 @@ async fn streaming_tools_smoke() {
                         .world_mut()
                         .entity_mut(ecs.agent)
                         .insert(AdditionalParams(Some(
-                            serde_json::to_value(
-                                AdditionalParameters::default()
-                                    .with_config(GenerationConfig::default()),
-                            )
-                            .expect("tool configuration"),
+                            serde_json::json!({ "generationConfig": {} }),
                         )));
                     ecs.tool(Adder);
                     ecs.tool(Subtract);
@@ -141,20 +130,16 @@ async fn example_streaming_prompt() {
                     "Be precise and concise.",
                     1,
                 );
-                let config = GenerationConfig {
-                    thinking_config: Some(ThinkingConfig {
-                        thinking_budget: None,
-                        thinking_level: Some(ThinkingLevel::Medium),
-                        include_thoughts: Some(true),
-                    }),
-                    ..Default::default()
-                };
                 ecs.app.world_mut().entity_mut(ecs.agent).insert((
                     Temperature(Some(0.5)),
-                    AdditionalParams(Some(
-                        serde_json::to_value(AdditionalParameters::default().with_config(config))
-                            .expect("thinking configuration"),
-                    )),
+                    AdditionalParams(Some(serde_json::json!({
+                        "generationConfig": {
+                            "thinkingConfig": {
+                                "thinkingLevel": "medium",
+                                "includeThoughts": true
+                            }
+                        }
+                    }))),
                 ));
                 assert_nonempty_response(
                     &ecs.prompt(
@@ -191,13 +176,7 @@ async fn example_streaming_with_tools() {
                     );
                     ecs.app.world_mut().entity_mut(ecs.agent).insert((
                         MaxTokens(Some(1024)),
-                        AdditionalParams(Some(
-                            serde_json::to_value(
-                                AdditionalParameters::default()
-                                    .with_config(GenerationConfig::default()),
-                            )
-                            .expect("tool configuration"),
-                        )),
+                        AdditionalParams(Some(serde_json::json!({ "generationConfig": {} }))),
                     ));
                     ecs.tool(Adder);
                     ecs.tool(Subtract);

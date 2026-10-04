@@ -31,6 +31,14 @@ pub const MIMO_V2_5: &str = "mimo-v2.5";
 /// `mimo-v2.5-pro`
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
 
+/// Whether MiMo `model` reads images: V2 Flash and Pro and V2.5 Pro are text
+/// only; V2 Omni, V2.5 and later read images. Every wire MiMo serves
+/// applies this rule.
+pub(crate) fn reads_images(model: &str) -> bool {
+    !((model.starts_with("mimo-v2-") && !model.contains("omni"))
+        || model.starts_with("mimo-v2.5-pro"))
+}
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::XIAOMIMIMO, "Xiaomi MiMo");
 crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::XIAOMIMIMO,

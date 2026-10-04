@@ -72,30 +72,25 @@ async fn turn<W, T>(
     model: &rig::driver::Model<W, T>,
     cell: Cell,
     history: Vec<Message>,
-) -> Vec<AssistantContent>
+) -> rig::message::AssistantMessage
 where
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
     let request = request(cell, history);
-    if !cell.streamed {
-        return model
-            .call(request)
-            .await
-            .expect("the turn completes")
-            .choice
-            .to_vec();
+    let response = if cell.streamed {
+        let mut stream = model.stream(request).expect("the stream opens");
+        while let Some(item) = stream.next().await {
+            item.expect("a stream item");
+        }
+        stream.finish().await.expect("a terminal record")
+    } else {
+        model.call(request).await.expect("the turn completes")
+    };
+    rig::message::AssistantMessage {
+        content: response.choice.clone(),
+        ..response.head()
     }
-    let mut stream = model.stream(request).expect("the stream opens");
-    while let Some(item) = stream.next().await {
-        item.expect("a stream item");
-    }
-    stream
-        .finish()
-        .await
-        .expect("a terminal record")
-        .choice
-        .to_vec()
 }
 
 fn answer(choice: &[AssistantContent]) -> String {
@@ -114,17 +109,14 @@ where
     T: rig::driver::Transport<W>,
 {
     let first = turn(&model, cell, vec![Message::user(QUESTION)]).await;
-    assert!(answer(&first).contains("289"), "{first:?}");
+    assert!(answer(&first.content).contains("289"), "{first:?}");
     let history = vec![
         Message::user(QUESTION),
-        Message::Assistant {
-            id: None,
-            content: first,
-        },
+        Message::Assistant(first),
         Message::user(FOLLOW_UP),
     ];
     let second = turn(&model, cell, history).await;
-    assert!(answer(&second).contains("290"), "{second:?}");
+    assert!(answer(&second.content).contains("290"), "{second:?}");
 }
 
 /// Every model part of `request` carrying a signature, as (is a thought,

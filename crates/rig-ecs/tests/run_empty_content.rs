@@ -13,12 +13,12 @@ fn empty_histories() -> Vec<MessageParts> {
         MessageParts::User {
             content: Vec::<UserContent>::new(),
         },
-        MessageParts::Assistant {
-            id: None,
-            content: Vec::<AssistantContent>::new(),
-        },
+        MessageParts::Assistant(rig_core::message::AssistantMessage::new(Vec::<
+            AssistantContent,
+        >::new())),
         MessageParts::User {
             content: vec![UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: CallId::from_wire("call_1"),
                 name: ToolName::new("lookup").expect("tool name"),
                 content: Vec::new(),
@@ -54,7 +54,7 @@ fn an_empty_message_in_history_fails_the_run_before_dispatch() {
 fn message_parts_refuse_an_empty_list() {
     assert_eq!(MessageParts::user(Vec::new()), Err(ContentError::Shape));
     assert_eq!(
-        MessageParts::assistant(None, Vec::new()),
+        MessageParts::assistant(rig_core::message::AssistantMessage::new(Vec::new())),
         Err(ContentError::Shape)
     );
 }

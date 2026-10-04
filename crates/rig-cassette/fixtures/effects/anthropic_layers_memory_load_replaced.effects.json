@@ -84,7 +84,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -118,7 +117,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ada"
+              "text": "Ada",
+              "native": {
+                "item": {
+                  "text": "Ada",
+                  "type": "text"
+                },
+                "fingerprint": "64c6ea57186bef51"
+              }
             }
           ],
           "usage": {
@@ -128,12 +134,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZ7WpgCbTe7qoiNbyS",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcZ7WpgCbTe7qoiNbyS"
+          },
           "provider_request_id": "req_011CfLcZ77Wx3eZX85yuBWZQ",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -186,13 +195,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZ7WpgCbTe7qoiNbyS",
               "content": [
                 {
                   "type": "text",
-                  "text": "Ada"
+                  "text": "Ada",
+                  "native": {
+                    "item": {
+                      "text": "Ada",
+                      "type": "text"
+                    },
+                    "fingerprint": "64c6ea57186bef51"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcZ7WpgCbTe7qoiNbyS"
+              },
+              "stop": "stop"
             }
           ]
         }

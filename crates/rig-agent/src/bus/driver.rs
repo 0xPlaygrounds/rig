@@ -73,6 +73,10 @@ impl Observe for Recorded {
     fn event(&mut self, item: &Item<StreamEvent>) {
         self.recorder.event(self.id, item);
     }
+
+    fn origin(&mut self, origin: &rig_core::message::Origin) {
+        self.recorder.origin(self.id, origin);
+    }
     fn stream_error(&mut self, error: &ErrorReport) {
         self.recorder.stream_error(self.id, error);
     }

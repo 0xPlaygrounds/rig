@@ -8,7 +8,8 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
         providers::anthropic::{completion::CacheTtl, wire::AnthropicConfig},
         wire::{Body, Mode, Wire as _},
     };
-    let provider = AnthropicConfig::new("local-test-key").connect(rig::rig_reqwest::shared());
+    let provider =
+        AnthropicConfig::new("local-test-key").connect(rig_test_support::cassettes::local_http());
     let cases = [
         (
             "repair",

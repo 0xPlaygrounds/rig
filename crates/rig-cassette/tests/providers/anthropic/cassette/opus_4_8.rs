@@ -4,8 +4,7 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, Document, Message,
     ProviderToolDefinition,
 };
-use rig::message::Text;
-use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse, Content};
+use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
@@ -18,15 +17,12 @@ use rig::completion::CompletionRequest;
 /// returned. These cells fall back to it when rig's normalized choice holds
 /// no assistant text, and one request carries both views.
 fn provider_text(response: &RigCompletionResponse) -> Option<String> {
-    let reply = CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
-    let text: String = reply
-        .content
-        .iter()
-        .filter_map(|block| match block {
-            Content::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
+    let text: String = response.raw["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "text")
+        .filter_map(|block| block["text"].as_str())
         .collect();
     (!text.is_empty()).then_some(text)
 }
@@ -129,7 +125,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                 .await
                 .expect("Opus 4.8 web-search request should produce a server-tool transcript");
             let server_tool_assistant_message =
-                server_tool_assistant_message_from_response(first_response.choice);
+                server_tool_assistant_message_from_response(&first_response);
 
             let request = CompletionRequest::new(
                     "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
@@ -201,15 +197,14 @@ async fn documents_keep_leading_system_message_top_level() {
     );
 }
 
-fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -> Message {
-    let raw_blocks = content
-        .into_iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) if anthropic_raw_content_type(&text).is_some() => {
-                Some(AssistantContent::Text(text))
-            }
-            _ => None,
-        })
+/// The first reply's server-tool blocks as an assistant turn of the model
+/// that produced them, so they replay as they came.
+fn server_tool_assistant_message_from_response(response: &RigCompletionResponse) -> Message {
+    let raw_blocks = response
+        .choice
+        .iter()
+        .filter(|content| content_raw_type(content).is_some())
+        .cloned()
         .collect::<Vec<_>>();
 
     assert!(
@@ -225,26 +220,18 @@ fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -
         "first Anthropic response should end the preserved raw transcript with a server-tool result"
     );
 
-    Message::Assistant {
-        id: None,
+    Message::Assistant(rig::message::AssistantMessage {
         content: raw_blocks,
-    }
+        ..response.head()
+    })
 }
 
+/// The Anthropic block type of an opaque provider item.
 fn content_raw_type(content: &AssistantContent) -> Option<&str> {
-    let AssistantContent::Text(text) = content else {
-        return None;
-    };
-
-    anthropic_raw_content_type(text)
-}
-
-fn anthropic_raw_content_type(text: &Text) -> Option<&str> {
-    text.additional_params
-        .as_ref()
-        .and_then(|params| params.get("anthropic_content"))
-        .and_then(|raw_content| raw_content.get("type"))
-        .and_then(Value::as_str)
+    match content {
+        AssistantContent::Opaque(opaque) => opaque.kind(),
+        _ => None,
+    }
 }
 
 #[derive(Deserialize)]

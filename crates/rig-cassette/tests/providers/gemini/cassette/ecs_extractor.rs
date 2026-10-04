@@ -2,9 +2,6 @@
 use super::extractor::Person;
 use crate::ecs_extractor::EcsExtractor;
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig,
-};
 use rig_agent::test_utils::validate_extraction_fields;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
@@ -12,18 +9,14 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 async fn extractor_smoke() {
     rig_test_support::goldens::world_golden_test(
         async {
-            let additional_params =
-                AdditionalParameters::default().with_config(GenerationConfig::default());
+            let additional_params = serde_json::json!({ "generationConfig": {} });
             super::super::support::with_gemini_cassette(
                 "extractor/extractor_smoke",
                 |client| async move {
                     let mut extractor = EcsExtractor::<SmokePerson>::new(
                         client.completion(gemini::completion::GEMINI_2_5_FLASH),
                         None,
-                        Some(
-                            serde_json::to_value(additional_params)
-                                .expect("Gemini additional params should serialize"),
-                        ),
+                        Some(additional_params),
                     );
                     let response = extractor
                         .extract(EXTRACTOR_TEXT, &[])
@@ -69,14 +62,14 @@ async fn extractor_smoke() {
 async fn extractor_with_additional_params() {
     rig_test_support::goldens::world_golden_test(
         async {
-            let params = AdditionalParameters::default().with_config(GenerationConfig::default());
+            let params = serde_json::json!({ "generationConfig": {} });
             super::super::support::with_gemini_cassette(
                 "extractor/extractor_with_additional_params",
                 |client| async move {
                     let mut extractor = EcsExtractor::<Person>::new(
                         client.completion(gemini::completion::GEMINI_2_5_FLASH),
                         None,
-                        Some(serde_json::to_value(params).expect("params should serialize")),
+                        Some(params),
                     );
                     let person = extractor
                         .extract("Hello my name is John Doe! I am a software engineer.", &[])

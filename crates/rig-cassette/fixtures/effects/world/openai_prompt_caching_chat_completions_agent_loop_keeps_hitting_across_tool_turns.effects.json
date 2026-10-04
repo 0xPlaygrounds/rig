@@ -136,9 +136,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_8PinSjrrDIVIDxv76YjyMoKG"
-                }
+                "provider": "call_VWMnchzT30GyqFtoZwtiIMMZ"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -146,15 +144,22 @@
                   "topic": "prefix"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"topic\": \"prefix\"}",
+                    "name": "lookup_cache_policy"
+                  },
+                  "id": "call_VWMnchzT30GyqFtoZwtiIMMZ",
+                  "type": "function"
+                },
+                "fingerprint": "866340c69b4b40f8"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_49gA98gNFV747tugnHxbNJdK"
-                }
+                "provider": "call_lq2gccPcOJIXfV9ytCh0Khjr"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -162,8 +167,17 @@
                   "topic": "breakpoint"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"topic\": \"breakpoint\"}",
+                    "name": "lookup_cache_policy"
+                  },
+                  "id": "call_lq2gccPcOJIXfV9ytCh0Khjr",
+                  "type": "function"
+                },
+                "fingerprint": "2d03a6a365d9d0f1"
+              }
             }
           ],
           "usage": {
@@ -173,12 +187,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE1b009uky2N9n7AGZ4tPiALsyT",
-          "provider_request_id": "req_570a8ce51f2e4cb9bc7703347bee9948",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-EUeK2KjY6aRwgh36T5TWGLMS2mkpJ"
+          },
+          "provider_request_id": "req_a66e6a5187154c45ad1c2b24876107a8",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {
@@ -196,7 +213,7 @@
                         "arguments": "{\"topic\": \"prefix\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_8PinSjrrDIVIDxv76YjyMoKG",
+                      "id": "call_VWMnchzT30GyqFtoZwtiIMMZ",
                       "type": "function"
                     },
                     {
@@ -204,7 +221,7 @@
                         "arguments": "{\"topic\": \"breakpoint\"}",
                         "name": "lookup_cache_policy"
                       },
-                      "id": "call_49gA98gNFV747tugnHxbNJdK",
+                      "id": "call_lq2gccPcOJIXfV9ytCh0Khjr",
                       "type": "function"
                     }
                   ]
@@ -212,11 +229,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDE1b009uky2N9n7AGZ4tPiALsyT",
+            "id": "chatcmpl-EUeK2KjY6aRwgh36T5TWGLMS2mkpJ",
             "model": "gpt-4o-mini-2024-07-18",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_fd0531e57c",
+            "system_fingerprint": "fp_5a65effc2c",
             "usage": {
               "completion_tokens": 47,
               "completion_tokens_details": {
@@ -311,14 +328,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_8PinSjrrDIVIDxv76YjyMoKG"
-                    }
+                    "provider": "call_VWMnchzT30GyqFtoZwtiIMMZ"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -326,15 +340,22 @@
                       "topic": "prefix"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"topic\": \"prefix\"}",
+                        "name": "lookup_cache_policy"
+                      },
+                      "id": "call_VWMnchzT30GyqFtoZwtiIMMZ",
+                      "type": "function"
+                    },
+                    "fingerprint": "866340c69b4b40f8"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_49gA98gNFV747tugnHxbNJdK"
-                    }
+                    "provider": "call_lq2gccPcOJIXfV9ytCh0Khjr"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -342,10 +363,27 @@
                       "topic": "breakpoint"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"topic\": \"breakpoint\"}",
+                        "name": "lookup_cache_policy"
+                      },
+                      "id": "call_lq2gccPcOJIXfV9ytCh0Khjr",
+                      "type": "function"
+                    },
+                    "fingerprint": "2d03a6a365d9d0f1"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "response_model": "gpt-4o-mini-2024-07-18",
+                "response_id": "chatcmpl-EUeK2KjY6aRwgh36T5TWGLMS2mkpJ"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -353,9 +391,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_8PinSjrrDIVIDxv76YjyMoKG"
-                    }
+                    "provider": "call_VWMnchzT30GyqFtoZwtiIMMZ"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -368,9 +404,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_49gA98gNFV747tugnHxbNJdK"
-                    }
+                    "provider": "call_lq2gccPcOJIXfV9ytCh0Khjr"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -426,12 +460,15 @@
             "cached_input_tokens": 4480,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE2yG4grOtSEbjFR2y8RiUC3htq",
-          "provider_request_id": "req_d3fe2be6de7448169977afbec84c8523",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-EUeK3ws28pYPx5porioGHupPYQzmk"
+          },
+          "provider_request_id": "req_21b1fe06989941f1a46598767ab16265",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {
@@ -447,11 +484,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDE2yG4grOtSEbjFR2y8RiUC3htq",
+            "id": "chatcmpl-EUeK3ws28pYPx5porioGHupPYQzmk",
             "model": "gpt-4o-mini-2024-07-18",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_fd0531e57c",
+            "system_fingerprint": "fp_5a65effc2c",
             "usage": {
               "completion_tokens": 4,
               "completion_tokens_details": {

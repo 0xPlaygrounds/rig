@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 10,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,48 +10,24 @@
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 14,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 14,
         "id": 2,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 17,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 18,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
         }
       },
       {
@@ -59,7 +35,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -67,7 +43,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -75,7 +51,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -91,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -99,7 +75,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -111,7 +87,135 @@
         }
       },
       {
-        "batch": 26,
+        "batch": 27,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 30,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 35,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 36,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 37,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 40,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 41,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -234,63 +338,84 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-                }
+                "provider": "call_OIDr6IFhL4tZzL3PUdYnTDjB"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
+                  "type": "function"
+                },
+                "fingerprint": "2b2bb850eb7a517c"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-                }
+                "provider": "call_SljRmKTT5XL1T0FYVxTy2r0I"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
+                  "type": "function"
+                },
+                "fingerprint": "f7857689c5cc190d"
+              }
             }
           ],
           "usage": {
             "input_tokens": 241,
-            "output_tokens": 374,
-            "total_tokens": 615,
+            "output_tokens": 310,
+            "total_tokens": 551,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 320
+            "reasoning_tokens": 256
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCeqyCiHzbcSyukrorqgYS6eRBf",
-          "provider_request_id": "req_0ecfa3ac0808479ead14fb6282af08f9",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUeALPHlIg4IZyCA0LRfjXOKL4SY7"
+          },
+          "provider_request_id": "req_a7dcf1cae04640288761973bc3816c18",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
+              "completion_tokens": 310,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 256,
+                "rejected_prediction_tokens": 0
+              },
               "prompt_tokens": 241,
-              "completion_tokens": 374,
-              "total_tokens": 615,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 320
-              }
+              "total_tokens": 551
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-ERDCeqyCiHzbcSyukrorqgYS6eRBf",
+            "response_id": "chatcmpl-EUeALPHlIg4IZyCA0LRfjXOKL4SY7",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "K",
+              "obfuscation": "g",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -323,16 +448,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-                }
+                "provider": "call_OIDr6IFhL4tZzL3PUdYnTDjB"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
+                  "type": "function"
+                },
+                "fingerprint": "2b2bb850eb7a517c"
+              }
             }
           }
         },
@@ -360,20 +492,32 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-                }
+                "provider": "call_SljRmKTT5XL1T0FYVxTy2r0I"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
+                  "type": "function"
+                },
+                "fingerprint": "f7857689c5cc190d"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -450,37 +594,58 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-                    }
+                    "provider": "call_OIDr6IFhL4tZzL3PUdYnTDjB"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_OIDr6IFhL4tZzL3PUdYnTDjB",
+                      "type": "function"
+                    },
+                    "fingerprint": "2b2bb850eb7a517c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-                    }
+                    "provider": "call_SljRmKTT5XL1T0FYVxTy2r0I"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_SljRmKTT5XL1T0FYVxTy2r0I",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7857689c5cc190d"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUeALPHlIg4IZyCA0LRfjXOKL4SY7"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -488,9 +653,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_7oUqlO9yVQJWH4uBgZQ2HJtb"
-                    }
+                    "provider": "call_OIDr6IFhL4tZzL3PUdYnTDjB"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -503,9 +666,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_XT898kyUaBL7XJJVXR1khJ3z"
-                    }
+                    "provider": "call_SljRmKTT5XL1T0FYVxTy2r0I"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -553,40 +714,47 @@
           "choice": [
             {
               "type": "text",
-              "text": "The results are crimson-harbor and silver-orchard."
+              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
             }
           ],
           "usage": {
             "input_tokens": 315,
-            "output_tokens": 16,
-            "total_tokens": 331,
+            "output_tokens": 27,
+            "total_tokens": 342,
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCkIG3JMAWsI5CSVAmvGioeGow5",
-          "provider_request_id": "req_56d0be001a8346f28df1ba8eaa127398",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUeAO69Z9DPMSd8Ggd1rHn9HpyFaI"
+          },
+          "provider_request_id": "req_76c216d3c45a4290832ed30509f53b40",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "usage": {
+              "completion_tokens": 27,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
               "prompt_tokens": 315,
-              "completion_tokens": 16,
-              "total_tokens": 331,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 342
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-ERDCkIG3JMAWsI5CSVAmvGioeGow5",
+            "response_id": "chatcmpl-EUeAO69Z9DPMSd8Ggd1rHn9HpyFaI",
             "model": "gpt-5-mini-2025-08-07",
             "additional_params": {
               "created": 0,
-              "obfuscation": "N9Yf",
+              "obfuscation": "bBYV",
               "object": "chat.completion.chunk",
               "service_tier": "default",
               "system_fingerprint": null
@@ -616,7 +784,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " results"
+            "text": " alpha"
           }
         },
         {
@@ -624,7 +792,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " are"
+            "text": " signal"
           }
         },
         {
@@ -632,7 +800,39 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " crimson"
+            "text": " marker"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " \""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "cr"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "imson"
           }
         },
         {
@@ -664,6 +864,14 @@
           "value": {
             "event": "text",
             "part": 0,
+            "text": "\""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
             "text": " and"
           }
         },
@@ -672,7 +880,55 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " silver"
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " beta"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " signal"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " marker"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " \""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "silver"
           }
         },
         {
@@ -704,7 +960,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "."
+            "text": "\"."
           }
         },
         {
@@ -714,11 +970,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The results are crimson-harbor and silver-orchard."
+              "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\"."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

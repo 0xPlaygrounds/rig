@@ -28,6 +28,7 @@
 /// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
 /// ```
 pub mod auth;
+pub mod model_listing;
 pub mod wire;
 
 pub use crate::client::copilot::Copilot;
@@ -43,9 +44,6 @@ pub(crate) const EDITOR_PLUGIN_VERSION: &str = "copilot-chat/0.35.0";
 pub(crate) const USER_AGENT: &str = "GitHubCopilotChat/0.35.0";
 pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
-
-/// Catalogue endpoint returning all models without pagination.
-pub(crate) const MODEL_LISTING_PATH: &str = "/models";
 
 /// Stable descriptor name reported on normalized Copilot responses.
 pub const PROVIDER_NAME: &str = "copilot";
@@ -150,77 +148,18 @@ pub(crate) fn default_headers(
     headers
 }
 
-/// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment.
-///
-/// The endpoint is parsed from a credential string, not from explicit caller
-/// configuration. For that reason, token-derived routing is limited to GitHub
-/// Copilot service hosts and HTTPS. Callers that need a custom non-GitHub host
-/// can still opt in explicitly with [`wire::Copilot::with_base_url`].
-pub(crate) fn base_url_from_token(token: &str) -> Option<String> {
-    let proxy_ep = token
-        .split(';')
-        .find_map(|part| part.trim().strip_prefix("proxy-ep="))?
-        .trim();
-
-    normalize_copilot_proxy_endpoint(proxy_ep)
-}
-
-fn normalize_copilot_proxy_endpoint(proxy_ep: &str) -> Option<String> {
-    if proxy_ep.is_empty() {
-        return None;
-    }
-
-    let candidate = if proxy_ep.starts_with("http://") || proxy_ep.starts_with("https://") {
-        proxy_ep.to_string()
-    } else {
-        format!("https://{proxy_ep}")
-    };
-
-    let mut url = url::Url::parse(&candidate).ok()?;
-    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
-        return None;
-    }
-    if url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
-        return None;
-    }
-
-    let host = url.host_str()?.to_ascii_lowercase();
-    if !is_allowed_token_derived_copilot_host(&host) {
-        return None;
-    }
-
-    let api_host = host
-        .strip_prefix("proxy.")
-        .map(|suffix| format!("api.{suffix}"))
-        .unwrap_or(host);
-    url.set_host(Some(&api_host)).ok()?;
-
-    Some(url.to_string().trim_end_matches('/').to_string())
-}
-
-fn is_allowed_token_derived_copilot_host(host: &str) -> bool {
-    host == "githubcopilot.com" || host.ends_with(".githubcopilot.com")
-}
-
 /// The `X-Initiator` this request declares: `agent` once the turn contains
 /// anything the model itself produced, `user` otherwise.
 pub(crate) fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
-    for message in request.chat_history.iter() {
-        match message {
-            crate::completion::Message::Assistant { .. } => return "agent",
-            crate::completion::Message::User { content } => {
-                if content
-                    .iter()
-                    .any(|item| matches!(item, crate::message::UserContent::ToolResult(_)))
-                {
-                    return "agent";
-                }
-            }
-            crate::completion::Message::System { .. } => {}
-        }
-    }
-
-    "user"
+    use crate::completion::Message;
+    let agent = request.chat_history.iter().any(|message| match message {
+        Message::Assistant(_) => true,
+        Message::User { content } => content
+            .iter()
+            .any(|item| matches!(item, crate::message::UserContent::ToolResult(_))),
+        Message::System { .. } => false,
+    });
+    if agent { "agent" } else { "user" }
 }
 
 /// Whether this request carries an image, which Copilot gates behind
@@ -232,24 +171,6 @@ pub(crate) fn request_has_vision(request: &completion::CompletionRequest) -> boo
             .any(|item| matches!(item, crate::message::UserContent::Image(_))),
         _ => false,
     })
-}
-
-/// Copilot's error body, which names the failure under either key.
-#[derive(Debug, Deserialize)]
-pub struct ChatApiErrorResponse {
-    #[serde(default)]
-    pub message: Option<String>,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-impl ChatApiErrorResponse {
-    pub fn error_message(&self) -> &str {
-        self.message
-            .as_deref()
-            .or(self.error.as_deref())
-            .unwrap_or("unknown error")
-    }
 }
 
 #[cfg(test)]

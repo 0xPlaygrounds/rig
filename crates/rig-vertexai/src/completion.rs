@@ -14,31 +14,18 @@
 //! ```
 
 use super::VertexAi;
-use crate::types::completion_request::VertexCompletionRequest;
 use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder};
+use base64::Engine as _;
+use base64::engine::general_purpose::{STANDARD as BASE64, URL_SAFE};
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::operation::Completion;
+use rig_core::providers::gemini::completion as rest;
 use rig_core::wire::{Descriptor, Mode, Wire};
 
-/// `gemini-1.5-pro`
-pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
-/// `gemini-1.5-flash`
-pub const GEMINI_1_5_FLASH: &str = "gemini-1.5-flash";
-/// `gemini-1.5-pro-latest`
-pub const GEMINI_1_5_PRO_LATEST: &str = "gemini-1.5-pro-latest";
-/// `gemini-1.5-flash-latest`
-pub const GEMINI_1_5_FLASH_LATEST: &str = "gemini-1.5-flash-latest";
-/// `gemini-2.0-flash-exp`
-pub const GEMINI_2_0_FLASH_EXP: &str = "gemini-2.0-flash-exp";
-/// `gemini-2.5-flash-lite`
-pub const GEMINI_2_5_FLASH_LITE: &str = "gemini-2.5-flash-lite";
-/// `gemini-2.5-flash`
-pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
-/// `gemini-2.5-pro`
-pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
+pub use rig_core::providers::gemini::completion::GEMINI_2_5_FLASH;
 
 /// The `GenerateContent` endpoint for one model.
 #[derive(Clone, Debug, PartialEq)]
@@ -54,40 +41,160 @@ impl GenerateContent {
     }
 }
 
-/// One `GenerateContent` request: the model it addresses and the request.
-pub struct VertexRequest {
-    model: String,
-    request: VertexCompletionRequest,
-}
-
 impl Wire for GenerateContent {
     type Op = Completion;
-    type Payload = VertexRequest;
+    /// The SDK request. Its `model` is the model id the request addresses;
+    /// the transport qualifies it with the project and location.
+    type Payload = vertexai::model::GenerateContentRequest;
     type Frame = vertexai::model::GenerateContentResponse;
     type Decoder<'id> = VertexDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .replay(self)
     }
 
+    /// The REST wire's request, read into the SDK's types: every field the
+    /// shared encoder builds reaches Vertex AI.
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
-    ) -> Result<VertexRequest, EncodeError> {
-        let request = request.replayable_to(&[crate::types::completion_response::ISSUER])?;
-        tracing::debug!(
-            target: "rig_core::vertexai",
-            "Vertex AI completion request: {request:?}"
-        );
-        Ok(VertexRequest {
-            model: self.model.clone(),
-            request: VertexCompletionRequest(request),
-        })
+    ) -> Result<vertexai::model::GenerateContentRequest, EncodeError> {
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let mut body = rest::request_body(request, self, &model)?;
+        let contents = body
+            .get_mut("contents")
+            .and_then(serde_json::Value::as_array_mut);
+        let mut images = 0;
+        for content in contents.into_iter().flatten() {
+            standard_signatures(content);
+            referenced_media(content, &mut images);
+        }
+        body.insert("model".to_owned(), model.into());
+        Ok(serde_json::from_value(serde_json::Value::Object(body))?)
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        VertexDecoder
+        VertexDecoder::default()
+    }
+}
+
+/// Respell every thought signature in `content` in standard base64, the
+/// only alphabet the SDK's byte fields read. Google's placeholder signature
+/// is URL-safe base64; Vertex AI reads the bytes either spelling decodes
+/// to, so both name the same signature.
+fn standard_signatures(content: &mut serde_json::Value) {
+    let parts = content
+        .get_mut("parts")
+        .and_then(serde_json::Value::as_array_mut);
+    for part in parts.into_iter().flatten() {
+        if let Some(signature) = part.get_mut("thoughtSignature")
+            && let Some(text) = signature.as_str()
+            && BASE64.decode(text).is_err()
+            && let Ok(bytes) = URL_SAFE.decode(text)
+        {
+            *signature = serde_json::Value::String(BASE64.encode(bytes));
+        }
+    }
+}
+
+/// Give every function response in `content` that states no `response` one
+/// naming its media parts, which Vertex AI requires: each part gets a
+/// `displayName` and the response refers to it by `$ref`, as Google's
+/// multimodal function responses spell it. `images` numbers the names
+/// across the request.
+fn referenced_media(content: &mut serde_json::Value, images: &mut usize) {
+    let parts = content
+        .get_mut("parts")
+        .and_then(serde_json::Value::as_array_mut);
+    for part in parts.into_iter().flatten() {
+        let Some(response) = part
+            .get_mut("functionResponse")
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            continue;
+        };
+        if response.contains_key("response") {
+            continue;
+        }
+        let mut refs = Vec::new();
+        let media = response
+            .get_mut("parts")
+            .and_then(serde_json::Value::as_array_mut);
+        for media in media.into_iter().flatten() {
+            let key = ["inlineData", "fileData"]
+                .into_iter()
+                .find(|key| media.get(*key).is_some());
+            let blob = key
+                .and_then(|key| media.get_mut(key))
+                .and_then(serde_json::Value::as_object_mut);
+            if let Some(blob) = blob {
+                let name = format!("rig_tool_result_image_{images}");
+                *images += 1;
+                blob.insert("displayName".to_owned(), name.clone().into());
+                refs.push(serde_json::json!({ "$ref": name }));
+            }
+        }
+        let output = match refs.len() {
+            1 => refs.pop().unwrap_or_default(),
+            _ => serde_json::Value::Array(refs),
+        };
+        response.insert(
+            "response".to_owned(),
+            serde_json::json!({ "output": output }),
+        );
+    }
+}
+
+impl rig_core::completion::ReplayTarget for GenerateContent {
+    fn api(&self) -> rig_core::message::Api {
+        rig_core::message::Api::from_static("vertexai.generate_content")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// What the model reads, as on every GenerateContent wire.
+    fn accepts(&self, model: &str) -> rig_core::completion::Accepts {
+        rest::accepts(model)
+    }
+
+    /// The media Vertex AI takes: what the Gemini API takes, and image URLs inside
+    /// function responses too.
+    fn encodes(&self, _model: &str, media: rig_core::completion::Media<'_>) -> bool {
+        rest::encodes(media, true)
+    }
+
+    fn normalize_tool_call_id(
+        &self,
+        id: &str,
+        model: &str,
+        _source: Option<&rig_core::message::Origin>,
+    ) -> String {
+        rest::normalize_tool_call_id(model, id)
+    }
+
+    /// Gemini takes system text only in `systemInstruction`: later system
+    /// messages fold into the leading one, as pi's `collapseSystemMessages`.
+    fn later_system(&self, _model: &str) -> rig_core::completion::LaterSystem {
+        rig_core::completion::LaterSystem::Leading
+    }
+
+    fn call_id_slot(&self) -> Option<&'static str> {
+        rest::CALL_ID_SLOT
+    }
+
+    /// Tools in `additional_params` or a cached content count, as on the
+    /// REST wire.
+    fn declares_tools(&self, request: &rig_core::completion::CompletionRequest) -> bool {
+        rest::declares_tools(request)
     }
 }
 
@@ -95,25 +202,14 @@ impl Wire for GenerateContent {
 impl Transport<GenerateContent> for VertexAi {
     fn send(
         &self,
-        payload: VertexRequest,
+        mut request: vertexai::model::GenerateContentRequest,
         _exchange: Exchange,
     ) -> Opening<vertexai::model::GenerateContentResponse> {
-        let VertexRequest { model, request } = payload;
-        let generation_config = match request.generation_config() {
-            Ok(config) => config,
-            Err(error) => return Opening::failed(error),
-        };
-        let system_instruction = request.system_instruction();
-        let tools = request.tools();
-        let tool_config = request.tool_config();
-        let contents = match request.contents() {
-            Ok(contents) => contents,
-            Err(error) => return Opening::failed(error),
-        };
-        let model_path = format!(
-            "projects/{}/locations/{}/publishers/google/models/{model}",
+        request.model = format!(
+            "projects/{}/locations/{}/publishers/google/models/{}",
             self.project(),
-            self.location()
+            self.location(),
+            request.model
         );
         let client = self.clone();
         Opening::new(async move {
@@ -121,23 +217,12 @@ impl Transport<GenerateContent> for VertexAi {
                 Ok(service) => service,
                 Err(error) => return Err(ProviderError::request(error)),
             };
-            let mut request_builder = service
+            match service
                 .generate_content()
-                .set_model(&model_path)
-                .set_contents(contents);
-            if let Some(config) = generation_config {
-                request_builder = request_builder.set_generation_config(config);
-            }
-            if let Some(system_instruction) = system_instruction {
-                request_builder = request_builder.set_system_instruction(system_instruction);
-            }
-            if let Some(tools) = tools {
-                request_builder = request_builder.set_tools([tools]);
-            }
-            if let Some(tool_config) = tool_config {
-                request_builder = request_builder.set_tool_config(tool_config);
-            }
-            match request_builder.send().await {
+                .with_request(request)
+                .send()
+                .await
+            {
                 Ok(response) => {
                     tracing::debug!(
                         target: "rig_core::vertexai",

@@ -1,8 +1,6 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
-use rig::providers::anthropic::completion::Citation;
-use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
-use serde::Deserialize;
+use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use serde_json::json;
 
@@ -14,15 +12,12 @@ use rig::completion::CompletionRequest;
 /// The text Anthropic's own reply carried, read back out of
 /// [`rig::completion::CompletionResponse::raw`].
 fn provider_text(response: &rig::completion::CompletionResponse) -> Option<String> {
-    let reply = anthropic_completion::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
-    let text: String = reply
-        .content
-        .iter()
-        .filter_map(|block| match block {
-            anthropic_completion::Content::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
+    let text: String = response.raw["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "text")
+        .filter_map(|block| block["text"].as_str())
         .collect();
     (!text.is_empty()).then_some(text)
 }
@@ -48,11 +43,10 @@ fn cited_rust_document() -> Document {
     Document {
         data: DocumentSourceKind::String(rust_document()),
         media_type: Some(DocumentMediaType::TXT),
-        additional_params: rig::message::AdditionalParams::try_from_value(json!({
+        additional_params: Some(json!({
             "title": "Rust Goals",
             "citations": { "enabled": true }
-        }))
-        .expect("object params"),
+        })),
     }
 }
 
@@ -77,17 +71,16 @@ fn assistant_text(choice: &[rig::message::AssistantContent]) -> String {
         .collect()
 }
 
-fn collect_anthropic_citations(choice: &[rig::message::AssistantContent]) -> Vec<Citation> {
+/// The citations Claude attached to the text blocks of `choice`, as each
+/// block's provider item carries them.
+fn collect_anthropic_citations(
+    choice: &[rig::message::AssistantContent],
+) -> Vec<serde_json::Value> {
     choice
         .iter()
-        .filter_map(|content| match content {
-            rig::message::AssistantContent::Text(text) => Some(text),
-            _ => None,
-        })
-        .flat_map(|text| {
-            anthropic_completion::anthropic_citations(text)
-                .expect("citations should decode from Anthropic text metadata")
-        })
+        .filter(|content| matches!(content, rig::message::AssistantContent::Text(_)))
+        .filter_map(|content| content.native_item()?.get("citations")?.as_array().cloned())
+        .flatten()
         .collect()
 }
 
@@ -206,15 +199,15 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
 
             let citations = collect_anthropic_citations(&first_turn.choice);
             assert!(!citations.is_empty(), "expected citations: {first_turn:?}");
-            assert!(citations.iter().any(|citation| match citation {
-                Citation::CharLocation(citation) => {
-                    citation.document_index == 0
-                        && citation.document_title.as_deref() == Some("Rust Goals")
-                        && ["safety", "speed", "concurrency"]
-                            .iter()
-                            .any(|needle| citation.cited_text.to_lowercase().contains(needle))
-                }
-                _ => false,
+            assert!(citations.iter().any(|citation| {
+                citation["type"] == "char_location"
+                    && citation["document_index"] == 0
+                    && citation["document_title"] == "Rust Goals"
+                    && ["safety", "speed", "concurrency"].iter().any(|needle| {
+                        citation["cited_text"]
+                            .as_str()
+                            .is_some_and(|text| text.to_lowercase().contains(needle))
+                    })
             }));
 
             let followup = model
@@ -227,10 +220,10 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                         .max_tokens(64)
                         .temperature(0.0)
                         .message(prompt)
-                        .message(Message::Assistant {
-                            id: first_turn.message_id.clone(),
+                        .message(Message::Assistant(rig::message::AssistantMessage {
                             content: first_turn.choice.clone(),
-                        }),
+                            ..first_turn.head()
+                        })),
                 )
                 .await
                 .expect("follow-up citation history turn should succeed");

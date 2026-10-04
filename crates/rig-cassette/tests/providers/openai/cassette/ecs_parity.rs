@@ -56,7 +56,7 @@ async fn streaming_smoke() {
                         _ => None,
                     })
                     .expect("provider terminal stream record");
-                assert_eq!(final_event.provider, "openai");
+                assert_eq!(final_event.provider(), "openai");
                 assert!(final_event.usage.total_tokens.is_some_and(|n| n > 0));
             })
             .await;

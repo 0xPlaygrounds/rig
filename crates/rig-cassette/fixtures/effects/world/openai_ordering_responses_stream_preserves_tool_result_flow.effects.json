@@ -24,6 +24,38 @@
         }
       },
       {
+        "batch": 42,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 43,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 44,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 45,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 46,
         "id": 2,
         "kind": {
@@ -36,15 +68,7 @@
         "id": 2,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 48,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -56,79 +80,7 @@
         }
       },
       {
-        "batch": 50,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 53,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 55,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 68,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 68,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -227,17 +179,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                  "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
-                }
+                "provider": "call_UOd3iZBf85wctp3vi9EP1wci"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                  "id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
+                  "name": "lookup_harbor_label",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "0b6df2e0208bca39"
+              }
             }
           ],
           "usage": {
@@ -248,32 +206,103 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e"
+          },
           "provider_request_id": "req_d100600fe26947fca8e5b372b931ec8f",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
-            "id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e",
             "incomplete_details": null,
             "instructions": "You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "arguments": "{}",
+                "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                "id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
+                "name": "lookup_harbor_label",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [
+              {
+                "description": "Return the alpha signal marker.",
+                "name": "lookup_harbor_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 108,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 14,
               "output_tokens_details": {
@@ -281,42 +310,7 @@
               },
               "total_tokens": 122
             },
-            "output": [
-              {
-                "id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
-                "arguments": "{}",
-                "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                "name": "lookup_harbor_label",
-                "status": "completed",
-                "type": "function_call"
-              }
-            ],
-            "tools": [
-              {
-                "type": "function",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the alpha signal marker.",
-                "output_schema": null
-              }
-            ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "user": null
           }
         }
       },
@@ -345,21 +339,32 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                  "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
-                }
+                "provider": "call_UOd3iZBf85wctp3vi9EP1wci"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                  "id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
+                  "name": "lookup_harbor_label",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "0b6df2e0208bca39"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -411,24 +416,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                      "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
-                    }
+                    "provider": "call_UOd3iZBf85wctp3vi9EP1wci"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
+                      "id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a",
+                      "name": "lookup_harbor_label",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "0b6df2e0208bca39"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_063e4e0521f2bc83006ab3969f708887d0a43af45f0873039e"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -436,10 +454,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_UOd3iZBf85wctp3vi9EP1wci",
-                      "item_id": "fc_063e4e0521f2bc83006ab396a04fb887d0928c1f7258c0fe8a"
-                    }
+                    "provider": "call_UOd3iZBf85wctp3vi9EP1wci"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -478,7 +493,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "The alpha signal marker is \"crimson-harbor.\""
+              "text": "The alpha signal marker is \"crimson-harbor.\"",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The alpha signal marker is \"crimson-harbor.\"",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "97f4fa8fc41f703e"
+              }
             }
           ],
           "usage": {
@@ -489,32 +521,109 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-          "response_id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c"
+          },
           "provider_request_id": "req_6fdd31b6e2174192a5bee7bdae53e9fb",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
-            "id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_063e4e0521f2bc83006ab396a0b15087d09164939d2061c15c",
             "incomplete_details": null,
             "instructions": "You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The alpha signal marker is \"crimson-harbor.\"",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [
+              {
+                "description": "Return the alpha signal marker.",
+                "name": "lookup_harbor_label",
+                "output_schema": null,
+                "parameters": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "strict": false,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 138,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 14,
               "output_tokens_details": {
@@ -522,48 +631,7 @@
               },
               "total_tokens": 152
             },
-            "output": [
-              {
-                "id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The alpha signal marker is \"crimson-harbor.\"",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [
-              {
-                "type": "function",
-                "name": "lookup_harbor_label",
-                "parameters": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "strict": false,
-                "description": "Return the alpha signal marker.",
-                "output_schema": null
-              }
-            ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "user": null
           }
         }
       },
@@ -679,11 +747,33 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The alpha signal marker is \"crimson-harbor.\""
+              "text": "The alpha signal marker is \"crimson-harbor.\"",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The alpha signal marker is \"crimson-harbor.\"",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_063e4e0521f2bc83006ab396a135ac87d0a9dabdab7460786a",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "97f4fa8fc41f703e"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "parity/run#0"
     }
   ]

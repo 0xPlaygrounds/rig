@@ -328,14 +328,11 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
                 "the reason the turn actually ended on"
             );
             assert!(
-                terminal
-                    .response_id
-                    .as_deref()
-                    .is_some_and(|id| !id.is_empty()),
+                terminal.response_id().is_some_and(|id| !id.is_empty()),
                 "the terminal should carry the responseId"
             );
             assert!(
-                terminal.model.as_deref().is_some_and(|m| !m.is_empty()),
+                terminal.model().is_some_and(|m| !m.is_empty()),
                 "the terminal should carry the model version"
             );
         },
@@ -431,7 +428,7 @@ async fn two_terminal_stream_through_raw_stream() {
                 .max_tokens(2000)
                 .additional_params(code_execution_params());
 
-            // The terminal record carries Gemini's own terminal type on
+            // The terminal record carries Gemini's own terminal record on
             // `raw`, so this pins the fix on the provider-native record as
             // well as the normalized one.
             let mut stream = model.stream(request).expect("stream should open");
@@ -447,14 +444,19 @@ async fn two_terminal_stream_through_raw_stream() {
                 .finish()
                 .await
                 .expect("the stream should end with a terminal record");
-            let native: gemini::streaming::StreamingCompletionResponse =
-                serde_json::from_value(record.raw.clone())
-                    .expect("the terminal's raw should decode as Gemini's native terminal");
+            assert!(
+                record
+                    .raw
+                    .get("usage_metadata")
+                    .is_some_and(|usage| usage.is_object()),
+                "the terminal's raw should be Gemini's native terminal record, got {}",
+                record.raw
+            );
             assert_eq!(
-                native
-                    .finish_reason
-                    .as_ref()
-                    .map(|reason| reason.as_wire_str()),
+                record
+                    .raw
+                    .get("finish_reason")
+                    .and_then(|reason| reason.as_str()),
                 Some("STOP"),
                 "the native terminal reports the reason the turn actually ended on"
             );
@@ -772,8 +774,8 @@ mod unit {
     async fn later_metadata_wins_on_the_terminal_record() {
         let run = run(&[CODE_ROUND, INTERMEDIATE_TERMINAL, ANSWER, REAL_TERMINAL]).await;
         let terminal = run.response.as_ref().expect("one terminal");
-        assert_eq!(terminal.response_id.as_deref(), Some("resp-last"));
-        assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash-002"));
+        assert_eq!(terminal.response_id(), Some("resp-last"));
+        assert_eq!(terminal.model(), Some("gemini-2.5-flash-002"));
         assert_eq!(terminal.usage.total_tokens, Some(50));
     }
 
@@ -907,16 +909,20 @@ mod unit {
         const FAILURE: &str = r#"{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL","finishMessage":"malformed function call","index":0}]}"#;
         let run = run(&[ANSWER, FAILURE, ANSWER, REAL_TERMINAL]).await;
 
-        assert_eq!(run.errors, 1);
+        assert_eq!(
+            run.errors, 0,
+            "a failure finish is a failed turn, not a stream error"
+        );
         assert_eq!(
             run.text, "The answer is 42.",
             "nothing after the in-band failure is interpreted"
         );
+        let response = run.response.expect("the failure ends the turn");
         assert!(
-            run.response.is_none(),
-            "an in-band failure must not acquire a terminal record from the EOF deferral"
+            response.stop().is_failure(),
+            "a later STOP cannot dress the failed turn up as complete: {:?}",
+            response.stop()
         );
-        assert!(run.response.is_none());
     }
 
     #[tokio::test]

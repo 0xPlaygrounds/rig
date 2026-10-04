@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -40,7 +40,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -178,8 +178,18 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 2,
+                      "y": 3
+                    },
+                    "name": "add"
+                  }
+                },
+                "fingerprint": "f5a095034c79f7b3"
+              }
             }
           ],
           "usage": {
@@ -187,27 +197,31 @@
             "output_tokens": 18,
             "total_tokens": 90
           },
-          "message_id": null,
-          "response_id": "qXizapSGDcywqtsP2bT52Ag",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "lQ3BaruxJ63Qz7IPhrivKQ"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 72,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 90,
+              "promptTokenCount": 72,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 72
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 90
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "qXizapSGDcywqtsP2bT52Ag"
+            "response_id": "lQ3BaruxJ63Qz7IPhrivKQ"
           }
         }
       },
@@ -245,12 +259,27 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 2,
+                      "y": 3
+                    },
+                    "name": "add"
+                  }
+                },
+                "fingerprint": "f5a095034c79f7b3"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -302,7 +331,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -316,10 +344,28 @@
                       "y": 3
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 2,
+                          "y": 3
+                        },
+                        "name": "add"
+                      }
+                    },
+                    "fingerprint": "f5a095034c79f7b3"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "lQ3BaruxJ63Qz7IPhrivKQ"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -384,7 +430,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sum of 2 and 3 is 5."
+              "text": "The sum of 2 and 3 is 5.",
+              "native": {
+                "item": {
+                  "text": "The sum of 2 and 3 is 5."
+                },
+                "fingerprint": "04268375e36733b1"
+              }
             }
           ],
           "usage": {
@@ -392,26 +444,30 @@
             "output_tokens": 11,
             "total_tokens": 114
           },
-          "message_id": null,
-          "response_id": "qXizauG5KuujqtsPx4aGuQ8",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "lg3BarUohtHPsg-Y0eDQAw"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 103,
               "candidatesTokenCount": 11,
-              "totalTokenCount": 114,
+              "promptTokenCount": 103,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 103
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 114
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "qXizauG5KuujqtsPx4aGuQ8"
+            "response_id": "lg3BarUohtHPsg-Y0eDQAw"
           }
         }
       },
@@ -447,11 +503,22 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The sum of 2 and 3 is 5."
+              "text": "The sum of 2 and 3 is 5.",
+              "native": {
+                "item": {
+                  "text": "The sum of 2 and 3 is 5."
+                },
+                "fingerprint": "04268375e36733b1"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

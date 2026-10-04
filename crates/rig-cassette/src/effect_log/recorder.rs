@@ -45,6 +45,7 @@ struct RecordSlot {
     kind: EffectKind,
     outcome: Option<Result<Outcome, ErrorReport>>,
     events: Option<Vec<Item<StreamEvent>>>,
+    stream_origin: Option<rig_core::message::Origin>,
 }
 
 impl RecordSlot {
@@ -61,6 +62,7 @@ impl RecordSlot {
                 .events
                 .clone()
                 .and_then(|items| rig_core::streaming::Transcript::from_items(items).ok()),
+            stream_origin: self.stream_origin.clone(),
         })
     }
 }
@@ -201,6 +203,7 @@ impl EffectLogRecorder {
                 kind,
                 outcome: None,
                 events,
+                stream_origin: None,
             });
     }
 
@@ -366,6 +369,15 @@ impl Recorder for EffectLogRecorder {
 
     fn event(&self, id: EffectId, item: &Item<StreamEvent>) {
         self.event_slot(id, item);
+    }
+
+    fn origin(&self, id: EffectId, origin: &rig_core::message::Origin) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id)
+            && slot.events.is_some()
+        {
+            slot.stream_origin = Some(origin.clone());
+        }
     }
 
     fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {

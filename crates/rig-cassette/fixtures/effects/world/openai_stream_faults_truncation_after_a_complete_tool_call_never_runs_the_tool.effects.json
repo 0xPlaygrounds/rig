@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -208,10 +208,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
-                  "item_id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f"
-                }
+                "provider": "call_AuFxd1Vs7yR79tB3msYfeCb3"
               },
               "function": {
                 "name": "subtract",
@@ -220,12 +217,26 @@
                   "y": 5
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":2,\"y\":5}",
+                  "call_id": "call_AuFxd1Vs7yR79tB3msYfeCb3",
+                  "id": "fc_0dd460aaf73c6856006ab396a05df887d09ce0241dc70fbf9f",
+                  "name": "subtract",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "a48604a938e6a243"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "parity/run#0"
     }
   ]

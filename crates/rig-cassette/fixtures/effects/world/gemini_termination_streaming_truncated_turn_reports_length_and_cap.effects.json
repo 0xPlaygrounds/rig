@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,7 +18,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -26,7 +26,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -105,7 +105,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+              "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon.",
+              "native": {
+                "item": {
+                  "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+                },
+                "fingerprint": "864e8eeb8e7710a2"
+              }
             }
           ],
           "usage": {
@@ -113,22 +119,26 @@
             "output_tokens": 24,
             "total_tokens": 52
           },
-          "message_id": null,
-          "response_id": "qXizarW1Iof7qtsP-L2FkAU",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "qXizarW1Iof7qtsP-L2FkAU"
+          },
           "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 28,
               "candidatesTokenCount": 24,
-              "totalTokenCount": 52,
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 28
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 52
             },
             "finish_reason": "MAX_TOKENS",
             "model_version": "gemini-2.5-flash",
@@ -176,11 +186,22 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+              "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon.",
+              "native": {
+                "item": {
+                  "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+                },
+                "fingerprint": "864e8eeb8e7710a2"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

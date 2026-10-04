@@ -68,7 +68,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like a ship with holes — it'll sink ye with crashes, vulnerabilities, and plunderin' bugs!"
+              "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like a ship with holes — it'll sink ye with crashes, vulnerabilities, and plunderin' bugs!",
+              "native": {
+                "item": {
+                  "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like a ship with holes — it'll sink ye with crashes, vulnerabilities, and plunderin' bugs!",
+                  "type": "text"
+                },
+                "fingerprint": "ce9b80d5d7c9711d"
+              }
             }
           ],
           "usage": {
@@ -78,12 +85,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcYDTEuVYZwe4S3a69S",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcYDTEuVYZwe4S3a69S"
+          },
           "provider_request_id": "req_011CfLcYDCc5Cj5KTwczLjDp",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

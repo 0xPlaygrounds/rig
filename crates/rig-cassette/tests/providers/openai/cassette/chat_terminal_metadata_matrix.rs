@@ -38,7 +38,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::providers::openai;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_terminal_metadata_cassette_result};
@@ -131,13 +130,8 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
 
     let raw = match cell.transport {
         Transport::Blocking => {
-            // The provider-native chat-completions reply rides serialized on
-            // `CompletionResponse::raw`; decode it to prove the shape, then
-            // read the serialized form the way the old raw surface did.
-            let response = model.call(request).await?;
-            let response =
-                serde_json::from_value::<openai::completion::CompletionResponse>(response.raw)?;
-            serde_json::to_value(response)?
+            // The provider's chat-completions reply is `CompletionResponse::raw`.
+            model.call(request).await?.raw
         }
         Transport::Streaming => {
             let mut stream = model.stream(request)?;
@@ -148,13 +142,8 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
                 .finish()
                 .await
                 .context("stream should carry a terminal record")?;
-            // The provider-native chat-completions terminal rides serialized
-            // on `CompletionResponse::raw`; decode it to prove the shape, then read
-            // the serialized form the way the old raw surface did.
-            let terminal = serde_json::from_value::<
-                openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
-            >(terminal.raw)?;
-            serde_json::to_value(terminal)?
+            // The chat-completions terminal record is `CompletionResponse::raw`.
+            terminal.raw
         }
     };
 
@@ -214,23 +203,27 @@ fn last_chunk_field(chunks: &[Value], field: &str) -> Value {
 }
 
 fn recorded_additional_params(chunks: &[Value]) -> Value {
-    let mut accumulated: Option<rig::message::AdditionalParams> = None;
+    // Each chunk restates the envelope; a later value replaces an earlier
+    // one, and a `null` never erases one.
+    let mut accumulated = serde_json::Map::new();
     for chunk in chunks {
-        let mut extras = chunk
+        let extras = chunk
             .as_object()
-            .cloned()
             .expect("recorded SSE frame should be an object");
-        for modeled in ["id", "model", "choices", "usage"] {
-            extras.remove(modeled);
-        }
-        if let Some(incoming) = rig::message::AdditionalParams::new(extras) {
-            match accumulated.as_mut() {
-                Some(current) => current.merge(incoming),
-                None => accumulated = Some(incoming),
+        for (key, value) in extras {
+            if ["id", "model", "choices", "usage"].contains(&key.as_str())
+                || (value.is_null() && accumulated.contains_key(key))
+            {
+                continue;
             }
+            accumulated.insert(key.clone(), value.clone());
         }
     }
-    serde_json::to_value(accumulated).expect("recorded metadata should serialize")
+    if accumulated.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(accumulated)
+    }
 }
 
 fn assert_scrubbed_optional_string(scenario: &str, field: &str, actual: &Value, wire: &Value) {

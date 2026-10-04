@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 15,
+        "batch": 21,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 15,
+        "batch": 22,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -155,9 +155,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-                }
+                "provider": "toolu_01Wfh8VNNrmFh6biGuPsdmvQ"
               },
               "function": {
                 "name": "add",
@@ -166,8 +164,21 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01Wfh8VNNrmFh6biGuPsdmvQ",
+                  "input": {
+                    "x": 2,
+                    "y": 3
+                  },
+                  "name": "add",
+                  "type": "tool_use"
+                },
+                "fingerprint": "1487e8f7ff3edc91"
+              }
             }
           ],
           "usage": {
@@ -177,25 +188,28 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcfvBtvoCFDVTDD65fr",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcfukqkmSTJAem7jXub",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfciCUxqpSjK9pGjiMMY1"
+          },
+          "provider_request_id": "req_011CfciCUc1Y9KZpG99JtJb1",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 69,
               "input_tokens": 630,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLcfvBtvoCFDVTDD65fr",
+            "message_id": "msg_011CfciCUxqpSjK9pGjiMMY1",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -225,9 +239,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-                }
+                "provider": "toolu_01Wfh8VNNrmFh6biGuPsdmvQ"
               },
               "function": {
                 "name": "add",
@@ -236,12 +248,30 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01Wfh8VNNrmFh6biGuPsdmvQ",
+                  "input": {
+                    "x": 2,
+                    "y": 3
+                  },
+                  "name": "add",
+                  "type": "tool_use"
+                },
+                "fingerprint": "1487e8f7ff3edc91"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -293,14 +323,11 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcfvBtvoCFDVTDD65fr",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-                    }
+                    "provider": "toolu_01Wfh8VNNrmFh6biGuPsdmvQ"
                   },
                   "function": {
                     "name": "add",
@@ -309,10 +336,31 @@
                       "y": 3
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01Wfh8VNNrmFh6biGuPsdmvQ",
+                      "input": {
+                        "x": 2,
+                        "y": 3
+                      },
+                      "name": "add",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": "1487e8f7ff3edc91"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5",
+                "response_model": "claude-haiku-4-5-20251001",
+                "response_id": "msg_011CfciCUxqpSjK9pGjiMMY1"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -320,9 +368,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01EVxu9UfcJoLZU66p5wP294"
-                    }
+                    "provider": "toolu_01Wfh8VNNrmFh6biGuPsdmvQ"
                   },
                   "name": "add",
                   "content": [
@@ -373,7 +419,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result of 2 + 3 is **5**."
+              "text": "The result of 2 + 3 is **5**.",
+              "native": {
+                "item": {
+                  "text": "The result of 2 + 3 is **5**.",
+                  "type": "text"
+                },
+                "fingerprint": "64b450d26cc31c35"
+              }
             }
           ],
           "usage": {
@@ -383,25 +436,28 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcfycm2iz8jVgwumdAQ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcfyDhdHNbPGF59ftW4",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfciCYNiqVmRMcxHJZsQE"
+          },
+          "provider_request_id": "req_011CfciCY19o2Qhf2asRZGVE",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 17,
               "input_tokens": 712,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcfycm2iz8jVgwumdAQ",
+            "message_id": "msg_011CfciCYNiqVmRMcxHJZsQE",
             "model": "claude-haiku-4-5-20251001"
           }
         }
@@ -420,7 +476,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "The result of 2 + "
+            "text": "The result of 2 "
           }
         },
         {
@@ -428,7 +484,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "3 is **"
+            "text": "+ 3 is **"
           }
         },
         {
@@ -446,11 +502,23 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The result of 2 + 3 is **5**."
+              "text": "The result of 2 + 3 is **5**.",
+              "native": {
+                "item": {
+                  "text": "The result of 2 + 3 is **5**.",
+                  "type": "text"
+                },
+                "fingerprint": "64b450d26cc31c35"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     }
   ]

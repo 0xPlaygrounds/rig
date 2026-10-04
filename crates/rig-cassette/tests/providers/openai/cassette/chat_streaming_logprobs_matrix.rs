@@ -39,7 +39,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::providers::openai;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, with_openai_chat_stream_logprobs_cassette_result};
@@ -135,18 +134,14 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            // The provider-native chat-completions reply rides serialized on
-            // `CompletionResponse::raw`; decode it to read the same fields the
-            // old raw surface exposed directly.
+            // The provider's chat-completions reply is `CompletionResponse::raw`.
             let response = model.call(request).await?;
-            let raw: openai::completion::CompletionResponse = serde_json::from_value(response.raw)?;
-            let choice = raw
-                .choices
-                .first()
+            let choice = response.raw["choices"]
+                .get(0)
                 .context("blocking response should carry a choice")?;
             Observation {
-                logprobs: choice.logprobs.clone().unwrap_or(Value::Null),
-                finish_reason: json!(choice.finish_reason),
+                logprobs: choice["logprobs"].clone(),
+                finish_reason: choice["finish_reason"].clone(),
             }
         }
         Transport::Streaming => {
@@ -158,13 +153,8 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
                 .finish()
                 .await
                 .context("stream should carry a terminal record")?;
-            // The provider-native chat-completions terminal rides serialized
-            // on `CompletionResponse::raw`; decode it to prove the shape, then read
-            // the serialized form the way the old raw surface did.
-            let terminal = serde_json::from_value::<
-                openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
-            >(terminal.raw)?;
-            let serialized = serde_json::to_value(terminal)?;
+            // The chat-completions terminal record is `CompletionResponse::raw`.
+            let serialized = terminal.raw;
             Observation {
                 logprobs: serialized["logprobs"].clone(),
                 finish_reason: serialized["finish_reason"].clone(),

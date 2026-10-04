@@ -23,9 +23,11 @@
 //! # let _ = model;
 //! ```
 
+mod capture;
 pub mod client;
 pub mod completion;
 pub mod embedding;
 pub mod image;
+mod request;
 pub mod streaming;
 pub mod types;

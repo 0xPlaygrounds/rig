@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
                     .collect();
 
                 let mut outcome = run.model_response(ModelTurn::new(
-                    response.message_id.clone(),
+                    response.head(),
                     response.choice.clone(),
                     response.usage,
                     tool_names.clone(),
@@ -166,7 +166,7 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     let name = &call.tool_call.function.name;
-                    let args = call.tool_call.function.arguments.to_string();
+                    let args = call.tool_call.function.arguments_value().to_string();
                     println!("→ executing {name}({args})");
                     let mut context = rig::tool::ToolContext::new();
                     let result = local_tools.execute(name, args, &mut context).await;

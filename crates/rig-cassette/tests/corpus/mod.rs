@@ -2278,7 +2278,7 @@ pub fn golden_answer(log: &EffectLog) -> String {
                         if call.function.name.starts_with("final_result") =>
                     {
                         Some(rig_core::json_utils::serialize_json_value(
-                            &call.function.arguments,
+                            &call.function.arguments_value(),
                         ))
                     }
                     _ => None,
@@ -2873,7 +2873,7 @@ pub async fn call_tools(
             return Ok(tool_result_output(
                 call.tool_call.id.clone(),
                 name,
-                ToolOutput::text(DENY_REASON),
+                &rig_core::tool::ToolResult::skipped(DENY_REASON),
             ));
         }
         let (_, handle) = tools
@@ -2883,7 +2883,7 @@ pub async fn call_tools(
         let args = if is_add && hooks.contains(&Hook::PatchAddArgs) {
             PATCHED_ARGS.to_owned()
         } else {
-            call.tool_call.function.arguments.to_string()
+            call.tool_call.function.arguments_value().to_string()
         };
         // The bus's answer, mapped as the engine maps it: a layer's denial
         // is the skipped result the model sees, a cancel stops the run, any
@@ -2897,21 +2897,17 @@ pub async fn call_tools(
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
                     name,
-                    rig_core::tool::ToolResult::skipped(report.message)
-                        .output()
-                        .clone(),
+                    &rig_core::tool::ToolResult::skipped(report.message),
                 ));
             }
             Err(report) => {
                 return Ok(tool_result_output(
                     call.tool_call.id.clone(),
                     name,
-                    rig_core::tool::ToolResult::failed(
+                    &rig_core::tool::ToolResult::failed(
                         rig_core::tool::ToolExecutionError::other(report.message.clone())
                             .with_model_feedback(report.message),
-                    )
-                    .output()
-                    .clone(),
+                    ),
                 ));
             }
         };
@@ -2932,12 +2928,12 @@ pub async fn call_tools(
             // run stops.
             return Err(CANCEL_ADD_OUTCOME);
         }
-        let mut output = answer.result.output().clone();
+        let mut result = answer.result;
         if is_add && hooks.contains(&Hook::ReplaceAddResult) {
-            output = ToolOutput::text(REPLACED_RESULT);
+            result = result.with_output(ToolOutput::text(REPLACED_RESULT));
         }
         // The engine's own shaping of a result (`rig_core::transcript`).
-        Ok(tool_result_output(call.tool_call.id.clone(), name, output))
+        Ok(tool_result_output(call.tool_call.id.clone(), name, &result))
     };
     futures::stream::iter(calls)
         .map(dispatch)
@@ -3755,8 +3751,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                 let StreamedTurnEvent::InvalidToolCall(invalid) = streamed else {
                                     continue;
                                 };
-                                let partial = assembler
-                                    .partial_turn(stream.message_id(), &stream.partial().choice);
+                                let partial = assembler.partial_turn(&stream.partial());
                                 let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
                                     Some(retry_feedback(&invalid.tool_call.function.name))
                                 } else if program.hooks.contains(&Hook::RepairToAdd) {
@@ -3858,9 +3853,9 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         let response = within(stream.finish())
                             .await
                             .expect("a stream that reached its end carries its response");
-                        let streamed = assembler.finish(response.message_id.clone(), &response);
+                        let streamed = assembler.finish(&response);
                         ModelTurn::new(
-                            streamed.message_id,
+                            streamed.head,
                             streamed.choice,
                             response.usage,
                             streamed.executable_tool_names,
@@ -4098,7 +4093,8 @@ async fn hand_drive(program: &Program, resume: Resume) {
             assert_same_records(&replayed, &log, "hand driver");
             return;
         };
-        if let (Some((handle, id)), None) = (&memory, program.history) {
+        // A resumed run appended its messages itself, as the engine does.
+        if let (Some((handle, id)), None, false) = (&memory, program.history, resumes) {
             // As the engine: a failed append is logged and the answer stands.
             if let Err(report) = within(handle.append(id.clone(), response.messages.clone())).await
             {

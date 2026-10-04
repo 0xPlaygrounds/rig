@@ -10,11 +10,28 @@ pub(crate) struct Reply(vertexai::model::GenerateContentResponse);
 impl Transport<crate::completion::GenerateContent> for Reply {
     fn send(
         &self,
-        _payload: crate::completion::VertexRequest,
+        _payload: vertexai::model::GenerateContentRequest,
         _exchange: Exchange,
     ) -> Opening<vertexai::model::GenerateContentResponse> {
         Opening::ready(Opened::new(futures::stream::iter([Ok(self.0.clone())])))
     }
+}
+
+/// The content a turn holding `choice` replays as, encoded for the model
+/// the replies come from.
+pub(crate) fn replay(
+    choice: Vec<rig_core::message::AssistantContent>,
+) -> Result<vertexai::model::Content, rig_core::error::EncodeError> {
+    use rig_core::wire::{Mode, Wire};
+    let mut request = CompletionRequest::new("next");
+    request.chat_history = vec![rig_core::message::Message::from(choice)];
+    let request = crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH)
+        .encode(request, Mode::Unary)?;
+    request
+        .contents
+        .into_iter()
+        .next()
+        .ok_or_else(|| rig_core::error::EncodeError::request("no content"))
 }
 
 /// The reply as the unary endpoint answers it.
@@ -37,9 +54,20 @@ pub(crate) fn complete(
 ) -> Result<CompletionResponse, ProviderError> {
     response.complete()
 }
-use rig_core::message::{
-    AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
-};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use rig_core::message::{AssistantContent, DocumentSourceKind, ImageMediaType, Text, ToolCall};
+use serde_json::json;
+
+/// `candidate` as a finished one: Vertex states why every unary reply ended.
+fn finished(candidate: vertexai::model::Candidate) -> vertexai::model::Candidate {
+    candidate.set_finish_reason(vertexai::model::candidate::FinishReason::Stop)
+}
+
+/// The provider item a decoded block holds.
+fn item(block: &AssistantContent) -> Option<&serde_json::Value> {
+    block.native_item()
+}
 
 fn create_text_response(text: &str) -> vertexai::model::GenerateContentResponse {
     let part = vertexai::model::Part::new().set_text(text.to_string());
@@ -58,7 +86,7 @@ fn create_parts_response(
     let content = vertexai::model::Content::new()
         .set_role("model")
         .set_parts(parts);
-    let candidate = vertexai::model::Candidate::new().set_content(content);
+    let candidate = finished(vertexai::model::Candidate::new().set_content(content));
     vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
@@ -103,7 +131,7 @@ fn create_signed_tool_call_response(
     let content = vertexai::model::Content::new()
         .set_role("model")
         .set_parts([part]);
-    let candidate = vertexai::model::Candidate::new().set_content(content);
+    let candidate = finished(vertexai::model::Candidate::new().set_content(content));
     vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
 }
 
@@ -113,12 +141,15 @@ fn test_tool_call_response_captures_thought_signature() {
     let response: CompletionResponse = create_signed_tool_call_response("add", raw)
         .complete()
         .unwrap();
-    match response.choice.first() {
-        Some(AssistantContent::ToolCall(tc)) => {
-            assert_eq!(tc.signature, Some(BASE64.encode(raw)));
-        }
-        _ => panic!("Expected ToolCall"),
-    }
+    let block = response.choice.first().expect("a call");
+    assert!(matches!(block, AssistantContent::ToolCall(_)));
+    assert_eq!(
+        item(block),
+        Some(&json!({
+            "functionCall": { "name": "add", "args": {} },
+            "thoughtSignature": BASE64.encode(raw),
+        }))
+    );
 }
 
 #[test]
@@ -127,10 +158,12 @@ fn test_tool_call_response_without_signature_is_none() {
         create_tool_call_response("add", serde_json::json!({"x": 1}))
             .complete()
             .unwrap();
-    match response.choice.first() {
-        Some(AssistantContent::ToolCall(tc)) => assert_eq!(tc.signature, None),
-        _ => panic!("Expected ToolCall"),
-    }
+    let block = response.choice.first().expect("a call");
+    assert!(matches!(block, AssistantContent::ToolCall(_)));
+    assert_eq!(
+        item(block).and_then(|item| item.get("thoughtSignature")),
+        None
+    );
 }
 
 #[test]
@@ -143,34 +176,24 @@ fn test_thought_text_response_captures_thought_signature() {
     let content = vertexai::model::Content::new()
         .set_role("model")
         .set_parts([part]);
-    let candidate = vertexai::model::Candidate::new().set_content(content);
+    let candidate = finished(vertexai::model::Candidate::new().set_content(content));
     let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
 
     let response: CompletionResponse = response.complete().unwrap();
 
-    match response.choice.first() {
-        Some(AssistantContent::Reasoning(reasoning)) => {
-            assert_eq!(
-                reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .display_text(),
-                "thinking text"
-            );
-            assert_eq!(
-                reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .first_signature(),
-                Some(BASE64.encode(raw).as_str())
-            );
-            assert_eq!(
-                Some(reasoning.issuer().as_str()),
-                Some(super::PROVIDER_NAME)
-            );
-        }
-        _ => panic!("Expected Reasoning"),
-    }
+    let Some(AssistantContent::Reasoning(reasoning)) = response.choice.first() else {
+        panic!("Expected Reasoning");
+    };
+    assert_eq!(reasoning.text, "thinking text");
+    assert_eq!(
+        reasoning
+            .native
+            .as_ref()
+            .map(|native| &native.item["thoughtSignature"]),
+        Some(&json!(BASE64.encode(raw)))
+    );
+    assert_eq!(response.provider(), super::PROVIDER_NAME);
+    assert_eq!(response.origin.api.as_str(), "vertexai.generate_content");
 }
 
 #[test]
@@ -181,7 +204,11 @@ fn test_text_response_conversion() {
     assert!(completion_response.is_ok());
     let response = completion_response.unwrap();
     assert_eq!(
-        response.choice,
+        response
+            .choice
+            .iter()
+            .map(AssistantContent::canonical)
+            .collect::<Vec<_>>(),
         vec![AssistantContent::Text(Text::new(
             "Hello, world!".to_string()
         ))]
@@ -205,7 +232,7 @@ fn test_tool_call_response_conversion() {
             // Vertex issues no call ids: rig issues one.
             assert!(id.is_local());
             assert_eq!(function.name, "add");
-            assert_eq!(function.arguments, args);
+            assert_eq!(function.arguments_value(), args);
         }
         _ => panic!("Expected ToolCall"),
     }
@@ -223,7 +250,7 @@ fn inline_image_response_converts_raw_bytes_to_base64_with_mime_type() {
         Some(AssistantContent::Image(image)) => {
             assert_eq!(image.data, DocumentSourceKind::Base64(BASE64.encode(raw)));
             assert_eq!(image.media_type, Some(ImageMediaType::PNG));
-            assert_eq!(image.detail, Some(ImageDetail::default()));
+            assert_eq!(image.detail, None);
         }
         _ => panic!("Expected Image"),
     }
@@ -252,85 +279,33 @@ fn mixed_text_and_image_response_preserves_part_order() {
     assert!(matches!(contents[2], AssistantContent::Text(text) if text.text == "after"));
 }
 
+/// A thought image, inline media that is not an image, and a signed image
+/// all keep their part, so each replays to Vertex as it arrived: the
+/// thought image and the audio as opaque blocks, the image as an image.
 #[test]
-fn mixed_text_and_thought_image_response_keeps_only_visible_text_in_order() {
-    let response: CompletionResponse = create_parts_response([
+fn every_inline_part_keeps_its_part_and_replays_it() {
+    let parts = [
         vertexai::model::Part::new().set_text("before"),
         inline_data_part("image/png", vec![1, 2, 3]).set_thought(true),
+        inline_data_part("audio/wav", vec![0]),
+        inline_data_part("image/gif", vec![0]).set_thought_signature(vec![1, 2, 3]),
         vertexai::model::Part::new().set_text("after"),
-    ])
-    .complete()
-    .expect("thought image should be skipped");
+    ];
+    let response = complete(create_parts_response(parts.clone())).expect("the reply decodes");
+    let kinds: Vec<&str> = response
+        .choice
+        .iter()
+        .map(|block| match block {
+            AssistantContent::Text(_) => "text",
+            AssistantContent::Opaque(_) => "opaque",
+            AssistantContent::Image(_) => "image",
+            AssistantContent::Reasoning(_) | AssistantContent::ToolCall(_) => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["text", "opaque", "opaque", "image", "text"]);
 
-    let contents: Vec<_> = response.choice.iter().collect();
-    assert_eq!(contents.len(), 2);
-    assert!(matches!(contents[0], AssistantContent::Text(text) if text.text == "before"));
-    assert!(matches!(contents[1], AssistantContent::Text(text) if text.text == "after"));
-}
-
-#[test]
-fn thought_image_only_response_fails_without_visible_assistant_content() {
-    let result = complete(create_parts_response([inline_data_part(
-        "image/png",
-        vec![1, 2, 3],
-    )
-    .set_thought(true)]));
-
-    let Err(error) = result else {
-        panic!("thought-image-only response must fail")
-    };
-    // Rejected with the shared empty-response wording via
-    // `require_non_empty_response`, like every other wire.
-    assert!(matches!(
-        error,
-        ProviderError::Response(message)
-            if message == rig_core::message::EMPTY_RESPONSE_ERROR
-    ));
-}
-
-#[test]
-fn inline_audio_and_non_image_media_are_rejected() {
-    for mime_type in ["audio/wav", "application/pdf", "application/octet-stream"] {
-        let result = complete(create_parts_response([inline_data_part(
-            mime_type,
-            vec![0],
-        )]));
-        let Err(error) = result else {
-            panic!("unsupported inline media must fail")
-        };
-        assert!(matches!(error, ProviderError::Response(_)));
-        assert!(error.to_string().contains(mime_type));
-    }
-}
-
-#[test]
-fn inline_gif_and_svg_images_are_rejected() {
-    for mime_type in ["image/gif", "image/svg+xml"] {
-        let result = complete(create_parts_response([inline_data_part(
-            mime_type,
-            vec![0],
-        )]));
-        let Err(error) = result else {
-            panic!("non-replayable inline image must fail")
-        };
-        assert!(matches!(error, ProviderError::Response(_)));
-        assert!(
-            error
-                .to_string()
-                .contains("Unsupported Vertex inline image media type")
-        );
-    }
-}
-
-#[test]
-fn signed_inline_image_is_rejected() {
-    let part = inline_data_part("image/png", vec![0]).set_thought_signature(vec![1, 2, 3]);
-    let result = complete(create_parts_response([part]));
-    let Err(error) = result else {
-        panic!("signed inline image must fail")
-    };
-    assert!(matches!(error, ProviderError::Response(_)));
-    assert!(error.to_string().contains("thought_signature"));
+    let replayed = replay(response.choice.clone()).expect("the turn replays");
+    assert_eq!(replayed.parts, parts);
 }
 
 #[test]
@@ -416,14 +391,28 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
     assert_eq!(back, raw);
 
     let original: CompletionResponse = raw.clone().complete().expect("original converts");
-    assert_eq!(original.raw, value, "the response's raw is the capture");
+    // The candidate's metadata stays in the response's raw document.
+    let native = original.raw.pointer("/candidates/0");
+    assert_eq!(
+        native.map(|native| &native["avgLogprobs"]),
+        Some(&json!(-0.25))
+    );
+    // The turn reads the REST JSON, which spells enums by name.
+    assert_eq!(
+        native.map(|native| &native["safetyRatings"][0]["category"]),
+        Some(&json!("HARM_CATEGORY_HARASSMENT"))
+    );
+    assert_eq!(
+        original.raw.pointer("/candidates/0/finishReason"),
+        Some(&json!("STOP"))
+    );
     let restored: CompletionResponse = back.complete().expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
     assert_eq!(restored.finish_reason(), original.finish_reason());
-    assert_eq!(restored.model, original.model);
+    assert_eq!(restored.model(), original.model());
     assert_eq!(restored.usage, original.usage);
     assert_eq!(restored.choice, original.choice);
-    assert_eq!(restored.model.as_deref(), Some("gemini-2.5-flash-001"));
+    assert_eq!(restored.model(), Some("gemini-2.5-flash-001"));
     assert_eq!(
         restored.identity().response_id.as_deref(),
         Some("resp-vertex-1")
@@ -463,7 +452,7 @@ fn multiple_missing_call_ids_are_distinct() {
     );
     assert!(calls.iter().all(|call| call.id.provider().is_none()));
     for (i, call) in calls.iter().enumerate() {
-        assert_eq!(call.function.arguments, serde_json::json!({"n":i}));
+        assert_eq!(call.function.arguments_value(), serde_json::json!({"n":i}));
     }
 }
 
@@ -489,7 +478,7 @@ fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
                 call(),
                 call(),
             ]);
-        let candidate = vertexai::model::Candidate::new().set_content(content);
+        let candidate = finished(vertexai::model::Candidate::new().set_content(content));
         vertexai::model::GenerateContentResponse::new().set_candidates([candidate])
     };
     let first = complete(build()).expect("converts");
@@ -509,36 +498,24 @@ fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
     );
 }
 
-/// A signature on answer text stays on that text and replays on it; before,
-/// the decoder dropped it.
+/// A signature on answer text stays on that text and replays on it.
 #[test]
 fn answer_text_signature_is_kept_and_replayed_on_its_part() {
     let raw = b"\x00\x01answer-sig\xff";
     let part = vertexai::model::Part::new()
         .set_text("the answer".to_string())
         .set_thought_signature(raw.to_vec());
-    let content = vertexai::model::Content::new()
-        .set_role("model")
-        .set_parts([part]);
-    let candidate = vertexai::model::Candidate::new().set_content(content);
-    let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
-    let response: CompletionResponse = response.complete().unwrap();
+    let response: CompletionResponse = create_parts_response([part]).complete().unwrap();
 
-    let Some(AssistantContent::Text(text)) = response.choice.first() else {
-        panic!("the answer text: {:?}", response.choice);
-    };
-    let encoded = BASE64.encode(raw);
+    let block = response.choice.first().expect("the answer text");
+    assert!(matches!(block, AssistantContent::Text(text) if text.text == "the answer"));
     assert_eq!(
-        rig_core::providers::gemini::text_signature_at(text, super::VERTEX_TEXT_EXTRAS_KEY),
-        Some(encoded.as_str())
+        item(block),
+        Some(&json!({ "text": "the answer", "thoughtSignature": BASE64.encode(raw) }))
     );
 
     let replayed: vertexai::model::Content =
-        crate::types::message::content_from_message(rig_core::message::Message::Assistant {
-            id: None,
-            content: response.choice.clone(),
-        })
-        .expect("the turn replays");
+        replay(response.choice.clone()).expect("the turn replays");
     assert_eq!(replayed.parts.len(), 1);
     assert_eq!(replayed.parts[0].thought_signature.to_vec(), raw.to_vec());
     assert!(!replayed.parts[0].thought);

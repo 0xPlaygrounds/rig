@@ -27,8 +27,8 @@ its fixtures and integration tests from the published package. The unpublished
 `rig-cassette-minimal` runner at
 `crates/rig-cassette/tests/minimal/Cargo.toml` executes the same `verify` and
 `world_replay` sources, plus the shared effect-log/classic-replay regressions.
-It selects only cassette's `agent,ecs` features: no native HTTP engine,
-`serde_json/preserve_order` or `serde_json/float_roundtrip`.
+It selects only cassette's `agent,ecs` features, without the native HTTP
+engine.
 
 ```sh
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --all-features --retries 0
@@ -334,8 +334,9 @@ and is applied twice:
   another wire's committed reply through Rig's real decoder, continue it on
   the target wire, and assert no foreign reasoning state reached it.
 
-Reasoning records the service that issued it, and a request replays only that
-service's reasoning (Claude on Bedrock shares Anthropic's).
+An assistant turn records its origin: the wire format, provider and model
+that produced it. A request to that same model replays the turn's provider
+items verbatim, and any other request replays only its canonical fields.
 Further cell families exercise the same round trip: `stateful_chain_matrix`
 (OpenAI `previous_response_id` and file ids, Gemini `cachedContents` and
 Interactions), `session_matrix` (history persisted through serde, an ECS
@@ -735,9 +736,9 @@ would have sent is pinned by the recording's owning test, not by the cell.
 Every HTTP wire threads the witness's `AdapterContext` through its request,
 so a native cell reads the adapter's boundary facts (the request, the
 status, the provider's verdict, usage and error envelope, the closure) for
-Gemini, the OpenAI Chat Completions and Responses wires and Anthropic;
-Cohere, Ollama and the Gemini Interactions wire report the transport facts
-without a payload projection. Error classification follows the one funnel in
+Gemini, the OpenAI Chat Completions and Responses wires (Cohere and Ollama
+among the Chat dialects) and Anthropic; the Gemini Interactions wire reports
+the transport facts without a payload projection. Error classification follows the one funnel in
 `rig_core::provider_response` (see `AGENTS.md`, Error Handling).
 
 Consumed cassettes and goldens remain in Git; historical execution logs, proof

@@ -133,24 +133,29 @@
             {
               "type": "text",
               "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
-                }
+              "native": {
+                "item": {
+                  "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
+                  "thoughtSignature": "CrQCAWkUfROfTg+/8PtfKU98p3n1F9Jji+LDdbeoQ5/Uf//He1hq3EU6HopXnKHxQwJF1RiUFy+4aP8y1E7PIwnFm6rcjSm/mUtl+PSVMn8dkbrfx5pVW47j+pkPAamwWxbxJ/sdi1zoUFNJM+2KqQtdaEY3pY9Iz5mTGiB5voKbpWwFtuqkKmvmYIzXiCOW8G3o7Wqq25+yAZuDQ7tSuTMt1lVdpSrto2oPEvpKx+rzMhlcK/VNSlWUoUifjO4RjG1z2HlwOATtZrkCjbxj+2XwPKL2ncLhjl4uSApXi9g0Xum0h0VIDZ8aE1dCeH4AGD5xngFY+texOcGStqEVFB6yRDnBPOLcHHT1KFB6ritqe0SWOj8Yw/Y/Qv4Un0Hyyh7IhJl6brog3v842UjEn7iLLaFkOAA="
+                },
+                "fingerprint": "5aaa6c62525023ee"
               }
             }
           ],
           "usage": {
-            "input_tokens": 130,
+            "input_tokens": 129,
             "output_tokens": 78,
-            "total_tokens": 208,
+            "total_tokens": 207,
             "reasoning_tokens": 60
           },
-          "message_id": null,
-          "response_id": "dq6yaqf5PMqnmtkP7pfe-AE",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "OQ3BavqvBdzRz7IP8uC06QM"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -158,7 +163,7 @@
                   "parts": [
                     {
                       "text": "The harbor code is ALPHA-11. The orchard code is BETA-22.",
-                      "thoughtSignature": "CrQCAWkUfRM1JbMeVbmWkzqUFThfZIfD8EIE4rgLfFZAagHnG2BHe553DX5NLZvZlNTGRSTLgCdS4F31L0+RogKqdet4JZsWlHF7n/4KKIOUlu46ZSx+KG84CkFAvFIJ/Y9HJ0c6mNKy/QW/aV3XuqYZKWE44+TX27Q8Ia4v/vnsdxGTxmwxh2MWTd1hUSpgDXY/GDhX/vwgM73ailSUU/i9KWH+GTmiFtO7S6gHGprzFRMZcp1qnoREKlDc1/8SfjD7bezbkHzUKDqHvf2KNvOOd2l+sXRuROIDNyJBqyyOCcuG9T9StzHoN3qRAeQfbP9nYRhGL6iQQSC17tYDG9Yha9owg28SaZiGqBI5XVy24j822WlFc/RZMLjMoILacGh56XFqYjT0iShpQE3ealba4ZEAqmU="
+                      "thoughtSignature": "CrQCAWkUfROfTg+/8PtfKU98p3n1F9Jji+LDdbeoQ5/Uf//He1hq3EU6HopXnKHxQwJF1RiUFy+4aP8y1E7PIwnFm6rcjSm/mUtl+PSVMn8dkbrfx5pVW47j+pkPAamwWxbxJ/sdi1zoUFNJM+2KqQtdaEY3pY9Iz5mTGiB5voKbpWwFtuqkKmvmYIzXiCOW8G3o7Wqq25+yAZuDQ7tSuTMt1lVdpSrto2oPEvpKx+rzMhlcK/VNSlWUoUifjO4RjG1z2HlwOATtZrkCjbxj+2XwPKL2ncLhjl4uSApXi9g0Xum0h0VIDZ8aE1dCeH4AGD5xngFY+texOcGStqEVFB6yRDnBPOLcHHT1KFB6ritqe0SWOj8Yw/Y/Qv4Un0Hyyh7IhJl6brog3v842UjEn7iLLaFkOAA="
                     }
                   ],
                   "role": "model"
@@ -168,19 +173,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "dq6yaqf5PMqnmtkP7pfe-AE",
+            "responseId": "OQ3BavqvBdzRz7IP8uC06QM",
             "usageMetadata": {
               "candidatesTokenCount": 18,
-              "promptTokenCount": 130,
+              "promptTokenCount": 129,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 130
+                  "tokenCount": 129
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 60,
-              "totalTokenCount": 208
+              "totalTokenCount": 207
             }
           }
         }

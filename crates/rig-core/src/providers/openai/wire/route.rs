@@ -175,7 +175,7 @@ impl Wire for OpenAiWire {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = OpenAiDecoder<'id>;
+    type Decoder<'id> = OpenAiDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         on_route!(self, wire => wire.describe())
@@ -185,7 +185,7 @@ impl Wire for OpenAiWire {
         on_route!(self, wire => wire.encode(request, mode))
     }
 
-    fn decoder<'id>(&self) -> OpenAiDecoder<'id> {
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
         match self {
             Self::Chat(wire) => OpenAiDecoder::Chat(wire.decoder()),
             Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder()),
@@ -202,14 +202,14 @@ pub enum OpenAiEvent {
 }
 
 /// The chosen route's decoder.
-pub enum OpenAiDecoder<'id> {
+pub enum OpenAiDecoder {
     /// The chat-completions state machine.
-    Chat(ChatDecoder<'id>),
+    Chat(ChatDecoder),
     /// The Responses state machine.
-    Responses(ResponsesDecoder<'id>),
+    Responses(ResponsesDecoder),
 }
 
-impl<'id> Decoder<'id, Completion> for OpenAiDecoder<'id> {
+impl<'id> Decoder<'id, Completion> for OpenAiDecoder {
     type Event = OpenAiEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<OpenAiEvent> {

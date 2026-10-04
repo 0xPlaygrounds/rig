@@ -17,7 +17,7 @@
                 "family": "completion",
                 "model": "parity",
                 "capabilities": {
-                  "composes_native_output_with_tools": false
+                  "composes_native_output_with_tools": true
                 }
               }
             }
@@ -25,7 +25,7 @@
         },
         {
           "rig_ecs::agent::AdditionalParams": {
-            "think": false
+            "reasoning_effort": "none"
           },
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::MaxTurns": 1,

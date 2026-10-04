@@ -120,7 +120,7 @@ fn corrupt_hash_missing_handle_and_bad_parent_leave_destination_untouched() {
     let mut missing = original.clone();
     missing.binaries.clear();
     let mut bad_parent = original.clone();
-    bad_parent.entities[parts[0]].remove(type_name::<ChildOf>());
+    bad_parent.entities[parts[0]].shift_remove(type_name::<ChildOf>());
     for (checkpoint, what) in [
         (bad_hash, "a payload that is not its hash"),
         (missing, "a handle without a payload"),

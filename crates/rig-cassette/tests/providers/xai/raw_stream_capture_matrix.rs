@@ -3,7 +3,7 @@
 //! **The feature.** Every stream's terminal
 //! [`rig::completion::CompletionResponse::raw`] carries the provider-native terminal record
 //! behind the stream's finished response — for xAI the Responses terminal
-//! [`CompletionResponse`](rig::providers::openai::responses_api::CompletionResponse),
+//! Responses response object,
 //! built from the `response.completed` event —
 //! serialized. Capture is always on: there is no flag to request it, nothing
 //! about it reaches the wire, and a `Value::Null` only ever means a terminal
@@ -14,7 +14,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` reads back as the Responses `StreamingCompletionResponse` and re-serializes equal, and that type's fields are the capture's; the normalized terminal reproduces the recorded `response.completed` event and `x-request-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` is the Responses response object, whose fields are the capture's; the normalized terminal reproduces the recorded `response.completed` event and `x-request-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status` and `raw.usage.output_tokens` equal the recorded `response.completed` event's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -28,7 +28,6 @@
 //! [`assert_terminal_reproduces_event`] is the shared body contract.
 
 use rig::completion::{CompletionRequest, FinishReason};
-use rig::providers::openai::responses_api;
 use rig::providers::xai;
 use serde_json::{Value, json};
 
@@ -86,17 +85,13 @@ fn assert_terminal_reproduces_event(
     terminal: &rig::completion::CompletionResponse,
     response: &Value,
 ) {
-    assert_eq!(terminal.provider, PROVIDER, "provider");
+    assert_eq!(terminal.provider(), PROVIDER, "provider");
     assert_matches_recorded_token(
-        terminal.response_id.as_deref(),
+        terminal.response_id(),
         response["id"].as_str(),
         "response id",
     );
-    assert_eq!(
-        terminal.model.as_deref(),
-        response["model"].as_str(),
-        "model"
-    );
+    assert_eq!(terminal.model(), response["model"].as_str(), "model");
     assert_eq!(
         response["status"],
         json!("completed"),
@@ -140,20 +135,18 @@ async fn stream_raw_round_trips_terminal_type() {
     let (text, terminal) = sink.take();
     assert!(!text.is_empty());
     let raw = &terminal.raw;
-    // A streamed terminal has no single reply document behind it, so unlike
-    // `CompletionResponse::raw` this capture IS the native record serialized
-    // (`terminal_record`) — the round trip back through it must therefore be
-    // exact, and the typed view's fields are the capture's fields.
+    // A streamed terminal's capture is the response object its
+    // `response.completed` event carried, and its fields agree with the
+    // normalized terminal's.
     let typed = responses::assert_terminal_round_trips(&terminal);
     assert_eq!(
-        typed.status,
-        responses_api::ResponseStatus::Completed,
+        typed["status"], "completed",
         "the recorded stream completed"
     );
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.output_tokens),
+        typed["usage"]["output_tokens"].as_u64(),
         raw["usage"]["output_tokens"].as_u64(),
-        "the typed view's usage is the capture's usage"
+        "the returned document's usage is the capture's usage"
     );
 
     let response = recorded_completed_response(SCENARIO);

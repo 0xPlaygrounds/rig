@@ -79,16 +79,13 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need answer 1-2 sentences. Explain Rust and why memory safety matters"
-                  }
-                }
-              ]
+              "text": "We need answer concise 1-2 sentences. Explain Rust and why memory safety",
+              "native": {
+                "item": {
+                  "reasoning_content": "We need answer concise 1-2 sentences. Explain Rust and why memory safety"
+                },
+                "fingerprint": "8514a2e955bf7d8e"
+              }
             }
           ],
           "usage": {
@@ -98,11 +95,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 16
           },
-          "message_id": null,
-          "response_id": "d313630b-a376-4f20-be7e-76e1e3e7221b",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "269762f0-3d6e-4300-a844-785882a2cd25"
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -111,13 +111,13 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need answer 1-2 sentences. Explain Rust and why memory safety matters",
+                  "reasoning_content": "We need answer concise 1-2 sentences. Explain Rust and why memory safety",
                   "role": "assistant"
                 }
               }
             ],
             "created": 0,
-            "id": "d313630b-a376-4f20-be7e-76e1e3e7221b",
+            "id": "269762f0-3d6e-4300-a844-785882a2cd25",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

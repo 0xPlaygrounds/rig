@@ -6,14 +6,14 @@ when:
   - name: accept
     value: '*/*'
   - name: content-type
-    value: multipart/form-data; boundary=f990ad9cd45961da-ab20b64f2c49ab42-9d71b9a7d2373220-88d69c64cb6bbc2c
+    value: multipart/form-data; boundary=d65e7e4e60684cd6-9ae4dddf21a62c28-eeee5ede1732f03a-28e6eeb91fbd8afc
   body: null
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"bytes":12414,"created_at":0,"expires_at":null,"filename":"rig-pages.pdf","id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","object":"file","purpose":""}'
+  body: '{"bytes":12414,"created_at":0,"expires_at":null,"filename":"rig-pages.pdf","id":"file_11c75b88-0bcc-4d36-aedd-19ddde1aa6da","object":"file","purpose":""}'
 ---
 when:
   path: /v1/responses
@@ -24,15 +24,15 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"file_id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"How many pages does this PDF have? Answer with a number.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"grok-4-0709","store":false}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"file_id":"file_11c75b88-0bcc-4d36-aedd-19ddde1aa6da","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"How many pages does this PDF have? Answer with a number.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"grok-4-0709","store":false}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: e7da21f7-6fe4-9054-a49e-505ede41ed1e
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"e7da21f7-6fe4-9054-a49e-505ede41ed1e","incomplete_details":null,"instructions":null,"max_output_tokens":256,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_e7da21f7-6fe4-9054-a49e-505ede41ed1e","status":"completed","summary":[{"text":"I need to count the pages in this PDF.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"3","type":"output_text"}],"id":"msg_e7da21f7-6fe4-9054-a49e-505ede41ed1e","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":2238,"output_tokens":230},"cost_in_usd_ticks":27502000,"input_tokens":2238,"input_tokens_details":{"cached_tokens":576},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":223,"output_tokens_details":{"reasoning_tokens":222},"total_tokens":2461},"user":null}'
+    value: 11e250e8-7cde-958b-90d7-69edb157380b
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"11e250e8-7cde-958b-90d7-69edb157380b","incomplete_details":null,"instructions":null,"max_output_tokens":256,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"encrypted_content":"PK5aBGrz/5Ge/pKucgWk1C6fWcetlp9nZdyHCqujG81DjHWeLPc5LAHIyK+MqEYoNx/GHhEI7xxiI4Fk38e8VTuV6nEtur4DDcfD3X0TcIaSeykgKBtc258PSj59LhmpI6BzHrvM+xWcmQ7CSMej/Y3gdKbFnU/3hbpYlMtTGof5H9buVrFZADOVMZVQ9LgU5EpNClJLXwLuoNvU++b3ocyz2AWlpxg+mKEMBwb7zp4DJeFqeJaxSqqKcEeLs+CjzEFMcKQi6w2yk3Zm0XoCiLS75rDAiuwgifDCuNLgvTJVRSH2vdotGbU8+ZattWRAgn+pl2PkKIsaU2o+xVp3y0fGaEsLioFOripW3PWSv0FdqfCddZ2c2z5PaxTyDeK7Hst61hNi7uWaII/2i4ts3fk9EjXM13EAqtcVSg5hIqdL+AG0JOQ3IxyfWTfd7iEvI7AZ2M+4OZ26DjlP2UPBECXpSvLEkh86OwbNjhQGjo0mvbWQbETmVQKBW4dotI8/lz8u560ugd4EdMvaOOgsHHZCyEv5j/dtX/Dc9RaB358+t7+7BwWvML3l6Vm3CTlEbX0zyUTmuLPr+mfBN7FRHoNmKwQl4bjPMBz6YDjWkiDO5A1bZWWiT9rlSj+7J+xgP8BD48QsRjxTL5YoitjQsZLn563uV8zBzw38pySvfsmfyYPO1CD3AF6myr4eqy0z7tWPIrX69ycE+LMzp30QJ4i0NXPSY8r3ZZcOB7sjWZcnSNgzVJTaRlyKFtYIyIG6nBuXwEJOHNm0qblMiP1mArxt6yOLK2qBmoTRyOnD6LPduMVLQhSvlt36cyH6YGz9594TPp9qSKUd1gzMidbCahISxFiIiwyJOUnqaCFQgLzfIDsGrlqNU8O3kEW7jUYQuT9E4FUAX0ULgfT1kQK423d9EeIZqj9dn0mcEDUx32TibYZfqtaMF23CjnqSSUwlaAwQ4sWoeH9LZa5pWyRBWWYv+dFLDELDXbaO2XB8aMfssdRQBVgag7L+Q3cAWN3K8eAhMDGuIgsrVaQGzVDtbRGmopIkQfwjaYO1/OO7D6S7hQKY2Y3DWTcCuehocIY6oUNjdBiLoQQOxOpygp3IN2eyj3xNEnuwqzndlsiTm6ED5LgzVppMGskitzqMNyTZl5x58CFSCw0sVjgQUHw","id":"rs_11e250e8-7cde-958b-90d7-69edb157380b","status":"completed","summary":[{"text":"I need to count the pages in the PDF.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"3","type":"output_text"}],"id":"msg_11e250e8-7cde-958b-90d7-69edb157380b","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":2238,"output_tokens":229},"cost_in_usd_ticks":31484000,"input_tokens":2238,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":221,"output_tokens_details":{"reasoning_tokens":220},"total_tokens":2459},"user":null}'
 ---
 when:
   path: /v1/responses
@@ -43,18 +43,18 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"file_id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"How many pages does this PDF have? Answer with a number.","type":"input_text"}],"role":"user","type":"message"},{"id":"rs_e7da21f7-6fe4-9054-a49e-505ede41ed1e","summary":[{"text":"I need to count the pages in this PDF.","type":"summary_text"}],"type":"reasoning"},{"content":[{"text":"3","type":"output_text"}],"id":"msg_e7da21f7-6fe4-9054-a49e-505ede41ed1e","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Is the attached PDF longer than two pages? Answer yes or no.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"grok-4-0709","store":false}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"file_id":"file_11c75b88-0bcc-4d36-aedd-19ddde1aa6da","type":"input_file"}],"role":"user","type":"message"},{"content":[{"text":"How many pages does this PDF have? Answer with a number.","type":"input_text"}],"role":"user","type":"message"},{"encrypted_content":"PK5aBGrz/5Ge/pKucgWk1C6fWcetlp9nZdyHCqujG81DjHWeLPc5LAHIyK+MqEYoNx/GHhEI7xxiI4Fk38e8VTuV6nEtur4DDcfD3X0TcIaSeykgKBtc258PSj59LhmpI6BzHrvM+xWcmQ7CSMej/Y3gdKbFnU/3hbpYlMtTGof5H9buVrFZADOVMZVQ9LgU5EpNClJLXwLuoNvU++b3ocyz2AWlpxg+mKEMBwb7zp4DJeFqeJaxSqqKcEeLs+CjzEFMcKQi6w2yk3Zm0XoCiLS75rDAiuwgifDCuNLgvTJVRSH2vdotGbU8+ZattWRAgn+pl2PkKIsaU2o+xVp3y0fGaEsLioFOripW3PWSv0FdqfCddZ2c2z5PaxTyDeK7Hst61hNi7uWaII/2i4ts3fk9EjXM13EAqtcVSg5hIqdL+AG0JOQ3IxyfWTfd7iEvI7AZ2M+4OZ26DjlP2UPBECXpSvLEkh86OwbNjhQGjo0mvbWQbETmVQKBW4dotI8/lz8u560ugd4EdMvaOOgsHHZCyEv5j/dtX/Dc9RaB358+t7+7BwWvML3l6Vm3CTlEbX0zyUTmuLPr+mfBN7FRHoNmKwQl4bjPMBz6YDjWkiDO5A1bZWWiT9rlSj+7J+xgP8BD48QsRjxTL5YoitjQsZLn563uV8zBzw38pySvfsmfyYPO1CD3AF6myr4eqy0z7tWPIrX69ycE+LMzp30QJ4i0NXPSY8r3ZZcOB7sjWZcnSNgzVJTaRlyKFtYIyIG6nBuXwEJOHNm0qblMiP1mArxt6yOLK2qBmoTRyOnD6LPduMVLQhSvlt36cyH6YGz9594TPp9qSKUd1gzMidbCahISxFiIiwyJOUnqaCFQgLzfIDsGrlqNU8O3kEW7jUYQuT9E4FUAX0ULgfT1kQK423d9EeIZqj9dn0mcEDUx32TibYZfqtaMF23CjnqSSUwlaAwQ4sWoeH9LZa5pWyRBWWYv+dFLDELDXbaO2XB8aMfssdRQBVgag7L+Q3cAWN3K8eAhMDGuIgsrVaQGzVDtbRGmopIkQfwjaYO1/OO7D6S7hQKY2Y3DWTcCuehocIY6oUNjdBiLoQQOxOpygp3IN2eyj3xNEnuwqzndlsiTm6ED5LgzVppMGskitzqMNyTZl5x58CFSCw0sVjgQUHw","id":"rs_11e250e8-7cde-958b-90d7-69edb157380b","status":"completed","summary":[{"text":"I need to count the pages in the PDF.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"3","type":"output_text"}],"id":"msg_11e250e8-7cde-958b-90d7-69edb157380b","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Is the attached PDF longer than two pages? Answer yes or no.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"grok-4-0709","store":false}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: 48336dd1-59ce-9147-b9f7-8197b71e0b82
-  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"48336dd1-59ce-9147-b9f7-8197b71e0b82","incomplete_details":null,"instructions":null,"max_output_tokens":256,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"id":"rs_48336dd1-59ce-9147-b9f7-8197b71e0b82","status":"completed","summary":[{"text":"I need to check if the attached PDF exceeds two pages.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"yes","type":"output_text"}],"id":"msg_48336dd1-59ce-9147-b9f7-8197b71e0b82","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":2261,"output_tokens":205},"cost_in_usd_ticks":10339500,"input_tokens":2261,"input_tokens_details":{"cached_tokens":2176},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":197,"output_tokens_details":{"reasoning_tokens":196},"total_tokens":2458},"user":null}'
+    value: fec283c0-77b2-912a-b0c1-d4206625cf0c
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"fec283c0-77b2-912a-b0c1-d4206625cf0c","incomplete_details":null,"instructions":null,"max_output_tokens":256,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_eb3c003fc66c14ed"},"model":"grok-4.3","object":"response","output":[{"encrypted_content":"A3KZnC2glqMEiyondRowIbgF1Uh12OSr9cGBtL7sBS4ECHSHKaBMqUiQX6ewabBMdLlBBjB3mJsptcpaZhdD5Ov32BzNOdFfgmwKvZqRjCh0Kpkwwc+OpaQovja0My3eLrKkVg5pybDjHqdz3/u3QALAfkGuD8Pew1C85x+AG8BgzRKke4ih2juOeeU0+H7kHY3EnI+JNzkbeqeb/eAS+FpPGUp/h40WZ+79cQbJvhRWai/e/spL9s6yH0ZfB3IKU+7XicEBH8zStFSpCz8uANddsOyJH6D/EPjniWNkbiDp2tbaMxIOSd6sEacNrMxc+2ITMwuYbIYWWf2xy5nV5Dpx6ra4B4Es+6Aayvgb5bbdk06/8+LcZTmMfxr/9Inxb6lyJNNq9PbMoqTwusjVpRTe22RYBSuJsZ2yhNpZKd6KaAtWpyNZh8kZvfJwqOkXAl7mqmtHU4+TK/KwKvm7qyuQOsHK9SA9HtNF0IMHH3tDtQT80Yp76pLnHJeqK+QMxsHo/ASVfAvRbeEWIwzPac9VclDuXBM4HosxbA","id":"rs_fec283c0-77b2-912a-b0c1-d4206625cf0c","status":"completed","summary":[],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"yes","type":"output_text"}],"id":"msg_fec283c0-77b2-912a-b0c1-d4206625cf0c","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":2484,"output_tokens":105},"cost_in_usd_ticks":10627000,"input_tokens":2484,"input_tokens_details":{"cached_tokens":2176},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":97,"output_tokens_details":{"reasoning_tokens":96},"total_tokens":2581},"user":null}'
 ---
 when:
-  path: /v1/files/file_43afa54b-89a8-4cd6-a1b4-985226d36b18
+  path: /v1/files/file_11c75b88-0bcc-4d36-aedd-19ddde1aa6da
   method: DELETE
   query_param: []
   header:
@@ -66,4 +66,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"deleted":true,"id":"file_43afa54b-89a8-4cd6-a1b4-985226d36b18","object":"file"}'
+  body: '{"deleted":true,"id":"file_11c75b88-0bcc-4d36-aedd-19ddde1aa6da","object":"file"}'

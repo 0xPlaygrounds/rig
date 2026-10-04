@@ -103,23 +103,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants a concise event object for a local Rust meetup in Seattle. This is a creative/fictional request to create a structured event object. I'll create a realistic Rust meetup event object for Seattle.\n"
-                  }
-                }
-              ]
+              "text": "The user wants a concise event object for a local Rust meetup in Seattle. This is a creative/fictional request to create a structured event object. I'll create a realistic Rust meetup event object for Seattle.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants a concise event object for a local Rust meetup in Seattle. This is a creative/fictional request to create a structured event object. I'll create a realistic Rust meetup event object for Seattle.\n"
+                },
+                "fingerprint": "f271d5e3f0bfd2ca"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-b8b90b15c78651d7"
-                }
+                "provider": "chatcmpl-tool-b8b90b15c78651d7"
               },
               "function": {
                 "name": "final_result",
@@ -129,8 +124,17 @@
                   "summary": "Monthly gathering for Rust developers in the Seattle area. Topics include ecosystem updates, project showcases, and hands-on workshops. All skill levels welcome."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Users Group - Monthly Meetup\", \"category\": \"local\", \"summary\": \"Monthly gathering for Rust developers in the Seattle area. Topics include ecosystem updates, project showcases, and hands-on workshops. All skill levels welcome.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "chatcmpl-tool-b8b90b15c78651d7",
+                  "type": "function"
+                },
+                "fingerprint": "47516e2d307ee58d"
+              }
             }
           ],
           "usage": {
@@ -138,11 +142,14 @@
             "output_tokens": 129,
             "total_tokens": 1475
           },
-          "message_id": null,
-          "response_id": "chatcmpl-R3Ed76K5r6FJYM1PEpLJv1FF",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-R3Ed76K5r6FJYM1PEpLJv1FF"
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "choices": [
               {

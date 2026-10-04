@@ -3,9 +3,6 @@
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
-};
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
@@ -17,24 +14,20 @@ use rig::completion::CompletionRequest;
 
 #[tokio::test]
 async fn streaming_smoke() {
-    let thinking_config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::Medium),
-            include_thoughts: Some(true),
-        }),
-        ..Default::default()
-    };
-    let additional_params = AdditionalParameters::default().with_config(thinking_config);
+    let additional_params = serde_json::json!({
+        "generationConfig": {
+            "thinkingConfig": {
+                "thinkingLevel": "medium",
+                "includeThoughts": true
+            }
+        }
+    });
 
     super::super::support::with_gemini_cassette("streaming/streaming_smoke", |client| async move {
         let agent =
             rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW))
                 .preamble(STREAMING_PREAMBLE)
-                .additional_params(
-                    serde_json::to_value(additional_params)
-                        .expect("Gemini thinking config should serialize"),
-                )
+                .additional_params(additional_params)
                 .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();
@@ -51,15 +44,14 @@ async fn streaming_smoke() {
 
 #[tokio::test]
 async fn example_streaming_prompt() {
-    let generation_config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::Medium),
-            include_thoughts: Some(true),
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(generation_config);
+    let params = serde_json::json!({
+        "generationConfig": {
+            "thinkingConfig": {
+                "thinkingLevel": "medium",
+                "includeThoughts": true
+            }
+        }
+    });
     super::super::support::with_gemini_cassette(
         "streaming/example_streaming_prompt",
         |client| async move {
@@ -68,7 +60,7 @@ async fn example_streaming_prompt() {
             )
             .preamble("Be precise and concise.")
             .temperature(0.5)
-            .additional_params(serde_json::to_value(params).expect("params should serialize"))
+            .additional_params(params)
             .build();
 
             let mut stream = agent
@@ -114,7 +106,7 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 final_response.finish_reason()
             );
             assert_eq!(
-                final_response.model.as_deref(),
+                final_response.model(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected resolved Gemini model version to be surfaced"
             );
@@ -158,7 +150,7 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 final_response.finish_reason()
             );
             assert_eq!(
-                final_response.model.as_deref(),
+                final_response.model(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected modelVersion from terminal chunks to be retained"
             );

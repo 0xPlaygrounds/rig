@@ -34,6 +34,8 @@ use crate::validation::{
 };
 
 pub(crate) struct LoadedModel {
+    /// The id replay names this checkpoint by ([`model_id`]).
+    pub(crate) model_id: String,
     pub(crate) model: LoadedWeights,
     pub(crate) runtime: RuntimeDevice,
     pub(crate) tokenizer: Tokenizer,
@@ -52,6 +54,7 @@ pub(crate) enum LoadedWeights {
 }
 
 struct PreparedModel {
+    model_id: String,
     profile: ValidatedProfile,
     tokenizer: Tokenizer,
     llama_config: Option<Config>,
@@ -110,6 +113,7 @@ pub(crate) fn load_model_with_family(
     let model = load()?;
 
     Ok(LoadedModel {
+        model_id: prepared.model_id,
         model: LoadedWeights::Safetensors { model, config },
         runtime,
         tokenizer: prepared.tokenizer,
@@ -151,6 +155,7 @@ pub(crate) fn load_gguf_model(
     #[cfg(target_family = "wasm")]
     let model = load()?;
     Ok(LoadedModel {
+        model_id: prepared.model_id,
         model,
         runtime,
         tokenizer: prepared.tokenizer,
@@ -207,6 +212,7 @@ fn prepare_model(
         let mut stop_tokens = HashSet::new();
         stop_tokens.insert(config.eos_token_id);
         return Ok(PreparedModel {
+            model_id: model_id(detected_family, config_bytes, tokenizer_bytes),
             profile: ValidatedProfile::new(
                 definition,
                 config.vocab_size,
@@ -242,6 +248,7 @@ fn prepare_model(
     validate_tokenizer(&config, &tokenizer, definition)?;
     let stop_tokens = resolve_stop_tokens(&config, &tokenizer, definition)?;
     Ok(PreparedModel {
+        model_id: model_id(detected_family, config_bytes, tokenizer_bytes),
         profile: ValidatedProfile::new(
             definition,
             config.vocab_size,
@@ -252,6 +259,28 @@ fn prepare_model(
         llama_config: Some(config),
         qwen3_config: None,
     })
+}
+
+/// The id a loaded checkpoint goes by: its protocol and a 64-bit FNV-1a
+/// digest of its config and tokenizer. It is stored in every turn's origin,
+/// so it must not change across builds; the weights are not hashed, so
+/// checkpoints that share both files are one model to replay.
+pub(crate) fn model_id(protocol: ConversationProtocol, config: &[u8], tokenizer: &[u8]) -> String {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let digest = config
+        .iter()
+        .chain(&[0])
+        .chain(tokenizer)
+        .fold(OFFSET, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(PRIME)
+        });
+    let protocol = match protocol {
+        ConversationProtocol::Llama3 => "llama3",
+        ConversationProtocol::SmolLm2 => "smollm2",
+        ConversationProtocol::Qwen3 => "qwen3",
+    };
+    format!("{protocol}-{digest:016x}")
 }
 
 #[cfg(test)]

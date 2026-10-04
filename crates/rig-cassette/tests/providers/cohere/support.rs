@@ -34,7 +34,7 @@ where
     let (cassette, client) = cohere_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(CohereModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

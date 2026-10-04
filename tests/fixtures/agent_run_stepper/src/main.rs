@@ -102,7 +102,7 @@ impl Transport<MockScript> for Scripted {
             vec![AssistantContent::text("done")]
         };
         let document = serde_json::json!({ "provider": "fixture" });
-        let response = CompletionResponse::new(choice, Usage::default(), "fixture", document.clone());
+        let response = CompletionResponse::new(choice, Usage::default(), rig_core::message::Origin::new("test.api", "fixture", ""), document.clone());
         Opening::ready(
             Opened::new(futures::stream::iter([Ok(MockFrame::Response(Box::new(response)))]))
                 .with_document(document),
@@ -184,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let response = drive(model.call(request), &mut driver)?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(
-                    None,
+                    response.head(),
                     response.choice,
                     response.usage,
                     executable,
@@ -196,7 +196,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut results = Vec::with_capacity(calls.len());
                 for call in calls {
                     let name = call.tool_call.function.name.clone();
-                    let arguments = call.tool_call.function.arguments.to_string();
+                    let arguments = call.tool_call.function.arguments_value().to_string();
                     let result =
                         block_on(catalog.execute(&name, &arguments, &mut ToolContext::new()));
                     assert!(result.is_success(), "dispatch by name through the catalog");
@@ -204,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
                         name,
-                        result.output().clone(),
+                        &result,
                     ));
                 }
                 run.tool_results(results)?;

@@ -139,9 +139,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_406564"
-                }
+                "provider": "call_1166520"
               },
               "function": {
                 "name": "add",
@@ -150,21 +148,36 @@
                   "y": 25
                 }
               },
-              "signature": "EvoDCvcDAWkUfRP2we56wasotSWgimF5xk73VFxgE/DltW030pVex0i0bIQmKNyts4K38gNqUII5vShvwC7KeB02+dKVHOOCrz11ZjVoTvb1MIboXB2fHytx7haKwkyx0EajZ2EZtZcJmsI65qYmUlbilvysAkLIzonr5YM+/Xml8OZqYtOOrWLK4ZolZTHh1UvWhLzdd8ePA1BJdV7ArNjqWr4nMysatG/fOvGD6qzvIE72MFjfOeDzRlbJSf83LfnnkjIB9bPEPT+5xWi941/67nhXLytWDRxeCrkXfw6JPkAcFxJt4iKmq7XDqdvfqaB9ecJwTeIYnQglChkSgGmu7i0iXjmwm/b8Dg9kqo1xNcnKQ3mlOCk6cQhSu5RuNjB0V4oefJ863X3rVJ5/kAjtUS1UaUzWES6uF2Oe1Bsys41FrTLaMea3oJvB3P/qjuM73rWJzDlKG0mCTftpeSNVfKVwtv257YsRGd1zpKrB1k7YeQZg9A4Qv3bfk/hOc4MDpZQqVljFEIQbim7Y/8WypD1UAuarMs8BcxUkjPpkocYgaSLk4gtMIHi4GdDCLZmK4Ja7NwKDLvcCM798rmItmjf6vnaexzVcR3cT05tJU5FwSpQPbjiUJChg5Pcx+QrjpAEWwvi4Nt6PR3hjVdYk1XWWiuk7IMbzpo8=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 17,
+                      "y": 25
+                    },
+                    "id": "call_1166520",
+                    "name": "add"
+                  },
+                  "thoughtSignature": "EtoECtcEAWkUfRPXKPLZQXtncgev49OAOehT9zaitCPq90A7ssgUQ/N0h3lY6zhYGAy0ph+Z1SO1597IezW78dC77GEjglOf+erW8/QGRZX/D6MmfYyEhdSOO2BShpsA9RkPHLRtQHPyMHywyc361ZJqGt0Ez+/I1a4f2uuIb0ubsO+LeIuiK5SJW5rjDEGejloVe6I4KOByBHQRk2st/iCMCG4SMhiz4pqZrswfaj7UIAkxeuO1An2R1wy3nSWvBXDok0UMmZSaPylSjPisEq26BFHExLb85SFBs3WtjBWcaMbygIBCPVXhLRmuNTC7zS2T/Bhu8KjJjNKsjOabIcpWFrEUdUER5ONVKcDpDgHPAJT0zhQRrmowqGJUGCQvskS35ZcIWsJ6mxY/xETv9LDkS8G3XPkUeNCtAt0SlGx+HPjsCAugIptckQtNnRufh6MSi+Y1alTibk17rHKTMRETISvWpe6LmjoMuQcB3cZxGhPIq3wgeJbzil89pZI4MWjNxA9flXuaenSn4LXcKQemlX6YDros0dZnH/+wPwtn+eECeLmrrazpqsMJEGjfET2CzS3R64jq+//yJen5WrO6MvrPgVuCdC1tXiuyQdnblG+c+uXYCNFBbR6PFFQZeVMKFzFttISLoCQKO8V+2SGlorwG7IAsZh5JxgBjjuLieLmQfjvnQtfh8qYmcZjVAXgiQLfSwfGH7Fu27GF5Lf1Gkz/mCFu2PeH0qhbDZQ3MhnkaP97dQGgBLqvTsQyuUCyF1K2trntGl0le4qdbaW7Qjeq3NmShBp0K8bo="
+                },
+                "fingerprint": "4ba36effc2d4ccc0"
+              }
             }
           ],
           "usage": {
             "input_tokens": 267,
-            "output_tokens": 139,
-            "total_tokens": 406,
-            "reasoning_tokens": 121
+            "output_tokens": 195,
+            "total_tokens": 462,
+            "reasoning_tokens": 177
           },
-          "message_id": null,
-          "response_id": "oq2yatOzL9vAqtsPi_GegAk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "6AvBasUxhbuq2w-FotPRDw"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "candidates": [
               {
@@ -176,10 +189,10 @@
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_406564",
+                        "id": "call_1166520",
                         "name": "add"
                       },
-                      "thoughtSignature": "EvoDCvcDAWkUfRP2we56wasotSWgimF5xk73VFxgE/DltW030pVex0i0bIQmKNyts4K38gNqUII5vShvwC7KeB02+dKVHOOCrz11ZjVoTvb1MIboXB2fHytx7haKwkyx0EajZ2EZtZcJmsI65qYmUlbilvysAkLIzonr5YM+/Xml8OZqYtOOrWLK4ZolZTHh1UvWhLzdd8ePA1BJdV7ArNjqWr4nMysatG/fOvGD6qzvIE72MFjfOeDzRlbJSf83LfnnkjIB9bPEPT+5xWi941/67nhXLytWDRxeCrkXfw6JPkAcFxJt4iKmq7XDqdvfqaB9ecJwTeIYnQglChkSgGmu7i0iXjmwm/b8Dg9kqo1xNcnKQ3mlOCk6cQhSu5RuNjB0V4oefJ863X3rVJ5/kAjtUS1UaUzWES6uF2Oe1Bsys41FrTLaMea3oJvB3P/qjuM73rWJzDlKG0mCTftpeSNVfKVwtv257YsRGd1zpKrB1k7YeQZg9A4Qv3bfk/hOc4MDpZQqVljFEIQbim7Y/8WypD1UAuarMs8BcxUkjPpkocYgaSLk4gtMIHi4GdDCLZmK4Ja7NwKDLvcCM798rmItmjf6vnaexzVcR3cT05tJU5FwSpQPbjiUJChg5Pcx+QrjpAEWwvi4Nt6PR3hjVdYk1XWWiuk7IMbzpo8="
+                      "thoughtSignature": "EtoECtcEAWkUfRPXKPLZQXtncgev49OAOehT9zaitCPq90A7ssgUQ/N0h3lY6zhYGAy0ph+Z1SO1597IezW78dC77GEjglOf+erW8/QGRZX/D6MmfYyEhdSOO2BShpsA9RkPHLRtQHPyMHywyc361ZJqGt0Ez+/I1a4f2uuIb0ubsO+LeIuiK5SJW5rjDEGejloVe6I4KOByBHQRk2st/iCMCG4SMhiz4pqZrswfaj7UIAkxeuO1An2R1wy3nSWvBXDok0UMmZSaPylSjPisEq26BFHExLb85SFBs3WtjBWcaMbygIBCPVXhLRmuNTC7zS2T/Bhu8KjJjNKsjOabIcpWFrEUdUER5ONVKcDpDgHPAJT0zhQRrmowqGJUGCQvskS35ZcIWsJ6mxY/xETv9LDkS8G3XPkUeNCtAt0SlGx+HPjsCAugIptckQtNnRufh6MSi+Y1alTibk17rHKTMRETISvWpe6LmjoMuQcB3cZxGhPIq3wgeJbzil89pZI4MWjNxA9flXuaenSn4LXcKQemlX6YDros0dZnH/+wPwtn+eECeLmrrazpqsMJEGjfET2CzS3R64jq+//yJen5WrO6MvrPgVuCdC1tXiuyQdnblG+c+uXYCNFBbR6PFFQZeVMKFzFttISLoCQKO8V+2SGlorwG7IAsZh5JxgBjjuLieLmQfjvnQtfh8qYmcZjVAXgiQLfSwfGH7Fu27GF5Lf1Gkz/mCFu2PeH0qhbDZQ3MhnkaP97dQGgBLqvTsQyuUCyF1K2trntGl0le4qdbaW7Qjeq3NmShBp0K8bo="
                     }
                   ],
                   "role": "model"
@@ -190,7 +203,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "oq2yatOzL9vAqtsPi_GegAk",
+            "responseId": "6AvBasUxhbuq2w-FotPRDw",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 267,
@@ -201,8 +214,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 121,
-              "totalTokenCount": 406
+              "thoughtsTokenCount": 177,
+              "totalTokenCount": 462
             }
           }
         }
@@ -256,14 +269,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_406564"
-                    }
+                    "provider": "call_1166520"
                   },
                   "function": {
                     "name": "add",
@@ -272,10 +282,30 @@
                       "y": 25
                     }
                   },
-                  "signature": "EvoDCvcDAWkUfRP2we56wasotSWgimF5xk73VFxgE/DltW030pVex0i0bIQmKNyts4K38gNqUII5vShvwC7KeB02+dKVHOOCrz11ZjVoTvb1MIboXB2fHytx7haKwkyx0EajZ2EZtZcJmsI65qYmUlbilvysAkLIzonr5YM+/Xml8OZqYtOOrWLK4ZolZTHh1UvWhLzdd8ePA1BJdV7ArNjqWr4nMysatG/fOvGD6qzvIE72MFjfOeDzRlbJSf83LfnnkjIB9bPEPT+5xWi941/67nhXLytWDRxeCrkXfw6JPkAcFxJt4iKmq7XDqdvfqaB9ecJwTeIYnQglChkSgGmu7i0iXjmwm/b8Dg9kqo1xNcnKQ3mlOCk6cQhSu5RuNjB0V4oefJ863X3rVJ5/kAjtUS1UaUzWES6uF2Oe1Bsys41FrTLaMea3oJvB3P/qjuM73rWJzDlKG0mCTftpeSNVfKVwtv257YsRGd1zpKrB1k7YeQZg9A4Qv3bfk/hOc4MDpZQqVljFEIQbim7Y/8WypD1UAuarMs8BcxUkjPpkocYgaSLk4gtMIHi4GdDCLZmK4Ja7NwKDLvcCM798rmItmjf6vnaexzVcR3cT05tJU5FwSpQPbjiUJChg5Pcx+QrjpAEWwvi4Nt6PR3hjVdYk1XWWiuk7IMbzpo8=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 17,
+                          "y": 25
+                        },
+                        "id": "call_1166520",
+                        "name": "add"
+                      },
+                      "thoughtSignature": "EtoECtcEAWkUfRPXKPLZQXtncgev49OAOehT9zaitCPq90A7ssgUQ/N0h3lY6zhYGAy0ph+Z1SO1597IezW78dC77GEjglOf+erW8/QGRZX/D6MmfYyEhdSOO2BShpsA9RkPHLRtQHPyMHywyc361ZJqGt0Ez+/I1a4f2uuIb0ubsO+LeIuiK5SJW5rjDEGejloVe6I4KOByBHQRk2st/iCMCG4SMhiz4pqZrswfaj7UIAkxeuO1An2R1wy3nSWvBXDok0UMmZSaPylSjPisEq26BFHExLb85SFBs3WtjBWcaMbygIBCPVXhLRmuNTC7zS2T/Bhu8KjJjNKsjOabIcpWFrEUdUER5ONVKcDpDgHPAJT0zhQRrmowqGJUGCQvskS35ZcIWsJ6mxY/xETv9LDkS8G3XPkUeNCtAt0SlGx+HPjsCAugIptckQtNnRufh6MSi+Y1alTibk17rHKTMRETISvWpe6LmjoMuQcB3cZxGhPIq3wgeJbzil89pZI4MWjNxA9flXuaenSn4LXcKQemlX6YDros0dZnH/+wPwtn+eECeLmrrazpqsMJEGjfET2CzS3R64jq+//yJen5WrO6MvrPgVuCdC1tXiuyQdnblG+c+uXYCNFBbR6PFFQZeVMKFzFttISLoCQKO8V+2SGlorwG7IAsZh5JxgBjjuLieLmQfjvnQtfh8qYmcZjVAXgiQLfSwfGH7Fu27GF5Lf1Gkz/mCFu2PeH0qhbDZQ3MhnkaP97dQGgBLqvTsQyuUCyF1K2trntGl0le4qdbaW7Qjeq3NmShBp0K8bo="
+                    },
+                    "fingerprint": "4ba36effc2d4ccc0"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "6AvBasUxhbuq2w-FotPRDw"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -283,9 +313,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_406564"
-                    }
+                    "provider": "call_1166520"
                   },
                   "name": "add",
                   "content": [
@@ -360,33 +388,47 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_284221"
-                }
+                "provider": "call_2575862"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "category": "Technology",
-                  "summary": "A Rust meetup in Seattle. The sum of 17 and 25 is 42.",
+                  "summary": "The sum of 17 and 25 is 42.",
                   "title": "Rust Meetup Seattle"
                 }
               },
-              "signature": "EosGCogGAWkUfROFFddS7cCZZFOrFt5Pigp8slnCozzPtK2LNOk6wD0/o/tz1NE0fqWh/9nqTktWNSbCrm5e98F5ijL8ct+04RvdqM3iI9Z1e87sP3LZfTRK7Xwl/HNsbKyBwNuEG1H4+GpGgqdMYUYauIpfJaQE56eApbK6TgjuIr9T8cwNsYRbfy1jXcjLuzDpjrwtuLaoyr28jqnQoJ8tN5NgskQYk5dfqQ358g6UdMlrnPM8MYPxqK26R+tc70QZEVcjtfIgG8rTypLXedbN8rXBe9wfJA83Mhza4QL3R6lODxJ5rzLGW1Gonu7tXJW06ogaKW09IccEUCzqQoQAkljZQrjjOi1K0iO0dvhO8CW23Au24xSceiWdvXd8mbQTTyHwaQ6jm57Oaqq/MM2Xq96/Qh3vQF3PLZKOILxTDESciBygWTewntmOjjZoOqOYIJuhVUwTK12yasER0zPkx0OkySIdMF7FLKDXHsL4SojIOYKA5eK6M5E9RZKhiDA8gW0awSJAH2m6d7+Rs2WMSPkQi8L2uOLCw7liMKR/hjJi8qpLauPuDjgcMbfK7/DqpfFDXjU4ZQgSCY40QTYfeOIPice4SMkiuO5v+3jNDvn4QkUt30a06OlXFoo/vJa2u/gr4g6ebLlrBVHAMwca85soG1yaUUCfZGVgPCRgCGXBCcL9nMZE4unCyefalVUjlfcJRPT3CLerJBaYFycaYInGSNYvYF++zuQRNAslSyjCqSqK01InDeML+/TzHMOp74eTc+F/uyJW7GEXhYvG/OiFBRhZ46v9HS36tspMQHlHELHEmZkCX/STMCCsjJlBcy9LQaLjb96ybnA2YoNZtdT+e/ALIRS2LSr2euLjkHGPsMnU5zKY1zGu5TwWqtG54MOSekhYIPkRfVKrlbeqQgvsKLeqpABuDHuXSfiaic/eUEvGTguIx2TROe8D/xv7+KJe4hx+j9cFwo0DNovjedFCiWAVV3vyLB1USNZYCKcGxGeFO1Ka6gYIZAyFgnaWYwgV/Wb+Wm+M21o=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "category": "Technology",
+                      "summary": "The sum of 17 and 25 is 42.",
+                      "title": "Rust Meetup Seattle"
+                    },
+                    "id": "call_2575862",
+                    "name": "final_result"
+                  },
+                  "thoughtSignature": "EpICCo8CAWkUfRNKHdweDiO3aAP4Rfi/iJHh6FO7gBUty1z/28PwY5Td7JHaDLWuAmiKJKGZakniPqvExPWPCofgNYNqjXrLODpzf4VhvwcPkADJHm3R0JDbRqhZ8ceyHNrdXb00yAgYuda7tKAEl8AySrZ+f2Wn5/xw6h+zJb/Q3sRPEnnRo9h/oRfPtmaJmib3TeiW6uiKVz+o2tPy6VL6C0Px2OXWsS5aWm1ItwRbl+DPFvKriiW2UKNYbRKQMPDdu2mAbYUlNo2Tgb92y8x8R9qPATrnSa/jcVi5L7OCidvz/rlLdp8aGyr5MJeIJEGMhvSPjPfkQ5DdHjS5dUdlmrN3Th27sYptiV5xNoSXodRxew=="
+                },
+                "fingerprint": "9c58673a57e5d13e"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 417,
-            "output_tokens": 248,
-            "total_tokens": 665,
-            "reasoning_tokens": 197
+            "input_tokens": 473,
+            "output_tokens": 96,
+            "total_tokens": 569,
+            "reasoning_tokens": 51
           },
-          "message_id": null,
-          "response_id": "pK2yarPzBYDpqtsPpOnDsQE",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "6QvBaqPgFK_9qtsPhu2K2AY"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "candidates": [
               {
@@ -396,13 +438,13 @@
                       "functionCall": {
                         "args": {
                           "category": "Technology",
-                          "summary": "A Rust meetup in Seattle. The sum of 17 and 25 is 42.",
+                          "summary": "The sum of 17 and 25 is 42.",
                           "title": "Rust Meetup Seattle"
                         },
-                        "id": "call_284221",
+                        "id": "call_2575862",
                         "name": "final_result"
                       },
-                      "thoughtSignature": "EosGCogGAWkUfROFFddS7cCZZFOrFt5Pigp8slnCozzPtK2LNOk6wD0/o/tz1NE0fqWh/9nqTktWNSbCrm5e98F5ijL8ct+04RvdqM3iI9Z1e87sP3LZfTRK7Xwl/HNsbKyBwNuEG1H4+GpGgqdMYUYauIpfJaQE56eApbK6TgjuIr9T8cwNsYRbfy1jXcjLuzDpjrwtuLaoyr28jqnQoJ8tN5NgskQYk5dfqQ358g6UdMlrnPM8MYPxqK26R+tc70QZEVcjtfIgG8rTypLXedbN8rXBe9wfJA83Mhza4QL3R6lODxJ5rzLGW1Gonu7tXJW06ogaKW09IccEUCzqQoQAkljZQrjjOi1K0iO0dvhO8CW23Au24xSceiWdvXd8mbQTTyHwaQ6jm57Oaqq/MM2Xq96/Qh3vQF3PLZKOILxTDESciBygWTewntmOjjZoOqOYIJuhVUwTK12yasER0zPkx0OkySIdMF7FLKDXHsL4SojIOYKA5eK6M5E9RZKhiDA8gW0awSJAH2m6d7+Rs2WMSPkQi8L2uOLCw7liMKR/hjJi8qpLauPuDjgcMbfK7/DqpfFDXjU4ZQgSCY40QTYfeOIPice4SMkiuO5v+3jNDvn4QkUt30a06OlXFoo/vJa2u/gr4g6ebLlrBVHAMwca85soG1yaUUCfZGVgPCRgCGXBCcL9nMZE4unCyefalVUjlfcJRPT3CLerJBaYFycaYInGSNYvYF++zuQRNAslSyjCqSqK01InDeML+/TzHMOp74eTc+F/uyJW7GEXhYvG/OiFBRhZ46v9HS36tspMQHlHELHEmZkCX/STMCCsjJlBcy9LQaLjb96ybnA2YoNZtdT+e/ALIRS2LSr2euLjkHGPsMnU5zKY1zGu5TwWqtG54MOSekhYIPkRfVKrlbeqQgvsKLeqpABuDHuXSfiaic/eUEvGTguIx2TROe8D/xv7+KJe4hx+j9cFwo0DNovjedFCiWAVV3vyLB1USNZYCKcGxGeFO1Ka6gYIZAyFgnaWYwgV/Wb+Wm+M21o="
+                      "thoughtSignature": "EpICCo8CAWkUfRNKHdweDiO3aAP4Rfi/iJHh6FO7gBUty1z/28PwY5Td7JHaDLWuAmiKJKGZakniPqvExPWPCofgNYNqjXrLODpzf4VhvwcPkADJHm3R0JDbRqhZ8ceyHNrdXb00yAgYuda7tKAEl8AySrZ+f2Wn5/xw6h+zJb/Q3sRPEnnRo9h/oRfPtmaJmib3TeiW6uiKVz+o2tPy6VL6C0Px2OXWsS5aWm1ItwRbl+DPFvKriiW2UKNYbRKQMPDdu2mAbYUlNo2Tgb92y8x8R9qPATrnSa/jcVi5L7OCidvz/rlLdp8aGyr5MJeIJEGMhvSPjPfkQ5DdHjS5dUdlmrN3Th27sYptiV5xNoSXodRxew=="
                     }
                   ],
                   "role": "model"
@@ -413,19 +455,19 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "pK2yarPzBYDpqtsPpOnDsQE",
+            "responseId": "6QvBaqPgFK_9qtsPhu2K2AY",
             "usageMetadata": {
-              "candidatesTokenCount": 51,
-              "promptTokenCount": 417,
+              "candidatesTokenCount": 45,
+              "promptTokenCount": 473,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 417
+                  "tokenCount": 473
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 197,
-              "totalTokenCount": 665
+              "thoughtsTokenCount": 51,
+              "totalTokenCount": 569
             }
           }
         }

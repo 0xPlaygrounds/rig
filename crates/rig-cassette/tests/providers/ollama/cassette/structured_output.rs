@@ -1,4 +1,4 @@
-//! Ollama structured output smoke test (JSON schema via the `format` field).
+//! Ollama structured output smoke test (JSON schema via `response_format`).
 //!
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
@@ -17,7 +17,7 @@ async fn structured_output_smoke() {
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .output_schema::<SmokeStructuredOutput>()
-                .additional_params(serde_json::json!({ "think": false }))
+                .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
                 .build();
 
             let response = agent

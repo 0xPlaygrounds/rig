@@ -111,7 +111,7 @@ impl Serve for Latched {
         rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
             choice,
             Usage::default(),
-            "latched",
+            rig_core::message::Origin::new("test.api", "latched", ""),
             serde_json::json!({}),
         ))))
     }
@@ -257,7 +257,7 @@ fn answer_coincident_models(
                 CompletionResponse::new(
                     choice,
                     Usage::default(),
-                    "coincident",
+                    rig_core::message::Origin::new("test.api", "coincident", ""),
                     serde_json::json!({}),
                 ),
             ))));

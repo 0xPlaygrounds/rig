@@ -9,18 +9,10 @@
 
 
 
-# --- anthropic: content assembly, not frame triage -------------------------
-providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
-providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a ProviderError, no frame is triaged here.
-
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
-providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.
-providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
 # Single-file providers: unary/non-stream parses sharing a file with streaming code.
 
 # --- #[serde(untagged)] unions that are not frame triage --------------------
-providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.
-providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
 
 # --- openai chat wire (providers/openai/wire/chat.rs) ----------------------
 # `chat.rs` IS OpenAI's classify layer, so guard 1 lets it name the triage
@@ -30,12 +22,9 @@ providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, ne
 # frame the classifier already returned as `Known`. The sixth is the wire's
 # observation projection, argued with its two siblings in the section below.
 providers/openai/wire/chat.rs | serde_json::from_str::<serde_json::Value>(&data) | `classify` peeks for the bare JSON string reply the dialects with `accepts_bare_string_reply` are measured to send: a non-object frame is not the shared classifier's shape, so this pre-empts it exactly as `[DONE]` and the in-band error envelope above it do, and the verdict it reaches is `Known` rather than a skip.
-providers/openai/wire/chat.rs | let mut body = serde_json::from_str::<serde_json::Value>(data).ok()?; | body_without_calls_cut_by_the_budget: the rig#2359 budget-cut repair, and the chat twin of `repair_envelope_less_frame` above. `classify` reaches it only after the strict decode already returned `Corrupt` (or a Known budget-cut turn), and `None` leaves that verdict standing, so no frame's fate is decided here.
-providers/openai/wire/chat.rs | let frame = serde_json::from_value::<ChatFrame>(body).ok()?; | The same repair's final typed decode of the repaired body into the wire's own frame type; failure returns `None`, which restores the strict classification rather than inventing a verdict.
 # A chat chunk's `delta.reasoning_details` is deliberately typed
 # `Vec<serde_json::Value>`: the entries are a gateway extension, so an entry
 # shape this build does not model must not fail the chunk that carries it.
-providers/openai/wire/chat.rs | serde_json::from_value(detail.clone()).ok() | `typed_detail` reads one `reasoning_details` entry of a frame the classifier already returned as `Known`; an unmodeled entry yields `None` and is skipped on its own, leaving the chunk that carried it untouched.
 
 # --- the observation projections, folded into their decoders ---------------
 # `Decoder::project` is a read-only side channel onto the observation trace.
@@ -47,10 +36,9 @@ providers/openai/wire/chat.rs | serde_json::from_value(detail.clone()).ok() | `t
 # projection that could reject a frame would be a second classifier. These
 # three parses (four sites) moved here when the `observation.rs` modules
 # were folded into the decoders that were their only callers.
-providers/anthropic/streaming.rs | serde_json::from_slice::<ObservedPayload>(payload) | `MessagesDecoder::project` reads the stop reason, model, message id, usage and error envelope off a payload the driver already framed and classified; a failed decode emits no observation and leaves the frame's verdict exactly as `classify` set it.
-providers/gemini/streaming.rs | serde_json::from_slice::<ObservedUsageOnly>(payload) | `GenerateContentDecoder::project` reads `usageMetadata` alone, deliberately as its own pass so a malformed candidate cannot erase a valid usage report; the payload is already framed and classified and failure emits nothing.
-providers/gemini/streaming.rs | serde_json::from_slice::<ObservedMetadata>(payload) | The same projection's verdict/response-id/error-envelope pass over that same already-classified payload; it returns without emitting on failure, so the frame keeps the fate `classify` gave it.
-providers/openai/wire/chat.rs | serde_json::from_slice::<ObservedPayload>(payload) | `ChatDecoder::project` reads the verdict, model, response id, usage and error envelope off an already-framed, already-classified payload — `[DONE]` is not JSON and simply projects nothing — so a failed decode emits no observation and triages no frame.
+providers/anthropic/streaming.rs | serde_json::from_slice::<Value>(payload) | `MessagesDecoder::project` reads the stop reason, model, message id, usage and error envelope off a payload the driver already framed and classified, through the decoder's own lenient usage reader; a failed parse emits no observation and leaves the frame's verdict exactly as `classify` set it.
+providers/gemini/streaming.rs | let Ok(reply) = serde_json::from_slice::<Value>(payload) else { | `GenerateContentDecoder::project` reads the already framed and classified payload as `Value` for the observation projection; every field is read leniently and a payload that is not JSON emits nothing, so the frame keeps the fate `classify` gave it.
+providers/openai/wire/chat.rs | serde_json::from_slice::<Value>(payload) | `ChatDecoder::project` reads the verdict, model, response id, usage and error envelope off an already-framed, already-classified payload — `[DONE]` is not JSON and simply projects nothing — so a failed decode emits no observation and triages no frame.
 
 # --- openai modality wire: whole replies that have no frames ----------------
 providers/openai/wire/modality.rs | #[serde(untagged)] | `ImagesReplyImage` is the reply-side union of the two forms two dialects put under the `images` key (Hyperbolic `{"image": "<base64>"}`, Venice the bare base64); the image route answers with one whole reply and has no frames, so no inbound frame policy is decided here.
@@ -66,8 +54,6 @@ providers/openai/wire/modality.rs | let reply = match serde_json::from_slice::<S
 providers/openai/responses_api/websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to decide whether the frame is one of the two websocket-only envelopes; every other frame is handed to classify_responses_frame untouched, so this dispatches rather than triages.
 providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a ProviderError, never skipped.
 providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a ProviderError, never skipped.
-providers/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the `status` field of an already-decoded `response.done` payload to update the session's previous_response_id bookkeeping; it decides no frame's fate.
-providers/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Converts an already-decoded `response.done` payload into the typed terminal response; `None` falls back to the session's explicit no-terminal-body error rather than skipping anything.
 
 # --- the driver: capturing a reply body is not decoding a frame -----------
 # `CompletionResponse::raw` is the provider's own reply, which is what every
@@ -77,9 +63,13 @@ providers/openai/responses_api/websocket.rs | serde_json::from_value(self.respon
 # reply's frames are decoded by the wire's decoder either way.
 
 # --- the wire model: classification that is the classify layer's own work --
-providers/openai/responses_api/streaming.rs | serde_json::from_str::<serde_json::Value>(data) | `is_error_event` pre-empts classification for the one payload outside the modeled event set that must never be skipped: the Responses protocol's in-band `error`. `classify_or` only falls through on `Corrupt`, and an unmodeled `type` classifies as `Unknown`, so without this peek the provider's own failure was warn-skipped and EOF became the diagnostic.
-providers/cohere/streaming.rs | #[serde(untagged)] | The reply shape itself, not a frame decision: Cohere's streamed frames name themselves in `type` while its unary body carries no discriminator, so the whole-reply form is the untagged fallback of one enum that both paths decode through the same `ChatDecoder`.
-providers/gemini/model_listing.rs | let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| { | The catalog page's typed decode on the listing operation, whose reply is one JSON document and has no frames to triage; every failure is returned as `parse_error_with_context` with the provider, path and body preview, never skipped.
-providers/gemini/transcription.rs | let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?; | Reads the caller's own `additional_params` on the REQUEST side, before anything is sent; it decodes no reply and cannot triage a frame.
+providers/gemini/model_listing.rs | let page: Value = serde_json::from_slice(body) | The catalog page's decode on the listing operation, whose reply is one JSON document and has no frames to triage; every failure is returned as `parse_error` with the provider, path and body preview, never skipped.
 rig-bedrock/src/embedding.rs | .and_then(|body| serde_json::from_str(&body).map_err(ProviderError::Json)); | InvokeModel returns the model's whole JSON body as an opaque blob; the transport decodes that one document into the typed reply before any frame exists, and a malformed body is the frame's error, never skipped.
 rig-bedrock/src/image.rs | serde_json::from_str::<TextToImageResponse>(&body) | The unary InvokeModel reply is one opaque JSON blob with no frames to triage; its typed decode fails the call with a ProviderError, never skipped.
+rig-bedrock/src/streaming.rs | let input = serde_json::from_str::<Value>(input) | Reads a tool use's accumulated input text, already delivered by its classified events, as the object its provider item holds; text that is not an object keeps a client call's item off and gives a hosted use `{}`, nothing is skipped.
+
+# --- vertexai: SDK reply restated as the REST chunk ------------------------
+
+# --- item-shaped decoders: typed views of classified frames ----------------
+# Each decoder keeps a classified frame as JSON so the provider's item survives
+# verbatim, then reads one field of it through its typed form.

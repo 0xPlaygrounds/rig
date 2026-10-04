@@ -58,8 +58,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 .await
                 .expect("first chained call should succeed");
             let first_response_id = first
-                .response_id
-                .clone()
+                .response_id()
                 .expect("Responses API reports a response id");
             assert_transport_request_id(first.provider_request_id.as_deref(), "chain call 1");
 
@@ -67,7 +66,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 .call(
                     CompletionRequest::new("What was the code word? Reply with just the word.")
                         .additional_params(serde_json::json!({
-                            "previous_response_id": first_response_id.clone(),
+                            "previous_response_id": first_response_id,
                         })),
                 )
                 .await
@@ -78,14 +77,14 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 first.provider_request_id, second.provider_request_id,
                 "each chained call has its own transport id"
             );
-            let second_response_id = second.response_id.expect("second response id");
+            let second_response_id = second.response_id().expect("second response id");
             assert_ne!(
                 first_response_id, second_response_id,
                 "chaining reuses the first response id as *input*; the second \
                  response still gets its own"
             );
             assert_ne!(
-                Some(second_response_id.as_str()),
+                Some(second_response_id),
                 second.provider_request_id.as_deref(),
                 "response-scoped and transport ids are never conflated"
             );
@@ -126,6 +125,7 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
             let hook = RetryOnce::default();
             let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
                 .preamble("You are a terse assistant.")
+                .additional_params(serde_json::json!({ "store": false }))
                 .add_hook(hook.clone())
                 .build();
 
@@ -178,9 +178,6 @@ async fn provider_error_response_carries_request_id() {
 /// never part of the provider's body.
 #[tokio::test]
 async fn raw_and_normalized_views_agree_on_identity() {
-    use rig::providers::openai::responses_api::CompletionResponse as ResponsesReply;
-    use serde::Deserialize;
-
     with_openai_cassette(
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
@@ -192,11 +189,9 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .expect("completion should succeed");
             assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");
 
-            let reply = ResponsesReply::deserialize(&response.raw)
-                .expect("`raw` is the serialized responses_api::CompletionResponse");
             assert_eq!(
-                Some(reply.id.as_str()),
-                response.response_id.as_deref(),
+                response.raw["id"].as_str(),
+                response.response_id(),
                 "raw and normalized views describe the same interaction"
             );
             assert!(

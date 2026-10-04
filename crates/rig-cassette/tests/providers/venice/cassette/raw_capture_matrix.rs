@@ -19,7 +19,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_venice_type` | typed read-back | `raw` deserializes into `venice::CompletionResponse`, and additionally carries fields that type does not model | recorded |
+//! | 1 | `raw_round_trips_venice_type` | JSON read-back | `raw` is the reply document, its id is the normalized response's, and it carries fields the normalized response does not model | recorded |
 //! | 2 | `raw_exposes_venice_parameters_and_cost` | provider-only field | `raw.venice_parameters.disable_thinking` and `raw.cost.usd` equal the fixture body | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the normalized fields reproduce the fixture bytes and equal the provider-native fields of the captured payload | recorded |
 //!
@@ -35,8 +35,6 @@
 //! small reasoning model answers in plain text within the token budget.
 
 use rig::completion::CompletionRequest;
-use rig::providers::venice::{self, VeniceParameters};
-use serde::Deserialize as _;
 use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
@@ -51,15 +49,11 @@ const PROMPT: &str = "Reply with the single word: pong";
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT)
         .max_tokens(16)
-        .additional_params(
-            VeniceParameters::new()
-                .disable_thinking(true)
-                .into_additional_params(),
-        )
+        .additional_params(json!({"venice_parameters": {"disable_thinking": true}}))
 }
 
 // ================================================================
-// 1. raw reads back as Venice's own type — and carries more
+// 1. raw is Venice's reply document, and carries more
 // ================================================================
 
 #[tokio::test]
@@ -74,14 +68,10 @@ async fn raw_round_trips_venice_type() {
     let response = sink.take();
 
     let raw = &response.raw;
-    let typed = venice::CompletionResponse::deserialize(raw)
-        .expect("raw is Venice's own CompletionResponse");
-    assert_eq!(
-        Some(typed.openai.id.as_str()),
-        response.response_id.as_deref()
-    );
+    let typed = raw.clone();
+    assert_eq!(typed["id"].as_str(), response.response_id());
 
-    // `raw` is the document Venice sent, not a re-serialization of `typed`:
+    // `raw` is the document Venice sent, not a re-serialization of a parse:
     // these fields have no home on any Rust type here, and reach the caller
     // only because capture keeps the payload whole.
     assert_eq!(
@@ -170,7 +160,6 @@ async fn normalized_fields_match_raw_renormalized() {
     // the ones the decoder normalized. There is one mapping now, so this pins
     // it against Venice's own vocabulary rather than against a copy of
     // itself.
-    let typed = venice::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is Venice's own CompletionResponse");
-    chat::assert_native_matches_normalized(&response, &typed.openai, "the typed view of raw");
+    let typed = response.raw.clone();
+    chat::assert_native_matches_normalized(&response, &typed, "the reply document");
 }

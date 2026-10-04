@@ -75,7 +75,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language designed for performance, reliability, and productivity, with a unique ownership model that enforces memory safety at compile time without needing"
+              "text": "Rust is a systems programming language designed for performance, reliability, and productivity, with a unique ownership model that enforces memory safety at compile time without needing",
+              "native": {
+                "item": {
+                  "text": "Rust is a systems programming language designed for performance, reliability, and productivity, with a unique ownership model that enforces memory safety at compile time without needing",
+                  "type": "text"
+                },
+                "fingerprint": "1341c38f8b2f3e76"
+              }
             }
           ],
           "usage": {
@@ -85,12 +92,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcdA8D32AShUmmngYxB",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcdA8D32AShUmmngYxB"
+          },
           "provider_request_id": "req_011CfLcd9gQqNj4eTpnXmHHT",
           "finish_reason": "length",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

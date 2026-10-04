@@ -34,9 +34,7 @@
 //! alone". This cell is that claim, measured.
 
 use rig::message::AssistantContent;
-use rig::providers::llamacpp;
 use rig::streaming::Item;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cassettes::{
@@ -93,16 +91,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                         response.choice
                     )
                 });
-            let reasoning_text = reasoning
-                .open(reasoning.issuer())
-                .expect("sealed reasoning")
-                .content
-                .iter()
-                .filter_map(|block| match block {
-                    rig::message::ReasoningContent::Text { text, .. } => Some(text.clone()),
-                    _ => None,
-                })
-                .collect::<String>();
+            let reasoning_text = reasoning.text.clone();
             assert!(
                 !reasoning_text.trim().is_empty(),
                 "the reasoning block must carry text — a derived `Debug` is never \
@@ -348,14 +337,13 @@ async fn logprobs_survive_into_the_raw_response() {
             .await
             .expect("a logprobs request should succeed");
 
-        // `raw` is the reply document, so the typed escape hatch reads the
-        // per-token array straight off it.
-        let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
-            .expect("raw is llama.cpp's own response type");
-        let logprobs = typed.openai.choices[0]
-            .logprobs
-            .clone()
-            .expect("llama.cpp returns logprobs when asked");
+        // `raw` is the reply document, so a caller reads the per-token array
+        // straight off it as JSON.
+        let logprobs = response.raw["choices"][0]["logprobs"].clone();
+        assert!(
+            logprobs.is_object(),
+            "llama.cpp returns logprobs when asked"
+        );
         assert!(
             logprobs["content"]
                 .as_array()

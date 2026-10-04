@@ -14,8 +14,8 @@ then:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_de8866705b304eaebd570646f8bd7e34
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_xWY3fX8fezMeQfaBKjLHYNZG","type":"function"}]}}],"created":0,"id":"chatcmpl-ERDCoreIr5FeJnmisgm3PJXvNKByb","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":90,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":185,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":275}}'
+    value: req_4253078cce4b480d9baf9beffbadd860
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_Q693uhf4z3BZBuHySizsrL1j","type":"function"}]}}],"created":0,"id":"chatcmpl-EUpzuEipkQrcpTz37RVKxMfiwJ4Sp","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":90,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":185,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":275}}'
 ---
 when:
   path: /v1/chat/completions
@@ -26,12 +26,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_xWY3fX8fezMeQfaBKjLHYNZG","type":"function"}]},{"content":"42","role":"tool","tool_call_id":"call_xWY3fX8fezMeQfaBKjLHYNZG"}],"model":"gpt-5-mini"}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"},{"content":"[called tool add with {\"x\":17,\"y\":25}]","role":"assistant"},{"content":"[tool add result] 42","role":"user"}],"model":"gpt-5-mini"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: x-request-id
-    value: req_51b821b7bc334d058eef009ce0a4d9ce
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"42","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-ERDCqnMDrUYv2bdxOPcThZuxlOofV","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":4,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":83,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":87}}'
+    value: req_5c9d289765204ef0a7f8f9fe83992bd5
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"42","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-EUpzva4O7xk9X7r4JLXb0rEvMzRk8","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":74,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":83,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":157}}'

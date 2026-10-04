@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,24 +10,32 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 12,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 11,
+        "batch": 13,
         "id": 2,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 20,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
         }
       },
       {
@@ -35,7 +43,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -59,7 +67,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -91,7 +99,7 @@
         "id": 3,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -111,47 +119,31 @@
         }
       },
       {
+        "batch": 31,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 34,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 35,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 36,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 37,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 39,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 39,
         "id": 3,
         "kind": {
           "delivery": "outcome"
@@ -274,30 +266,44 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "405JsqmKK"
-                }
+                "provider": "MHf85VsI8"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "MHf85VsI8",
+                  "type": "function"
+                },
+                "fingerprint": "9c15499424369ba5"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "JR4BRkBTW"
-                }
+                "provider": "TJHCvQVU9"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "TJHCvQVU9",
+                  "type": "function"
+                },
+                "fingerprint": "5ac029df88e134d6"
+              }
             }
           ],
           "usage": {
@@ -305,19 +311,22 @@
             "output_tokens": 16,
             "total_tokens": 1170
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RasQo3oqH3WLGpJoFnyTfKwA",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL"
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1154,
               "completion_tokens": 16,
+              "prompt_tokens": 1154,
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-RasQo3oqH3WLGpJoFnyTfKwA",
+            "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -356,16 +365,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "405JsqmKK"
-                }
+                "provider": "MHf85VsI8"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "MHf85VsI8",
+                  "type": "function"
+                },
+                "fingerprint": "9c15499424369ba5"
+              }
             }
           }
         },
@@ -393,20 +409,32 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "JR4BRkBTW"
-                }
+                "provider": "TJHCvQVU9"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "TJHCvQVU9",
+                  "type": "function"
+                },
+                "fingerprint": "5ac029df88e134d6"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -483,37 +511,58 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "405JsqmKK"
-                    }
+                    "provider": "MHf85VsI8"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "MHf85VsI8",
+                      "type": "function"
+                    },
+                    "fingerprint": "9c15499424369ba5"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "JR4BRkBTW"
-                    }
+                    "provider": "TJHCvQVU9"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "TJHCvQVU9",
+                      "type": "function"
+                    },
+                    "fingerprint": "5ac029df88e134d6"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RCLddzUNvN3zW2ijED7XYTGL"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -521,9 +570,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "405JsqmKK"
-                    }
+                    "provider": "MHf85VsI8"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -536,9 +583,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "JR4BRkBTW"
-                    }
+                    "provider": "TJHCvQVU9"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -586,27 +631,30 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 1216,
-            "output_tokens": 20,
-            "total_tokens": 1236
+            "input_tokens": 1218,
+            "output_tokens": 15,
+            "total_tokens": 1233
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RvxDShM8CE4a4txXY4NDy1BD",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RbsMxTFOC3XK7i4Gt1ToRLia"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1216,
-              "completion_tokens": 20,
-              "total_tokens": 1236
+              "completion_tokens": 15,
+              "prompt_tokens": 1218,
+              "total_tokens": 1233
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RvxDShM8CE4a4txXY4NDy1BD",
+            "response_id": "chatcmpl-RbsMxTFOC3XK7i4Gt1ToRLia",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -614,7 +662,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.000119
+                "usd": 0.0001179375
               }
             }
           }
@@ -642,7 +690,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " harbor"
+            "text": " current"
           }
         },
         {
@@ -650,7 +698,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " label"
+            "text": " signals"
           }
         },
         {
@@ -658,7 +706,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is"
+            "text": " are"
           }
         },
         {
@@ -714,46 +762,6 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " orch"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "ard"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " label"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
             "text": " silver"
           }
         },
@@ -788,11 +796,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     }
   ]

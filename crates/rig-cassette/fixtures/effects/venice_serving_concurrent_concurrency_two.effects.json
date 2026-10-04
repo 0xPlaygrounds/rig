@@ -116,30 +116,44 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "d9OZ4OREy"
-                }
+                "provider": "P8XHXdVdE"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "P8XHXdVdE",
+                  "type": "function"
+                },
+                "fingerprint": "6b4cba7337a860cc"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "FXIdTB3kk"
-                }
+                "provider": "j6Z473svc"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "j6Z473svc",
+                  "type": "function"
+                },
+                "fingerprint": "d8fe1df0c20eafba"
+              }
             }
           ],
           "usage": {
@@ -147,19 +161,22 @@
             "output_tokens": 16,
             "total_tokens": 1170
           },
-          "message_id": null,
-          "response_id": "chatcmpl-R1raUF5NXRtAaOSoAwNNMIPL",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RLDZCJxDLRgQKLBWhqdFWUDr"
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1154,
               "completion_tokens": 16,
+              "prompt_tokens": 1154,
               "total_tokens": 1170
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-R1raUF5NXRtAaOSoAwNNMIPL",
+            "response_id": "chatcmpl-RLDZCJxDLRgQKLBWhqdFWUDr",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -246,37 +263,58 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "d9OZ4OREy"
-                    }
+                    "provider": "P8XHXdVdE"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "P8XHXdVdE",
+                      "type": "function"
+                    },
+                    "fingerprint": "6b4cba7337a860cc"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "FXIdTB3kk"
-                    }
+                    "provider": "j6Z473svc"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "j6Z473svc",
+                      "type": "function"
+                    },
+                    "fingerprint": "d8fe1df0c20eafba"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RLDZCJxDLRgQKLBWhqdFWUDr"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -284,9 +322,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "d9OZ4OREy"
-                    }
+                    "provider": "P8XHXdVdE"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -299,9 +335,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "FXIdTB3kk"
-                    }
+                    "provider": "j6Z473svc"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -349,27 +383,30 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+              "text": "The current signals are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
-            "input_tokens": 1212,
-            "output_tokens": 20,
-            "total_tokens": 1232
+            "input_tokens": 1222,
+            "output_tokens": 15,
+            "total_tokens": 1237
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RsJ2S4jJrZ9dk3fkRrA0rpeo",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RsgeOJCWaGJ2JUVJne0aKGhc"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1212,
-              "completion_tokens": 20,
-              "total_tokens": 1232
+              "completion_tokens": 15,
+              "prompt_tokens": 1222,
+              "total_tokens": 1237
             },
             "finish_reason": "stop",
-            "response_id": "chatcmpl-RsJ2S4jJrZ9dk3fkRrA0rpeo",
+            "response_id": "chatcmpl-RsgeOJCWaGJ2JUVJne0aKGhc",
             "model": "mistral-small-3-2-24b-instruct",
             "additional_params": {
               "created": 0,
@@ -377,7 +414,7 @@
               "service_tier": "default",
               "cost": {
                 "diem": 0,
-                "usd": 0.000118625
+                "usd": 0.0001183125
               }
             }
           }

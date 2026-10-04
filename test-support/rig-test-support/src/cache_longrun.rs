@@ -1204,7 +1204,7 @@ fn without_signatures(content: &str) -> Value {
     if let Some(parts) = value.get_mut("parts").and_then(Value::as_array_mut) {
         for part in parts {
             if let Some(part) = part.as_object_mut() {
-                part.remove("thoughtSignature");
+                part.shift_remove("thoughtSignature");
             }
         }
     }

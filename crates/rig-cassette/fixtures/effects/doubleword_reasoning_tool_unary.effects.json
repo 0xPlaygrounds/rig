@@ -117,23 +117,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "doubleword",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
-                  }
-                }
-              ]
+              "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                  "reasoning_details": [
+                    {
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                      "type": "reasoning.text"
+                    }
+                  ]
+                },
+                "fingerprint": "bea85aeacef46ecf"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_496cef96aaa34306b17c1b1a"
-                }
+                "provider": "chatcmpl-tool-a0dbd8b5899b0be3"
               },
               "function": {
                 "name": "add",
@@ -142,8 +145,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "chatcmpl-tool-a0dbd8b5899b0be3",
+                  "type": "function"
+                },
+                "fingerprint": "31ed2e1197751c32"
+              }
             }
           ],
           "usage": {
@@ -153,11 +165,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_055a56a9-ab7b-4281-97a9-d2c6c374ce9d",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_62fe0dd6-a944-42de-92bf-191d29356111"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -181,7 +196,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_496cef96aaa34306b17c1b1a",
+                      "id": "chatcmpl-tool-a0dbd8b5899b0be3",
                       "type": "function"
                     }
                   ]
@@ -189,7 +204,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_055a56a9-ab7b-4281-97a9-d2c6c374ce9d",
+            "id": "resp_62fe0dd6-a944-42de-92bf-191d29356111",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -204,7 +219,7 @@
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 37
+                "reasoning_tokens": 45
               },
               "prompt_tokens": 344,
               "prompt_tokens_details": {
@@ -267,27 +282,29 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "doubleword",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
-                      }
-                    }
-                  ]
+                  "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                      "reasoning_details": [
+                        {
+                          "format": "unknown",
+                          "index": 0,
+                          "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                          "type": "reasoning.text"
+                        }
+                      ]
+                    },
+                    "fingerprint": "bea85aeacef46ecf"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_496cef96aaa34306b17c1b1a"
-                    }
+                    "provider": "chatcmpl-tool-a0dbd8b5899b0be3"
                   },
                   "function": {
                     "name": "add",
@@ -296,10 +313,27 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "chatcmpl-tool-a0dbd8b5899b0be3",
+                      "type": "function"
+                    },
+                    "fingerprint": "31ed2e1197751c32"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_62fe0dd6-a944-42de-92bf-191d29356111"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -307,9 +341,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_496cef96aaa34306b17c1b1a"
-                    }
+                    "provider": "chatcmpl-tool-a0dbd8b5899b0be3"
                   },
                   "name": "add",
                   "content": [
@@ -362,16 +394,21 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "doubleword",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output 42.\n"
-                  }
-                }
-              ]
+              "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
+                  "reasoning_details": [
+                    {
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
+                      "type": "reasoning.text"
+                    }
+                  ]
+                },
+                "fingerprint": "7d6dba1445b76030"
+              }
             },
             {
               "type": "text",
@@ -379,17 +416,20 @@
             }
           ],
           "usage": {
-            "input_tokens": 445,
-            "output_tokens": 47,
-            "total_tokens": 492,
+            "input_tokens": 455,
+            "output_tokens": 48,
+            "total_tokens": 503,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_1795adc5-3d43-4315-a9e7-36f638d4b759",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_ba506ad6-169b-40e5-a65c-17b6de4ab066"
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -397,12 +437,12 @@
                 "index": 0,
                 "message": {
                   "content": "42",
-                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output 42.\n",
+                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
                   "reasoning_details": [
                     {
                       "format": "unknown",
                       "index": 0,
-                      "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should output 42.\n",
+                      "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
                       "type": "reasoning.text"
                     }
                   ],
@@ -412,7 +452,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_1795adc5-3d43-4315-a9e7-36f638d4b759",
+            "id": "resp_ba506ad6-169b-40e5-a65c-17b6de4ab066",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -423,20 +463,20 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 47,
+              "completion_tokens": 48,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
-                "reasoning_tokens": 35
+                "reasoning_tokens": 44
               },
-              "prompt_tokens": 445,
+              "prompt_tokens": 455,
               "prompt_tokens_details": {
                 "audio_tokens": 0,
                 "cache_write_tokens": 0,
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 492
+              "total_tokens": 503
             }
           }
         }

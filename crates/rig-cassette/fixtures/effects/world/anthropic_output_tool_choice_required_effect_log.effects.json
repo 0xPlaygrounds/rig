@@ -100,9 +100,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01VstKWQrQFW5nkmTAcqf9PN"
-                }
+                "provider": "toolu_01VstKWQrQFW5nkmTAcqf9PN"
               },
               "function": {
                 "name": "final_result",
@@ -112,8 +110,22 @@
                   "title": "Seattle Rust Meetup"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01VstKWQrQFW5nkmTAcqf9PN",
+                  "input": {
+                    "category": "Technology / Programming",
+                    "summary": "A local meetup for Rust programming language enthusiasts in Seattle. Attendees gather to share projects, discuss best practices, explore new Rust features, and network with fellow developers passionate about systems programming and memory-safe software development.",
+                    "title": "Seattle Rust Meetup"
+                  },
+                  "name": "final_result",
+                  "type": "tool_use"
+                },
+                "fingerprint": "a9a3230d307797cb"
+              }
             }
           ],
           "usage": {
@@ -123,12 +135,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLccZ8nBa6gDeXesTLJU",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLccZ8nBa6gDeXesTLJU"
+          },
           "provider_request_id": "req_011CfLccYhESgehYUThpbeXa",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

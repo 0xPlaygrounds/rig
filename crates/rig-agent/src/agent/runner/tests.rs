@@ -187,24 +187,14 @@ async fn runner_applies_per_run_request_overrides() {
     assert!(request.chat_history.iter().any(
         |message| matches!(message, crate::completion::Message::System { content } if content == "run preamble")
     ));
+    let documents = rig_core::test_utils::sent_documents(request);
     assert!(
-        request
-            .documents
+        documents
             .iter()
-            .any(|document| document.text == "baseline document")
+            .any(|(_, text)| text == "baseline document")
     );
-    assert!(
-        request
-            .documents
-            .iter()
-            .any(|document| document.id == "run-one")
-    );
-    assert!(
-        request
-            .documents
-            .iter()
-            .any(|document| document.id == "run-two")
-    );
+    assert!(documents.iter().any(|(id, _)| id == "run-one"));
+    assert!(documents.iter().any(|(id, _)| id == "run-two"));
     assert_eq!(request.temperature, Some(0.7));
     assert_eq!(request.max_tokens, Some(42));
     assert_eq!(request.additional_params, Some(json!({"override": true})));

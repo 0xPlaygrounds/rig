@@ -121,8 +121,16 @@
                 "name": "ping",
                 "arguments": {}
               },
-              "signature": "CqcBAWkUfRO/7lpJU1z+UsaRAXcmsIx29hrS5M1Ct47JnG65LqfWmXYYbp5zH66jBaCKvlCRbdlfPyqZHfiGMAaL51ylRcIqyw8BzW4EgMEjMD9ynaPNo3s65RViEx0UEdOL74snR8x60eBAEPq8mx0dp43dVH52NS0oZ6+426Z7kNHLXiwYQ2huRzFSOO2wH4iyGVnYMilHzthw/mk3fz+55PnV7yCxdIs=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "ping"
+                  },
+                  "thoughtSignature": "CqcBAWkUfRMDx21eyLKNUnxRJaQpEkU04trpmAQpoGokE1EqwbuTKcig6qq2IPY5BmEOMP7sP2GpcMVXL+42vfG9OMSRKvXrhjb7Siadjvb3Gv/0X1UhUXLv1irFNhHSpwPf9np9sOpt0XIBJqYavd+xTXmDrlWvF5Sg1tZDgo5p0uUWbQQpslijdc4dyFiWvdwEeGczZ6fDyICYmX/BLWZyYcWSE9ZAfc0="
+                },
+                "fingerprint": "db64f6e50fb27962"
+              }
             }
           ],
           "usage": {
@@ -131,11 +139,14 @@
             "total_tokens": 98,
             "reasoning_tokens": 32
           },
-          "message_id": null,
-          "response_id": "D6yyapuUNuPCqtsPj9ak6Ak",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "CQTBapTpPNTUz7IP7ZOggQg"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -146,7 +157,7 @@
                         "args": {},
                         "name": "ping"
                       },
-                      "thoughtSignature": "CqcBAWkUfRO/7lpJU1z+UsaRAXcmsIx29hrS5M1Ct47JnG65LqfWmXYYbp5zH66jBaCKvlCRbdlfPyqZHfiGMAaL51ylRcIqyw8BzW4EgMEjMD9ynaPNo3s65RViEx0UEdOL74snR8x60eBAEPq8mx0dp43dVH52NS0oZ6+426Z7kNHLXiwYQ2huRzFSOO2wH4iyGVnYMilHzthw/mk3fz+55PnV7yCxdIs="
+                      "thoughtSignature": "CqcBAWkUfRMDx21eyLKNUnxRJaQpEkU04trpmAQpoGokE1EqwbuTKcig6qq2IPY5BmEOMP7sP2GpcMVXL+42vfG9OMSRKvXrhjb7Siadjvb3Gv/0X1UhUXLv1irFNhHSpwPf9np9sOpt0XIBJqYavd+xTXmDrlWvF5Sg1tZDgo5p0uUWbQQpslijdc4dyFiWvdwEeGczZ6fDyICYmX/BLWZyYcWSE9ZAfc0="
                     }
                   ],
                   "role": "model"
@@ -157,7 +168,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "D6yyapuUNuPCqtsPj9ak6Ak",
+            "responseId": "CQTBapTpPNTUz7IP7ZOggQg",
             "usageMetadata": {
               "candidatesTokenCount": 8,
               "promptTokenCount": 58,
@@ -225,7 +236,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -236,10 +246,26 @@
                     "name": "ping",
                     "arguments": {}
                   },
-                  "signature": "CqcBAWkUfRO/7lpJU1z+UsaRAXcmsIx29hrS5M1Ct47JnG65LqfWmXYYbp5zH66jBaCKvlCRbdlfPyqZHfiGMAaL51ylRcIqyw8BzW4EgMEjMD9ynaPNo3s65RViEx0UEdOL74snR8x60eBAEPq8mx0dp43dVH52NS0oZ6+426Z7kNHLXiwYQ2huRzFSOO2wH4iyGVnYMilHzthw/mk3fz+55PnV7yCxdIs=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "ping"
+                      },
+                      "thoughtSignature": "CqcBAWkUfRMDx21eyLKNUnxRJaQpEkU04trpmAQpoGokE1EqwbuTKcig6qq2IPY5BmEOMP7sP2GpcMVXL+42vfG9OMSRKvXrhjb7Siadjvb3Gv/0X1UhUXLv1irFNhHSpwPf9np9sOpt0XIBJqYavd+xTXmDrlWvF5Sg1tZDgo5p0uUWbQQpslijdc4dyFiWvdwEeGczZ6fDyICYmX/BLWZyYcWSE9ZAfc0="
+                    },
+                    "fingerprint": "db64f6e50fb27962"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "CQTBapTpPNTUz7IP7ZOggQg"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -286,7 +312,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The ping tool returned the marker: `pong-crimson-7423`."
+              "text": "The ping tool returned the marker: `pong-crimson-7423`.",
+              "native": {
+                "item": {
+                  "text": "The ping tool returned the marker: `pong-crimson-7423`."
+                },
+                "fingerprint": "86b0b79a516656b7"
+              }
             }
           ],
           "usage": {
@@ -294,11 +326,14 @@
             "output_tokens": 18,
             "total_tokens": 105
           },
-          "message_id": null,
-          "response_id": "EKyyaszIItW0qtsPg8SUqQU",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "CgTBavaZIZPVz7IP6JToGA"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -315,7 +350,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "EKyyaszIItW0qtsPg8SUqQU",
+            "responseId": "CgTBavaZIZPVz7IP6JToGA",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 87,

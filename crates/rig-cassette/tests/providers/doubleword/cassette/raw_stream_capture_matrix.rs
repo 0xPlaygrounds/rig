@@ -2,27 +2,28 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own terminal
-//! record behind the stream's finished response — for Doubleword the
-//! shared chat-completions [`StreamingCompletionResponse`] over
-//! [`ChatUsage`] — serialized. Capture is always on: there is no flag to
-//! request it, nothing about it reaches the wire, and a `Value::Null` only
-//! ever means a terminal built by hand with no provider record behind it. It
-//! is the terminal record only, never the stream's frames. Doubleword reports
-//! usage on the terminal frame alone, and the terminal's accumulated
+//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own
+//! terminal record behind the stream's finished response: for Doubleword the
+//! shared chat-completions record, a JSON object with the keys `usage`,
+//! `finish_reason`, `response_id`, `model`, `logprobs` and
+//! `additional_params`. Capture is always on: there is no flag to request it,
+//! nothing about it reaches the wire, and a `Value::Null` only ever means a
+//! terminal built by hand with no provider record behind it. It is the
+//! terminal record only, never the stream's frames. Doubleword reports usage
+//! on the terminal frame alone, and the terminal's accumulated
 //! `additional_params` carries the `object` tag the frames repeat; the
 //! normalized terminal keeps the usage counts but has no slot for the tag or
 //! the raw usage block.
 //!
-//! [`ChatUsage`] flattens the OpenAI-compatible counters and keeps whatever
-//! else the dialect sent in a sibling map, so Doubleword's backend extras
-//! (`cache_creation`, `cache_creation_input_tokens`,
-//! `cache_read_input_tokens`) survive into `raw` instead of being dropped at
-//! the type boundary. Cell 2 pins that against a fixture that carries them.
+//! The record's `usage` is the provider's usage object, so it keeps whatever
+//! the dialect sent beside the OpenAI-compatible counters. Doubleword's
+//! backend extras (`cache_creation`, `cache_creation_input_tokens`,
+//! `cache_read_input_tokens`) survive into `raw`. Cell 2 pins that against a
+//! fixture that carries them.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; its accounting normalizes to the terminal's usage; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat terminal record; its accounting is the terminal's usage; the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only field | `raw.usage` counts equal the sole usage-bearing frame's *including* its unmodeled cache extras; `raw.additional_params.object` equals the frames' tag | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -50,7 +51,7 @@ const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
 
 /// The backend usage fields Doubleword sends beyond the OpenAI-compatible
-/// counters; `ChatUsage` keeps them in its sibling map.
+/// counters; the terminal record's `usage` keeps them.
 const UNMODELLED_USAGE: [&str; 3] = [
     "cache_creation",
     "cache_creation_input_tokens",
@@ -62,7 +63,7 @@ fn request() -> CompletionRequest {
 }
 
 // ================================================================
-// 1. raw round-trips the terminal type
+// 1. raw is the terminal record
 // ================================================================
 
 #[tokio::test]
@@ -80,8 +81,8 @@ async fn stream_raw_round_trips_terminal_type() {
 
     let (text, terminal) = sink.take();
     assert!(!text.is_empty());
-    // The captured document is the decoder's terminal record serialized, so
-    // it round-trips exactly and its native fields are the normalized ones.
+    // The captured document is the decoder's terminal record, and its native
+    // fields are the normalized ones.
     chat::assert_terminal_round_trips(&terminal);
 
     let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
@@ -126,7 +127,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     assert_eq!(raw["additional_params"]["object"], json!(recorded_object));
     // The normalized terminal has no slot for the tag, and none for
     // Doubleword's backend usage extras — which is why the terminal record
-    // keeps them: `ChatUsage` holds whatever the dialect sent beside the
+    // keeps them: its `usage` holds whatever the dialect sent beside the
     // OpenAI-compatible counters.
     let normalized = normalized_without_raw(terminal.clone());
     assert_normalized_lacks(&normalized, &["object", "additional_params"]);

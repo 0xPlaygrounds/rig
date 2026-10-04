@@ -39,14 +39,14 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 21,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,21 +54,21 @@
         }
       },
       {
-        "batch": 20,
+        "batch": 21,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 21,
+        "batch": 22,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 28,
         "id": 6,
         "kind": {
           "delivery": "stream",
@@ -76,21 +76,21 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 28,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 37,
+        "batch": 36,
         "id": 8,
         "kind": {
           "delivery": "stream",
@@ -98,7 +98,7 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 36,
         "id": 8,
         "kind": {
           "delivery": "outcome"
@@ -219,8 +219,17 @@
                   "token": "start"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "start"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "fad700abd2287768"
+              }
             }
           ],
           "usage": {
@@ -228,27 +237,31 @@
             "output_tokens": 15,
             "total_tokens": 156
           },
-          "message_id": null,
-          "response_id": "nnizatmcBYHUz7IPh6yT4QU",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "NwzBau6XDqT5qtsPqPqImAI"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 141,
               "candidatesTokenCount": 15,
-              "totalTokenCount": 156,
+              "promptTokenCount": 141,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 141
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 156
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "nnizatmcBYHUz7IPh6yT4QU"
+            "response_id": "NwzBau6XDqT5qtsPqPqImAI"
           }
         }
       },
@@ -285,12 +298,26 @@
                   "token": "start"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "start"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "fad700abd2287768"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -346,7 +373,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -359,10 +385,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "start"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "fad700abd2287768"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBau6XDqT5qtsPqPqImAI"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -429,8 +472,17 @@
                   "token": "cobalt-17"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "cobalt-17"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "007bb2d40cac1c9a"
+              }
             }
           ],
           "usage": {
@@ -438,27 +490,31 @@
             "output_tokens": 19,
             "total_tokens": 210
           },
-          "message_id": null,
-          "response_id": "nnizarv4HNjQz7IPh4SA0Ac",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "NwzBavb5I6upqtsPpezKiQM"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 191,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 210,
+              "promptTokenCount": 191,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 191
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 210
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "nnizarv4HNjQz7IPh4SA0Ac"
+            "response_id": "NwzBavb5I6upqtsPpezKiQM"
           }
         }
       },
@@ -495,12 +551,26 @@
                   "token": "cobalt-17"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "cobalt-17"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "007bb2d40cac1c9a"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -556,7 +626,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -569,10 +638,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "start"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "fad700abd2287768"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBau6XDqT5qtsPqPqImAI"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -598,7 +684,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -611,10 +696,27 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "cobalt-17"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "007bb2d40cac1c9a"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBavb5I6upqtsPpezKiQM"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -681,8 +783,17 @@
                   "token": "orchard-29"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "orchard-29"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "d9f062ae94df36ed"
+              }
             }
           ],
           "usage": {
@@ -690,27 +801,31 @@
             "output_tokens": 19,
             "total_tokens": 264
           },
-          "message_id": null,
-          "response_id": "nnizariKM4_Xz7IPt4-28QE",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "NwzBaoCZOv-0qtsPhtKjyA4"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 245,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 264,
+              "promptTokenCount": 245,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 245
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 264
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "nnizariKM4_Xz7IPt4-28QE"
+            "response_id": "NwzBaoCZOv-0qtsPhtKjyA4"
           }
         }
       },
@@ -747,12 +862,26 @@
                   "token": "orchard-29"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "orchard-29"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "d9f062ae94df36ed"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -808,7 +937,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -821,10 +949,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "start"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "fad700abd2287768"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBau6XDqT5qtsPqPqImAI"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -850,7 +995,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -863,10 +1007,27 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "cobalt-17"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "007bb2d40cac1c9a"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBavb5I6upqtsPpezKiQM"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -892,7 +1053,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -905,10 +1065,27 @@
                       "token": "orchard-29"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "orchard-29"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "d9f062ae94df36ed"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBaoCZOv-0qtsPhtKjyA4"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -975,8 +1152,17 @@
                   "token": "harbor-43"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "harbor-43"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "cc9e4650009bbe90"
+              }
             }
           ],
           "usage": {
@@ -984,27 +1170,31 @@
             "output_tokens": 19,
             "total_tokens": 318
           },
-          "message_id": null,
-          "response_id": "n3izas-eCqOez7IPveCJ8QQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "OAzBap6sEuCxqtsP3f3akAI"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 299,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 318,
+              "promptTokenCount": 299,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 299
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 318
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "n3izas-eCqOez7IPveCJ8QQ"
+            "response_id": "OAzBap6sEuCxqtsP3f3akAI"
           }
         }
       },
@@ -1041,12 +1231,26 @@
                   "token": "harbor-43"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "token": "harbor-43"
+                    },
+                    "name": "checkpoint_step"
+                  }
+                },
+                "fingerprint": "cc9e4650009bbe90"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      },
       "scope": "golden/run#0"
     },
     {
@@ -1102,7 +1306,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1115,10 +1318,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "start"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "fad700abd2287768"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBau6XDqT5qtsPqPqImAI"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1144,7 +1364,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1157,10 +1376,27 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "cobalt-17"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "007bb2d40cac1c9a"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBavb5I6upqtsPpezKiQM"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1186,7 +1422,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1199,10 +1434,27 @@
                       "token": "orchard-29"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "orchard-29"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "d9f062ae94df36ed"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NwzBaoCZOv-0qtsPhtKjyA4"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1228,7 +1480,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1241,10 +1492,27 @@
                       "token": "harbor-43"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "token": "harbor-43"
+                        },
+                        "name": "checkpoint_step"
+                      }
+                    },
+                    "fingerprint": "cc9e4650009bbe90"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "OAzBap6sEuCxqtsP3f3akAI"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1302,7 +1570,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "checkpoint-complete"
+              "text": "checkpoint-complete",
+              "native": {
+                "item": {
+                  "text": "checkpoint-complete"
+                },
+                "fingerprint": "2e3d3d4a66aba08f"
+              }
             }
           ],
           "usage": {
@@ -1310,26 +1584,30 @@
             "output_tokens": 3,
             "total_tokens": 351
           },
-          "message_id": null,
-          "response_id": "n3izapeoI7rVz7IPgKTO0Qc",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "OAzBau2vJ4K-qtsPl4LvmAY"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 348,
               "candidatesTokenCount": 3,
-              "totalTokenCount": 351,
+              "promptTokenCount": 348,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 348
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 351
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash-lite",
-            "response_id": "n3izapeoI7rVz7IPgKTO0Qc"
+            "response_id": "OAzBau2vJ4K-qtsPl4LvmAY"
           }
         }
       },
@@ -1357,11 +1635,22 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "checkpoint-complete"
+              "text": "checkpoint-complete",
+              "native": {
+                "item": {
+                  "text": "checkpoint-complete"
+                },
+                "fingerprint": "2e3d3d4a66aba08f"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash-lite"
+      },
       "scope": "golden/run#0"
     }
   ]

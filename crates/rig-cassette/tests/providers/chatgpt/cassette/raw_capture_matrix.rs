@@ -4,11 +4,9 @@
 //! # The feature
 //!
 //! Capture is always on. Every completion the driver returns carries `raw`:
-//! the provider's own reply — the Responses API's
-//! [`CompletionResponse`](rig::providers::openai::responses_api::CompletionResponse),
-//! reassembled from the terminal `response.completed` event of the SSE body
-//! ChatGPT answers even a non-streaming request with — serialized with
-//! `serde_json::to_value`. Nothing about it is sent to
+//! the provider's own reply, the Responses API's response object carried by
+//! the terminal `response.completed` event of the SSE body ChatGPT answers
+//! even a non-streaming request with, verbatim. Nothing about it is sent to
 //! ChatGPT. `raw == Value::Null` means only that a `CompletionResponse` was
 //! built by hand without a provider response behind it, which no cell here can
 //! produce. A terminal event carrying no items captures the same envelope with
@@ -23,7 +21,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_provider_type` | typed access | `responses_api::CompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no CHATGPT credentials in this environment) |
+//! | 1 | `raw_round_trips_provider_type` | provider document | `raw` is the provider's response object, naming the normalized model | unrecorded (no CHATGPT credentials in this environment) |
 //! | 2 | `raw_exposes_response_envelope` | provider-only fields | `object`/`status`/`created_at` in `raw` equal the terminal `response.completed` frame | unrecorded (no CHATGPT credentials in this environment) |
 //! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | every normalized field equals the field the envelope on `raw` carries, and that envelope equals the recorded terminal frame's | unrecorded (no CHATGPT credentials in this environment) |
 //!
@@ -37,8 +35,6 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_capture_matrix/`.
 
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_chatgpt_cassette;
@@ -120,32 +116,18 @@ async fn raw_round_trips_provider_type() {
 
     let response = captured.take();
     let raw = &response.raw;
-    let typed = responses_api::CompletionResponse::deserialize(raw)
-        .expect("raw must deserialize into responses_api::CompletionResponse");
-    // `raw` is the provider's document, so it may carry more than
-    // the wire type models — never less, and never a different
-    // value for a field the type does parse.
-    let reserialized = serde_json::to_value(&typed).expect("provider type should serialize");
-    for (field, value) in reserialized
-        .as_object()
-        .expect("a Responses envelope is a JSON object")
-    {
-        assert_eq!(
-            raw.get(field),
-            Some(value),
-            "raw.{field} must be the value responses_api::CompletionResponse parsed"
-        );
-    }
-
-    // The typed view agrees with the normalized one on what the model
-    // said, so raw is a superset, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(response.provider, CHATGPT_PROVIDER);
+    assert!(raw.is_object(), "raw is the provider's response object");
+    // The provider's document agrees with the normalized view on what the
+    // model said, so raw is a superset, not a divergent copy.
+    assert_eq!(raw["model"].as_str(), response.model());
+    assert_eq!(response.provider(), CHATGPT_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let terminal = recorded_terminal_response(scenario);
-    responses_api::CompletionResponse::deserialize(&terminal)
-        .expect("recorded terminal response must be a Responses envelope");
+    assert!(
+        terminal.is_object(),
+        "recorded terminal response must be a Responses envelope"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -185,12 +167,8 @@ async fn raw_exposes_response_envelope() {
     }
     assert_wire_value_matches(&raw, &terminal, "created_at");
     assert_wire_value_matches(&raw, &terminal, "id");
-    let typed = responses_api::CompletionResponse::deserialize(&raw).expect("raw must deserialize");
-    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
-    assert!(matches!(
-        typed.object,
-        responses_api::ResponseObject::Response
-    ));
+    assert_eq!(raw["status"], "completed");
+    assert_eq!(raw["object"], "response");
 }
 
 // ---------------------------------------------------------------------------
@@ -219,20 +197,19 @@ async fn normalized_fields_equal_raw_renormalized() {
     .await;
 
     let response = captured.take();
-    let from_raw = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into responses_api::CompletionResponse");
-    assert_eq!(response.provider, CHATGPT_PROVIDER);
+    let from_raw = response.raw.clone();
+    assert_eq!(response.provider(), CHATGPT_PROVIDER);
     responses::assert_native_matches_normalized(&response, &from_raw, "the envelope on raw");
     // Both views here come from the *same* reply, so their ids agree
     // verbatim: the shared contract's token comparison exists for a live
     // value against a scrubbed fixture, and that relaxation does not apply.
-    assert_eq!(response.response_id.as_deref(), Some(from_raw.id.as_str()));
+    assert_eq!(response.response_id(), from_raw["id"].as_str());
     assert_eq!(
-        response.message_id,
-        from_raw.output.iter().find_map(|item| match item {
-            responses_api::Output::Message(message) => Some(message.id.clone()),
-            _ => None,
-        }),
+        responses::message_item_id(&response),
+        from_raw["output"]
+            .as_array()
+            .and_then(|items| items.iter().find(|item| item["type"] == "message"))
+            .and_then(|message| message["id"].as_str()),
         "the normalized message id is the envelope's output-message id"
     );
     // ChatGPT reads no transport request-id header, so the whole identity
@@ -241,12 +218,10 @@ async fn normalized_fields_equal_raw_renormalized() {
     assert!(!response.choice.is_empty());
 
     let terminal = recorded_terminal_response(scenario);
-    // Both sides are read through the same wire type, so the comparison is of
-    // the facts the envelope models rather than of incidental JSON shape.
-    let from_wire = responses_api::CompletionResponse::deserialize(&terminal)
-        .expect("recorded terminal response must be a Responses envelope");
-    let mut live = serde_json::to_value(&from_raw).expect("provider type should serialize");
-    let mut from_wire = serde_json::to_value(&from_wire).expect("provider type should serialize");
+    // `raw` is the terminal response object verbatim, so the two documents
+    // compare whole.
+    let mut live = from_raw;
+    let mut from_wire = terminal;
     // A live recording mints fresh ids and stamps; only a replay compares them
     // exactly, a live recording checks presence and shape.
     for field in ["id", "created_at"] {

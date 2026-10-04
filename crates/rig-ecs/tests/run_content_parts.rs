@@ -31,15 +31,12 @@ fn assert_checkpoint_round_trip(world: &mut World, expected: &MessageParts) {
 
 #[test]
 fn all_user_kinds_nested_results_and_metadata_round_trip() {
-    let text: Text = serde_json::from_value(serde_json::json!({"text":"hello","additional_params":{"annotations":[{"kind":"citation","url":"https://example.org"}]}})).unwrap();
+    let text = Text::new("hello");
     let image = Image {
         data: DocumentSourceKind::Base64("Zg==".into()),
         media_type: Some(ImageMediaType::PNG),
         detail: Some(ImageDetail::High),
-        additional_params: AdditionalParams::from_entries([(
-            "image_metadata",
-            serde_json::json!(true),
-        )]),
+        native: None,
     };
     let parts = MessageParts::User {
         content: vec![
@@ -50,29 +47,20 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
             UserContent::Audio(Audio {
                 data: DocumentSourceKind::Raw(b"f".to_vec()),
                 media_type: Some(AudioMediaType::MP3),
-                additional_params: AdditionalParams::from_entries([(
-                    "audio_metadata",
-                    serde_json::json!(true),
-                )]),
             }),
             UserContent::Video(Video {
                 data: DocumentSourceKind::Url("https://invalid.invalid/video".into()),
                 media_type: Some(VideoMediaType::MP4),
-                additional_params: AdditionalParams::from_entries([(
-                    "video_metadata",
-                    serde_json::json!(true),
-                )]),
+                additional_params: Some(serde_json::json!({"video_metadata": {"fps": 1}})),
             }),
             UserContent::Document(Document {
                 data: DocumentSourceKind::FileId("file-1".into()),
                 media_type: Some(DocumentMediaType::PDF),
-                additional_params: AdditionalParams::from_entries([(
-                    "document_metadata",
-                    serde_json::json!(true),
-                )]),
+                additional_params: Some(serde_json::json!({"document_metadata": true})),
             }),
             UserContent::ToolResult(ToolResult {
-                call: CallId::from_dual_wire("item-1", "provider-call-1"),
+                is_error: false,
+                call: CallId::from_wire("provider-call-1"),
                 name: rig_core::message::ToolName::new("read").expect("tool name"),
                 content: vec![
                     ToolResultContent::Text(text),
@@ -111,45 +99,45 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
     assert_checkpoint_round_trip(&mut world, &parts);
 }
 
+/// Every block's provider item, an opaque item and the turn's origin, stop
+/// and provider message survive the graph and a checkpoint, in order.
 #[test]
-fn assistant_signatures_reasoning_ids_and_images_round_trip() {
-    let call = ToolCall {
-        id: CallId::from_dual_wire("item-1", "provider-call-1"),
-        function: ToolFunction::new(
+fn assistant_provider_items_opaque_items_and_origin_round_trip() {
+    let call = AssistantContent::ToolCall(ToolCall::new(
+        CallId::from_wire("provider-call-1"),
+        ToolFunction::new(
             rig_core::message::ToolName::new("lookup").expect("tool name"),
             serde_json::json!({"q":"query"}),
         ),
-        signature: Some("signed-call".into()),
-        additional_params: Some(serde_json::json!({"opaque":"preserved"})),
-    };
-    let parts = MessageParts::Assistant {
-        id: Some("message-1".into()),
-        content: vec![
-            AssistantContent::Reasoning(
-                Reasoning {
-                    id: Some("reasoning-1".into()),
-                    content: vec![
-                        ReasoningContent::Text {
-                            text: "thinking".into(),
-                            signature: Some("sig".into()),
-                        },
-                        ReasoningContent::Encrypted("secret-body".into()),
-                        ReasoningContent::Redacted {
-                            data: "redacted-body".into(),
-                        },
-                        ReasoningContent::Summary("summary".into()),
-                    ],
-                }
-                .sealed("test"),
-            ),
-            AssistantContent::Text(Text::new("answer")),
-            AssistantContent::ToolCall(call),
-            AssistantContent::Image(Image {
-                data: DocumentSourceKind::Raw(vec![1, 2, 3]),
-                ..Default::default()
-            }),
-        ],
-    };
+    ))
+    .with_native(serde_json::json!({"type": "function_call", "id": "fc_1", "status": "completed"}));
+    let reasoning = AssistantContent::Reasoning(Reasoning::new("thinking")).with_native(
+        serde_json::json!({"type": "thinking", "thinking": "thinking", "signature": "sig"}),
+    );
+    let redacted = AssistantContent::Reasoning(Reasoning {
+        redacted: true,
+        ..Reasoning::default()
+    })
+    .with_native(serde_json::json!({"type": "redacted_thinking", "data": "redacted-body"}));
+    let opaque = AssistantContent::Opaque(Opaque {
+        item: serde_json::json!({"type": "web_search_call", "id": "ws_1", "action": {"query": "rig"}}),
+        replay: true,
+    });
+    let mut message = rig_core::message::AssistantMessage::new(vec![
+        reasoning,
+        opaque,
+        AssistantContent::text("answer")
+            .with_native(serde_json::json!({"type": "text", "text": "answer", "citations": []})),
+        call,
+        redacted,
+        AssistantContent::Image(Image {
+            data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+            ..Default::default()
+        }),
+    ]);
+    message.origin = Some(Origin::new("test.api", "test", "model-a"));
+    message.stop = Some(StopReason::ToolUse);
+    let parts = MessageParts::Assistant(message);
     let (mut world, entity) = world(parts.clone());
     assert_eq!(
         serde_json::to_vec(&read_message(&world, entity).unwrap().to_message()).unwrap(),
@@ -222,7 +210,7 @@ fn replacing_a_variant_cannot_leave_a_conflicting_payload() {
         .insert(ContentPart::Image(ImagePart {
             source: PartSource::Url("https://example.org/image".into()),
             media_type: None,
-            additional_params: None,
+            native: None,
             detail: None,
         }));
     assert_eq!(
@@ -245,6 +233,7 @@ fn leaf_children_and_nested_results_are_rejected_even_when_removed() {
     for nested_result in [false, true] {
         let (mut world, utterance) = world(MessageParts::User {
             content: vec![UserContent::ToolResult(ToolResult {
+                is_error: false,
                 call: CallId::from_wire("call"),
                 name: rig_core::message::ToolName::new("tool").expect("tool name"),
                 content: vec![ToolResultContent::text("child")],
@@ -355,10 +344,9 @@ fn removal_cannot_hide_a_missing_nested_binary() {
 
 #[test]
 fn late_preparation_failure_preserves_assistant_id_and_children() {
-    let original = MessageParts::Assistant {
-        id: Some("retained-message".into()),
-        content: vec![AssistantContent::text("retained")],
-    };
+    let original = MessageParts::Assistant(rig_core::message::AssistantMessage::new(vec![
+        AssistantContent::text("retained"),
+    ]));
     let (mut world, utterance) = world(original.clone());
     let children: Vec<_> = world.get::<Children>(utterance).unwrap().iter().collect();
     let rejected = MessageParts::User {
@@ -538,7 +526,7 @@ fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
         EffectOutcome(Ok(Outcome::Completion(CompletionResponse::new(
             choice,
             Usage::default(),
-            "model",
+            rig_core::message::Origin::new("test.api", "model", ""),
             serde_json::json!({}),
         ))))
     };

@@ -187,7 +187,7 @@ async fn llama_family_calls_a_tool() {
             assert_eq!(calls.len(), 1, "{:?}", response.choice);
             assert_eq!(calls[0].function.name, "subtract");
             assert!(
-                calls[0].function.arguments.is_object(),
+                calls[0].function.invalid_arguments.is_none(),
                 "a different template must still produce object arguments: {:?}",
                 calls[0].function.arguments
             );
@@ -262,7 +262,7 @@ async fn mistral_family_calls_a_tool() {
                 .collect::<Vec<_>>();
             assert_eq!(calls.len(), 1, "{:?}", response.choice);
             assert_eq!(calls[0].function.name, "subtract");
-            assert!(calls[0].function.arguments.is_object());
+            assert!(calls[0].function.invalid_arguments.is_none());
         },
     )
     .await;

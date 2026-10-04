@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":16,"messages":[{"content":"Checking the ledger.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"call_history_1","index":0,"type":"function"}]},{"content":"pong","role":"tool","tool_call_id":"call_history_1"},{"content":"Now say: history-ok","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":16,"messages":[{"content":"Checking the ledger.","reasoning_content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"call_history_1","type":"function"}]},{"content":"pong","role":"tool","tool_call_id":"call_history_1"},{"content":"Now say: history-ok","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"history-ok","role":"assistant"}}],"created":0,"id":"42b1bb86-64a3-44d6-8d16-42f42fbb0a1d","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":3,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":295,"prompt_tokens":295,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":298}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"history-ok","role":"assistant"}}],"created":0,"id":"3b496d72-2905-42e3-856e-1dfac109a267","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":3,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":167,"prompt_tokens":295,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":298}}'

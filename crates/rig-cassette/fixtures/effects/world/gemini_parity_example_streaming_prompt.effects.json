@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 7,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 1
         }
       },
       {
@@ -106,15 +106,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "**Date:** October 2, 2024\n**Type:** Annular solar eclipse (\"Ring of Fire\")\n**Location:** Visible over parts of the Pacific Ocean, southern Chile, and southern Argentina."
-            },
-            {
-              "type": "text",
-              "text": "",
-              "additional_params": {
-                "gemini": {
+              "text": "**Date:** October 2, 2024\n**Type:** Annular solar eclipse (\"Ring of Fire\")\n**Location:** Visible over parts of the Pacific Ocean, southern Chile, and southern Argentina.",
+              "native": {
+                "item": {
+                  "text": "**Date:** October 2, 2024\n**Type:** Annular solar eclipse (\"Ring of Fire\")\n**Location:** Visible over parts of the Pacific Ocean, southern Chile, and southern Argentina.",
                   "thoughtSignature": "EtYGCtMGAWkUfRMUjgxCijrDhzja/N0BODGy1mNFzGsqIpDTzckzsVf6RWnmKtjMpJlX/tT3vDGp/m4ufO+S3Fc4c1gAh6TghYcifue/9MOgVp243ulBVzxn/OgiyHW7Tcwi3DjitJUXcIJfmOvUkgwrSij4ul7OlRR6vONNamnBZfQqqpWCjmL3HNO5J4bvK1lzc9A6ZXFzsQdIgm4ScEfFMNqOThdFl9I91DuesBQEWPiassgaoRECN+KkMzmCrGAx9kLL/qKHnjI1eS+aiRFwhwMsk/PWQqfSA7l6uB+WbbcSfc9/LCXzCYz9tjgQQ1ggf+zLbp7jkltveZNO7FbrLpsZGTRt9FthohTye7sbyMBXyPJLu0j9RA2CgZ/4mQyxLBD6vdPUhDlhuGCKxHcJ/kMb2i5RplINTvhAoYA0nOWx2goxWcQf572IL+2obz3NWbQ+Qpc01C57BnV4APDBdHQmD2dYuxVgKSVlNOvdWymW3yfR6EGUfq1HYUKcL/l9+7saDW1f+s5YYxb79vK2ibNQleQTSrlUBaYw/9pE7hADD6PP7uhu+ryxEEmnTLTjLN9D8e0bCahG3xdZAlNapvJDgNFSDn+duprTaqGFznZpOh4HnajJHbOWWL5SbF0+EPGO/5EnR4MAKUgzpt6o+1gi9PT1jJzFQnDHv6pmkvU+i49Bvt2q0A0gOmhbufXoTktmq54vJTvjSbA49heM/qExFBuqVV6QZBnQSfqSs7VH5kit3UNLCbwsiselIg3oBf4H2dQoX/LUGpFkHrA9IKCZqgF9v11ggOUkG8JNye6MsuqY9sFfPfr6ZkC8gAQLO4SooBFgyiXEvIBi3XjxDMfYSIwPdBaleIrvb9ZtZMVU9oEqSBK5chZtttBSm5pVk8NmcJj4OCXjSs/9yai3U1SP82EAh23+TdjClzprrwqUaaiCU7yQzcC0gmwP6mxXOSPAXi61CZC9wmtNDcMxvp2CXLZ7EUKCRQKai5oi4WZTytm7Ax458vmZ2HJ4Rg/GayZW+lio0VAQ9ni6VLKGYhgIm0m/Qa9gTkLEhbSvknLx0pKr8y8bEUtQUIm3Z1K1NqLKX/vi0SIuGEpO5nSsz+1w4spv7r/rlxepi5JZ8mPkWCI6GwQ="
-                }
+                },
+                "fingerprint": "2535cf7a41c98611"
               }
             }
           ],
@@ -124,23 +122,27 @@
             "total_tokens": 244,
             "reasoning_tokens": 181
           },
-          "message_id": null,
-          "response_id": "-6-yauCpAdjxqtsPr_-SgQk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "-6-yauCpAdjxqtsPr_-SgQk"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 19,
               "candidatesTokenCount": 44,
-              "totalTokenCount": 244,
-              "thoughtsTokenCount": 181,
+              "promptTokenCount": 19,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 19
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 181,
+              "totalTokenCount": 244
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
@@ -180,35 +182,23 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "**Date:** October 2, 2024\n**Type:** Annular solar eclipse (\"Ring of Fire\")\n**Location:** Visible over parts of the Pacific Ocean, southern Chile, and southern Argentina."
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 1,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 1,
-            "content": {
-              "type": "text",
-              "text": "",
-              "additional_params": {
-                "gemini": {
+              "text": "**Date:** October 2, 2024\n**Type:** Annular solar eclipse (\"Ring of Fire\")\n**Location:** Visible over parts of the Pacific Ocean, southern Chile, and southern Argentina.",
+              "native": {
+                "item": {
+                  "text": "**Date:** October 2, 2024\n**Type:** Annular solar eclipse (\"Ring of Fire\")\n**Location:** Visible over parts of the Pacific Ocean, southern Chile, and southern Argentina.",
                   "thoughtSignature": "EtYGCtMGAWkUfRMUjgxCijrDhzja/N0BODGy1mNFzGsqIpDTzckzsVf6RWnmKtjMpJlX/tT3vDGp/m4ufO+S3Fc4c1gAh6TghYcifue/9MOgVp243ulBVzxn/OgiyHW7Tcwi3DjitJUXcIJfmOvUkgwrSij4ul7OlRR6vONNamnBZfQqqpWCjmL3HNO5J4bvK1lzc9A6ZXFzsQdIgm4ScEfFMNqOThdFl9I91DuesBQEWPiassgaoRECN+KkMzmCrGAx9kLL/qKHnjI1eS+aiRFwhwMsk/PWQqfSA7l6uB+WbbcSfc9/LCXzCYz9tjgQQ1ggf+zLbp7jkltveZNO7FbrLpsZGTRt9FthohTye7sbyMBXyPJLu0j9RA2CgZ/4mQyxLBD6vdPUhDlhuGCKxHcJ/kMb2i5RplINTvhAoYA0nOWx2goxWcQf572IL+2obz3NWbQ+Qpc01C57BnV4APDBdHQmD2dYuxVgKSVlNOvdWymW3yfR6EGUfq1HYUKcL/l9+7saDW1f+s5YYxb79vK2ibNQleQTSrlUBaYw/9pE7hADD6PP7uhu+ryxEEmnTLTjLN9D8e0bCahG3xdZAlNapvJDgNFSDn+duprTaqGFznZpOh4HnajJHbOWWL5SbF0+EPGO/5EnR4MAKUgzpt6o+1gi9PT1jJzFQnDHv6pmkvU+i49Bvt2q0A0gOmhbufXoTktmq54vJTvjSbA49heM/qExFBuqVV6QZBnQSfqSs7VH5kit3UNLCbwsiselIg3oBf4H2dQoX/LUGpFkHrA9IKCZqgF9v11ggOUkG8JNye6MsuqY9sFfPfr6ZkC8gAQLO4SooBFgyiXEvIBi3XjxDMfYSIwPdBaleIrvb9ZtZMVU9oEqSBK5chZtttBSm5pVk8NmcJj4OCXjSs/9yai3U1SP82EAh23+TdjClzprrwqUaaiCU7yQzcC0gmwP6mxXOSPAXi61CZC9wmtNDcMxvp2CXLZ7EUKCRQKai5oi4WZTytm7Ax458vmZ2HJ4Rg/GayZW+lio0VAQ9ni6VLKGYhgIm0m/Qa9gTkLEhbSvknLx0pKr8y8bEUtQUIm3Z1K1NqLKX/vi0SIuGEpO5nSsz+1w4spv7r/rlxepi5JZ8mPkWCI6GwQ="
-                }
+                },
+                "fingerprint": "2535cf7a41c98611"
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -1,13 +1,12 @@
-//! Wire-conformance suite for the Bedrock Converse typed-event wire.
+//! Wire-conformance suite for the Bedrock Converse wire.
 //!
-//! Events-first (`WireInput::Event`): fixture frames are already-typed SDK
-//! events replayed by a scripted transport through the Converse wire and the
-//! shared driver, with no AWS client. Frame-level malformed/unknown scenarios self-report as skipped:
-//! the SDK surfaces decode failures as transport errors, and its
-//! non-exhaustive `Unknown` union variant is not constructible from outside
-//! the SDK.
+//! Events-first (`WireInput::Event`): fixture frames are Converse stream
+//! events as JSON, the frames the transport hands the decoder, replayed by
+//! a scripted transport through the Converse wire and the shared driver,
+//! with no AWS client. Frame-level malformed and unknown scenarios
+//! self-report as skipped: the SDK reads the event stream, and surfaces a
+//! corrupt frame as a transport error.
 
-use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
 use rig_core::completion::{CompletionRequest, FinishReason};
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
@@ -15,31 +14,26 @@ use rig_core::error::ProviderError;
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
 };
+use serde_json::{Value, json};
 
-type Events = Vec<Result<aws_bedrock::ConverseStreamOutput, ProviderError>>;
+type Events = Vec<Result<Value, ProviderError>>;
 
-/// Replays scripted Converse events after the frame naming the model.
+/// Replays scripted Converse events.
 #[derive(Clone)]
 struct Scripted(std::sync::Arc<std::sync::Mutex<Events>>);
 
 impl Transport<Converse> for Scripted {
-    fn send(&self, payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
+    fn send(&self, _payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
         let events = match self.0.lock() {
             Ok(mut events) => std::mem::take(&mut *events),
             Err(_) => {
                 return Opening::failed(ProviderError::Provider("script lock poisoned".to_owned()));
             }
         };
-        let opened = ConverseFrame::Opened {
-            model: payload.model,
-            request_id: None,
-        };
         Opening::ready(Opened::new(futures::stream::iter(
-            std::iter::once(Ok(opened)).chain(
-                events
-                    .into_iter()
-                    .map(|event| event.map(ConverseFrame::Event)),
-            ),
+            events
+                .into_iter()
+                .map(|event| event.map(ConverseFrame::Event)),
         )))
     }
 }
@@ -47,17 +41,14 @@ impl Transport<Converse> for Scripted {
 fn driver() -> WireDriver {
     WireDriver::new("aws_bedrock", |chunks| {
         Box::pin(async move {
-            let events: Vec<Result<aws_bedrock::ConverseStreamOutput, ProviderError>> = chunks
+            let events: Events = chunks
                 .into_iter()
                 .map(|chunk| match chunk {
-                    Ok(frame) => frame
-                        .downcast_event::<aws_bedrock::ConverseStreamOutput>()
-                        .cloned()
-                        .ok_or_else(|| {
-                            ProviderError::Provider(
-                                "bedrock conformance frames must be Converse events".to_string(),
-                            )
-                        }),
+                    Ok(frame) => frame.downcast_event::<Value>().cloned().ok_or_else(|| {
+                        ProviderError::Provider(
+                            "bedrock conformance frames must be Converse events".to_string(),
+                        )
+                    }),
                     Err(error) => Err(ProviderError::Http(error.into())),
                 })
                 .collect();
@@ -72,79 +63,41 @@ fn driver() -> WireDriver {
 }
 
 fn text_delta(index: i32, text: &str) -> WireInput {
-    event_frame(aws_bedrock::ConverseStreamOutput::ContentBlockDelta(
-        aws_bedrock::ContentBlockDeltaEvent::builder()
-            .content_block_index(index)
-            .delta(aws_bedrock::ContentBlockDelta::Text(text.to_string()))
-            .build()
-            .expect("content block delta should build"),
-    ))
+    event_frame(json!({ "contentBlockDelta": {
+        "contentBlockIndex": index, "delta": { "text": text },
+    } }))
 }
 
 fn tool_start(index: i32, id: &str, name: &str) -> WireInput {
-    event_frame(aws_bedrock::ConverseStreamOutput::ContentBlockStart(
-        aws_bedrock::ContentBlockStartEvent::builder()
-            .content_block_index(index)
-            .start(aws_bedrock::ContentBlockStart::ToolUse(
-                aws_bedrock::ToolUseBlockStart::builder()
-                    .tool_use_id(id)
-                    .name(name)
-                    .build()
-                    .expect("tool use start should build"),
-            ))
-            .build()
-            .expect("content block start should build"),
-    ))
+    event_frame(json!({ "contentBlockStart": {
+        "contentBlockIndex": index, "start": { "toolUse": { "toolUseId": id, "name": name } },
+    } }))
 }
 
 fn tool_delta(index: i32, input: &str) -> WireInput {
-    event_frame(aws_bedrock::ConverseStreamOutput::ContentBlockDelta(
-        aws_bedrock::ContentBlockDeltaEvent::builder()
-            .content_block_index(index)
-            .delta(aws_bedrock::ContentBlockDelta::ToolUse(
-                aws_bedrock::ToolUseBlockDelta::builder()
-                    .input(input)
-                    .build()
-                    .expect("tool use delta should build"),
-            ))
-            .build()
-            .expect("content block delta should build"),
-    ))
+    event_frame(json!({ "contentBlockDelta": {
+        "contentBlockIndex": index, "delta": { "toolUse": { "input": input } },
+    } }))
 }
 
 fn block_stop(index: i32) -> WireInput {
-    event_frame(aws_bedrock::ConverseStreamOutput::ContentBlockStop(
-        aws_bedrock::ContentBlockStopEvent::builder()
-            .content_block_index(index)
-            .build()
-            .expect("content block stop should build"),
-    ))
+    event_frame(json!({ "contentBlockStop": { "contentBlockIndex": index } }))
 }
 
-fn message_stop(reason: aws_bedrock::StopReason) -> WireInput {
-    event_frame(aws_bedrock::ConverseStreamOutput::MessageStop(
-        aws_bedrock::MessageStopEvent::builder()
-            .stop_reason(reason)
-            .build()
-            .expect("message stop should build"),
-    ))
+fn message_stop(reason: &str) -> WireInput {
+    event_frame(json!({ "messageStop": { "stopReason": reason } }))
 }
 
-fn metadata(usage: Option<aws_bedrock::TokenUsage>) -> WireInput {
-    let mut builder = aws_bedrock::ConverseStreamMetadataEvent::builder();
-    if let Some(usage) = usage {
-        builder = builder.usage(usage);
-    }
-    event_frame(aws_bedrock::ConverseStreamOutput::Metadata(builder.build()))
+fn metadata(usage: Option<Value>) -> WireInput {
+    let metadata = match usage {
+        Some(usage) => json!({ "usage": usage }),
+        None => json!({}),
+    };
+    event_frame(json!({ "metadata": metadata }))
 }
 
-fn usage(input: i32, output: i32, total: i32) -> aws_bedrock::TokenUsage {
-    aws_bedrock::TokenUsage::builder()
-        .input_tokens(input)
-        .output_tokens(output)
-        .total_tokens(total)
-        .build()
-        .expect("token usage should build")
+fn usage(input: i32, output: i32, total: i32) -> Value {
+    json!({ "inputTokens": input, "outputTokens": output, "totalTokens": total })
 }
 
 fn fixture() -> ProviderWireFixture {
@@ -164,24 +117,17 @@ fn fixture() -> ProviderWireFixture {
             tool_start(0, "call_1", "get_weather"),
             tool_delta(0, "{\"cit"),
         ]),
-        terminal_frames: vec![
-            message_stop(aws_bedrock::StopReason::EndTurn),
-            metadata(Some(usage(10, 5, 15))),
-        ],
+        terminal_frames: vec![message_stop("end_turn"), metadata(Some(usage(10, 5, 15)))],
         expected_usage_total: 15,
         expected_finish_reason: Some(FinishReason::Stop),
-        zero_usage_terminal_frames: Some(vec![
-            message_stop(aws_bedrock::StopReason::EndTurn),
-            metadata(None),
-        ]),
+        zero_usage_terminal_frames: Some(vec![message_stop("end_turn"), metadata(None)]),
         bare_terminal_frames: None,
         // The AWS SDK owns event-stream decoding: a corrupt frame surfaces as
         // a receive (transport) error, so no frame-level malformed input can
-        // be spelled — the scenario reports a visible skip.
+        // be spelled; the scenario reports a visible skip.
         malformed_frame: None,
-        // The SDK's `Unknown` union variant is non-exhaustive and cannot be
-        // constructed outside the SDK; the classify triage for it is pinned
-        // by `classify_typed_event`'s unit tests in `wire.rs`.
+        // An event type the decoder does not know is skipped with a warning,
+        // which the decoder's own tests hold.
         unknown_event_frame: None,
         defective_known_frame: None,
         delta_less_prelude_frame: None,

@@ -109,10 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_UpJlT7yJUKE7BNoxMgOJjRbq",
-                  "item_id": "fc_08e3eb1cea9d4034006ab3969c609087d0b8843c17dbe02026"
-                }
+                "provider": "call_UpJlT7yJUKE7BNoxMgOJjRbq"
               },
               "function": {
                 "name": "submit",
@@ -122,8 +119,17 @@
                   "profession": "data scientist"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"Jane Smith\",\"age\":45,\"profession\":\"data scientist\"}",
+                  "call_id": "call_UpJlT7yJUKE7BNoxMgOJjRbq",
+                  "id": "fc_08e3eb1cea9d4034006ab3969c609087d0b8843c17dbe02026",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "d26ebe5fd05d4d9a"
+              }
             }
           ],
           "usage": {
@@ -134,12 +140,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_08e3eb1cea9d4034006ab3969ac4c887d0bb4393c95e34224b",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_08e3eb1cea9d4034006ab3969ac4c887d0bb4393c95e34224b"
+          },
           "provider_request_id": "req_3249710128fd447694f1966bcca7145a",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "access_programs": null,
             "background": false,

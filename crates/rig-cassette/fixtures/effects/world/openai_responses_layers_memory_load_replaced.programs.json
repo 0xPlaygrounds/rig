@@ -38,7 +38,9 @@
           }
         },
         {
-          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::AdditionalParams": {
+            "store": false
+          },
           "rig_ecs::agent::Conversation": "golden-conversation",
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::InvalidCalls": {

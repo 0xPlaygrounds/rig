@@ -54,6 +54,7 @@ const XAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
 
 fn probe() -> CacheProbe {
     CacheProbe::new("xai prompt caching")
+        .with_additional_params(serde_json::json!({ "store": false }))
 }
 
 #[tokio::test]

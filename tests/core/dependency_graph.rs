@@ -8,8 +8,6 @@
 
 use std::process::Command;
 
-use super::verification_checks;
-
 /// `(package, `cargo tree` feature arguments, forbidden dependency names,
 /// required dependency names)`. The three lists are space-separated; empty
 /// features select the package's defaults.
@@ -295,70 +293,6 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
             assert!(
                 names.contains(&name),
                 "{features} is missing {name}:\n{graph}"
-            );
-        }
-        if !matches!(features, "http" | "bedrock") {
-            let json = graph
-                .lines()
-                .find(|line| line.starts_with("serde_json "))
-                .expect("JSON dependency");
-            for feature in ["preserve_order", "float_roundtrip"] {
-                assert!(
-                    !json.contains(feature),
-                    "{features} must not enable serde_json/{feature}: {json}"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn standalone_verification_preserves_minimal_json_features() {
-    let checks = verification_checks::all();
-    let mut packages = std::collections::BTreeSet::new();
-    for id in ["bus-verification", "ecs-parity"] {
-        let check = checks
-            .iter()
-            .find(|check| check.id == id)
-            .expect("CI check");
-        let standalone = check
-            .steps
-            .iter()
-            .find(|step| step.args.windows(2).any(|pair| pair == ["--retries", "0"]))
-            .expect("standalone verification execution");
-        packages.insert(
-            standalone
-                .args
-                .windows(2)
-                .find(|pair| pair[0] == "-p")
-                .expect("standalone package selection")[1]
-                .as_str(),
-        );
-    }
-    for package in packages {
-        let graph = cargo_stdout(&[
-            "tree",
-            "--locked",
-            "--offline",
-            "-p",
-            package,
-            "--all-features",
-            "-e",
-            "normal,dev",
-            "--invert",
-            "serde_json",
-            "--depth",
-            "0",
-            "--prefix",
-            "none",
-            "--format",
-            "{p} {f}",
-        ]);
-        assert!(graph.lines().any(|line| line.starts_with("serde_json ")));
-        for feature in ["preserve_order", "float_roundtrip"] {
-            assert!(
-                !graph.contains(feature),
-                "{package} must replay goldens without serde_json/{feature}:\n{graph}"
             );
         }
     }

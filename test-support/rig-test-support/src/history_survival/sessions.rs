@@ -6,16 +6,15 @@
 //! provider.
 //!
 //! The run asserts the loaded history equals the original, provenance
-//! included, and the recording asserts every signature, ciphertext and id the
-//! first reply delivered reaches the continuation in the slot that must carry
-//! it.
+//! included. On the same model the recording asserts every signature,
+//! ciphertext and id the first reply delivered reaches the continuation in
+//! the slot that must carry it; on another model it asserts the call ids
+//! still pair and no reasoning state is sent.
 
 use serde_json::Value;
 
 use rig_core::completion::{CompletionRequest, ToolDefinition};
-use rig_core::message::{
-    AssistantContent, Message, ReasoningContent, ToolResultContent, UserContent,
-};
+use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 
 use super::{Dialect, lost_tokens, response_tokens};
 
@@ -206,38 +205,10 @@ async fn turn_one(
         "[{}] turn one reasoned",
         cell.provider
     );
-    assert!(
-        reasoning
-            .iter()
-            .all(|reasoning| !reasoning.issuer().as_str().is_empty()),
-        "[{}] decoded reasoning records its issuer",
-        cell.provider
-    );
-    // Replayable state rides a reasoning block (signature, ciphertext, item
-    // id) or, on Gemini, the function call itself (its thought signature).
-    let replayable = call.signature.is_some()
-        || reasoning.iter().any(|reasoning| {
-            reasoning
-                .open(reasoning.issuer())
-                .expect("sealed reasoning")
-                .id
-                .is_some()
-                || reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content
-                    .iter()
-                    .any(|block| {
-                        matches!(
-                            block,
-                            ReasoningContent::Text {
-                                signature: Some(_),
-                                ..
-                            } | ReasoningContent::Encrypted(_)
-                                | ReasoningContent::Redacted { .. }
-                        )
-                    })
-        });
+    // Replayable state rides a reasoning block's provider item (signature,
+    // ciphertext, item id) or, on Gemini, the function call's.
+    let replayable =
+        call.native.is_some() || reasoning.iter().any(|reasoning| reasoning.native.is_some());
     assert!(
         cell.expect.is_empty() || replayable,
         "[{}] turn one delivered replayable reasoning state",
@@ -246,10 +217,10 @@ async fn turn_one(
 
     let history = vec![
         prompt,
-        Message::Assistant {
-            id: reply.message_id.clone(),
+        Message::Assistant(rig_core::message::AssistantMessage {
             content: reply.choice.clone(),
-        },
+            ..reply.head()
+        }),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),
@@ -375,11 +346,50 @@ pub fn assert_memory_recorded(cell: Cell, scenario: &str) {
     }
 }
 
-/// The first reply's reasoning state reaches the continuation, each value in
-/// its slot, and the expected kinds were delivered.
+/// The first reply's reasoning state reaches a continuation on the same
+/// model, each value in its slot, and the expected kinds were delivered.
 pub fn assert_recorded(cell: Cell, scenario: &str) {
+    let (dialect, reply, next) = recorded(cell, scenario);
+    let lost = lost_tokens(dialect, &reply, &next);
+    assert!(
+        lost.is_empty(),
+        "[{}] lost in the continuation: {lost:?}",
+        cell.provider
+    );
+}
+
+/// A continuation on another model replays the first reply from its
+/// canonical fields: its call ids still pair, and none of its reasoning
+/// state, which only the model that produced it reads, is sent.
+pub fn assert_ported(cell: Cell, scenario: &str) {
+    let (dialect, reply, next) = recorded(cell, scenario);
+    let lost: Vec<_> = lost_tokens(dialect, &reply, &next)
+        .into_iter()
+        .filter(|token| token.kind == "tool_call_id")
+        .collect();
+    assert!(
+        lost.is_empty(),
+        "[{}] call ids lost in the continuation: {lost:?}",
+        cell.provider
+    );
+    let sent = next.to_string();
+    let leaked: Vec<_> = response_tokens(dialect, &reply)
+        .into_iter()
+        .filter(|token| !matches!(token.kind, "tool_call_id" | "phase"))
+        .filter(|token| sent.contains(&token.value))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "[{}] reasoning state sent to another model: {leaked:?}",
+        cell.provider
+    );
+}
+
+/// The recorded first reply and continuation request, after asserting the
+/// first reply delivered every expected kind verbatim.
+fn recorded(cell: Cell, scenario: &str) -> (Dialect, String, Value) {
     let paths = crate::cassettes::recorded_request_paths(cell.provider, scenario);
-    let bodies = crate::cassettes::recorded_interaction_bodies(cell.provider, scenario);
+    let mut bodies = crate::cassettes::recorded_interaction_bodies(cell.provider, scenario);
     assert_eq!(
         bodies.len(),
         2,
@@ -388,13 +398,8 @@ pub fn assert_recorded(cell: Cell, scenario: &str) {
     );
     let dialect = Dialect::from_path(&paths[0]);
     let next: Value = serde_json::from_str(&bodies[1].0).expect("continuation request is JSON");
-    let lost = lost_tokens(dialect, &bodies[0].1, &next);
-    assert!(
-        lost.is_empty(),
-        "[{}] lost in the continuation: {lost:?}",
-        cell.provider
-    );
-    let delivered = response_tokens(dialect, &bodies[0].1);
+    let reply = bodies.swap_remove(0).1;
+    let delivered = response_tokens(dialect, &reply);
     for kind in cell.expect {
         assert!(
             delivered
@@ -404,4 +409,5 @@ pub fn assert_recorded(cell: Cell, scenario: &str) {
             cell.provider
         );
     }
+    (dialect, reply, next)
 }

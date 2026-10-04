@@ -22,7 +22,15 @@ use super::*;
 
 /// The generation wire over `model`.
 fn generation(model: &CandleModel) -> rig_core::Model<Generation, CandleModel> {
-    rig_core::Model::new(Generation, model.clone())
+    model.completion()
+}
+
+/// A generation wire for a scripted Qwen3 runtime.
+fn scripted() -> Generation {
+    Generation {
+        model: "qwen3-scripted".to_owned(),
+        protocol: ConversationProtocol::Qwen3,
+    }
 }
 
 /// Replays scripted generation events as a local generator would send them.
@@ -52,7 +60,7 @@ fn stream_from_events(
     events: Vec<GenerationEvent>,
 ) -> Result<rig_core::streaming::CompletionStream, ProviderError> {
     rig_core::Model::new(
-        Generation,
+        scripted(),
         Scripted(Arc::new(std::sync::Mutex::new(events))),
     )
     .stream(request(vec![Message::user("hello")]))
@@ -886,35 +894,24 @@ fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-/// The driver scopes no history for a local model: reasoning another
-/// provider issued reaches the prompt protocol, which refuses what the model
-/// cannot render, up front, instead of the reasoning vanishing.
+/// A turn another model produced replays from its canonical fields, so its
+/// reasoning reaches the local prompt as plain text instead of vanishing.
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test(flavor = "current_thread")]
-async fn foreign_reasoning_in_history_is_refused_not_dropped()
+async fn foreign_reasoning_in_history_reaches_the_prompt_as_text()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = CandleModel::builder(model_data()?).max_tokens(1).build()?;
     let history = vec![
         Message::user("hello"),
-        Message::Assistant {
-            id: None,
-            content: vec![
-                rig_core::message::AssistantContent::Reasoning(
-                    rig_core::message::Reasoning::new("elsewhere")
-                        .sealed(String::from("anthropic")),
-                ),
-                rig_core::message::AssistantContent::text("hi"),
-            ],
-        },
+        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+            rig_core::message::AssistantContent::Reasoning(rig_core::message::Reasoning::new(
+                "elsewhere",
+            )),
+            rig_core::message::AssistantContent::text("hi"),
+        ])),
         Message::user("again"),
     ];
-    let Err(error) = generation(&model).call(request(history)).await else {
-        return Err("the local prompt cannot render foreign reasoning".into());
-    };
-    assert!(
-        error.to_string().contains("structured reasoning"),
-        "the prompt protocol refuses it: {error}"
-    );
+    generation(&model).call(request(history)).await?;
     Ok(())
 }
 
@@ -1466,6 +1463,15 @@ fn renders_llama3_history_and_documents() -> Result<(), Box<dyn std::error::Erro
         text: "context".to_string(),
         additional_props: HashMap::new(),
     });
+    // Preparing folds the documents into the history, as the driver does.
+    let wire = Generation {
+        model: "llama3-test".to_owned(),
+        protocol: ConversationProtocol::Llama3,
+    };
+    let request = <rig_core::operation::Completion as rig_core::wire::Operation>::prepare(
+        request,
+        &rig_core::wire::Wire::describe(&wire),
+    )?;
     let rendered = render_prompt(&request)?;
     assert!(rendered.contains("<file id: doc-1>\ncontext\n</file>"));
     assert!(rendered.find("<file id: doc-1>") < rendered.find("question"));
@@ -1516,9 +1522,13 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     )?);
     assert!(render_prompt(&schema).is_err());
 
+    let loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
     let mut override_request = request(vec![Message::user("hello")]);
     override_request.model = Some("other".to_string());
-    assert!(render_prompt(&override_request).is_err());
+    assert!(matches!(
+        infer(&loaded, &override_request, &CancellationSignal::default()),
+        Err(CandleError::UnsupportedFeature(feature)) if feature.contains("model override")
+    ));
 
     let tool_result = request(vec![Message::tool_result(
         rig_core::message::CallId::from_wire("id"),
@@ -1792,7 +1802,7 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     let renormalized = renormalized.finish().await?;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason(), renormalized.finish_reason());
-    assert_eq!(terminal.model, renormalized.model);
+    assert_eq!(terminal.model(), renormalized.model());
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(terminal.usage.output_tokens, Some(2));
     Ok(())
@@ -1822,23 +1832,11 @@ async fn an_empty_turn_never_reaches_the_local_runtime()
             ]),
             "assistant message at index 0 has no content",
         ),
-        (
-            request(vec![parsed(serde_json::json!({
-                "role": "user",
-                "content": [{
-                    "type": "toolresult",
-                    "call": {"provider": {"call_id": "call_1"}},
-                    "name": "lookup",
-                    "content": [],
-                }],
-            }))?]),
-            "tool result for `lookup` at index 0",
-        ),
     ];
     let events = Arc::new(std::sync::Mutex::new(vec![GenerationEvent::Text(
         "unreachable".to_owned(),
     )]));
-    let model = rig_core::Model::new(Generation, Scripted(Arc::clone(&events)));
+    let model = rig_core::Model::new(scripted(), Scripted(Arc::clone(&events)));
     for (request, expected) in requests {
         let called = model.call(request.clone()).await.err();
         let streamed = model.stream(request).err();
@@ -1852,5 +1850,145 @@ async fn an_empty_turn_never_reaches_the_local_runtime()
         Some(1),
         "the runtime was never sent a request"
     );
+    Ok(())
+}
+
+/// The wire a loaded model builds names that checkpoint, by its protocol
+/// and a digest of its config and tokenizer, so two loaded models are two
+/// models to replay.
+#[test]
+fn the_wire_names_the_loaded_checkpoint() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let model = CandleModel::builder(model_data()?).build()?;
+    let wire = model.completion().wire;
+    assert_eq!(wire.model, model.model_id());
+    assert_eq!(wire.protocol, ConversationProtocol::Llama3);
+    let id = crate::loader::model_id(ConversationProtocol::Qwen3, b"{}", b"{}");
+    assert_eq!(
+        id,
+        crate::loader::model_id(ConversationProtocol::Qwen3, b"{}", b"{}")
+    );
+    assert!(
+        id.starts_with("qwen3-") && id.len() == "qwen3-".len() + 16,
+        "{id}"
+    );
+    assert_ne!(
+        id,
+        crate::loader::model_id(ConversationProtocol::Qwen3, b"{}", b"{ }")
+    );
+    Ok(())
+}
+
+/// The generation wire for a loaded model of `protocol`.
+fn local(protocol: ConversationProtocol) -> Generation {
+    Generation {
+        model: crate::loader::model_id(protocol, b"config", b"tokenizer"),
+        protocol,
+    }
+}
+
+/// `history` and a next prompt, prepared for `wire` as the driver prepares
+/// it, with `tools` declared.
+fn prepared_for(
+    wire: &Generation,
+    history: Vec<Message>,
+    tools: Vec<ToolDefinition>,
+) -> Result<CompletionRequest, ProviderError> {
+    let mut request = CompletionRequest::new("next").tools(tools);
+    request.chat_history = history;
+    request.chat_history.push(Message::user("next"));
+    <rig_core::operation::Completion as rig_core::wire::Operation>::prepare(
+        request,
+        &rig_core::wire::Wire::describe(wire),
+    )
+}
+
+/// NEW-candle-tools (round 4): another model's tool exchange reaches a
+/// Llama 3 or SmolLM2 model, whose prompts carry no tools, as text: the
+/// adapter keeps no call or result even when the request declares the
+/// tool, and the prompt renders.
+#[test]
+fn another_models_tool_history_renders_for_a_plain_protocol()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use rig_core::message::{
+        AssistantContent, AssistantMessage, Origin, StopReason, ToolCall, ToolFunction,
+        ToolResultContent,
+    };
+    let call = ToolCall::new(
+        rig_core::message::CallId::from_wire("toolu_1"),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("add")?,
+            serde_json::json!({"x": 1}),
+        ),
+    );
+    let history = vec![
+        Message::user("add"),
+        Message::Assistant(AssistantMessage {
+            content: vec![
+                AssistantContent::text("adding"),
+                AssistantContent::ToolCall(call.clone()),
+            ],
+            origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
+            stop: Some(StopReason::ToolUse),
+        }),
+        Message::User {
+            content: vec![UserContent::ToolResult(
+                call.result(vec![ToolResultContent::text("2")]),
+            )],
+        },
+        Message::assistant("it is 2"),
+    ];
+    let add = ToolDefinition {
+        name: rig_core::message::ToolName::new("add")?,
+        description: "add".to_owned(),
+        parameters: serde_json::json!({"type": "object"}),
+    };
+    for protocol in [ConversationProtocol::Llama3, ConversationProtocol::SmolLm2] {
+        let wire = local(protocol);
+        let declared = prepared_for(&wire, history.clone(), vec![add.clone()])?;
+        let structured = declared.chat_history.iter().any(|message| match message {
+            Message::Assistant(turn) => turn
+                .content
+                .iter()
+                .any(|block| matches!(block, AssistantContent::ToolCall(_))),
+            Message::User { content } => content
+                .iter()
+                .any(|part| matches!(part, UserContent::ToolResult(_))),
+            Message::System { .. } => false,
+        });
+        assert!(!structured, "{protocol:?}: {:?}", declared.chat_history);
+        let request = prepared_for(&wire, history.clone(), Vec::new())?;
+        let prompt = wire.prompt(&request)?;
+        assert!(prompt.contains("2"), "{protocol:?}: {prompt}");
+    }
+    Ok(())
+}
+
+/// NEW-candle-identity (round 4): a turn another local checkpoint produced
+/// is another model's, so its reasoning reaches a Llama 3 model as text and
+/// the prompt renders.
+#[test]
+fn another_local_models_reasoning_renders_as_text()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use rig_core::message::{AssistantContent, AssistantMessage, Origin, Reasoning, StopReason};
+    let qwen = local(ConversationProtocol::Qwen3);
+    let history = vec![
+        Message::user("q"),
+        Message::Assistant(AssistantMessage {
+            content: vec![
+                AssistantContent::Reasoning(Reasoning::new("think it through")),
+                AssistantContent::text("answer"),
+            ],
+            origin: Some(Origin::new(
+                "candle.generate",
+                "candle",
+                qwen.model.as_str(),
+            )),
+            stop: Some(StopReason::Stop),
+        }),
+    ];
+    let llama = local(ConversationProtocol::Llama3);
+    let request = prepared_for(&llama, history, Vec::new())?;
+    let prompt = llama.prompt(&request)?;
+    assert!(prompt.contains("think it through"), "{prompt}");
     Ok(())
 }

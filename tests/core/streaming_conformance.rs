@@ -11,9 +11,7 @@
 use rig::completion::CompletionRequest;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance,
-    fixtures::{
-        anthropic, cohere, gemini_rest, interactions, ollama, openai_chat, openai_responses,
-    },
+    fixtures::{anthropic, gemini_rest, interactions, openai_chat, openai_responses},
 };
 
 /// Lower fixture frames onto the byte transport a
@@ -147,7 +145,7 @@ mod chatgpt {
 }
 
 // The in-crate wire families (openai_chat, openai_responses, gemini_rest,
-// gemini_interactions, anthropic, cohere, ollama) expand their canonical
+// gemini_interactions, anthropic) expand their canonical
 // suites in `streaming_conformance_suites.rs`; the families below reuse those
 // fixtures' frames with their own pipeline drivers, through the same
 // declarative macro (with anti-tamper and capability checks). Capability rows
@@ -158,7 +156,7 @@ pub mod xai_suite {
     rig_core::streaming_conformance_suite! {
         provider: "xai",
         fixture: xai::fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 
@@ -168,7 +166,7 @@ pub mod copilot_responses_suite {
     rig_core::streaming_conformance_suite! {
         provider: "copilot",
         fixture: copilot::responses_fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 
@@ -178,7 +176,7 @@ pub mod chatgpt_suite {
     rig_core::streaming_conformance_suite! {
         provider: "chatgpt",
         fixture: chatgpt::fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 
@@ -188,7 +186,7 @@ pub mod copilot_chat_suite {
     rig_core::streaming_conformance_suite! {
         provider: "copilot",
         fixture: copilot::chat_fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, defective_known_frame, delta_less_prelude],
+        manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, delta_less_prelude],
     }
 }
 
@@ -246,8 +244,6 @@ mod grammar_guards {
     exactly_one_text_block_test!(openai_chat, openai_chat::fixture);
     exactly_one_text_block_test!(openai_responses, openai_responses::fixture);
     exactly_one_text_block_test!(gemini_rest, gemini_rest::fixture);
-    exactly_one_text_block_test!(cohere, cohere::fixture);
-    exactly_one_text_block_test!(ollama, ollama::fixture);
     exactly_one_text_block_test!(anthropic, anthropic::fixture);
     exactly_one_text_block_test!(interactions, interactions::fixture);
     exactly_one_text_block_test!(xai, super::xai::fixture);
@@ -311,10 +307,10 @@ mod grammar_guards {
     /// on `response.output_item.done` with arguments truncated mid-JSON and
     /// item status `incomplete`, then ends with `response.incomplete`. The
     /// pipeline must accept both frames (no `Corrupt` classification), end
-    /// with a `Length` terminal, and — per the settled truncation policy —
-    /// never fabricate a tool call from the partial arguments.
+    /// with a `Length` terminal, and keep the call with what its partial
+    /// arguments state, their text kept beside them.
     #[tokio::test]
-    async fn incomplete_mid_tool_call_ends_with_length_and_no_fabricated_call() {
+    async fn incomplete_mid_tool_call_ends_with_length_and_keeps_the_call() {
         use rig_core::completion::FinishReason;
         use rig_core::message::AssistantContent;
 
@@ -341,17 +337,17 @@ mod grammar_guards {
             Some(FinishReason::Length),
             "max_output_tokens incompletion must normalize to a Length finish"
         );
+        let calls: Vec<_> = drained
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
         assert!(
-            drained.tool_call_names().is_empty(),
-            "partial arguments must not fabricate a streamed tool call, got {:?}",
-            drained.tool_call_names()
-        );
-        assert!(
-            !drained
-                .choice
-                .iter()
-                .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-            "partial arguments must not fabricate an aggregated tool call"
+            matches!(calls.as_slice(), [call] if call.function.invalid_arguments.is_some()),
+            "the cut-off call is kept with its partial text: {calls:?}"
         );
     }
 
@@ -410,15 +406,15 @@ mod grammar_guards {
                 _ => None,
             })
             .collect();
-        let shape: Vec<(&str, &serde_json::Value)> = calls
+        let shape: Vec<(&str, serde_json::Value)> = calls
             .iter()
-            .map(|call| (call.function.name.as_str(), &call.function.arguments))
+            .map(|call| (call.function.name.as_str(), call.function.arguments_value()))
             .collect();
         assert_eq!(
             shape,
             vec![
-                ("get_weather", &json!({"city": "Tokyo"})),
-                ("get_time", &json!({"zone": "UTC"})),
+                ("get_weather", json!({"city": "Tokyo"})),
+                ("get_time", json!({"zone": "UTC"})),
             ],
             "two id-less indexed calls must assemble distinct and uncorrupted"
         );
@@ -439,14 +435,11 @@ mod grammar_guards {
         );
     }
 
-    /// Sibling-reasoning supersede on the wire (the corpus counterpart of the
-    /// parts.rs `deltas_then_sibling_full_blocks_keep_each_part_once` unit
-    /// test): a summary delta followed by its item's multi-part done block —
-    /// the first part supersedes the delta accumulation (no duplicate), the
-    /// remaining sibling parts append once each, in wire order.
+    /// A summary delta followed by its item's multi-part done block is one
+    /// reasoning block: the done item states the whole text, so the parts
+    /// the deltas never carried complete it, once each, as paragraphs.
     #[tokio::test]
     async fn sibling_reasoning_supersede_on_the_responses_wire() {
-        use rig_core::message::ReasoningContent;
         use serde_json::json;
 
         let driver = openai_responses::driver();
@@ -498,17 +491,11 @@ mod grammar_guards {
         let reasoning_texts: Vec<String> = drained
             .choice_reasoning()
             .iter()
-            .flat_map(|reasoning| reasoning.content.iter())
-            .map(|content| match content {
-                ReasoningContent::Summary(text) => text.clone(),
-                ReasoningContent::Text { text, .. } => text.clone(),
-                ReasoningContent::Encrypted(data) => data.clone(),
-                ReasoningContent::Redacted { data } => data.clone(),
-            })
+            .map(|reasoning| reasoning.text.clone())
             .collect();
         assert_eq!(
             reasoning_texts,
-            ["s1", "s2", "enc"],
+            ["s1\n\ns2"],
             "the first sibling supersedes the delta build; the rest append once each"
         );
     }
@@ -543,14 +530,12 @@ async fn terminal_body_content_merges_per_kind() {
 }
 
 // Pins #2258 F3 on the real buffered pipeline: an envelope-less reasoning
-// delta (ChatGPT replay; repair injects `output_index: 0`, minting the
-// `output-0` identity) followed by the item's envelope-full
-// `output_item.done` must aggregate the restated summary exactly once — the
-// done item's blocks adopt the minted per-slot identity instead of their
-// `rs_*` id, superseding the delta build rather than appending beside it.
+// delta (ChatGPT replay; repair injects `output_index: 0`) followed by the
+// item's envelope-full `output_item.done` is one reasoning block whose text
+// holds the restated summary exactly once.
 #[tokio::test]
 async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
-    use rig_core::message::{AssistantContent, ReasoningContent};
+    use rig_core::message::AssistantContent;
 
     let driver = openai_responses::buffered_driver();
     let (body, summary) = openai_responses::envelope_less_reasoning_supersede_sse_body();
@@ -563,28 +548,12 @@ async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
             _ => None,
         })
         .collect();
+    let [reasoning] = reasoning.as_slice() else {
+        panic!("deltas and their done block must collapse to one reasoning item: {reasoning:?}");
+    };
     assert_eq!(
-        reasoning.len(),
+        reasoning.text.matches(summary).count(),
         1,
-        "deltas and their done block must collapse to one reasoning item: {reasoning:?}"
-    );
-    let occurrences = reasoning
-        .iter()
-        .flat_map(|item| {
-            item.open(item.issuer())
-                .expect("reasoning opens")
-                .content
-                .iter()
-        })
-        .filter(|content| match content {
-            ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
-                text.contains(summary)
-            }
-            _ => false,
-        })
-        .count();
-    assert_eq!(
-        occurrences, 1,
         "the restated summary must supersede its deltas, not duplicate them"
     );
 }
@@ -654,131 +623,7 @@ mod interleaved_constant_id_reasoning {
         .expect("scenario should hold");
     }
 
-    /// Two calls to the SAME tool in one turn on the id-less Ollama wire
-    /// (#2258 A2): rig fabricates no identifier — not from an index and not
-    /// from the tool name — so both calls survive as distinct parts with
-    /// their own arguments and distinct internal correlation ids, and both
-    /// replay with the durable id absent. The name-as-id scheme collapsed
-    /// exactly this shape.
-    #[tokio::test]
-    async fn ollama_two_calls_to_the_same_tool_stay_distinct() {
-        use rig_core::message::AssistantContent;
-        use rig_core::streaming::StreamEvent;
-        use serde_json::json;
-
-        let ndjson = |frame: &serde_json::Value| {
-            conformance::WireInput::Bytes(bytes::Bytes::from(format!("{frame}\n")))
-        };
-        let frames = vec![
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:45.499127Z",
-                "message": {"role": "assistant", "content": "", "tool_calls": [
-                    {"function": {"name": "get_weather", "arguments": {"city": "Tokyo"}}},
-                    {"function": {"name": "get_weather", "arguments": {"city": "Paris"}}},
-                ]},
-                "done": false,
-            })),
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:47.499127Z",
-                "message": {"role": "assistant", "content": ""},
-                "done": true,
-                "done_reason": "stop",
-            })),
-        ];
-
-        let drained = ollama::fixture()
-            .driver
-            .drive(conformance::ok_chunks(frames))
-            .await
-            .expect("stream should drive");
-        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
-        let mut minted_ids = Vec::new();
-        let mut cities = Vec::new();
-        for item in drained.items.iter().flatten() {
-            if let rig::streaming::Item::Event(StreamEvent::End {
-                content: AssistantContent::ToolCall(tool_call),
-                ..
-            }) = item
-            {
-                assert_eq!(tool_call.function.name, "get_weather");
-                assert!(
-                    tool_call.id.is_local(),
-                    "id-less calls surface a minted durable id"
-                );
-                assert_eq!(tool_call.id.provider(), None, "no fabricated provider id");
-                minted_ids.push(tool_call.id.clone());
-                cities.push(tool_call.function.arguments["city"].clone());
-            }
-        }
-        assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
-        minted_ids.dedup();
-        assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
-        assert_eq!(
-            drained
-                .choice
-                .iter()
-                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
-                .count(),
-            2,
-            "both same-name calls must survive as distinct aggregated parts"
-        );
-    }
-
-    /// Two id-less calls arriving in SEPARATE records must also stay
-    /// distinct: a per-record index enumeration handed both `Minted(Tool,0)`
-    /// and one call silently swallowed the other (round-5 O3 bonus). The
-    /// per-stream minter counts across records.
-    #[tokio::test]
-    async fn ollama_id_less_calls_in_separate_records_stay_distinct() {
-        use rig_core::message::AssistantContent;
-        use serde_json::json;
-
-        let ndjson = |frame: &serde_json::Value| {
-            conformance::WireInput::Bytes(bytes::Bytes::from(format!("{frame}\n")))
-        };
-        let record = |city: &str| {
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:45.499127Z",
-                "message": {"role": "assistant", "content": "", "tool_calls": [
-                    {"function": {"name": "get_weather", "arguments": {"city": city}}},
-                ]},
-                "done": false,
-            }))
-        };
-        let frames = vec![
-            record("Tokyo"),
-            record("Paris"),
-            ndjson(&json!({
-                "model": "llama3.2",
-                "created_at": "2023-08-04T19:22:47.499127Z",
-                "message": {"role": "assistant", "content": ""},
-                "done": true,
-                "done_reason": "stop",
-            })),
-        ];
-
-        let drained = ollama::fixture()
-            .driver
-            .drive(conformance::ok_chunks(frames))
-            .await
-            .expect("stream should drive");
-        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
-        assert_eq!(
-            drained
-                .choice
-                .iter()
-                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
-                .count(),
-            2,
-            "calls from separate records must survive as distinct parts"
-        );
-    }
-
-    /// The gemini-interactions twin of the same-name pin above: two id-less
-    /// calls to one tool in a single turn stay distinct — no name-as-id
+    /// Two id-less calls to one tool in a single turn stay distinct — no name-as-id
     /// collapse, no fabricated durable id.
     #[tokio::test]
     async fn interactions_two_id_less_calls_to_the_same_tool_stay_distinct() {

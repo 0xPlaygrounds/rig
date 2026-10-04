@@ -12,9 +12,11 @@
 //! # }
 //! ```
 
+mod auth;
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod rest;
 pub mod streaming;
 
 pub use client::{GeminiGrpc, GeminiGrpcError};
@@ -37,9 +39,3 @@ pub use proto::{
     Content, EmbedContentRequest, EmbedContentResponse, GenerateContentRequest,
     GenerateContentResponse, Part, generative_service_client::GenerativeServiceClient,
 };
-
-impl From<&proto::GenerateContentResponse> for rig_core::completion::Usage {
-    fn from(response: &proto::GenerateContentResponse) -> Self {
-        completion::map_usage(response.usage_metadata.as_ref())
-    }
-}

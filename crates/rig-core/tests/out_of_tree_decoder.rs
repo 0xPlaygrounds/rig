@@ -1,19 +1,17 @@
 //! A completion decoder written outside `rig-core`, against the public
-//! writer only: it keeps its own call bookkeeping, holds branded part
-//! handles across frames, and opens a call once both its id and its name
-//! have arrived. Two calls interleave by wire index, and the first call's
-//! id arrives after its arguments.
+//! writer only: it writes each call under the vendor's own wire index, and
+//! the writer opens it at its first fragment and closes it with the id and
+//! name that arrived. Two calls interleave by wire index, and the first
+//! call's id arrives after its arguments.
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-use std::collections::BTreeMap;
-
 use futures::{StreamExt, stream};
-use rig_core::completion::{CompletionRequest, FinishReason, Usage};
+use rig_core::completion::{CompletionRequest, FinishReason, ReplayTarget, Usage};
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
-use rig_core::message::{AssistantContent, CallId, ToolName};
-use rig_core::operation::{CallPart, Completion, Finish, TextPart};
+use rig_core::message::{Api, AssistantContent};
+use rig_core::operation::{Block, CallFragment, Completion, Finish};
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 
@@ -34,21 +32,9 @@ enum Frame {
 #[derive(Debug, Clone, PartialEq)]
 struct Vendor;
 
-/// A call the decoder has seen part of: buffered until its id and name
-/// are both known, then open on the reply.
-enum Call<'id> {
-    Buffered {
-        id: Option<&'static str>,
-        name: Option<&'static str>,
-        arguments: String,
-    },
-    Open(CallPart<'id>),
-}
-
 #[derive(Default)]
 struct VendorDecoder<'id> {
-    text: Option<TextPart<'id>>,
-    calls: BTreeMap<u32, Call<'id>>,
+    brand: std::marker::PhantomData<fn(&'id ()) -> &'id ()>,
 }
 
 impl<'id> Decoder<'id, Completion, Frame> for VendorDecoder<'id> {
@@ -65,49 +51,24 @@ impl<'id> Decoder<'id, Completion, Frame> for VendorDecoder<'id> {
     ) -> Result<Flow, ProviderError> {
         match frame {
             Frame::Text(text) => {
-                let part = self.text.get_or_insert_with(|| out.text());
-                out.push_text(part, text);
+                out.run(Block::Text, text)?;
             }
             Frame::Call {
                 index,
                 id,
                 name,
                 arguments,
-            } => {
-                let call = self.calls.entry(index).or_insert(Call::Buffered {
-                    id: None,
-                    name: None,
-                    arguments: String::new(),
-                });
-                match call {
-                    Call::Open(part) => out.push_arguments(part, arguments),
-                    Call::Buffered {
-                        id: seen_id,
-                        name: seen_name,
-                        arguments: buffered,
-                    } => {
-                        *seen_id = seen_id.or(id);
-                        *seen_name = seen_name.or(name);
-                        buffered.push_str(arguments);
-                        if let (Some(id), Some(name)) = (*seen_id, *seen_name) {
-                            let name = ToolName::new(name)
-                                .map_err(|error| ProviderError::Provider(error.to_string()))?;
-                            let part = out.call(CallId::from_wire(id), name)?;
-                            out.push_arguments(&part, buffered);
-                            *call = Call::Open(part);
-                        }
-                    }
-                }
-            }
+            } => out.fragment(
+                Some(index as usize),
+                CallFragment {
+                    id,
+                    name,
+                    arguments: Some(arguments),
+                },
+            )?,
             Frame::Done => {
-                if let Some(part) = self.text.take() {
-                    out.close_text(part);
-                }
-                for (_, call) in std::mem::take(&mut self.calls) {
-                    if let Call::Open(part) = call {
-                        out.close_call(part)?;
-                    }
-                }
+                out.end_run()?;
+                out.finish_open()?;
                 return Ok(out.end(Finish {
                     usage: Usage::default(),
                     reason: Some(FinishReason::ToolCalls),
@@ -119,6 +80,24 @@ impl<'id> Decoder<'id, Completion, Frame> for VendorDecoder<'id> {
     }
 }
 
+impl ReplayTarget for Vendor {
+    fn api(&self) -> Api {
+        Api::from_static("vendor.chat")
+    }
+
+    fn provider(&self) -> &str {
+        "vendor"
+    }
+
+    fn model(&self) -> &str {
+        ""
+    }
+
+    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
+        rig_core::completion::Accepts::ALL
+    }
+}
+
 impl Wire for Vendor {
     type Op = Completion;
     type Payload = CompletionRequest;
@@ -126,7 +105,7 @@ impl Wire for Vendor {
     type Decoder<'id> = VendorDecoder<'id>;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new("vendor")
+        Descriptor::new("vendor").replay(self)
     }
 
     fn encode(
@@ -205,7 +184,7 @@ fn calls(choice: &[AssistantContent]) -> Vec<(String, String, serde_json::Value)
             AssistantContent::ToolCall(call) => Some((
                 call.id.to_string(),
                 call.function.name.to_string(),
-                call.function.arguments.clone(),
+                call.function.arguments_value(),
             )),
             _ => None,
         })

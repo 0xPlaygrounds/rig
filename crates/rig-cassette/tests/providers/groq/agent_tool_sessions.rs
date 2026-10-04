@@ -400,7 +400,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<HistoryToolCall> {
         .iter()
         .enumerate()
         .flat_map(|(message_index, message)| match message {
-            Message::Assistant { content, .. } => content
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
                 .iter()
                 .filter_map(move |content| match content {
                     AssistantContent::ToolCall(tool_call) => Some(HistoryToolCall {
@@ -458,8 +458,7 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
 
 /// The Groq wire metadata the normalized response deliberately does not carry.
 ///
-/// The typed view of the reply document is local to the helper that reads it,
-/// so the fields the parity assertions need are captured out of it first.
+/// The fields the parity assertions need are read out of the reply document.
 struct RawResponseMetadata {
     id: String,
     model: String,
@@ -469,17 +468,18 @@ struct RawResponseMetadata {
 }
 
 impl RawResponseMetadata {
-    fn capture(raw: &openai::CompletionResponse) -> Self {
+    fn capture(raw: &serde_json::Value) -> Self {
         Self {
-            id: raw.id.clone(),
-            model: raw.model.clone(),
-            system_fingerprint: raw.system_fingerprint.clone(),
-            finish_reasons: raw
-                .choices
-                .iter()
-                .map(|choice| choice.finish_reason.clone())
+            id: raw["id"].as_str().unwrap_or_default().to_owned(),
+            model: raw["model"].as_str().unwrap_or_default().to_owned(),
+            system_fingerprint: raw["system_fingerprint"].as_str().map(str::to_owned),
+            finish_reasons: raw["choices"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|choice| choice["finish_reason"].as_str().map(str::to_owned))
                 .collect(),
-            usage: raw.usage,
+            usage: serde_json::from_value(raw["usage"].clone()).ok(),
         }
     }
 }
@@ -501,9 +501,7 @@ async fn raw_and_normalized_completion<
     request: rig::completion::CompletionRequest,
 ) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
     let normalized = model.call(request).await?;
-    let raw = openai::CompletionResponse::deserialize(&normalized.raw)
-        .map_err(|error| anyhow::anyhow!("captured raw is the shared OpenAI reply: {error}"))?;
-    let metadata = RawResponseMetadata::capture(&raw);
+    let metadata = RawResponseMetadata::capture(&normalized.raw);
     Ok((metadata, normalized))
 }
 
@@ -622,7 +620,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                     content,
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.function.name == AlphaSignal::NAME
-                            && tool_call.function.arguments == json!({})
+                            && tool_call.function.arguments_value() == json!({})
                 )),
                 "auto tool choice should allow lookup_harbor_label"
             );
@@ -638,7 +636,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                     content,
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.function.name == AlphaSignal::NAME
-                            && tool_call.function.arguments == json!({})
+                            && tool_call.function.arguments_value() == json!({})
                 )),
                 "required tool choice should force lookup_harbor_label"
             );

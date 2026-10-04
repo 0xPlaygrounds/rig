@@ -140,8 +140,10 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     );
     assert_eq!(
         body["systemInstruction"],
-        serde_json::json!({"role": "user", "parts": [{"text": "you are terse"}]})
+        serde_json::json!({"role": "model", "parts": [{"text": "you are terse"}]}),
+        "the system instruction is the REST wire's, transcoded"
     );
+
     assert_eq!(
         body["tools"],
         serde_json::json!([{
@@ -175,7 +177,7 @@ async fn unary_completion_converts_the_request_and_maps_the_response() {
     };
     assert_eq!(call.function.name, "lookup_weather");
     assert_eq!(
-        call.function.arguments,
+        call.function.arguments_value(),
         serde_json::json!({"city": "Lisbon"})
     );
 }

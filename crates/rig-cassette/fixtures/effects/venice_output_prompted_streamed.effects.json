@@ -74,15 +74,18 @@
             "output_tokens": 50,
             "total_tokens": 1100
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RsxiMLN2GLO2KyAG13F2KkgP"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1050,
               "completion_tokens": 50,
+              "prompt_tokens": 1050,
               "total_tokens": 1100
             },
             "finish_reason": "stop",
@@ -480,7 +483,12 @@
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      }
     }
   ]
 }

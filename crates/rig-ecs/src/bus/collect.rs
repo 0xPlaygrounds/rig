@@ -161,7 +161,11 @@ pub fn collect_streams(
                         }
                         let position = streamed.events.len() + streamed.errors.len();
                         match item {
-                            // The response is the outcome, not an item.
+                            // The origin and the response are not items.
+                            Ok(Relayed::Origin(origin)) => {
+                                streamed.origin = Some(origin);
+                                continue;
+                            }
                             Ok(Relayed::Done(_)) => continue,
                             Ok(Relayed::Item(item)) => {
                                 if let Item::Event(StreamEvent::Text { text, .. }) = &item {

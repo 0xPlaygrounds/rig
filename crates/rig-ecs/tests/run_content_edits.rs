@@ -298,6 +298,7 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
     .unwrap();
     let original = MessageParts::User {
         content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire("call"),
             name: rig_core::message::ToolName::new("tool").expect("tool name"),
             content: vec![
@@ -331,6 +332,7 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
     changed.text = "changed".into();
     let expected = MessageParts::User {
         content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: CallId::from_wire("call"),
             name: rig_core::message::ToolName::new("tool").expect("tool name"),
             content: vec![

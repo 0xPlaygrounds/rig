@@ -147,7 +147,7 @@ fn calls(choice: &[AssistantContent]) -> Vec<Value> {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::ToolCall(call) => Some(call.function.arguments.clone()),
+            AssistantContent::ToolCall(call) => Some(call.function.arguments_value()),
             _ => None,
         })
         .collect()
@@ -222,7 +222,9 @@ async fn run_model(client: OpenAiModels, cell: Cell) -> Observation {
                         content: AssistantContent::ToolCall(tool_call),
                         ..
                     })) => {
-                        observation.arguments.push(tool_call.function.arguments);
+                        observation
+                            .arguments
+                            .push(tool_call.function.arguments_value());
                     }
                     Ok(_) => {}
                     Err(error) => observation.errors.push(error.to_string()),
@@ -430,9 +432,20 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
                 Some(FinishReason::Length),
                 "{scenario}"
             );
+            // A cut call is kept with what its arguments state, as pi's
+            // tolerant parse reads them; the agent never runs it.
+            assert_eq!(
+                observation.arguments.len(),
+                1,
+                "{scenario}: the cut call is kept"
+            );
+            let summary = observation.arguments[0]["summary"]
+                .as_str()
+                .unwrap_or_default();
             assert!(
-                observation.arguments.is_empty(),
-                "{scenario}: partial call is dropped"
+                PROMPT.starts_with(summary) && summary != PROMPT,
+                "{scenario}: the cut call states a prefix: {:?}",
+                observation.arguments
             );
         }
         Surface::Agent if complete => assert_eq!(

@@ -22,9 +22,6 @@ pub struct CompletionCall {
     /// A counter the provider did not report is `None`; a reported zero is
     /// `Some(0)`. Every counter is `None` when no usage was reported at all.
     pub usage: Usage,
-    /// Provider-assigned assistant message ID for this call, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
     /// Provider-assigned response-scoped ID for this call, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
@@ -49,7 +46,6 @@ impl CompletionCall {
         Self {
             call_index,
             usage,
-            message_id: None,
             response_id: None,
             provider_request_id: None,
             finish_reason: None,
@@ -59,7 +55,6 @@ impl CompletionCall {
 
     /// Attach the response identity metadata this call's attempt reported.
     pub fn with_identity(mut self, identity: ResponseIdentity) -> Self {
-        self.message_id = identity.message_id;
         self.response_id = identity.response_id;
         self.provider_request_id = identity.provider_request_id;
         self
@@ -74,7 +69,6 @@ impl CompletionCall {
     /// This call's identity metadata as one [`ResponseIdentity`] carrier.
     pub fn identity(&self) -> ResponseIdentity {
         ResponseIdentity {
-            message_id: self.message_id.clone(),
             response_id: self.response_id.clone(),
             provider_request_id: self.provider_request_id.clone(),
         }

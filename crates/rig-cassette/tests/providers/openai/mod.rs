@@ -2,6 +2,8 @@ mod support;
 
 mod regressions;
 
+// Only the Chat Completions modules run on the Chat family's branch; the
+// Responses family owns the gated rest.
 mod cassette {
     mod additional_params_tools;
     mod adversarial_matrix;

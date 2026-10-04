@@ -192,11 +192,16 @@ pub trait Operation: Sized + 'static {
     /// [`Call::instrument`].
     fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold;
 
-    /// Reject a request no provider of this operation can answer. The
-    /// driver calls it before the request is encoded, so a rejected request
-    /// reaches no wire or transport. Accepts every request by default.
-    fn validate(_request: &Self::Request) -> Result<(), ProviderError> {
-        Ok(())
+    /// Shape `request` for the wire `wire` describes, or reject a request
+    /// no provider of this operation can answer. The driver calls it before
+    /// the request is encoded, so a rejected request reaches no wire or
+    /// transport. Passes every request through by default.
+    fn prepare(
+        request: Self::Request,
+        wire: &Descriptor<'_>,
+    ) -> Result<Self::Request, ProviderError> {
+        let _ = wire;
+        Ok(request)
     }
 }
 
@@ -443,6 +448,9 @@ impl Capabilities {
 /// What a wire says about itself: plain data, read before every call.
 #[derive(Debug, Clone)]
 pub struct Descriptor<'a> {
+    /// The model replay shapes a completion history for. Every completion
+    /// wire names one; other operations leave it `None`.
+    pub replay: Option<&'a dyn crate::completion::ReplayTarget>,
     /// The provider descriptor name (`"anthropic"`), as records and
     /// telemetry name it.
     pub name: &'a str,
@@ -460,11 +468,18 @@ impl<'a> Descriptor<'a> {
     /// A wire named `name`, addressing no model, with default capabilities.
     pub fn new(name: &'a str) -> Self {
         Self {
+            replay: None,
             name,
             model: None,
             capabilities: Capabilities::default(),
             telemetry: None,
         }
+    }
+
+    /// The model replay shapes a completion history for.
+    pub fn replay(mut self, target: &'a dyn crate::completion::ReplayTarget) -> Self {
+        self.replay = Some(target);
+        self
     }
 
     /// The model id the wire addresses, when it addresses one.
@@ -535,30 +550,18 @@ impl<T> WireEvent<T> {
     }
 }
 
-/// Where a decoder writes one reply. The `'id` brand ties it, and every
-/// part handle it hands out, to that one reply: a handle cannot be used
-/// with another reply's writer or kept past its own.
+/// Where a decoder writes one reply. The `'id` brand ties it to that one
+/// reply: a writer cannot be kept past the decode step that received it.
 ///
 /// ```compile_fail
 /// use rig_core::operation::Completion;
 /// use rig_core::wire::Out;
 ///
-/// // A text part opened on one reply cannot grow on another.
-/// fn cross<'a, 'b>(a: &mut Out<'a, Completion>, b: &mut Out<'b, Completion>) {
-///     let part = a.text();
-///     b.push_text(&part, "x");
-/// }
-/// ```
+/// // A writer cannot be stashed to write into the reply later.
+/// struct Stash(Option<Out<'static, Completion>>);
 ///
-/// ```compile_fail
-/// use rig_core::operation::{Completion, TextPart};
-/// use rig_core::wire::Out;
-///
-/// // A handle cannot outlive its reply to be used on a later one.
-/// struct Stash(Option<TextPart<'static>>);
-///
-/// fn keep<'id>(stash: &mut Stash, out: &mut Out<'id, Completion>) {
-///     stash.0 = Some(out.text());
+/// fn keep<'id>(stash: &mut Stash, out: Out<'id, Completion>) {
+///     stash.0 = Some(out);
 /// }
 /// ```
 pub struct Out<'id, Op: Operation> {

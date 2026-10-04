@@ -62,15 +62,17 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
 
     while let Some(item) = stream.next().await {
         if let rig::streaming::Item::Event(StreamEvent::End {
-            content: AssistantContent::Reasoning(reasoning),
+            content: content @ AssistantContent::Reasoning(_),
             ..
         }) = item.expect("adaptive-thinking Bedrock stream item should succeed")
         {
             reasoning_chunks += 1;
-            let reasoning = reasoning.open(reasoning.issuer()).expect("reasoning opens");
-            if reasoning.first_signature().is_some() {
+            let signed = content
+                .native_item()
+                .is_some_and(|item| item.get("signature").is_some());
+            if signed {
                 signature_chunks += 1;
-                if reasoning.display_text().is_empty() {
+                if matches!(&content, AssistantContent::Reasoning(r) if r.text.is_empty()) {
                     signature_only_chunks += 1;
                 }
             }

@@ -132,9 +132,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-bbe237d563c1536a"
-                }
+                "provider": "chatcmpl-tool-bbe237d563c1536a"
               },
               "function": {
                 "name": "add",
@@ -143,8 +141,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "chatcmpl-tool-bbe237d563c1536a",
+                  "type": "function"
+                },
+                "fingerprint": "55c540bfc311c4f6"
+              }
             }
           ],
           "usage": {
@@ -154,11 +161,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_41bc7ef2-ec5b-4c26-9d6d-875fa12a7c67",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "resp_41bc7ef2-ec5b-4c26-9d6d-875fa12a7c67"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "choices": [
               {
@@ -259,14 +269,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-bbe237d563c1536a"
-                    }
+                    "provider": "chatcmpl-tool-bbe237d563c1536a"
                   },
                   "function": {
                     "name": "add",
@@ -275,10 +282,27 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "chatcmpl-tool-bbe237d563c1536a",
+                      "type": "function"
+                    },
+                    "fingerprint": "55c540bfc311c4f6"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-9B",
+                "response_model": "Qwen/Qwen3.5-9B",
+                "response_id": "resp_41bc7ef2-ec5b-4c26-9d6d-875fa12a7c67"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -286,9 +310,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-bbe237d563c1536a"
-                    }
+                    "provider": "chatcmpl-tool-bbe237d563c1536a"
                   },
                   "name": "add",
                   "content": [
@@ -351,11 +373,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_066acdc7-3c1b-4e67-8416-4cb28f331cfa",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_066acdc7-3c1b-4e67-8416-4cb28f331cfa"
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {

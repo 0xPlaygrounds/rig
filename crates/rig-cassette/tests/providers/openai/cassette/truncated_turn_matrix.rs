@@ -69,15 +69,14 @@
 
 use rig::completion::FinishReason;
 use rig::providers::openai;
-use rig::providers::openai::completion::{
-    AssistantContent, Choice, CompletionResponse as ChatCompletionResponse, Message as ChatMessage,
-};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
 use super::super::support::with_openai_truncation_cassette;
 use crate::cassettes;
-use crate::support::{Adder, assistant_text_response, collect_text_and_terminal};
+use crate::support::Adder;
+use crate::support::{assistant_text_response, collect_text_and_terminal};
 use rig::completion::CompletionRequest;
 
 /// OpenAI's documented floor for the field, and far below what any reasoning
@@ -86,20 +85,10 @@ use rig::completion::CompletionRequest;
 const TINY_CAP: u64 = 16;
 const LONG_PROMPT: &str = "Write a 500 word essay about maple trees.";
 
-/// The assistant text the provider's own choice carried, matched off the
-/// wire's content enum — a contentless choice is the shape this matrix is
-/// about.
-fn provider_choice_text(choice: &Choice) -> Option<String> {
-    let ChatMessage::Assistant { content, .. } = &choice.message else {
-        return None;
-    };
-    let text: String = content
-        .iter()
-        .filter_map(|block| match block {
-            AssistantContent::Text { text } => Some(text.as_str()),
-            AssistantContent::Refusal { .. } => None,
-        })
-        .collect();
+/// The assistant text the provider's reply carried; a contentless choice is
+/// the shape this matrix is about.
+fn provider_choice_text(reply: &Value) -> Option<String> {
+    let text = crate::raw_capture::chat::native_text(reply);
     (!text.is_empty()).then_some(text)
 }
 
@@ -219,17 +208,12 @@ async fn chat_blocking_raw_and_normalized_agree() {
             // of `CompletionResponse::raw`, and the normalized response beside
             // it.
             let response = model.call(request).await.expect("raw turn");
-            let reply = ChatCompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized openai::completion::CompletionResponse");
-
+            let reply = &response.raw;
             assert_eq!(
-                reply
-                    .choices
-                    .first()
-                    .map(|choice| choice.finish_reason.as_str()),
+                reply["choices"][0]["finish_reason"].as_str(),
                 Some("length")
             );
-            assert_eq!(reply.choices.first().and_then(provider_choice_text), None);
+            assert_eq!(provider_choice_text(reply), None);
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
     )

@@ -92,7 +92,10 @@
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": null,
+            "stop": null
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 6,

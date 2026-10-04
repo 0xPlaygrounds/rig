@@ -10,6 +10,14 @@
         }
       },
       {
+        "batch": 8,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 9,
         "id": 0,
         "kind": {
@@ -42,6 +50,14 @@
         }
       },
       {
+        "batch": 13,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
         "batch": 14,
         "id": 0,
         "kind": {
@@ -59,6 +75,14 @@
       },
       {
         "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -90,7 +114,7 @@
         }
       },
       {
-        "batch": 22,
+        "batch": 21,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -109,43 +133,11 @@
         "batch": 24,
         "id": 0,
         "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 26,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 27,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 30,
-        "id": 0,
-        "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 35,
+        "batch": 30,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -153,7 +145,47 @@
         }
       },
       {
-        "batch": 37,
+        "batch": 31,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 34,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 35,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 36,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -193,6 +225,14 @@
         }
       },
       {
+        "batch": 42,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 43,
         "id": 1,
         "kind": {
@@ -209,7 +249,7 @@
         }
       },
       {
-        "batch": 46,
+        "batch": 45,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -249,7 +289,7 @@
         }
       },
       {
-        "batch": 52,
+        "batch": 51,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -273,6 +313,14 @@
         }
       },
       {
+        "batch": 55,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 56,
         "id": 1,
         "kind": {
@@ -289,7 +337,7 @@
         }
       },
       {
-        "batch": 58,
+        "batch": 59,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -321,6 +369,14 @@
         }
       },
       {
+        "batch": 63,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 64,
         "id": 1,
         "kind": {
@@ -345,14 +401,6 @@
         }
       },
       {
-        "batch": 67,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 68,
         "id": 1,
         "kind": {
@@ -369,30 +417,6 @@
         }
       },
       {
-        "batch": 71,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 72,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 73,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 75,
         "id": 1,
         "kind": {
@@ -401,47 +425,7 @@
         }
       },
       {
-        "batch": 76,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 77,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 78,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 79,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 81,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 82,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -540,23 +524,30 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9"
+          },
           "provider_request_id": "req_657f280864444acab2ddf9574d4220ec",
           "finish_reason": "length",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "usage": {
-              "prompt_tokens": 30,
               "completion_tokens": 16,
-              "total_tokens": 46,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 30,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 46
             },
             "finish_reason": "length",
             "response_id": "chatcmpl-ERDE4MLHHEJBtjFD02190jPWuwkb9",
@@ -720,6 +711,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4o-mini"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -771,23 +767,30 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW"
+          },
           "provider_request_id": "req_7fd0e6f8118342719947fd6475c3733b",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "usage": {
-              "prompt_tokens": 30,
               "completion_tokens": 38,
-              "total_tokens": 68,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 30,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 68
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-ERDE4Pk5sG8aCffFCQiMDzW8c1RIW",
@@ -1127,6 +1130,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4o-mini"
+      },
       "scope": "parity/run#0"
     }
   ]

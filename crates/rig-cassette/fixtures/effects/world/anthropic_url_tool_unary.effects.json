@@ -146,14 +146,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll calculate the sum right away!"
+              "text": "Let me calculate that for you!",
+              "native": {
+                "item": {
+                  "text": "Let me calculate that for you!",
+                  "type": "text"
+                },
+                "fingerprint": "90a0d7f64eb170cc"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_01UUAPHWA7wWPDrx8zYvHxru"
-                }
+                "provider": "toolu_01GZ9wLSRs2ahhMupT79yQFx"
               },
               "function": {
                 "name": "add",
@@ -162,35 +167,51 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01GZ9wLSRs2ahhMupT79yQFx",
+                  "input": {
+                    "x": 17,
+                    "y": 25
+                  },
+                  "name": "add",
+                  "type": "tool_use"
+                },
+                "fingerprint": "3b5fb11b3d7e5c9f"
+              }
             }
           ],
           "usage": {
             "input_tokens": 660,
-            "output_tokens": 77,
-            "total_tokens": 737,
+            "output_tokens": 76,
+            "total_tokens": 736,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZqnJr9QvfiahSNRUq",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcZqJ3AiurJtMb3Pq7b",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfchxH7Kj5kFtRwyGYq1e"
+          },
+          "provider_request_id": "req_011CfchxGnUEPzesubt6AAuM",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "I'll calculate the sum right away!",
+                "text": "Let me calculate that for you!",
                 "type": "text"
               },
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01UUAPHWA7wWPDrx8zYvHxru",
+                "id": "toolu_01GZ9wLSRs2ahhMupT79yQFx",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -199,7 +220,8 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_011CfLcZqnJr9QvfiahSNRUq",
+            "diagnostics": null,
+            "id": "msg_011CfchxH7Kj5kFtRwyGYq1e",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -215,7 +237,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 660,
-              "output_tokens": 77,
+              "output_tokens": 76,
               "service_tier": "standard"
             }
           }
@@ -280,18 +302,22 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZqnJr9QvfiahSNRUq",
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll calculate the sum right away!"
+                  "text": "Let me calculate that for you!",
+                  "native": {
+                    "item": {
+                      "text": "Let me calculate that for you!",
+                      "type": "text"
+                    },
+                    "fingerprint": "90a0d7f64eb170cc"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_01UUAPHWA7wWPDrx8zYvHxru"
-                    }
+                    "provider": "toolu_01GZ9wLSRs2ahhMupT79yQFx"
                   },
                   "function": {
                     "name": "add",
@@ -300,10 +326,31 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01GZ9wLSRs2ahhMupT79yQFx",
+                      "input": {
+                        "x": 17,
+                        "y": 25
+                      },
+                      "name": "add",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": "3b5fb11b3d7e5c9f"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfchxH7Kj5kFtRwyGYq1e"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -311,9 +358,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_01UUAPHWA7wWPDrx8zYvHxru"
-                    }
+                    "provider": "toolu_01GZ9wLSRs2ahhMupT79yQFx"
                   },
                   "name": "add",
                   "content": [
@@ -364,31 +409,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color is **red**, and 17 + 25 = **42**."
+              "text": "The dominant color is **red**, and 17 + 25 = **42**.",
+              "native": {
+                "item": {
+                  "text": "The dominant color is **red**, and 17 + 25 = **42**.",
+                  "type": "text"
+                },
+                "fingerprint": "4edfbd8da7216efe"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 750,
-            "output_tokens": 25,
-            "total_tokens": 775,
+            "input_tokens": 749,
+            "output_tokens": 22,
+            "total_tokens": 771,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLca1TDvGV3pr1dieqUb",
-          "response_id": null,
-          "provider_request_id": "req_011CfLca11BhDAEfEGG2jvoq",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfchxQnBfhwyK5rkCt9zr"
+          },
+          "provider_request_id": "req_011CfchxQNdBHskiCzgSPU22",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "The dominant non-background color is **red**, and 17 + 25 = **42**.",
+                "text": "The dominant color is **red**, and 17 + 25 = **42**.",
                 "type": "text"
               }
             ],
-            "id": "msg_011CfLca1TDvGV3pr1dieqUb",
+            "diagnostics": null,
+            "id": "msg_011CfchxQnBfhwyK5rkCt9zr",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -403,8 +459,8 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 750,
-              "output_tokens": 25,
+              "input_tokens": 749,
+              "output_tokens": 22,
               "service_tier": "standard"
             }
           }

@@ -141,9 +141,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_7bb42296093f4b45b0a7665f"
-                }
+                "provider": "call_bd6f1457695c4b74a2f8ec79"
               },
               "function": {
                 "name": "add",
@@ -152,22 +150,34 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_bd6f1457695c4b74a2f8ec79",
+                  "type": "function"
+                },
+                "fingerprint": "1062774fe3721187"
+              }
             }
           ],
           "usage": {
             "input_tokens": 346,
-            "output_tokens": 37,
-            "total_tokens": 383,
+            "output_tokens": 36,
+            "total_tokens": 382,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_1239e856-3f1c-41f2-9d0a-ea17c01fe5f9",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_8d3f49cf-9dcb-4e21-b481-e48f0be2289a"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -182,7 +192,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_7bb42296093f4b45b0a7665f",
+                      "id": "call_bd6f1457695c4b74a2f8ec79",
                       "type": "function"
                     }
                   ]
@@ -190,7 +200,7 @@
               }
             ],
             "created": 0,
-            "id": "resp_1239e856-3f1c-41f2-9d0a-ea17c01fe5f9",
+            "id": "resp_8d3f49cf-9dcb-4e21-b481-e48f0be2289a",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
             "usage": {
@@ -201,7 +211,7 @@
               },
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
-              "completion_tokens": 37,
+              "completion_tokens": 36,
               "completion_tokens_details": {
                 "audio_tokens": 0,
                 "image_tokens": 0,
@@ -214,7 +224,7 @@
                 "cached_tokens": 0,
                 "video_tokens": 0
               },
-              "total_tokens": 383
+              "total_tokens": 382
             }
           }
         }
@@ -270,14 +280,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_7bb42296093f4b45b0a7665f"
-                    }
+                    "provider": "call_bd6f1457695c4b74a2f8ec79"
                   },
                   "function": {
                     "name": "add",
@@ -286,10 +293,27 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_bd6f1457695c4b74a2f8ec79",
+                      "type": "function"
+                    },
+                    "fingerprint": "1062774fe3721187"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_8d3f49cf-9dcb-4e21-b481-e48f0be2289a"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -297,9 +321,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_7bb42296093f4b45b0a7665f"
-                    }
+                    "provider": "call_bd6f1457695c4b74a2f8ec79"
                   },
                   "name": "add",
                   "content": [
@@ -362,11 +384,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_6f576c71-2953-492f-9293-004a4d988cbd",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_35054461-23d4-480b-83cd-5f1f61f8f790"
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -380,9 +405,10 @@
               }
             ],
             "created": 0,
-            "id": "resp_6f576c71-2953-492f-9293-004a4d988cbd",
+            "id": "resp_35054461-23d4-480b-83cd-5f1f61f8f790",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "object": "chat.completion",
+            "service_tier": "default",
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,

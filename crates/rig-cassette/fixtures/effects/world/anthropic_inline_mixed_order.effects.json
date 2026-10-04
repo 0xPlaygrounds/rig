@@ -99,7 +99,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color of the image is bright red."
+              "text": "The dominant non-background color of the image is bright red.",
+              "native": {
+                "item": {
+                  "text": "The dominant non-background color of the image is bright red.",
+                  "type": "text"
+                },
+                "fingerprint": "983f1e993ab48f5d"
+              }
             }
           ],
           "usage": {
@@ -109,12 +116,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZZfhFjHqodoLFSQZv",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcZZfhFjHqodoLFSQZv"
+          },
           "provider_request_id": "req_011CfLcZZ9S5EbXVVFRAxtXX",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

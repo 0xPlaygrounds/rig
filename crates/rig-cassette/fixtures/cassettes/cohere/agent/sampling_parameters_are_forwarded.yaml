@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"frequency_penalty":0.1,"k":20,"max_tokens":24,"messages":[{"content":[{"text":"Reply with one short sentence about rain.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","p":0.8,"presence_penalty":0.1,"seed":11,"temperature":0.2}'
+  body: '{"frequency_penalty":0.1,"max_tokens":24,"messages":[{"content":"Reply with one short sentence about rain.","role":"user"}],"model":"command-a-03-2025","seed":11,"temperature":0.2,"top_p":0.8}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"341e246d-b471-479a-b48a-9362b635cf95","message":{"content":[{"text":"Rain is nature''s way of watering the earth.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":8,"output_tokens":10},"cached_tokens":448,"tokens":{"input_tokens":503,"output_tokens":13}}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Rain is nature''s way of watering the earth and refreshing the air.","role":"assistant"}}],"created":0,"id":"8bf2f7d7-86e3-4e85-ac49-fdb981488d8b","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":14,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":8,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":22}}'

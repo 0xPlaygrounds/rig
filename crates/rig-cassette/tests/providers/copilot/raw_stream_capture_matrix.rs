@@ -49,15 +49,14 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_stream_capture_matrix/`.
 
 use rig::providers::copilot;
-use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
-use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-use serde::Deserialize;
 use serde_json::Value;
 
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
+use crate::cassettes::CassetteMode;
+use crate::cassettes::{recorded_interaction_bodies, recorded_sse_json_frames};
 use crate::copilot::with_copilot_cassette_result;
-use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat, responses};
+use crate::raw_capture::chat;
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, responses};
 use crate::support::Observed;
 use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
@@ -221,11 +220,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(raw)
-        .expect("chat-route raw must read back as the chat terminal record");
-    let typed_params = typed
-        .additional_params
-        .expect("typed terminal must carry additional_params");
+    let typed_params = &raw["additional_params"];
     assert_eq!(
         typed_params
             .get("copilot_usage")
@@ -301,7 +296,5 @@ async fn responses_stream_raw_exposes_terminal_status() {
     );
     assert_eq!(raw["status"], recorded_terminal["status"]);
     assert_eq!(raw["usage"], recorded_terminal["usage"]);
-    let typed: responses_api::CompletionResponse =
-        serde_json::from_value(raw.clone()).expect("raw must deserialize");
-    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
+    assert_eq!(raw["status"], "completed");
 }

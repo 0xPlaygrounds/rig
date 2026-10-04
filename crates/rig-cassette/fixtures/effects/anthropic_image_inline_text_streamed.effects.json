@@ -74,7 +74,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color is **bright red**."
+              "text": "The dominant non-background color is **bright red**.",
+              "native": {
+                "item": {
+                  "text": "The dominant non-background color is **bright red**.",
+                  "type": "text"
+                },
+                "fingerprint": "74399dee01316488"
+              }
             }
           ],
           "usage": {
@@ -84,22 +91,25 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcZbYoMDLMvbhfVdRc2"
+          },
           "provider_request_id": "req_011CfLcZb6m68YgtafDwZxyM",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "usage": {
               "output_tokens": 14,
               "input_tokens": 47,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfLcZbYoMDLMvbhfVdRc2",
@@ -163,11 +173,23 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The dominant non-background color is **bright red**."
+              "text": "The dominant non-background color is **bright red**.",
+              "native": {
+                "item": {
+                  "text": "The dominant non-background color is **bright red**.",
+                  "type": "text"
+                },
+                "fingerprint": "74399dee01316488"
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      }
     }
   ]
 }

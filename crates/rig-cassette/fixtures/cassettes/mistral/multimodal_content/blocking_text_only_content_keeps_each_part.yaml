@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Answer in one short sentence.","type":"text"}],"role":"system"},{"content":[{"text":"Name the capital of France.","type":"text"},{"text":" Answer with one word.","type":"text"}],"role":"user"}],"model":"mistral-small-latest","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a1032b-5ec4-7e52-b88c-c226867ebd0a
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Paris","role":"assistant","tool_calls":null}}],"created":0,"id":"80faf0fab2e74f9994c93d81a413fcef","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":2,"prompt_tokens":34,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":36}}'

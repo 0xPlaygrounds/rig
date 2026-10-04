@@ -26,7 +26,7 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
             rig_core::completion::CompletionResponse::new(
                 Vec::new(),
                 Default::default(),
-                "test",
+                rig_core::message::Origin::new("test.api", "test", ""),
                 serde_json::json!({}),
             ),
         )));

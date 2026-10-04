@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -42,7 +42,7 @@
         }
       },
       {
-        "batch": 14,
+        "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -51,14 +51,6 @@
       },
       {
         "batch": 16,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 17,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -82,7 +74,7 @@
         }
       },
       {
-        "batch": 21,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -114,7 +106,7 @@
         }
       },
       {
-        "batch": 25,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -138,14 +130,22 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 34,
+        "batch": 35,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -153,7 +153,7 @@
         }
       },
       {
-        "batch": 35,
+        "batch": 36,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -185,6 +185,14 @@
         }
       },
       {
+        "batch": 40,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 41,
         "id": 1,
         "kind": {
@@ -209,7 +217,7 @@
         }
       },
       {
-        "batch": 45,
+        "batch": 44,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -229,7 +237,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -250,6 +258,14 @@
       },
       {
         "batch": 51,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 52,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -330,6 +346,14 @@
       },
       {
         "batch": 64,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 65,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -433,6 +457,14 @@
         }
       },
       {
+        "batch": 81,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 82,
         "id": 1,
         "kind": {
@@ -449,7 +481,7 @@
         }
       },
       {
-        "batch": 84,
+        "batch": 85,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -458,46 +490,6 @@
       },
       {
         "batch": 86,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 87,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 88,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 92,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 92,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -578,15 +570,18 @@
             "output_tokens": 16,
             "total_tokens": 994
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RpyCQbTkIkBjHn2AbX1kMGNp"
+          },
           "finish_reason": "length",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 978,
               "completion_tokens": 16,
+              "prompt_tokens": 978,
               "total_tokens": 994
             },
             "finish_reason": "length",
@@ -753,6 +748,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -802,15 +802,18 @@
             "output_tokens": 44,
             "total_tokens": 1022
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RTH1FPzurqvSLVm4V8YR9Y4W"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 978,
               "completion_tokens": 44,
+              "prompt_tokens": 978,
               "total_tokens": 1022
             },
             "finish_reason": "stop",
@@ -1193,6 +1196,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "parity/run#0"
     }
   ]

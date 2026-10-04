@@ -30,9 +30,10 @@ fn an_event_for_a_part_that_never_started_is_refused() {
 }
 
 #[test]
-fn a_start_that_skips_a_position_is_refused() {
-    let value = json!([{"item": "event", "value": {"event": "start", "part": 1, "kind": "text"}}]);
-    assert_eq!(Transcript::parse(value), Err(SequenceError::UnknownPart(0)));
+fn a_start_that_reuses_a_position_is_refused() {
+    let start = json!({"item": "event", "value": {"event": "start", "part": 1, "kind": "text"}});
+    let value = json!([start.clone(), start]);
+    assert_eq!(Transcript::parse(value), Err(SequenceError::UnknownPart(1)));
 }
 
 #[test]

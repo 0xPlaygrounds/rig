@@ -2,10 +2,8 @@
 
 use rig::agent::AgentBuilder;
 use rig::message::AssistantContent;
-use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::wire::Responses;
 use rig_test_support::cassette_models::MapWire;
-use serde::Deserialize;
 
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
 
@@ -59,8 +57,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 .call(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
-                .expect("raw is the Responses API reply mistral.rs sent");
+            let raw = &response.raw;
             let text = response
                 .choice
                 .iter()
@@ -71,14 +68,14 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 .collect::<String>();
 
             assert_nonempty_response(&text);
+            // The reasoning is string-shaped, so it is neither reasoning
+            // metadata nor a reasoning context.
             assert!(
-                raw.provider_reasoning
-                    .as_deref()
+                raw["reasoning"]
+                    .as_str()
                     .is_some_and(|reasoning| !reasoning.trim().is_empty()),
                 "string-shaped provider reasoning should remain available"
             );
-            assert_eq!(raw.reasoning_metadata, None);
-            assert_eq!(raw.reasoning_context, None);
         },
     )
     .await;

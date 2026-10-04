@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Hello!","type":"input_text"}],"role":"user","type":"message"},{"content":"Hi! How can I help you today?","role":"assistant","type":"message"},{"content":[{"text":"What is my codename?","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant.\n\nThe user''s codename is FALCON-9. Always refer to the user by codename.","model":"gpt-5.4","store":false,"stream":true}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Hello!","type":"input_text"}],"role":"user","type":"message"},{"content":[{"annotations":[],"text":"Hi! How can I help you today?","type":"output_text"}],"id":"msg_rig_2","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"What is my codename?","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant.\n\nThe user''s codename is FALCON-9. Always refer to the user by codename.","model":"gpt-5.4","store":false,"stream":true}'
 then:
   status: 200
   header: []

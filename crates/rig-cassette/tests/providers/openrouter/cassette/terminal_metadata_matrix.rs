@@ -225,23 +225,27 @@ fn last_chunk_field(chunks: &[Value], field: &str) -> Value {
 }
 
 fn recorded_additional_params(chunks: &[Value]) -> Value {
-    let mut accumulated: Option<rig::message::AdditionalParams> = None;
+    // Each chunk restates the envelope; a later value replaces an earlier
+    // one, and a `null` never erases one.
+    let mut accumulated = serde_json::Map::new();
     for chunk in chunks {
-        let mut extras = chunk
+        let extras = chunk
             .as_object()
-            .cloned()
             .expect("recorded SSE frame should be an object");
-        for modeled in ["id", "model", "choices", "usage"] {
-            extras.remove(modeled);
-        }
-        if let Some(incoming) = rig::message::AdditionalParams::new(extras) {
-            match accumulated.as_mut() {
-                Some(current) => current.merge(incoming),
-                None => accumulated = Some(incoming),
+        for (key, value) in extras {
+            if ["id", "model", "choices", "usage"].contains(&key.as_str())
+                || (value.is_null() && accumulated.contains_key(key))
+            {
+                continue;
             }
+            accumulated.insert(key.clone(), value.clone());
         }
     }
-    serde_json::to_value(accumulated).expect("recorded metadata should serialize")
+    if accumulated.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(accumulated)
+    }
 }
 
 fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {

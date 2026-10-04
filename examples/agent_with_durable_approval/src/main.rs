@@ -185,7 +185,7 @@ async fn main() -> Result<()> {
                     .map(|def| def.name.to_string())
                     .collect();
                 let mut outcome = run.model_response(ModelTurn::new(
-                    response.message_id.clone(),
+                    response.head(),
                     response.choice.clone(),
                     response.usage,
                     tool_names.clone(),
@@ -223,7 +223,7 @@ async fn main() -> Result<()> {
                     }
                     let id = call.tool_call.id.clone();
                     let name = call.tool_call.function.name.clone();
-                    let args = call.tool_call.function.arguments.to_string();
+                    let args = call.tool_call.function.arguments_value().to_string();
 
                     println!("\n⏸  approval required: {name}({args})");
                     match ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort? ")

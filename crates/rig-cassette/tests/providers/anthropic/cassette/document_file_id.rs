@@ -5,7 +5,6 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::Message as AnthropicMessage;
 use serde_json::Value;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
@@ -113,11 +112,22 @@ fn assert_history_preserves_single_file_id(history: &[Message], expected_file_id
     );
 }
 
+/// `message` as the Messages wire encodes it, alone in a request.
 fn anthropic_wire_json(message: Message) -> Value {
-    let anthropic_message: AnthropicMessage = message
-        .try_into()
-        .expect("generic message should convert to Anthropic message");
-    serde_json::to_value(&anthropic_message).expect("message should serialize")
+    use rig::wire::{Body, Mode, Wire};
+
+    let wire = anthropic::Anthropic::new("unused")
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .wire;
+    let request = rig::completion::CompletionRequest::from(vec![message]).max_tokens(16);
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("generic message should encode for Anthropic");
+    let Body::Bytes(bytes) = encoded.request.body() else {
+        panic!("the Messages endpoint takes JSON");
+    };
+    let body: Value = serde_json::from_slice(bytes).expect("the body is JSON");
+    body["messages"][0].clone()
 }
 
 fn assert_anthropic_wire_file_source(message: Message, expected_file_id: &str) {

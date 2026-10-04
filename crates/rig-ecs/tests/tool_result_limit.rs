@@ -29,16 +29,16 @@ const LONG: &str = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 fn history(text: &str) -> Vec<MessageParts> {
     vec![
-        MessageParts::Assistant {
-            id: None,
-            content: vec![AssistantContent::tool_call(
+        MessageParts::Assistant(rig_core::message::AssistantMessage::new(vec![
+            AssistantContent::tool_call(
                 "c1",
                 rig_core::message::ToolName::new("probe").expect("tool name"),
                 serde_json::json!({}),
-            )],
-        },
+            ),
+        ])),
         MessageParts::User {
             content: vec![UserContent::ToolResult(rig_core::message::ToolResult {
+                is_error: false,
                 call: rig_core::message::CallId::from_wire("c1"),
                 name: rig_core::message::ToolName::new("probe".to_owned()).expect("tool name"),
                 content: vec![

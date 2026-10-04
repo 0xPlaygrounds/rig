@@ -122,10 +122,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_NUmt70xnH197ypLTCecU7ybS",
-                  "item_id": "fc_0e0eb27a9caabdc9006ab39699007c87d0a3d7597a28251abf"
-                }
+                "provider": "call_NUmt70xnH197ypLTCecU7ybS"
               },
               "function": {
                 "name": "submit",
@@ -135,8 +132,17 @@
                   "profession": "retired teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                  "call_id": "call_NUmt70xnH197ypLTCecU7ybS",
+                  "id": "fc_0e0eb27a9caabdc9006ab39699007c87d0a3d7597a28251abf",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "b6724d78b6b01f15"
+              }
             }
           ],
           "usage": {
@@ -147,12 +153,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0e0eb27a9caabdc9006ab39698a3b487d0ab93c9a9fffa6bbe",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_0e0eb27a9caabdc9006ab39698a3b487d0ab93c9a9fffa6bbe"
+          },
           "provider_request_id": "req_22f93d967c9b47749aab28f9ce674c08",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -353,10 +362,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_fhW2bgRnvlGzuPBcZigiAjP7",
-                  "item_id": "fc_06f57794214f1a36006ab3969a3d6887d0990c74e1c86d7e2b"
-                }
+                "provider": "call_fhW2bgRnvlGzuPBcZigiAjP7"
               },
               "function": {
                 "name": "submit",
@@ -366,8 +372,17 @@
                   "profession": "Retired Teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"Retired Teacher\"}",
+                  "call_id": "call_fhW2bgRnvlGzuPBcZigiAjP7",
+                  "id": "fc_06f57794214f1a36006ab3969a3d6887d0990c74e1c86d7e2b",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "e44454a1364b9acb"
+              }
             }
           ],
           "usage": {
@@ -378,12 +393,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_06f57794214f1a36006ab39699a56487d08088df4fc947118b",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_06f57794214f1a36006ab39699a56487d08088df4fc947118b"
+          },
           "provider_request_id": "req_8d187393de17439aaf714d9a0c439b66",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "access_programs": null,
             "background": false,

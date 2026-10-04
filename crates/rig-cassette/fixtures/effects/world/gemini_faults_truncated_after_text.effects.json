@@ -110,7 +110,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "A glarb-glarb"
+            "text": "A glarb-glarb is an ancient farming tool from the planet J"
           }
         },
         {
@@ -118,10 +118,15 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is an ancient farming tool from the planet Jiro."
+            "text": "iro."
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      },
       "scope": "golden/run#0"
     }
   ]

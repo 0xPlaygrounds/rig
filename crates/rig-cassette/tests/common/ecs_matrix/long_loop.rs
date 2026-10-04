@@ -191,13 +191,14 @@ pub(crate) const MAX_TURNS_MIDWAY: Cell = Cell {
 /// which turn the cap bites, are per-wire facts of the model and rig-core's
 /// decoders (round 3 recordings), so each column names its own:
 ///
+/// * [`Ending::MaxTurns`]: OpenAI Chat and DeepSeek keep a length-cut tool
+///   call with what its arguments state, as pi does; the loop answers it
+///   with an error result and never runs it, and the turn budget ends the
+///   run.
 /// * [`Ending::Failed`]`(Response)`: the run fails at the capped
-///   completion. OpenAI Chat and DeepSeek: the shared chat decoder
-///   (`deserialize_choices_dropping_incomplete_tool_calls`) drops a
-///   length-cut tool call whose arguments do not parse, the turn carries
-///   neither text nor a call, and rig-agent refuses it ("produced no
-///   answer and stopped with finish_reason=Length") after 1–2 tool turns.
-///   OpenAI Responses: the same, at its own cut. Gemini: HTTP 200 with
+///   completion. OpenAI Responses: the turn carries neither text nor a
+///   call, and rig-agent refuses it ("produced no answer and stopped with
+///   finish_reason=Length"). Gemini: HTTP 200 with
 ///   `finishReason: "MALFORMED_FUNCTION_CALL"` and no content on the very
 ///   first request (a 10-token `list_files` call does not fit), which
 ///   rig-core decodes as a response error — the record itself is `Err`.
@@ -217,8 +218,11 @@ pub(crate) const fn output_cap_cell(ending: Ending) -> Cell {
     }
 }
 /// [`output_cap_cell`] on the wires whose cut turn fails the run (OpenAI
-/// Chat, OpenAI Responses, Gemini, DeepSeek).
+/// Responses, Gemini).
 pub(crate) const OUTPUT_CAP_MIDWAY: Cell = output_cap_cell(Ending::Failed(ErrorKind::Response));
+/// [`output_cap_cell`] on the Chat wires, whose cut call is answered with an
+/// error result until the turn budget ends the run (OpenAI Chat, DeepSeek).
+pub(crate) const OUTPUT_CAP_MIDWAY_MAX_TURNS: Cell = output_cap_cell(Ending::MaxTurns);
 /// [`output_cap_cell`] on Anthropic, whose cut text preamble is the answer
 /// under a `Length` finish.
 pub(crate) const OUTPUT_CAP_MIDWAY_LENGTH_ANSWER: Cell = output_cap_cell(Ending::Answer);
@@ -741,16 +745,28 @@ pub(crate) fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json:
             .choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::ToolCall(call) => Some((
-                    call.function.name.to_string(),
-                    call.function.arguments.clone(),
-                )),
+                // A call whose arguments never parse is answered with an
+                // error result, never dispatched.
+                AssistantContent::ToolCall(call) if call.function.invalid_arguments.is_none() => {
+                    Some((
+                        call.function.name.to_string(),
+                        call.function.arguments_value(),
+                    ))
+                }
                 _ => None,
             })
             .collect(),
         Ok(other) => panic!("a completion record answers a completion, not {other:?}"),
         Err(_) => Vec::new(),
     }
+}
+
+/// Whether a completion record's response asked for any call: a tool turn,
+/// whether its calls ran or a call whose arguments never parse was answered
+/// with an error result.
+pub(crate) fn asked_for_calls(record: &EffectRecord) -> bool {
+    matches!(&record.outcome, Ok(Outcome::Completion(response))
+        if response.choice.iter().any(|content| matches!(content, AssistantContent::ToolCall(_))))
 }
 
 /// The ids of the calls a completion record's response asked for, in
@@ -762,7 +778,9 @@ pub(crate) fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::messag
             .choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::ToolCall(call) => Some(&call.id),
+                AssistantContent::ToolCall(call) if call.function.invalid_arguments.is_none() => {
+                    Some(&call.id)
+                }
                 _ => None,
             })
             .collect(),
@@ -1000,7 +1018,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                 let assistant = &history[previous.len()];
                 let results = &history[previous.len() + 1];
                 assert!(
-                    matches!(assistant, Message::Assistant { content, .. } if content.iter().any(|part| matches!(part, AssistantContent::ToolCall(_)))),
+                    matches!(assistant, Message::Assistant(rig_core::message::AssistantMessage { content, .. }) if content.iter().any(|part| matches!(part, AssistantContent::ToolCall(_)))),
                     "{}: the turn's assistant utterance carries its calls",
                     cell.name
                 );
@@ -1016,17 +1034,20 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                 // committed output byte for byte — row 3's requirement
                 // that the 48 KiB result reaches the next request intact.
                 let source = last_tool_turn.expect("the history grew after a completed tool turn");
+                let ids = requested_call_ids(source.completion);
+                // A call answered without running has no tool record.
                 let parts: Vec<&rig_core::message::ToolResult> = match results {
                     Message::User { content } => content
                         .iter()
                         .filter_map(|part| match part {
-                            UserContent::ToolResult(result) => Some(result),
+                            UserContent::ToolResult(result) if ids.contains(&&result.call) => {
+                                Some(result)
+                            }
                             _ => None,
                         })
                         .collect(),
                     other => panic!("{}: a tool-result utterance, not {other:?}", cell.name),
                 };
-                let ids = requested_call_ids(source.completion);
                 assert_eq!(
                     parts.len(),
                     source.tools.len(),
@@ -1055,7 +1076,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
             }
         }
         previous = Some(history);
-        if !turn.tools.is_empty() && turn.completion.outcome.is_ok() {
+        if asked_for_calls(turn.completion) {
             tool_turns_before += 1;
             last_tool_turn = Some(turn);
         }
@@ -1515,6 +1536,32 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         "raw_finish": raw_finish_reason(thinking, &response.raw),
                     })
                 }
+                Ending::MaxTurns => {
+                    // OpenAI Chat and DeepSeek: the cut call is kept with
+                    // what its arguments state and answered with an error
+                    // result, never run, until the turn budget ends the run.
+                    assert!(provider_errors.is_empty());
+                    let Ok(Outcome::Completion(response)) = &last.completion.outcome else {
+                        panic!("{}: the capped completion answered", cell.name)
+                    };
+                    assert!(
+                        response.choice.iter().all(|part| match part {
+                            AssistantContent::ToolCall(call) => {
+                                call.function.invalid_arguments.is_some()
+                            }
+                            _ => true,
+                        }),
+                        "{}: every call of the last turn is a cut one, answered and never run: {:?}",
+                        cell.name,
+                        response.choice
+                    );
+                    serde_json::json!({
+                        "cut_turn": cut,
+                        "outcome": "max_turns",
+                        "finish_reason": response.finish_reason().map(|reason| format!("{reason:?}")),
+                        "raw_finish": raw_finish_reason(thinking, &response.raw),
+                    })
+                }
                 other => panic!("{}: not an output-cap ending: {other:?}", cell.name),
             };
             write_output_cap_evidence(cell, thinking, &evidence);
@@ -1721,7 +1768,7 @@ pub(crate) fn assert_transcript(cell: &Cell, log: &EffectLog, history: &[Message
     let turns = turns(log);
     let tool_turns = turns
         .iter()
-        .filter(|turn| !turn.tools.is_empty() && turn.completion.outcome.is_ok())
+        .filter(|turn| asked_for_calls(turn.completion))
         .count();
     let answered = cell.program.ending == Ending::Answer;
     let expected = 1 + 2 * tool_turns + usize::from(answered);
@@ -1730,7 +1777,7 @@ pub(crate) fn assert_transcript(cell: &Cell, log: &EffectLog, history: &[Message
         .map(|message| match message {
             Message::System { .. } => "system",
             Message::User { .. } => "user",
-            Message::Assistant { .. } => "assistant",
+            Message::Assistant(_) => "assistant",
         })
         .collect();
     assert_eq!(

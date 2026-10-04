@@ -347,10 +347,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                  "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                }
+                "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
               },
               "function": {
                 "name": "read_file",
@@ -358,16 +355,22 @@
                   "path": "tests/basic.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"path\":\"tests/basic.rs\"}",
+                  "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                  "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                  "name": "read_file",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "302c5a18f0048736"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                  "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                }
+                "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
               },
               "function": {
                 "name": "read_file",
@@ -375,16 +378,22 @@
                   "path": "src/lib.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"path\":\"src/lib.rs\"}",
+                  "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                  "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                  "name": "read_file",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "35c66252c161d955"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                  "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                }
+                "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
               },
               "function": {
                 "name": "read_file",
@@ -392,16 +401,22 @@
                   "path": "src/calendar.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"path\":\"src/calendar.rs\"}",
+                  "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                  "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                  "name": "read_file",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "cfbc9997e2e7284c"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                  "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                }
+                "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
               },
               "function": {
                 "name": "read_file",
@@ -409,8 +424,17 @@
                   "path": "docs/DESIGN.md"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                  "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                  "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                  "name": "read_file",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "8046b0fd2fe80590"
+              }
             }
           ],
           "usage": {
@@ -421,12 +445,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+          },
           "provider_request_id": "req_e6316b979b0e46d792a9015a92eba96a",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -744,15 +771,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -760,16 +783,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -777,16 +806,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -794,16 +829,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -811,10 +852,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -822,10 +880,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -838,10 +893,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -854,10 +906,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -870,10 +919,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -881,7 +927,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -961,17 +1008,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                  "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                }
+                "provider": "call_g183BYEuxRGq1smH0gdX0q12"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                  "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                  "name": "run_tests",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "16eea60a43043acf"
+              }
             }
           ],
           "usage": {
@@ -982,12 +1035,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+          },
           "provider_request_id": "req_154056eeaaf0425bbbeda716fd34c9bb",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -1198,15 +1254,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -1214,16 +1266,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -1231,16 +1289,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -1248,16 +1312,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -1265,10 +1335,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1276,10 +1363,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -1292,10 +1376,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -1308,10 +1389,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -1324,10 +1402,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -1335,30 +1410,44 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                      "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "16eea60a43043acf"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1366,10 +1455,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "name": "run_tests",
                   "content": [
@@ -1457,10 +1543,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                  "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                }
+                "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
               },
               "function": {
                 "name": "write_file",
@@ -1469,8 +1552,17 @@
                   "content": "/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                  "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                  "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                  "name": "write_file",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "ca2a02b2134b7a82"
+              }
             }
           ],
           "usage": {
@@ -1481,12 +1573,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae"
+          },
           "provider_request_id": "req_5932ab93e1b8431188887b0b1fcc2edb",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -1697,15 +1792,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -1713,16 +1804,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -1730,16 +1827,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -1747,16 +1850,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -1764,10 +1873,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1775,10 +1901,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -1791,10 +1914,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -1807,10 +1927,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -1823,10 +1940,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -1834,30 +1948,44 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                      "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "16eea60a43043acf"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1865,10 +1993,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "name": "run_tests",
                   "content": [
@@ -1882,15 +2007,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "function": {
                     "name": "write_file",
@@ -1899,10 +2020,27 @@
                       "content": "/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                      "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "ca2a02b2134b7a82"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1910,10 +2048,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "name": "write_file",
                   "content": [
@@ -2001,17 +2136,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                  "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                }
+                "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
+                  "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
+                  "name": "run_tests",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "1af752e0b2059506"
+              }
             }
           ],
           "usage": {
@@ -2022,12 +2163,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65"
+          },
           "provider_request_id": "req_72db0c852eb34b2188386e72ee89bdfe",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -2238,15 +2382,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -2254,16 +2394,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -2271,16 +2417,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -2288,16 +2440,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -2305,10 +2463,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2316,10 +2491,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -2332,10 +2504,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -2348,10 +2517,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -2364,10 +2530,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -2375,30 +2538,44 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                      "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "16eea60a43043acf"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2406,10 +2583,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2423,15 +2597,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "function": {
                     "name": "write_file",
@@ -2440,10 +2610,27 @@
                       "content": "/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                      "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "ca2a02b2134b7a82"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2451,10 +2638,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "name": "write_file",
                   "content": [
@@ -2468,24 +2652,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
+                      "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "1af752e0b2059506"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2493,10 +2690,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "name": "run_tests",
                   "content": [
@@ -2584,10 +2778,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                  "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                }
+                "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
               },
               "function": {
                 "name": "write_file",
@@ -2596,8 +2787,17 @@
                   "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                  "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
+                  "id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a",
+                  "name": "write_file",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "cb9139eb310ee8e2"
+              }
             }
           ],
           "usage": {
@@ -2608,12 +2808,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578"
+          },
           "provider_request_id": "req_f1e96d0a72014d8cb3a752019d880072",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -2824,15 +3027,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -2840,16 +3039,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -2857,16 +3062,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -2874,16 +3085,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -2891,10 +3108,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2902,10 +3136,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -2918,10 +3149,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -2934,10 +3162,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -2950,10 +3175,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -2961,30 +3183,44 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                      "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "16eea60a43043acf"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2992,10 +3228,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3009,15 +3242,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "function": {
                     "name": "write_file",
@@ -3026,10 +3255,27 @@
                       "content": "/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                      "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "ca2a02b2134b7a82"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3037,10 +3283,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "name": "write_file",
                   "content": [
@@ -3054,24 +3297,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
+                      "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "1af752e0b2059506"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3079,10 +3335,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3096,15 +3349,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "function": {
                     "name": "write_file",
@@ -3113,10 +3362,27 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
+                      "id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cb9139eb310ee8e2"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3124,10 +3390,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "name": "write_file",
                   "content": [
@@ -3215,17 +3478,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                  "item_id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02"
-                }
+                "provider": "call_2tvZql4Si2sqmQQEVmVIsGdX"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
+                  "id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02",
+                  "name": "run_tests",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "15de79aa77c73b98"
+              }
             }
           ],
           "usage": {
@@ -3236,12 +3505,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff"
+          },
           "provider_request_id": "req_55cd20ba07994fc9a0737fd981209f89",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -3452,15 +3724,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -3468,16 +3736,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -3485,16 +3759,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -3502,16 +3782,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -3519,10 +3805,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3530,10 +3833,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -3546,10 +3846,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -3562,10 +3859,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -3578,10 +3872,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -3589,30 +3880,44 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                      "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "16eea60a43043acf"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3620,10 +3925,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3637,15 +3939,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "function": {
                     "name": "write_file",
@@ -3654,10 +3952,27 @@
                       "content": "/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                      "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "ca2a02b2134b7a82"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3665,10 +3980,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "name": "write_file",
                   "content": [
@@ -3682,24 +3994,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
+                      "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "1af752e0b2059506"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3707,10 +4032,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3724,15 +4046,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "function": {
                     "name": "write_file",
@@ -3741,10 +4059,27 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
+                      "id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cb9139eb310ee8e2"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3752,10 +4087,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "name": "write_file",
                   "content": [
@@ -3769,24 +4101,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                      "item_id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02"
-                    }
+                    "provider": "call_2tvZql4Si2sqmQQEVmVIsGdX"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
+                      "id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "15de79aa77c73b98"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -3794,10 +4139,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                      "item_id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02"
-                    }
+                    "provider": "call_2tvZql4Si2sqmQQEVmVIsGdX"
                   },
                   "name": "run_tests",
                   "content": [
@@ -3885,10 +4227,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
-                  "item_id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de"
-                }
+                "provider": "call_5pjVLNrjWJuMYTHWWhEugJFd"
               },
               "function": {
                 "name": "write_file",
@@ -3897,8 +4236,17 @@
                   "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                  "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
+                  "id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de",
+                  "name": "write_file",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "060f70ceeeea06ed"
+              }
             }
           ],
           "usage": {
@@ -3909,12 +4257,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7"
+          },
           "provider_request_id": "req_1bf3c62ae5094e61942e5c02b68c05d7",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -4125,15 +4476,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -4141,16 +4488,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -4158,16 +4511,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -4175,16 +4534,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -4192,10 +4557,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4203,10 +4585,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -4219,10 +4598,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -4235,10 +4611,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -4251,10 +4624,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -4262,30 +4632,44 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                      "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "16eea60a43043acf"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4293,10 +4677,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4310,15 +4691,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "function": {
                     "name": "write_file",
@@ -4327,10 +4704,27 @@
                       "content": "/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                      "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "ca2a02b2134b7a82"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4338,10 +4732,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "name": "write_file",
                   "content": [
@@ -4355,24 +4746,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
+                      "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "1af752e0b2059506"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4380,10 +4784,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4397,15 +4798,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "function": {
                     "name": "write_file",
@@ -4414,10 +4811,27 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
+                      "id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cb9139eb310ee8e2"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4425,10 +4839,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "name": "write_file",
                   "content": [
@@ -4442,24 +4853,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                      "item_id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02"
-                    }
+                    "provider": "call_2tvZql4Si2sqmQQEVmVIsGdX"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
+                      "id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "15de79aa77c73b98"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4467,10 +4891,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                      "item_id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02"
-                    }
+                    "provider": "call_2tvZql4Si2sqmQQEVmVIsGdX"
                   },
                   "name": "run_tests",
                   "content": [
@@ -4484,15 +4905,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
-                      "item_id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de"
-                    }
+                    "provider": "call_5pjVLNrjWJuMYTHWWhEugJFd"
                   },
                   "function": {
                     "name": "write_file",
@@ -4501,10 +4918,27 @@
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                      "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
+                      "id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "060f70ceeeea06ed"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4512,10 +4946,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
-                      "item_id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de"
-                    }
+                    "provider": "call_5pjVLNrjWJuMYTHWWhEugJFd"
                   },
                   "name": "write_file",
                   "content": [
@@ -4603,17 +5034,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_PEE038vzXE9U3NxYAUE3YY7D",
-                  "item_id": "fc_051d233ca58f0224006ab39696388c87d0b6ed995ebd56292d"
-                }
+                "provider": "call_PEE038vzXE9U3NxYAUE3YY7D"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call_PEE038vzXE9U3NxYAUE3YY7D",
+                  "id": "fc_051d233ca58f0224006ab39696388c87d0b6ed995ebd56292d",
+                  "name": "run_tests",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "e375e7efe31516d2"
+              }
             }
           ],
           "usage": {
@@ -4624,12 +5061,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_051d233ca58f0224006ab39695629087d0a662121ae8c03f0f",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab39695629087d0a662121ae8c03f0f"
+          },
           "provider_request_id": "req_a582bbc346644dedaf6de7f4210e1716",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -4840,15 +5280,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "function": {
                     "name": "read_file",
@@ -4856,16 +5292,22 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"tests/basic.rs\"}",
+                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
+                      "id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "302c5a18f0048736"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "function": {
                     "name": "read_file",
@@ -4873,16 +5315,22 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\"}",
+                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
+                      "id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "35c66252c161d955"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "function": {
                     "name": "read_file",
@@ -4890,16 +5338,22 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\"}",
+                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
+                      "id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cfbc9997e2e7284c"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "function": {
                     "name": "read_file",
@@ -4907,10 +5361,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"docs/DESIGN.md\"}",
+                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
+                      "id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff",
+                      "name": "read_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "8046b0fd2fe80590"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968b1bc887d0a545f59d9fee80d8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -4918,10 +5389,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_f3SKbWPVaTWesjqBkJSHwGtN",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67dc87d0a0fb11333409dd6e"
-                    }
+                    "provider": "call_f3SKbWPVaTWesjqBkJSHwGtN"
                   },
                   "name": "read_file",
                   "content": [
@@ -4934,10 +5402,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_1ao43hSiNQ7gOvITHy632W6b",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67ec87d0a34e7edcaf25de2f"
-                    }
+                    "provider": "call_1ao43hSiNQ7gOvITHy632W6b"
                   },
                   "name": "read_file",
                   "content": [
@@ -4950,10 +5415,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_o9u2K4TqpJLAYzLuqAbe1Hdx",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67f487d0a00bdebad6760db8"
-                    }
+                    "provider": "call_o9u2K4TqpJLAYzLuqAbe1Hdx"
                   },
                   "name": "read_file",
                   "content": [
@@ -4966,10 +5428,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_S7pRMqFEcbmGllujidFn8RCJ",
-                      "item_id": "fc_051d233ca58f0224006ab3968c67fc87d085be40896635e1ff"
-                    }
+                    "provider": "call_S7pRMqFEcbmGllujidFn8RCJ"
                   },
                   "name": "read_file",
                   "content": [
@@ -4977,30 +5436,44 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
+                      "id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "16eea60a43043acf"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968cb70087d0a8fc1018d02a9ffd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5008,10 +5481,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_g183BYEuxRGq1smH0gdX0q12",
-                      "item_id": "fc_051d233ca58f0224006ab3968d38c087d0a293eb668fe16133"
-                    }
+                    "provider": "call_g183BYEuxRGq1smH0gdX0q12"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5025,15 +5495,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "function": {
                     "name": "write_file",
@@ -5042,10 +5508,27 @@
                       "content": "/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
+                      "id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "ca2a02b2134b7a82"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968dabfc87d0bc71b8172573c2ae"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5053,10 +5536,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_bnaCTsHglGBNML6Z0Ha4CnTI",
-                      "item_id": "fc_051d233ca58f0224006ab3968e41b087d08484bd0af07e1499"
-                    }
+                    "provider": "call_bnaCTsHglGBNML6Z0Ha4CnTI"
                   },
                   "name": "write_file",
                   "content": [
@@ -5070,24 +5550,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
+                      "id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "1af752e0b2059506"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3968f157887d0b8bb795c79dc4e65"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5095,10 +5588,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_QsDsEwV0u9btzfxhUloSJPer",
-                      "item_id": "fc_051d233ca58f0224006ab3968fcd5c87d0923ba4ddae9a08ce"
-                    }
+                    "provider": "call_QsDsEwV0u9btzfxhUloSJPer"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5112,15 +5602,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "function": {
                     "name": "write_file",
@@ -5129,10 +5615,27 @@
                       "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
+                      "id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "cb9139eb310ee8e2"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39690344487d09f7f1edf63d27578"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5140,10 +5643,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_pH8cndSReIGxN2v72rLK3i7u",
-                      "item_id": "fc_051d233ca58f0224006ab39690fe1c87d098604d277f396f3a"
-                    }
+                    "provider": "call_pH8cndSReIGxN2v72rLK3i7u"
                   },
                   "name": "write_file",
                   "content": [
@@ -5157,24 +5657,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                      "item_id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02"
-                    }
+                    "provider": "call_2tvZql4Si2sqmQQEVmVIsGdX"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
+                      "id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "15de79aa77c73b98"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39692008887d0ab8538b08d0bb0ff"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5182,10 +5695,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_2tvZql4Si2sqmQQEVmVIsGdX",
-                      "item_id": "fc_051d233ca58f0224006ab39692c2b487d0b4355ccb60767a02"
-                    }
+                    "provider": "call_2tvZql4Si2sqmQQEVmVIsGdX"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5199,15 +5709,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
-                      "item_id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de"
-                    }
+                    "provider": "call_5pjVLNrjWJuMYTHWWhEugJFd"
                   },
                   "function": {
                     "name": "write_file",
@@ -5216,10 +5722,27 @@
                       "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                      "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
+                      "id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de",
+                      "name": "write_file",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "060f70ceeeea06ed"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab3969347a087d083024d235d9fc6d7"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5227,10 +5750,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_5pjVLNrjWJuMYTHWWhEugJFd",
-                      "item_id": "fc_051d233ca58f0224006ab39693e15887d0baa93951f231f7de"
-                    }
+                    "provider": "call_5pjVLNrjWJuMYTHWWhEugJFd"
                   },
                   "name": "write_file",
                   "content": [
@@ -5244,24 +5764,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_PEE038vzXE9U3NxYAUE3YY7D",
-                      "item_id": "fc_051d233ca58f0224006ab39696388c87d0b6ed995ebd56292d"
-                    }
+                    "provider": "call_PEE038vzXE9U3NxYAUE3YY7D"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_PEE038vzXE9U3NxYAUE3YY7D",
+                      "id": "fc_051d233ca58f0224006ab39696388c87d0b6ed995ebd56292d",
+                      "name": "run_tests",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "e375e7efe31516d2"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_051d233ca58f0224006ab39695629087d0a662121ae8c03f0f"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -5269,10 +5802,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_PEE038vzXE9U3NxYAUE3YY7D",
-                      "item_id": "fc_051d233ca58f0224006ab39696388c87d0b6ed995ebd56292d"
-                    }
+                    "provider": "call_PEE038vzXE9U3NxYAUE3YY7D"
                   },
                   "name": "run_tests",
                   "content": [
@@ -5359,7 +5889,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "done"
+              "text": "done",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "done",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_051d233ca58f0224006ab3969764bc87d09b4c9d1cf8e6e5c0",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "cc2b10c84926d34d"
+              }
             }
           ],
           "usage": {
@@ -5370,12 +5917,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_051d233ca58f0224006ab3969764bc87d09b4c9d1cf8e6e5c0",
-          "response_id": "resp_051d233ca58f0224006ab39696c2b487d0a146478495d0737a",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_051d233ca58f0224006ab39696c2b487d0a146478495d0737a"
+          },
           "provider_request_id": "req_e2d8fec6775e4232a7c14bae1bb6f14e",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,

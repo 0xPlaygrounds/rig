@@ -91,11 +91,14 @@
             "output_tokens": 8,
             "total_tokens": 18
           },
-          "message_id": null,
-          "response_id": "chatcmpl-1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-4o",
+            "response_id": "chatcmpl-1"
+          },
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o",
           "raw": {
             "usage": {
               "prompt_tokens": 10,
@@ -145,6 +148,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini"
+      },
       "scope": "golden/run#0"
     }
   ]

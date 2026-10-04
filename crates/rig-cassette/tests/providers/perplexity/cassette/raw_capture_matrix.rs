@@ -92,10 +92,7 @@ async fn raw_is_the_verbatim_response_body() {
         "raw's own response id",
     );
     assert_matches_recorded_document(raw, &body, &["id"], "raw is the provider's document");
-    assert_eq!(
-        Some(raw["id"].as_str()),
-        Some(response.response_id.as_deref())
-    );
+    assert_eq!(Some(raw["id"].as_str()), Some(response.response_id()));
 }
 
 // ================================================================

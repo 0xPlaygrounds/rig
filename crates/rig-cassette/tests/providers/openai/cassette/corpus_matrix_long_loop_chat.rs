@@ -36,5 +36,5 @@ crate::matrix::golden_matrix! {
 crate::matrix::golden_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: long_loop::run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    output_cap_midway: ("long_loop_matrix_chat/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY, "openai_chat_long_loop_output_cap_midway");
+    output_cap_midway: ("long_loop_matrix_chat/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY_MAX_TURNS, "openai_chat_long_loop_output_cap_midway");
 }

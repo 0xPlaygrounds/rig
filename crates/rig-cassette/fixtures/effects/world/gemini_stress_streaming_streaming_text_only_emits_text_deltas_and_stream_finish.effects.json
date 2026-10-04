@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -83,7 +83,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sky is blue."
+              "text": "The sky is blue.",
+              "native": {
+                "item": {
+                  "text": "The sky is blue."
+                },
+                "fingerprint": "78c7c8cdc99a91fd"
+              }
             }
           ],
           "usage": {
@@ -92,23 +98,27 @@
             "total_tokens": 59,
             "reasoning_tokens": 26
           },
-          "message_id": null,
-          "response_id": "pnizasvyNpusqtsPsf3xkAY",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "pnizasvyNpusqtsPsf3xkAY"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 28,
               "candidatesTokenCount": 5,
-              "totalTokenCount": 59,
-              "thoughtsTokenCount": 26,
+              "promptTokenCount": 28,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 28
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 26,
+              "totalTokenCount": 59
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -140,11 +150,22 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The sky is blue."
+              "text": "The sky is blue.",
+              "native": {
+                "item": {
+                  "text": "The sky is blue."
+                },
+                "fingerprint": "78c7c8cdc99a91fd"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "stress-agent/run#0"
     }
   ]

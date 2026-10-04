@@ -51,6 +51,7 @@ async fn rejected_response_is_retried_with_feedback() {
                  replace the rejected response, reply exactly `ACCEPTED`.",
                 )
                 .temperature(0.0)
+                .additional_params(serde_json::json!({ "store": false }))
                 .build()
                 .prompt("Begin the retry-hook demonstration.")
                 .max_turns(2)
@@ -78,7 +79,7 @@ async fn rejected_response_is_retried_with_feedback() {
                             })
                             .collect::<String>(),
                     ),
-                    Message::Assistant { content, .. } => (
+                    Message::Assistant(rig::message::AssistantMessage { content, .. }) => (
                         "assistant",
                         content
                             .iter()

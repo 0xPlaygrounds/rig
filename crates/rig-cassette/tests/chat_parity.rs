@@ -19,8 +19,8 @@ macro_rules! parity {
 }
 
 parity!(
-    copilot, deepseek, doubleword, groq, llamacpp, mistral, mistralrs, openai, openrouter,
-    perplexity, venice,
+    cohere, copilot, deepseek, doubleword, groq, llamacpp, mistral, mistralrs, ollama, openai,
+    openrouter, perplexity, venice,
 );
 
 /// The same recorded frames fold to the same response through `call` and
@@ -66,4 +66,39 @@ async fn perplexity_streams_without_done_match_the_snapshot() {
             interaction.key
         );
     }
+}
+
+/// Every recorded whole reply of a message-shaped wire, restated as the
+/// stream of the same turn, folds into the same assistant turn: the same
+/// blocks in the same order, the same provider items, origin and stop.
+#[test]
+fn every_recorded_whole_reply_agrees_with_its_restatement_as_a_stream() {
+    use rig::test_utils::history::{assert_restated_agrees, decode};
+    use rig::wire::{Mode, WireFrame};
+
+    fn whole(interaction: &chat_parity::Interaction) -> Option<(serde_json::Value, WireFrame)> {
+        let body = serde_json::from_str(&interaction.body).ok()?;
+        Some((body, WireFrame::Text(interaction.body.clone())))
+    }
+    let mut compared = 0;
+    for provider in chat_parity::PROVIDERS {
+        let wire = chat_parity::wire(provider);
+        for interaction in chat_parity::interactions(provider) {
+            if interaction.streaming {
+                continue;
+            }
+            let Some((body, frame)) = whole(&interaction) else {
+                continue;
+            };
+            if decode(&wire, Mode::Unary, [frame.clone()]).is_err() {
+                continue;
+            }
+            assert_restated_agrees(&wire, [frame], chat_parity::restate_chat(&body));
+            compared += 1;
+        }
+    }
+    assert!(
+        compared > 100,
+        "only {compared} whole replies were restated"
+    );
 }

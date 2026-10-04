@@ -144,9 +144,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
-                }
+                "provider": "call_00_jrFZXbDYVAhD2oC3Sxpr6706"
               },
               "function": {
                 "name": "lookup",
@@ -154,8 +152,17 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"q\": \"What is the capital of France?\"}",
+                    "name": "lookup"
+                  },
+                  "id": "call_00_jrFZXbDYVAhD2oC3Sxpr6706",
+                  "type": "function"
+                },
+                "fingerprint": "52b42ef2a59047ab"
+              }
             }
           ],
           "usage": {
@@ -164,11 +171,14 @@
             "total_tokens": 371,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "f033babe-30d7-4ab1-97e3-dc549eefc462"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -184,7 +194,7 @@
                         "arguments": "{\"q\": \"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "call_00_foTuLzyWG8tgIvcJ1dzw3639",
+                      "id": "call_00_jrFZXbDYVAhD2oC3Sxpr6706",
                       "index": 0,
                       "type": "function"
                     }
@@ -193,7 +203,7 @@
               }
             ],
             "created": 0,
-            "id": "40c32d5a-01d1-47eb-b511-302ae334bfcf",
+            "id": "f033babe-30d7-4ab1-97e3-dc549eefc462",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -285,11 +295,14 @@
             "total_tokens": 18,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "60685d30-9e59-48ca-8626-37b46cff6997"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -303,7 +316,7 @@
               }
             ],
             "created": 0,
-            "id": "628fc7e2-439c-40f0-819b-2b7eaa153e03",
+            "id": "60685d30-9e59-48ca-8626-37b46cff6997",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -347,14 +360,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
-                    }
+                    "provider": "call_00_jrFZXbDYVAhD2oC3Sxpr6706"
                   },
                   "function": {
                     "name": "lookup",
@@ -362,10 +372,27 @@
                       "q": "What is the capital of France?"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"q\": \"What is the capital of France?\"}",
+                        "name": "lookup"
+                      },
+                      "id": "call_00_jrFZXbDYVAhD2oC3Sxpr6706",
+                      "type": "function"
+                    },
+                    "fingerprint": "52b42ef2a59047ab"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "f033babe-30d7-4ab1-97e3-dc549eefc462"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -373,9 +400,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_foTuLzyWG8tgIvcJ1dzw3639"
-                    }
+                    "provider": "call_00_jrFZXbDYVAhD2oC3Sxpr6706"
                   },
                   "name": "lookup",
                   "content": [
@@ -434,11 +459,14 @@
             "total_tokens": 385,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "fa8a3641-8f24-4a3d-9b06-2e82441331ef"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -452,7 +480,7 @@
               }
             ],
             "created": 0,
-            "id": "18747691-fc62-4d84-9b2b-f1bbba7c0352",
+            "id": "fa8a3641-8f24-4a3d-9b06-2e82441331ef",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

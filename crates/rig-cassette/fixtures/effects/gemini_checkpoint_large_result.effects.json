@@ -98,8 +98,15 @@
                 "name": "checkpoint_large",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "checkpoint_large"
+                  }
+                },
+                "fingerprint": "4979b59a76600954"
+              }
             }
           ],
           "usage": {
@@ -107,11 +114,14 @@
             "output_tokens": 10,
             "total_tokens": 116
           },
-          "message_id": null,
-          "response_id": "nHizav_8MpusqtsPsf3xkAY",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "NAzBasmcEeziqtsPi7aBsAU"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "candidates": [
               {
@@ -132,7 +142,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "nHizav_8MpusqtsPsf3xkAY",
+            "responseId": "NAzBasmcEeziqtsPi7aBsAU",
             "usageMetadata": {
               "candidatesTokenCount": 10,
               "promptTokenCount": 106,
@@ -197,7 +207,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -208,10 +217,25 @@
                     "name": "checkpoint_large",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "checkpoint_large"
+                      }
+                    },
+                    "fingerprint": "4979b59a76600954"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash-lite",
+                "response_model": "gemini-2.5-flash-lite",
+                "response_id": "NAzBasmcEeziqtsPi7aBsAU"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -258,7 +282,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "checkpoint-complete"
+              "text": "checkpoint-complete",
+              "native": {
+                "item": {
+                  "text": "checkpoint-complete"
+                },
+                "fingerprint": "2e3d3d4a66aba08f"
+              }
             }
           ],
           "usage": {
@@ -266,11 +296,14 @@
             "output_tokens": 3,
             "total_tokens": 33925
           },
-          "message_id": null,
-          "response_id": "nXizavT6B9SDmtkP097woAk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash-lite",
+            "response_model": "gemini-2.5-flash-lite",
+            "response_id": "NAzBaprDJv-0qtsPhtKjyA4"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash-lite",
           "raw": {
             "candidates": [
               {
@@ -287,7 +320,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash-lite",
-            "responseId": "nXizavT6B9SDmtkP097woAk",
+            "responseId": "NAzBaprDJv-0qtsPhtKjyA4",
             "usageMetadata": {
               "candidatesTokenCount": 3,
               "promptTokenCount": 33922,

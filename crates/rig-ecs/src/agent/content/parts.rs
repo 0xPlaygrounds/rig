@@ -12,7 +12,7 @@
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
-use rig_core::message::{self, AssistantContent, ToolResultContent, UserContent};
+use rig_core::message::{self, AssistantContent, AssistantMessage, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -24,7 +24,7 @@ use crate::agent::{MessageParts, Role, Utterance};
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub enum ContentPart {
-    /// Text, including provider annotations.
+    /// Text, with the provider item an assistant text was decoded from.
     Text(#[reflect(remote = super::reflect::TextPartReflect)] message::Text),
     /// An image with per-use metadata and a shared binary source.
     Image(ImagePart),
@@ -34,13 +34,12 @@ pub enum ContentPart {
     Video(VideoPart),
     /// A document with per-use metadata and a shared binary source.
     Document(DocumentPart),
-    /// A tool call with correlation IDs, arguments, signature and metadata.
+    /// A tool call with its id, arguments and provider item.
     ToolCall(#[reflect(remote = super::reflect::ToolCallPartReflect)] message::ToolCall),
-    /// Ordered reasoning with IDs, signatures and opaque provider data.
-    Reasoning(
-        #[reflect(remote = super::reflect::ReasoningPartReflect)]
-        message::Sealed<message::Reasoning>,
-    ),
+    /// Reasoning with its provider item.
+    Reasoning(#[reflect(remote = super::reflect::ReasoningPartReflect)] message::Reasoning),
+    /// A provider item with no canonical meaning, kept in its turn's order.
+    Opaque(#[reflect(remote = super::reflect::OpaquePartReflect)] message::Opaque),
     /// A tool result whose children must be Text, Image or Json parts.
     ToolResult {
         /// The call answered by this result.
@@ -49,6 +48,9 @@ pub enum ContentPart {
         /// Executed tool name, including hook repairs.
         #[reflect(remote = crate::agent::reflect::ToolNameReflect)]
         name: message::ToolName,
+        /// Whether the tool failed, was refused, or never ran.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        is_error: bool,
     },
     /// Structured JSON under a tool result; never implicitly parsed from text.
     Json(#[reflect(remote = super::reflect::JsonPartReflect)] serde_json::Value),
@@ -78,10 +80,37 @@ pub struct EditTarget(pub Entity);
 #[reflect(Component)]
 pub struct EditedBy(Vec<Entity>);
 
-/// Provider-assigned assistant message identifier, including explicit absence.
-#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+/// An assistant utterance's origin and how it ended. Its content is the
+/// utterance's parts.
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
-pub struct MessageId(pub Option<String>);
+pub struct AssistantHead {
+    /// Who produced the turn.
+    #[reflect(remote = super::reflect::OriginReflect)]
+    pub origin: Option<message::Origin>,
+    /// How the turn ended.
+    #[reflect(remote = super::reflect::StopReflect)]
+    pub stop: Option<message::StopReason>,
+}
+
+impl AssistantHead {
+    /// `message`'s head, its content left out.
+    pub fn of(message: &AssistantMessage) -> Self {
+        Self {
+            origin: message.origin.clone(),
+            stop: message.stop.clone(),
+        }
+    }
+
+    /// The assistant message of `content` under this head.
+    pub fn message(&self, content: Vec<AssistantContent>) -> AssistantMessage {
+        AssistantMessage {
+            content,
+            origin: self.origin.clone(),
+            stop: self.stop.clone(),
+        }
+    }
+}
 
 /// Image metadata beside its shared source, held by [`ContentPart::Image`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
@@ -91,9 +120,9 @@ pub struct ImagePart {
     /// This occurrence's media type.
     #[reflect(remote = super::reflect::ImageMediaReflect)]
     pub media_type: Option<message::ImageMediaType>,
-    /// This occurrence's provider-specific metadata.
-    #[reflect(remote = super::reflect::PartParamsReflect)]
-    pub additional_params: Option<message::AdditionalParams>,
+    /// The provider item an assistant image was decoded from.
+    #[reflect(remote = super::reflect::NativeReflect)]
+    pub native: Option<message::Native>,
     /// Provider rendering preference for this occurrence.
     #[reflect(remote = super::reflect::ImageDetailReflect)]
     pub detail: Option<message::ImageDetail>,
@@ -107,9 +136,6 @@ pub struct AudioPart {
     /// This occurrence's media type.
     #[reflect(remote = super::reflect::AudioMediaReflect)]
     pub media_type: Option<message::AudioMediaType>,
-    /// This occurrence's provider-specific metadata.
-    #[reflect(remote = super::reflect::PartParamsReflect)]
-    pub additional_params: Option<message::AdditionalParams>,
 }
 
 /// Video metadata beside its shared source, held by [`ContentPart::Video`].
@@ -122,7 +148,7 @@ pub struct VideoPart {
     pub media_type: Option<message::VideoMediaType>,
     /// This occurrence's provider-specific metadata.
     #[reflect(remote = super::reflect::PartParamsReflect)]
-    pub additional_params: Option<message::AdditionalParams>,
+    pub additional_params: Option<serde_json::Value>,
 }
 
 /// Document metadata beside its shared source, held by [`ContentPart::Document`].
@@ -135,7 +161,7 @@ pub struct DocumentPart {
     pub media_type: Option<message::DocumentMediaType>,
     /// This occurrence's provider-specific metadata.
     #[reflect(remote = super::reflect::PartParamsReflect)]
-    pub additional_params: Option<message::AdditionalParams>,
+    pub additional_params: Option<serde_json::Value>,
 }
 
 /// Tool execution status attached to a [`ContentPart::ToolResult`].
@@ -212,7 +238,7 @@ fn image(assets: &mut BinaryAssets, value: message::Image) -> Result<ImagePart, 
         source: assets.intern(value.data)?,
         media_type: value.media_type,
         detail: value.detail,
-        additional_params: value.additional_params,
+        native: value.native,
     })
 }
 
@@ -227,7 +253,6 @@ fn user(
         UserContent::Audio(value) => ContentPart::Audio(AudioPart {
             source: assets.intern(value.data)?,
             media_type: value.media_type,
-            additional_params: value.additional_params,
         }),
         UserContent::Video(value) => ContentPart::Video(VideoPart {
             source: assets.intern(value.data)?,
@@ -256,6 +281,7 @@ fn user(
             ContentPart::ToolResult {
                 call: value.call,
                 name: value.name,
+                is_error: value.is_error,
             }
         }
     };
@@ -265,7 +291,7 @@ fn user(
 fn prepare(
     assets: &mut BinaryAssets,
     parts: MessageParts,
-) -> Result<(Role, Option<MessageId>, PreparedParts), ContentError> {
+) -> Result<(Role, Option<AssistantHead>, PreparedParts), ContentError> {
     Ok(match parts {
         MessageParts::User { content } => (
             Role::User,
@@ -275,10 +301,11 @@ fn prepare(
                 .map(|part| user(assets, part))
                 .collect::<Result<_, _>>()?,
         ),
-        MessageParts::Assistant { id, content } => (
+        MessageParts::Assistant(message) => (
             Role::Assistant,
-            Some(MessageId(id)),
-            content
+            Some(AssistantHead::of(&message)),
+            message
+                .content
                 .into_iter()
                 .map(|part| {
                     let part = match part {
@@ -286,6 +313,7 @@ fn prepare(
                         AssistantContent::Image(value) => ContentPart::Image(image(assets, value)?),
                         AssistantContent::ToolCall(value) => ContentPart::ToolCall(value),
                         AssistantContent::Reasoning(value) => ContentPart::Reasoning(value),
+                        AssistantContent::Opaque(value) => ContentPart::Opaque(value),
                     };
                     Ok((part, Vec::new()))
                 })
@@ -319,8 +347,8 @@ pub fn write_message(
         return Err(ContentError::Missing);
     }
     world.init_resource::<BinaryAssets>();
-    let (role, id, parts) = prepare(&mut world.resource_mut::<BinaryAssets>(), parts)?;
-    replace_parts(world, utterance, role, id, parts);
+    let (role, head, parts) = prepare(&mut world.resource_mut::<BinaryAssets>(), parts)?;
+    replace_parts(world, utterance, role, head, parts);
     Ok(())
 }
 
@@ -328,7 +356,7 @@ fn replace_parts(
     world: &mut World,
     utterance: Entity,
     role: Role,
-    id: Option<MessageId>,
+    head: Option<AssistantHead>,
     parts: PreparedParts,
 ) {
     let old: Vec<_> = world
@@ -339,9 +367,9 @@ fn replace_parts(
         world.despawn(child);
     }
     let mut entity = world.entity_mut(utterance);
-    entity.insert(role).remove::<MessageId>();
-    if let Some(id) = id {
-        entity.insert(id);
+    entity.insert(role).remove::<AssistantHead>();
+    if let Some(head) = head {
+        entity.insert(head);
     }
     spawn_parts(world, utterance, parts);
 }
@@ -368,7 +396,7 @@ fn read_image(assets: &BinaryAssets, value: &ImagePart) -> Result<message::Image
         data: assets.resolve(&value.source)?,
         media_type: value.media_type.clone(),
         detail: value.detail.clone(),
-        additional_params: value.additional_params.clone(),
+        native: value.native.clone(),
     })
 }
 
@@ -417,7 +445,6 @@ fn to_user<'a>(
         ContentPart::Audio(value) => UserContent::Audio(message::Audio {
             data: assets.resolve(&value.source)?,
             media_type: value.media_type,
-            additional_params: value.additional_params,
         }),
         ContentPart::Video(value) => UserContent::Video(message::Video {
             data: assets.resolve(&value.source)?,
@@ -429,9 +456,14 @@ fn to_user<'a>(
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
-        ContentPart::ToolResult { call, name } => UserContent::ToolResult(message::ToolResult {
+        ContentPart::ToolResult {
             call,
             name,
+            is_error,
+        } => UserContent::ToolResult(message::ToolResult {
+            call,
+            name,
+            is_error,
             content: ordered(get, entity)?
                 .into_iter()
                 .map(|child| read_edited_part(get, child, true, edits))
@@ -573,7 +605,7 @@ fn read_message_from<'a>(
         .collect::<Vec<_>>();
     match role {
         Role::User => {
-            if entity.get::<MessageId>().is_some() {
+            if entity.get::<AssistantHead>().is_some() {
                 return Err(ContentError::Shape);
             }
             MessageParts::user(
@@ -585,24 +617,25 @@ fn read_message_from<'a>(
         }
         Role::Assistant => MessageParts::assistant(
             entity
-                .get::<MessageId>()
+                .get::<AssistantHead>()
                 .ok_or(ContentError::Missing)?
-                .0
-                .clone(),
-            values
-                .into_iter()
-                .map(|(_, value)| {
-                    Ok(match value {
-                        ContentPart::Text(value) => AssistantContent::Text(value),
-                        ContentPart::Image(value) => {
-                            AssistantContent::Image(read_image(assets, &value)?)
-                        }
-                        ContentPart::ToolCall(value) => AssistantContent::ToolCall(value),
-                        ContentPart::Reasoning(value) => AssistantContent::Reasoning(value),
-                        _ => return Err(ContentError::Shape),
-                    })
-                })
-                .collect::<Result<_, ContentError>>()?,
+                .message(
+                    values
+                        .into_iter()
+                        .map(|(_, value)| {
+                            Ok(match value {
+                                ContentPart::Text(value) => AssistantContent::Text(value),
+                                ContentPart::Image(value) => {
+                                    AssistantContent::Image(read_image(assets, &value)?)
+                                }
+                                ContentPart::ToolCall(value) => AssistantContent::ToolCall(value),
+                                ContentPart::Reasoning(value) => AssistantContent::Reasoning(value),
+                                ContentPart::Opaque(value) => AssistantContent::Opaque(value),
+                                _ => return Err(ContentError::Shape),
+                            })
+                        })
+                        .collect::<Result<_, ContentError>>()?,
+                ),
         ),
     }
 }
@@ -662,10 +695,10 @@ pub(crate) fn spawn_deferred_with(
     message: MessageParts,
     statuses: Vec<ToolResultStatus>,
 ) -> Result<Entity, ContentError> {
-    let (role, id, parts) = prepare(assets, message)?;
+    let (role, head, parts) = prepare(assets, message)?;
     let mut utterance = commands.spawn((Utterance, role, ChildOf(parent)));
-    if let Some(id) = id {
-        utterance.insert(id);
+    if let Some(head) = head {
+        utterance.insert(head);
     }
     let entity = utterance.id();
     commands.queue(move |world: &mut World| {
@@ -701,12 +734,12 @@ pub(crate) fn replace_deferred(
     utterance: Entity,
     message: MessageParts,
 ) -> Result<(), ContentError> {
-    let (role, id, parts) = prepare(assets, message)?;
+    let (role, head, parts) = prepare(assets, message)?;
     commands.queue(move |world: &mut World| {
         if world.get::<Utterance>(utterance).is_none() {
             return;
         }
-        replace_parts(world, utterance, role, id, parts);
+        replace_parts(world, utterance, role, head, parts);
     });
     Ok(())
 }

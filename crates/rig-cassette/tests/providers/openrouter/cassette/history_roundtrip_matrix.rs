@@ -41,9 +41,7 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
-use rig::providers::openrouter;
 use rig::streaming::StreamEvent;
-use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_history_roundtrip_cassette_result;
@@ -116,20 +114,18 @@ fn history(shape: Shape) -> Vec<Message> {
                     "Unicode context: café 東京. The marker is exactly: lantern-42.",
                 )],
             },
-            Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::text("lantern-42")],
-            },
+            Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                AssistantContent::text("lantern-42"),
+            ])),
         ],
         Shape::SingleTool => vec![
-            Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::tool_call(
+            Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                AssistantContent::tool_call(
                     "call_history_single",
                     rig_core::message::ToolName::new("lookup_marker").expect("tool name"),
                     json!({ "key": "harbor" }),
-                )],
-            },
+                ),
+            ])),
             Message::User {
                 content: vec![UserContent::tool_result(
                     rig_core::message::CallId::from_wire("call_history_single"),
@@ -139,21 +135,18 @@ fn history(shape: Shape) -> Vec<Message> {
             },
         ],
         Shape::ParallelTool => vec![
-            Message::Assistant {
-                id: None,
-                content: vec![
-                    AssistantContent::tool_call(
-                        "call_history_alpha",
-                        rig_core::message::ToolName::new("alpha").expect("tool name"),
-                        json!({ "slot": 1 }),
-                    ),
-                    AssistantContent::tool_call(
-                        "call_history_beta",
-                        rig_core::message::ToolName::new("beta").expect("tool name"),
-                        json!({ "slot": 2 }),
-                    ),
-                ],
-            },
+            Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                AssistantContent::tool_call(
+                    "call_history_alpha",
+                    rig_core::message::ToolName::new("alpha").expect("tool name"),
+                    json!({ "slot": 1 }),
+                ),
+                AssistantContent::tool_call(
+                    "call_history_beta",
+                    rig_core::message::ToolName::new("beta").expect("tool name"),
+                    json!({ "slot": 2 }),
+                ),
+            ])),
             Message::User {
                 content: vec![
                     UserContent::tool_result(
@@ -178,7 +171,28 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
         .additional_params(json!({
             "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
         }));
-    for message in history(cell.shape) {
+    // A history that carries calls continues a tool loop, so the request
+    // declares their tools, as an agent's does; without them the calls and
+    // their results reach the model as text.
+    let history = history(cell.shape);
+    let mut names = Vec::new();
+    for message in &history {
+        if let rig::completion::Message::Assistant(turn) = message {
+            for call in turn.tool_calls() {
+                if !names.contains(&call.function.name) {
+                    names.push(call.function.name.clone());
+                }
+            }
+        }
+    }
+    for name in names {
+        builder = builder.tool(rig::completion::ToolDefinition::new(
+            name,
+            "Look up a stored value.",
+            json!({"type": "object", "properties": {}}),
+        ));
+    }
+    for message in history {
         builder = builder.message(message);
     }
     builder
@@ -212,15 +226,18 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
             // is "provider document vs decoder's choice" rather than two
             // normalizers that could drift.
             let response = model.call(request(cell)).await?;
-            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
-                .expect("raw is OpenRouter's own completion response");
+            let wire = response.raw.clone();
             Observation {
                 text: content_text(&response.raw["choices"][0]["message"]["content"]),
-                saw_terminal: wire
-                    .openai
-                    .choices
-                    .iter()
-                    .all(|choice| !choice.openai.finish_reason.is_empty()),
+                saw_terminal: wire["choices"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .all(|choice| {
+                        choice["finish_reason"]
+                            .as_str()
+                            .is_some_and(|reason| !reason.is_empty())
+                    }),
             }
         }
         (Transport::Blocking, Surface::Normalized) => {
@@ -327,7 +344,11 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
         cell.transport == Transport::Streaming,
         "{scenario}: transport"
     );
-    assert!(request.get("tools").is_none(), "{scenario}: history only");
+    assert_eq!(
+        request.get("tools").is_some(),
+        cell.shape != Shape::Text,
+        "{scenario}: a tool history declares its tools"
+    );
     assert_eq!(
         request["provider"]["order"],
         json!(["OpenAI"]),

@@ -13,11 +13,10 @@
 //! `CompletionCall` in the run's record. Nothing to switch on: it is the
 //! same parity the pre-normalization `raw_response` had.
 //!
-//! The hook below runs unchanged on both surfaces. It recovers OpenAI's own
-//! response types from `raw` — the provider's types are `Deserialize`, so
-//! typed access is one `serde_json::from_value` away — and prints the fields
-//! Rig does not normalize. Which type `raw` holds depends on the surface, and
-//! `HookContext::is_streaming` says which.
+//! The hook below runs unchanged on both surfaces. It reads `raw` as JSON and
+//! prints the fields Rig does not normalize. What `raw` holds depends on the
+//! surface, and `HookContext::is_streaming` says which: the reply document on
+//! the blocking surface, the stream's terminal record on the streamed one.
 //!
 //! ```not_rust
 //! OPENAI_API_KEY=... cargo run -p rig-agent --example raw_response_hook
@@ -32,52 +31,33 @@ use rig_agent::{
 };
 use rig_core::providers::openai;
 use rig_core::providers::openai::{OpenAIConfig, Route};
-use serde::Deserialize;
 
 /// Prints the OpenAI-only fields of every completed call. Provider-specific by
 /// design: that is the whole point of reaching for `raw`.
 struct PrintOpenAiFields;
 
 impl AgentHook for PrintOpenAiFields {
-    /// On the blocking surface `raw` is the Chat Completions response as
-    /// OpenAI's wire type parsed it. On the streamed surface it is the
-    /// stream's *terminal record* as OpenAI's wire type accumulated it — the
-    /// top-level chunk fields Rig does not normalize land in its
-    /// `additional_params`.
+    /// On the blocking surface `raw` is the Chat Completions reply document.
+    /// On the streamed surface it is the stream's terminal record, whose
+    /// envelope fields sit under `additional_params`.
     async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         let Some(response) = event.completion() else {
             return OutcomeAction::proceed();
         };
-        if ctx.is_streaming() {
-            match openai::wire::StreamingCompletionResponse::<openai::Usage>::deserialize(
-                &response.raw,
-            ) {
-                Ok(terminal) => {
-                    let extra = |key: &str| {
-                        terminal
-                            .additional_params
-                            .as_ref()
-                            .and_then(|params| params.get(key))
-                            .cloned()
-                    };
-                    println!(
-                        "  id {:?} · system_fingerprint {:?} · service_tier {:?}",
-                        terminal.response_id,
-                        extra("system_fingerprint"),
-                        extra("service_tier"),
-                    );
-                }
-                Err(err) => println!("  raw is not an OpenAI terminal: {err}"),
-            }
+        let raw = &response.raw;
+        let field = |value: Option<&serde_json::Value>, key: &str| {
+            value.and_then(|value| value.get(key)).cloned()
+        };
+        let (id, envelope) = if ctx.is_streaming() {
+            (raw.get("response_id"), raw.get("additional_params"))
         } else {
-            match openai::CompletionResponse::deserialize(&response.raw) {
-                Ok(response) => println!(
-                    "  id {} · system_fingerprint {:?} · service_tier {:?}",
-                    response.id, response.system_fingerprint, response.service_tier
-                ),
-                Err(err) => println!("  raw is not an OpenAI response: {err}"),
-            }
-        }
+            (raw.get("id"), Some(raw))
+        };
+        println!(
+            "  id {id:?} · system_fingerprint {:?} · service_tier {:?}",
+            field(envelope, "system_fingerprint"),
+            field(envelope, "service_tier"),
+        );
         OutcomeAction::proceed()
     }
 }

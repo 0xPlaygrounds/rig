@@ -36,14 +36,10 @@
 //! interaction nothing consumed, so both turns are still issued.
 
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason};
-use rig::providers::gemini::completion::gemini_api_types::{
-    ContentCandidate, GenerateContentResponse, PartKind,
-};
-use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus};
-use serde::Deserialize;
 use serde_json::Value;
 
-use super::super::support::{with_gemini_cassette, with_gemini_interactions_cassette};
+use super::super::support::with_gemini_cassette;
+use super::super::support::with_gemini_interactions_cassette;
 use crate::raw_capture::{assert_no_request_id, capture_completion_pair};
 use crate::support::{Observed, assistant_text};
 use rig::completion::CompletionRequest;
@@ -65,15 +61,14 @@ fn request() -> rig::completion::CompletionRequest {
 /// response id.
 fn assert_cross_request_parity(first: &RigCompletionResponse, second: &RigCompletionResponse) {
     assert_eq!(first.finish_reason(), second.finish_reason());
-    assert_eq!(first.model, second.model);
-    assert_eq!(first.provider, second.provider);
+    assert_eq!(first.model(), second.model());
+    assert_eq!(first.provider(), second.provider());
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
     assert_eq!(first.usage.input_tokens, second.usage.input_tokens);
 
     let first_identity = first.identity();
     let second_identity = second.identity();
-    assert_eq!(first_identity.message_id, second_identity.message_id);
     // Gemini sends no request-id header, so the driver reports None by
     // design — and so does the second reply: the same seam, the same header
     // set.
@@ -95,18 +90,21 @@ fn assert_cross_request_parity(first: &RigCompletionResponse, second: &RigComple
 
 /// The visible (non-`thought`) text of a `generateContent` candidate, folded
 /// the way the decoder folds text blocks.
-fn visible_text(candidate: &ContentCandidate) -> String {
+fn visible_text(candidate: &Value) -> String {
     candidate
-        .content
-        .as_ref()
+        .pointer("/content/parts")
+        .and_then(Value::as_array)
         .into_iter()
-        .flat_map(|content| content.parts.iter())
-        .filter(|part| !part.thought.unwrap_or(false))
-        .filter_map(|part| match &part.part {
-            PartKind::Text(text) => Some(text.as_str()),
-            _ => None,
-        })
+        .flatten()
+        .filter(|part| part.get("thought").and_then(Value::as_bool) != Some(true))
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
         .collect()
+}
+
+/// A `usageMetadata` token count, which Gemini omits when it is zero.
+fn usage_count(raw: &Value, field: &str) -> Option<u64> {
+    raw.get("usageMetadata")
+        .map(|usage| usage.get(field).and_then(Value::as_u64).unwrap_or_default())
 }
 
 /// The determinism half, read off the fixture: two recorded turns whose
@@ -159,30 +157,33 @@ async fn rest_raw_try_into_matches_completion() {
 
     // Same response: the captured raw, read back as Gemini's own
     // `generateContent` document, reproduces the response it rode on.
-    let typed = GenerateContentResponse::deserialize(&second.raw)
-        .expect("captured raw is Gemini's own generateContent document");
-    assert_eq!(typed.model_version.as_deref(), second.model.as_deref());
-    assert_eq!(
-        Some(typed.response_id.as_str()),
-        second.response_id.as_deref()
+    let raw = &second.raw;
+    assert!(
+        raw.is_object(),
+        "captured raw is Gemini's own generateContent document, got {raw}"
     );
     assert_eq!(
-        typed
-            .usage_metadata
-            .as_ref()
-            .map(|usage| usage.prompt_token_count as u64),
+        raw.get("modelVersion").and_then(Value::as_str),
+        second.model()
+    );
+    assert_eq!(
+        Some(
+            raw.get("responseId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        ),
+        second.response_id()
+    );
+    assert_eq!(
+        usage_count(raw, "promptTokenCount"),
         second.usage.input_tokens
     );
     assert_eq!(
-        typed
-            .usage_metadata
-            .as_ref()
-            .map(|usage| usage.total_token_count as u64),
+        usage_count(raw, "totalTokenCount"),
         second.usage.total_tokens
     );
-    let candidate = typed
-        .candidates
-        .first()
+    let candidate = raw
+        .pointer("/candidates/0")
         .expect("the recorded turn carries a candidate");
     assert_eq!(
         visible_text(candidate),
@@ -219,25 +220,31 @@ async fn interactions_raw_try_into_matches_completion() {
 
     // Same response: the captured raw, read back as the Interactions API's
     // own document, reproduces the response it rode on.
-    let typed = Interaction::deserialize(&second.raw)
+    let raw = &second.raw;
+    let document = raw
+        .as_object()
         .expect("captured raw is the Interactions API's own document");
-    assert_eq!(typed.model, second.model);
-    assert_eq!(Some(typed.id.as_str()), second.response_id.as_deref());
     assert_eq!(
-        typed
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.total_input_tokens),
+        document.get("model").and_then(Value::as_str),
+        second.model()
+    );
+    assert_eq!(
+        document.get("id").and_then(Value::as_str),
+        second.response_id()
+    );
+    assert_eq!(
+        raw.pointer("/usage/total_input_tokens")
+            .and_then(Value::as_u64),
         second.usage.input_tokens
     );
     assert_eq!(
-        typed.usage.as_ref().and_then(|usage| usage.total_tokens),
+        raw.pointer("/usage/total_tokens").and_then(Value::as_u64),
         second.usage.total_tokens
     );
-    assert!(
-        matches!(typed.status, Some(InteractionStatus::Completed)),
-        "the document keeps the API's own lifecycle spelling, got {:?}",
-        typed.status
+    assert_eq!(
+        document.get("status").and_then(Value::as_str),
+        Some("completed"),
+        "the document keeps the API's own lifecycle spelling"
     );
     assert_eq!(
         second.finish_reason(),

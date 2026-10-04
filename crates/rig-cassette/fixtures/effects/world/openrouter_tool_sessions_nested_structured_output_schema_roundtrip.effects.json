@@ -145,11 +145,14 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790152479-mbNBua1R1pEH1P6geeJ7",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openrouter",
+            "model": "google/gemini-2.5-flash",
+            "response_model": "google/gemini-2.5-flash",
+            "response_id": "gen-1790152479-mbNBua1R1pEH1P6geeJ7"
+          },
           "finish_reason": "stop",
-          "provider": "openrouter",
-          "model": "google/gemini-2.5-flash",
           "raw": {
             "choices": [
               {

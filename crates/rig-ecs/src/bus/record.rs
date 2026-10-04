@@ -192,6 +192,7 @@ impl WorldObserver {
             && recording.keep_events()
         {
             match item {
+                Ok(Relayed::Origin(origin)) => recording.origin(self.id, origin),
                 Ok(Relayed::Item(item)) => recording.event(self.id, item),
                 Ok(Relayed::Done(_)) => {}
                 Err(error) => recording.stream_error(self.id, error),
@@ -242,6 +243,15 @@ impl rig_core::serve::Observe for WorldObserver {
         self.record_item(item);
         if let Some(outcome) = outcome {
             self.record_answer(&mut state, outcome);
+        }
+    }
+
+    fn origin(&mut self, origin: &rig_core::message::Origin) {
+        let state = self.observed.lock();
+        if !state.closed
+            && let Some(recording) = &self.recording
+        {
+            recording.origin(self.id, origin);
         }
     }
 

@@ -212,16 +212,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                }
+                "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
               },
               "function": {
                 "name": "list_files",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "list_files"
+                  },
+                  "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                  "type": "function"
+                },
+                "fingerprint": "dad889501ca1de90"
+              }
             }
           ],
           "usage": {
@@ -230,11 +237,14 @@
             "total_tokens": 751,
             "cached_input_tokens": 512
           },
-          "message_id": null,
-          "response_id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -250,7 +260,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_00_RVBqFIY9SoOm1eV4apwe8568",
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
                       "index": 0,
                       "type": "function"
                     }
@@ -259,7 +269,7 @@
               }
             ],
             "created": 0,
-            "id": "d7fe9ca7-2be1-4026-a36e-62e5157a1375",
+            "id": "136637d9-eff0-46ae-a317-d43bcd48323f",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -325,7 +335,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -334,18 +343,33 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -353,9 +377,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
                   },
                   "name": "list_files",
                   "content": [
@@ -447,9 +469,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                }
+                "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
               },
               "function": {
                 "name": "read_file",
@@ -457,8 +477,17 @@
                   "path": "README.md"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"README.md\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                  "type": "function"
+                },
+                "fingerprint": "f7ca3352ac0c6c79"
+              }
             }
           ],
           "usage": {
@@ -467,11 +496,14 @@
             "total_tokens": 816,
             "cached_input_tokens": 640
           },
-          "message_id": null,
-          "response_id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -487,7 +519,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_00_psT9fOiGzEemGVRKWcCp1002",
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
                       "index": 0,
                       "type": "function"
                     }
@@ -496,7 +528,7 @@
               }
             ],
             "created": 0,
-            "id": "49e9a670-1abc-4cb4-911b-022fd110c41c",
+            "id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -562,7 +594,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -571,18 +602,33 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -590,9 +636,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_RVBqFIY9SoOm1eV4apwe8568"
-                    }
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
                   },
                   "name": "list_files",
                   "content": [
@@ -606,14 +650,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                    }
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
                   },
                   "function": {
                     "name": "read_file",
@@ -621,10 +662,27 @@
                       "path": "README.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
             },
             {
               "role": "user",
@@ -632,9 +690,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_psT9fOiGzEemGVRKWcCp1002"
-                    }
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
                   },
                   "name": "read_file",
                   "content": [
@@ -722,18 +778,35 @@
       "outcome": {
         "Ok": {
           "outcome": "completion",
-          "choice": [],
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
           "usage": {
             "input_tokens": 900,
             "output_tokens": 32,
             "total_tokens": 932,
             "cached_input_tokens": 766
           },
-          "message_id": null,
-          "response_id": "c684ae8f-0189-4276-b54a-7f9079844db4",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -749,7 +822,7 @@
                         "arguments": "{\"path\": \"tests/basic.rs\"",
                         "name": "read_file"
                       },
-                      "id": "call_00_uwBLoiio4ljs7eXSUF3Z5804",
+                      "id": "call_00_vp32PEbZzjXEVfJl92hu2622",
                       "index": 0,
                       "type": "function"
                     }
@@ -758,7 +831,7 @@
               }
             ],
             "created": 0,
-            "id": "c684ae8f-0189-4276-b54a-7f9079844db4",
+            "id": "be372fb8-cb01-4b77-b922-a9bf0bd73559",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -771,6 +844,4542 @@
                 "cached_tokens": 766
               },
               "total_tokens": 932
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 985,
+            "output_tokens": 32,
+            "total_tokens": 1017,
+            "cached_input_tokens": 768
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_zarF6W9WpsaUNx2lVCzR8801",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 217,
+              "prompt_tokens": 985,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              },
+              "total_tokens": 1017
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 7,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1070,
+            "output_tokens": 32,
+            "total_tokens": 1102,
+            "cached_input_tokens": 896
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_6FJDiYUY8GDeQRLOSHpa4581",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 174,
+              "prompt_tokens": 1070,
+              "prompt_tokens_details": {
+                "cached_tokens": 896
+              },
+              "total_tokens": 1102
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 8,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1155,
+            "output_tokens": 32,
+            "total_tokens": 1187,
+            "cached_input_tokens": 1021
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "be1c8454-a690-48fa-affd-119585a5d043"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_MXCXUZJzm5iIyV6Fezut7456",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "be1c8454-a690-48fa-affd-119585a5d043",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 1021,
+              "prompt_cache_miss_tokens": 134,
+              "prompt_tokens": 1155,
+              "prompt_tokens_details": {
+                "cached_tokens": 1021
+              },
+              "total_tokens": 1187
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 9,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be1c8454-a690-48fa-affd-119585a5d043"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1240,
+            "output_tokens": 32,
+            "total_tokens": 1272,
+            "cached_input_tokens": 1024
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "12e36fbf-3ff0-43dc-9a4d-08d303c91aec"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_iJyuZdpEKe04ZV0gihfs3581",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "12e36fbf-3ff0-43dc-9a4d-08d303c91aec",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 1024,
+              "prompt_cache_miss_tokens": 216,
+              "prompt_tokens": 1240,
+              "prompt_tokens_details": {
+                "cached_tokens": 1024
+              },
+              "total_tokens": 1272
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 10,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be1c8454-a690-48fa-affd-119585a5d043"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12e36fbf-3ff0-43dc-9a4d-08d303c91aec"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1325,
+            "output_tokens": 32,
+            "total_tokens": 1357,
+            "cached_input_tokens": 1152
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "c6530e89-77e3-4fb8-b76c-9d4057853977"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_ygX9PsYigEnaPzBWQVU80883",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "c6530e89-77e3-4fb8-b76c-9d4057853977",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 1152,
+              "prompt_cache_miss_tokens": 173,
+              "prompt_tokens": 1325,
+              "prompt_tokens_details": {
+                "cached_tokens": 1152
+              },
+              "total_tokens": 1357
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 11,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be1c8454-a690-48fa-affd-119585a5d043"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12e36fbf-3ff0-43dc-9a4d-08d303c91aec"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "c6530e89-77e3-4fb8-b76c-9d4057853977"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_3K1ugyx6l0OGH1FVHP9f1281"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1410,
+            "output_tokens": 32,
+            "total_tokens": 1442,
+            "cached_input_tokens": 1276
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "be344e07-71a8-4405-90d8-36d20789237c"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_3K1ugyx6l0OGH1FVHP9f1281",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "be344e07-71a8-4405-90d8-36d20789237c",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 1276,
+              "prompt_cache_miss_tokens": 134,
+              "prompt_tokens": 1410,
+              "prompt_tokens_details": {
+                "cached_tokens": 1276
+              },
+              "total_tokens": 1442
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 12,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be1c8454-a690-48fa-affd-119585a5d043"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12e36fbf-3ff0-43dc-9a4d-08d303c91aec"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "c6530e89-77e3-4fb8-b76c-9d4057853977"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_3K1ugyx6l0OGH1FVHP9f1281"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be344e07-71a8-4405-90d8-36d20789237c"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_3K1ugyx6l0OGH1FVHP9f1281"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_lKrnesizJbaa3MQtjcyV8423"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1495,
+            "output_tokens": 32,
+            "total_tokens": 1527,
+            "cached_input_tokens": 1280
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "1ee752e4-ebac-48e8-80b2-72779c1965c9"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_lKrnesizJbaa3MQtjcyV8423",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "1ee752e4-ebac-48e8-80b2-72779c1965c9",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 1280,
+              "prompt_cache_miss_tokens": 215,
+              "prompt_tokens": 1495,
+              "prompt_tokens_details": {
+                "cached_tokens": 1280
+              },
+              "total_tokens": 1527
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 13,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be1c8454-a690-48fa-affd-119585a5d043"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12e36fbf-3ff0-43dc-9a4d-08d303c91aec"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "c6530e89-77e3-4fb8-b76c-9d4057853977"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_3K1ugyx6l0OGH1FVHP9f1281"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be344e07-71a8-4405-90d8-36d20789237c"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_3K1ugyx6l0OGH1FVHP9f1281"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_lKrnesizJbaa3MQtjcyV8423"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "1ee752e4-ebac-48e8-80b2-72779c1965c9"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_lKrnesizJbaa3MQtjcyV8423"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_NoOU6DPYDzjNLzO5drKN7568"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1580,
+            "output_tokens": 32,
+            "total_tokens": 1612,
+            "cached_input_tokens": 1408
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "a676f73c-5b8f-4b57-aeff-1837f0c0f694"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_NoOU6DPYDzjNLzO5drKN7568",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "a676f73c-5b8f-4b57-aeff-1837f0c0f694",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 1408,
+              "prompt_cache_miss_tokens": 172,
+              "prompt_tokens": 1580,
+              "prompt_tokens_details": {
+                "cached_tokens": 1408
+              },
+              "total_tokens": 1612
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 14,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_00_OOF35xpGJNtnSxVhANHU5877",
+                      "type": "function"
+                    },
+                    "fingerprint": "dad889501ca1de90"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "136637d9-eff0-46ae-a317-d43bcd48323f"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_OOF35xpGJNtnSxVhANHU5877"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_KwPURRRLqvN5gFPc4tYS4792",
+                      "type": "function"
+                    },
+                    "fingerprint": "f7ca3352ac0c6c79"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "cd3be3c1-766d-47b4-aa5f-bcb4194a16a1"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_KwPURRRLqvN5gFPc4tYS4792"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be372fb8-cb01-4b77-b922-a9bf0bd73559"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_vp32PEbZzjXEVfJl92hu2622"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "70e7674a-9b01-43f9-88f9-3c95b7c7d7ca"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_zarF6W9WpsaUNx2lVCzR8801"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "10c3d352-bd8b-4f4e-9947-2566cd0f469f"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_6FJDiYUY8GDeQRLOSHpa4581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be1c8454-a690-48fa-affd-119585a5d043"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_MXCXUZJzm5iIyV6Fezut7456"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "12e36fbf-3ff0-43dc-9a4d-08d303c91aec"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_iJyuZdpEKe04ZV0gihfs3581"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "c6530e89-77e3-4fb8-b76c-9d4057853977"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_ygX9PsYigEnaPzBWQVU80883"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_3K1ugyx6l0OGH1FVHP9f1281"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "be344e07-71a8-4405-90d8-36d20789237c"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_3K1ugyx6l0OGH1FVHP9f1281"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_lKrnesizJbaa3MQtjcyV8423"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "1ee752e4-ebac-48e8-80b2-72779c1965c9"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_lKrnesizJbaa3MQtjcyV8423"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_00_NoOU6DPYDzjNLzO5drKN7568"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    },
+                    "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-flash",
+                "response_model": "deepseek-flash",
+                "response_id": "a676f73c-5b8f-4b57-aeff-1837f0c0f694"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_00_NoOU6DPYDzjNLzO5drKN7568"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `read_file` are not a JSON object: {\"path\": \"tests/basic.rs\". Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_XJzFOWVJNpioJ2mMcLOb8086"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                },
+                "invalid_arguments": "{\"path\": \"tests/basic.rs\""
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1665,
+            "output_tokens": 32,
+            "total_tokens": 1697,
+            "cached_input_tokens": 1531
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "177bba4e-6abe-4093-be4c-d05f34dec191"
+          },
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"",
+                        "name": "read_file"
+                      },
+                      "id": "call_00_XJzFOWVJNpioJ2mMcLOb8086",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "177bba4e-6abe-4093-be4c-d05f34dec191",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "usage": {
+              "completion_tokens": 32,
+              "prompt_cache_hit_tokens": 1531,
+              "prompt_cache_miss_tokens": 134,
+              "prompt_tokens": 1665,
+              "prompt_tokens_details": {
+                "cached_tokens": 1531
+              },
+              "total_tokens": 1697
             }
           }
         }

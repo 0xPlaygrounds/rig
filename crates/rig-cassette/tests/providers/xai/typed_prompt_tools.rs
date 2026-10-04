@@ -83,6 +83,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
                 )
                 .tool(WeatherTool::new(call_count.clone()))
                 .default_max_turns(2)
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
 
             let response: WeatherResponse = agent

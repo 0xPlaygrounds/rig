@@ -1,5 +1,6 @@
 use crate::error::EncodeError;
 use crate::error::ProviderError;
+use crate::json_utils::Lenient;
 use crate::wire::Flow;
 use crate::{
     model::{ModelInfo, ModelList, listing},
@@ -8,80 +9,27 @@ use crate::{
     wire::{Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame},
 };
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, fmt};
+use serde_json::Value;
 
 const MAX_PAGE_SIZE: usize = 1000;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ListModelsResponse {
-    #[serde(default)]
-    models: Vec<ListModelEntry>,
-    next_page_token: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ListModelEntry {
-    #[serde(default)]
-    name: String,
-    base_model_id: Option<String>,
-    display_name: Option<String>,
-    description: Option<String>,
-    input_token_limit: Option<u64>,
-    /// Provider-reported maximum output tokens.
-    output_token_limit: Option<u64>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct MissingModelIdError;
-
-impl fmt::Display for MissingModelIdError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "parse_error=model entry missing usable `baseModelId` and `name` values"
-        )
-    }
-}
-
-impl std::error::Error for MissingModelIdError {}
-
-fn normalize_gemini_model_id(name: &str) -> Option<String> {
-    let trimmed = name.trim();
-    let trimmed = trimmed.strip_prefix("models/").unwrap_or(trimmed);
-
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_owned())
-    }
-}
-
-impl TryFrom<ListModelEntry> for ModelInfo {
-    type Error = MissingModelIdError;
-
-    fn try_from(value: ListModelEntry) -> Result<Self, Self::Error> {
-        let id = value
-            .base_model_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|id| !id.is_empty())
-            .map(str::to_owned)
-            .or_else(|| normalize_gemini_model_id(&value.name))
-            .ok_or(MissingModelIdError)?;
-
-        let mut model = ModelInfo::from_id(id);
-        model.name = value.display_name;
-        model.description = value.description;
-        model.context_length = value
-            .input_token_limit
-            .and_then(|limit| u32::try_from(limit).ok());
-        model.max_output_tokens = value
-            .output_token_limit
-            .and_then(|limit| u32::try_from(limit).ok());
-        Ok(model)
-    }
+/// The model a listing entry names: its `baseModelId`, else its `name`
+/// without the `models/` prefix, with the limits it reports.
+fn model_of(entry: &Value) -> Option<ModelInfo> {
+    let id = entry
+        .str("baseModelId")
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    let name = entry.str("name").map(str::trim).unwrap_or_default();
+    let name = name.strip_prefix("models/").unwrap_or(name);
+    let id = id.or((!name.is_empty()).then_some(name))?;
+    let limit = |key: &str| entry.u64(key).and_then(|limit| u32::try_from(limit).ok());
+    let mut model = ModelInfo::from_id(id.to_owned());
+    model.name = entry.str("displayName").map(str::to_owned);
+    model.description = entry.str("description").map(str::to_owned);
+    model.context_length = limit("inputTokenLimit");
+    model.max_output_tokens = limit("outputTokenLimit");
+    Some(model)
 }
 
 fn list_models_path(page_token: Option<&str>) -> String {
@@ -101,24 +49,42 @@ struct ListingPage {
 }
 
 fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ProviderError> {
-    let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
-        listing::parse_error("Gemini", path, format_args!("parse_error={error}"), body)
-    })?;
-
+    let error =
+        |details: &dyn std::fmt::Display| listing::parse_error("Gemini", path, details, body);
+    let page: Value = serde_json::from_slice(body)
+        .map_err(|parse| error(&format_args!("parse_error={parse}")))?;
+    if page.get("models").is_some_and(|models| !models.is_array()) {
+        return Err(error(&"parse_error=`models` is not a list"));
+    }
     let models = page
-        .models
-        .into_iter()
+        .arr("models")
+        .iter()
         .map(|entry| {
-            ModelInfo::try_from(entry)
-                .map_err(|error| listing::parse_error("Gemini", path, error, body))
+            model_of(entry).ok_or_else(|| {
+                error(&"parse_error=model entry missing usable `baseModelId` and `name` values")
+            })
         })
         .collect::<Result<Vec<_>, _>>()?;
-
     // Sending an empty cursor would repeatedly fetch the same page.
     Ok(ListingPage {
         models,
-        next_cursor: page.next_page_token.filter(|token| !token.is_empty()),
+        next_cursor: page
+            .str("nextPageToken")
+            .filter(|token| !token.is_empty())
+            .map(str::to_owned),
     })
+}
+
+impl super::GeminiConfig {
+    /// The GenerateContent model-listing wire.
+    pub(crate) fn models(&self) -> Models {
+        Models::new(self.clone())
+    }
+
+    /// The credential-check wire.
+    pub(crate) fn verify(&self) -> VerifyKey {
+        VerifyKey::new(self.clone())
+    }
 }
 
 #[cfg(test)]
@@ -244,8 +210,7 @@ impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         let payload = frame.as_str().into_owned();
-        let classified =
-            classify_marker_keyed_frame::<ListModelsResponse>(&payload, MODEL_PAGE_MARKERS);
+        let classified = classify_marker_keyed_frame::<Value>(&payload, MODEL_PAGE_MARKERS);
         classified.map(|_| payload)
     }
 
@@ -313,8 +278,7 @@ impl<'id> Decoder<'id, Verify> for VerifyKeyDecoder {
     type Event = ();
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_marker_keyed_frame::<ListModelsResponse>(&frame.as_str(), MODEL_PAGE_MARKERS)
-            .map(|_| ())
+        classify_marker_keyed_frame::<Value>(&frame.as_str(), MODEL_PAGE_MARKERS).map(|_| ())
     }
 
     fn decode(

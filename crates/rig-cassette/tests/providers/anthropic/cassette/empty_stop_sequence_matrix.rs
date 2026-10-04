@@ -61,9 +61,7 @@
 
 use rig::completion::{FinishReason, ToolDefinition};
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::CompletionResponse;
 use rig_test_support::cassette_models::MapWire;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_empty_stop_cassette};
@@ -150,11 +148,13 @@ async fn raw_normalize_empty_stop_sequence() {
                 .call(request(IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
                 .expect("empty stop-sequence request should succeed");
-            let raw = CompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
-
-            assert!(raw.content.is_empty(), "premise: the turn carried nothing");
-            assert_eq!(raw.stop_sequence.as_deref(), Some("alpha"));
+            let raw = &response.raw;
+            assert_eq!(
+                raw["content"],
+                json!([]),
+                "premise: the turn carried nothing"
+            );
+            assert_eq!(raw["stop_sequence"], "alpha");
 
             assert!(
                 response.choice.is_empty(),
@@ -515,7 +515,7 @@ async fn identity_survives_empty_stop() {
                 .expect("empty stop turn should succeed");
 
             // Everything the discarded error used to take with it.
-            assert!(response.message_id.is_some(), "message id must survive");
+            assert!(response.response_id().is_some(), "message id must survive");
             assert!(
                 response.provider_request_id.is_some(),
                 "transport request id must survive — it is what Anthropic support asks for"
@@ -524,7 +524,8 @@ async fn identity_survives_empty_stop() {
                 response.usage.input_tokens.is_some_and(|n| n > 0),
                 "usage must survive"
             );
-            *sink.lock().expect("model sink should not be poisoned") = response.model;
+            *sink.lock().expect("model sink should not be poisoned") =
+                response.model().map(str::to_owned);
         },
     )
     .await;

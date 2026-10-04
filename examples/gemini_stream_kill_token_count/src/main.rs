@@ -53,11 +53,8 @@ use rig::completion::CompletionRequest;
 use rig::completion::Usage;
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
-use rig::message::{AssistantContent, Reasoning};
+use rig::message::AssistantContent;
 use rig::providers::gemini::Gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig,
-};
 use rig::streaming::{Item, Relayed, StreamEvent, StreamEvents};
 
 const MODEL: &str = "gemini-2.5-flash";
@@ -173,9 +170,7 @@ fn visible_len(item: &Relayed) -> usize {
         StreamEvent::End {
             content: AssistantContent::Reasoning(r),
             ..
-        } => r
-            .open(r.issuer())
-            .map_or(0, |r| r.display_text().chars().count()),
+        } => r.text.chars().count(),
         _ => 0,
     }
 }
@@ -235,6 +230,7 @@ where
                 reason = Some(format!("stream error: {err}"));
                 break;
             }
+            Ok(Some(Ok(Relayed::Origin(_)))) => {}
             Ok(Some(Ok(Relayed::Item(Item::Event(item))))) => match item {
                 StreamEvent::Text { text, .. } => output.push_str(&text),
                 StreamEvent::Reasoning { text, .. } => {
@@ -244,11 +240,7 @@ where
                     content: AssistantContent::Reasoning(r),
                     ..
                 } => {
-                    output.push_str(
-                        &r.open(r.issuer())
-                            .map(Reasoning::display_text)
-                            .unwrap_or_default(),
-                    );
+                    output.push_str(&r.text.clone());
                 }
                 _ => {}
             },
@@ -327,19 +319,12 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
 /// 2.5-flash spends seconds generating hidden thoughts (no chunks sent), which
 /// is indistinguishable from a stall and would trip the read timeout before any
 /// real partial output — masking the injected disruptions.
-fn no_thinking_params() -> anyhow::Result<serde_json::Value> {
-    let params = AdditionalParameters {
-        generation_config: Some(GenerationConfig {
-            thinking_config: Some(ThinkingConfig {
-                include_thoughts: Some(false),
-                thinking_budget: Some(0),
-                thinking_level: None,
-            }),
-            ..Default::default()
-        }),
-        additional_params: None,
-    };
-    Ok(serde_json::to_value(&params)?)
+fn no_thinking_params() -> serde_json::Value {
+    serde_json::json!({
+        "generationConfig": {
+            "thinkingConfig": { "thinkingBudget": 0, "includeThoughts": false }
+        }
+    })
 }
 
 async fn run_scenario(
@@ -355,7 +340,7 @@ async fn run_scenario(
         CompletionRequest::new(prompt)
             .temperature(0.7)
             .max_tokens(2000)
-            .additional_params(no_thinking_params()?),
+            .additional_params(no_thinking_params()),
     )?;
 
     let disrupted = Disrupt::new(stream.into_relay(), mode, DISRUPT_AFTER_CHARS);

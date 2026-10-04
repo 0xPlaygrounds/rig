@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{AdditionalParams, Message, Reasoning, ReasoningContent, Text, ToolResultContent};
+use super::{Message, Text, ToolResultContent};
 
 mod vec_content_serde {
     use super::super::{AssistantContent, Message, UserContent};
@@ -25,10 +25,9 @@ mod vec_content_serde {
 
     #[test]
     fn message_content_round_trips_byte_identically() {
-        let message = Message::Assistant {
-            id: Some("msg_1".to_owned()),
-            content: vec![AssistantContent::text("hello")],
-        };
+        let message = Message::Assistant(crate::message::AssistantMessage::new(vec![
+            AssistantContent::text("hello"),
+        ]));
         let encoded = serde_json::to_string(&message).expect("serialize");
         let decoded: Message = serde_json::from_str(&encoded).expect("deserialize");
         assert_eq!(
@@ -42,59 +41,11 @@ mod vec_content_serde {
         // The request boundary rejects it when it is sent, not serde.
         for message in [
             serde_json::json!({"role": "user", "content": []}),
-            serde_json::json!({"role": "assistant", "id": null, "content": []}),
+            serde_json::json!({"role": "assistant", "content": []}),
         ] {
             let decoded = serde_json::from_value::<Message>(message.clone()).expect("parses");
             assert_eq!(serde_json::to_value(&decoded).expect("serializes"), message);
         }
-    }
-}
-
-#[test]
-fn reasoning_constructors_and_accessors_work() {
-    let single = Reasoning::new("think");
-    assert_eq!(single.first_text(), Some("think"));
-    assert_eq!(single.first_signature(), None);
-
-    let signed = Reasoning::new_with_signature("signed", Some("sig-1".to_string()));
-    assert_eq!(signed.first_text(), Some("signed"));
-    assert_eq!(signed.first_signature(), Some("sig-1"));
-
-    let multi = Reasoning::multi(vec!["a".to_string(), "b".to_string()]);
-    assert_eq!(multi.display_text(), "a\nb");
-    assert_eq!(multi.first_text(), Some("a"));
-
-    let redacted = Reasoning::redacted("redacted-value");
-    assert_eq!(redacted.display_text(), "redacted-value");
-    assert_eq!(redacted.first_text(), None);
-
-    let encrypted = Reasoning::encrypted("enc");
-    assert_eq!(encrypted.encrypted_content(), Some("enc"));
-    assert_eq!(encrypted.display_text(), "");
-
-    let summaries = Reasoning::summaries(vec!["s1".to_string(), "s2".to_string()]);
-    assert_eq!(summaries.display_text(), "s1\ns2");
-    assert_eq!(summaries.encrypted_content(), None);
-}
-
-#[test]
-fn reasoning_content_serde_roundtrip() {
-    let variants = vec![
-        ReasoningContent::Text {
-            text: "plain".to_string(),
-            signature: Some("sig".to_string()),
-        },
-        ReasoningContent::Encrypted("opaque".to_string()),
-        ReasoningContent::Redacted {
-            data: "redacted".to_string(),
-        },
-        ReasoningContent::Summary("summary".to_string()),
-    ];
-
-    for variant in variants {
-        let json = serde_json::to_string(&variant).expect("serialize");
-        let roundtrip: ReasoningContent = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(roundtrip, variant);
     }
 }
 
@@ -118,10 +69,10 @@ fn a_rig_issued_call_id_round_trips_as_local() {
     // the round trip never turns it into a provider id.
     let call = super::ToolCall::from_wire(
         "",
-        super::ToolFunction {
-            name: super::ToolName::new("add").expect("tool name"),
-            arguments: serde_json::json!({}),
-        },
+        super::ToolFunction::new(
+            super::ToolName::new("add").expect("tool name"),
+            serde_json::json!({}),
+        ),
     );
     assert!(call.id.is_local());
 
@@ -129,134 +80,6 @@ fn a_rig_issued_call_id_round_trips_as_local() {
     let roundtrip: super::ToolCall = serde_json::from_value(json).expect("deserialize");
     assert!(roundtrip.id.provider().is_none());
     assert_eq!(roundtrip, call);
-}
-
-#[test]
-fn empty_params_canonicalize_to_none_in_both_serde_directions() {
-    // The `AdditionalParams` contract, pinned where it lives. One
-    // fixture, every direction: canonicalization, round-trip, tolerance,
-    // and rejection.
-
-    // An explicit `{}` or `null` decodes as `None` exactly like an
-    // absent field.
-    for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
-        let text: Text = serde_json::from_value(
-            serde_json::json!({"text": "x", "additional_params": empty_spelling}),
-        )
-        .expect("deserialize");
-        assert_eq!(text.additional_params, None);
-    }
-
-    // Data survives a round trip value-identically, and `Some` params
-    // always carry data — `AdditionalParams` has no empty value, so the
-    // old uncanonicalized-`Some({})` hazard is unrepresentable rather
-    // than tolerated.
-    let text: Text = serde_json::from_value(
-        serde_json::json!({"text": "x", "additional_params": {"citations": [1]}}),
-    )
-    .expect("deserialize");
-    assert_eq!(
-        text.additional_params,
-        AdditionalParams::from_entries([("citations", serde_json::json!([1]))])
-    );
-    assert_eq!(
-        text.additional_params
-            .as_ref()
-            .and_then(|params| params.get("citations")),
-        Some(&serde_json::json!([1]))
-    );
-    let round: Text = serde_json::from_value(serde_json::to_value(&text).expect("serialize"))
-        .expect("round trip");
-    assert_eq!(round, text);
-
-    // The empty map canonicalizes to `None` at the constructor, so it
-    // never reaches serialization at all.
-    assert_eq!(AdditionalParams::new(serde_json::Map::new()), None);
-    assert_eq!(
-        AdditionalParams::try_from_value(serde_json::json!({})).expect("object"),
-        None
-    );
-
-    // An unknown key on the block itself is tolerated and dropped —
-    // never an error, never captured into params — so histories written
-    // by a newer rig (or 0.41 flattened extras that were never
-    // re-nested) still load; MIGRATING's strict-decode recipe is the
-    // opt-in detector for the dropped keys.
-    let tolerant: Text = serde_json::from_value(
-        serde_json::json!({"text": "x", "citations": ["stray"], "future_field": 1}),
-    )
-    .expect("unknown keys on a block must not fail the decode");
-    assert_eq!(tolerant.text, "x");
-    assert_eq!(tolerant.additional_params, None);
-
-    // Extras are a keyed namespace: a non-object carrier (the shape a
-    // mis-firing migration script writes) is malformed data and fails
-    // loudly instead of loading as a phantom annotation no extractor
-    // can read.
-    for malformed in [serde_json::json!([]), serde_json::json!("title")] {
-        let err = serde_json::from_value::<Text>(
-            serde_json::json!({"text": "x", "additional_params": malformed}),
-        )
-        .expect_err("non-object params must be a decode error");
-        assert!(
-            err.to_string().contains("must be a JSON object"),
-            "unexpected error: {err}"
-        );
-        assert!(
-            AdditionalParams::try_from_value(serde_json::json!([])).is_err(),
-            "try_from_value must hand a non-object back, not swallow it"
-        );
-    }
-}
-
-#[test]
-fn round_trip_diff_recipe_detects_every_dropped_key() {
-    // Pins MIGRATING's opt-in verification recipe: the runtime load
-    // path tolerates unknown keys (see the tolerance case in
-    // `empty_params_canonicalize_to_none_in_both_serde_directions`),
-    // and a migration script detects what tolerance dropped by loading,
-    // re-serializing, and asking `keys_lost_in_round_trip` — a
-    // serde_ignored-based recipe cannot serve here, because the
-    // internally tagged enums buffer their content and hide ignored
-    // keys from its callback.
-    let migrated = serde_json::json!({
-        "role": "assistant",
-        "content": [
-            {"type": "text", "text": "cited", "citations": ["not re-nested"]},
-            {"type": "text", "text": "clean",
-             "additional_params": {"citations": ["re-nested"]}},
-        ],
-    });
-    let loaded: Message =
-        serde_json::from_value(migrated.clone()).expect("tolerant decode must succeed");
-    let reserialized = serde_json::to_value(&loaded).expect("serialize");
-    assert_eq!(
-        super::keys_lost_in_round_trip(&migrated, &reserialized),
-        vec!["content.0.citations".to_string()],
-        "every dropped key must be reported by path, and only dropped keys \
-             — writer-added defaults are not differences"
-    );
-
-    // A fully re-nested history survives whole: the recipe's success
-    // condition is an empty list. MIGRATING's blessed
-    // `"additional_params": {}` spelling canonicalizes to absence and
-    // must not read as a loss.
-    let clean = serde_json::json!({
-        "role": "assistant",
-        "content": [
-            {"type": "text", "text": "clean",
-             "additional_params": {"citations": ["re-nested"]}},
-            {"type": "text", "text": "mechanically migrated",
-             "additional_params": {}},
-        ],
-    });
-    let loaded: Message = serde_json::from_value(clean.clone()).expect("decode");
-    let reserialized = serde_json::to_value(&loaded).expect("serialize");
-    assert_eq!(
-        super::keys_lost_in_round_trip(&clean, &reserialized),
-        Vec::<String>::new(),
-        "clean history must survive the round trip whole"
-    );
 }
 
 #[test]
@@ -334,16 +157,6 @@ fn a_call_carries_the_providers_id_or_a_fresh_local_one() {
     assert_eq!(first.wire().len(), 36, "a hyphenated v4 UUID");
 }
 
-/// A dual-identifier wire keeps both ids in their slots.
-#[test]
-fn a_dual_wire_id_keeps_the_output_item() {
-    let id = super::CallId::from_dual_wire("fc_1", "call_1");
-    let provider = id.provider().expect("provider id");
-    assert_eq!(provider.call_id, "call_1");
-    assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
-    assert!(super::CallId::from_dual_wire("fc_1", "").is_local());
-}
-
 /// A result built from its call answers that call under its name.
 #[test]
 fn a_result_is_built_from_the_call_it_answers() {
@@ -415,4 +228,130 @@ fn media_constructors_name_their_source_encoding() {
         )),
         DocumentSourceKind::string("# Notes")
     );
+}
+
+#[test]
+fn tool_arguments_are_always_an_object() {
+    use super::{ToolFunction, ToolName};
+    use serde_json::json;
+    let name = || ToolName::new("search").expect("tool name");
+    let cases = [
+        (json!({"q": "rust"}), json!({"q": "rust"}), None),
+        (json!("{\"q\":\"rust\"}"), json!({"q": "rust"}), None),
+        (json!("\"{\\\"q\\\":1}\""), json!({"q": 1}), None),
+        (json!(null), json!({}), None),
+        (json!(""), json!({}), None),
+        (json!("not json"), json!({}), Some("not json")),
+        (json!("[1,2,3]"), json!({}), Some("[1,2,3]")),
+        (json!([1, 2, 3]), json!({}), Some("[1,2,3]")),
+        (json!(42), json!({}), Some("42")),
+        (json!(true), json!({}), Some("true")),
+    ];
+    for (given, arguments, invalid) in cases {
+        let function = ToolFunction::new(name(), given.clone());
+        assert_eq!(function.arguments_value(), arguments, "{given}");
+        assert_eq!(function.invalid_arguments.as_deref(), invalid, "{given}");
+    }
+}
+
+#[test]
+fn a_stored_call_with_any_arguments_shape_loads() {
+    let stored = serde_json::json!({"name": "search", "arguments": null});
+    let function: super::ToolFunction =
+        serde_json::from_value(stored).expect("a stored call loads");
+    assert_eq!(function.arguments_value(), serde_json::json!({}));
+    let stored = serde_json::json!({"name": "search", "arguments": "{\"q\":1}"});
+    let function: super::ToolFunction =
+        serde_json::from_value(stored).expect("a stored call loads");
+    assert_eq!(function.arguments_value(), serde_json::json!({"q": 1}));
+}
+
+#[test]
+fn an_unanswered_turn_fails_its_run_only_when_cut_or_failed() {
+    use super::{AssistantContent, StopReason, turn_failure};
+    use crate::completion::FinishReason;
+    let empty: Vec<AssistantContent> = vec![AssistantContent::reasoning("thinking")];
+    let answered = vec![AssistantContent::text("hi")];
+    let failed = StopReason::Error("refused".into());
+    assert_eq!(
+        turn_failure(
+            &empty,
+            Some(&StopReason::Length),
+            Some(&FinishReason::Length)
+        ),
+        Some(FinishReason::Length.no_answer_message())
+    );
+    assert!(turn_failure(&empty, Some(&failed), None).is_some_and(|m| m.contains("refused")));
+    assert_eq!(
+        turn_failure(&empty, Some(&StopReason::Stop), Some(&FinishReason::Stop)),
+        None
+    );
+    assert_eq!(
+        turn_failure(&answered, Some(&failed), Some(&FinishReason::Length)),
+        None
+    );
+}
+
+/// A turn that will not replay runs none of its tool calls, whatever else
+/// it holds; a call in a turn the token limit ended is finished and runs.
+#[test]
+fn a_failed_turn_with_calls_fails_its_run() {
+    use super::{AssistantContent, StopReason, ToolName, turn_failure};
+    use crate::completion::FinishReason;
+    let call = AssistantContent::tool_call(
+        "call_1",
+        ToolName::new("lookup").expect("a tool name"),
+        serde_json::json!({}),
+    );
+    let turn = vec![AssistantContent::text("checking"), call];
+    for stop in [
+        StopReason::Error("Provider finish_reason: pause".into()),
+        StopReason::Aborted("the stream ended".into()),
+    ] {
+        let message = turn_failure(&turn, Some(&stop), None).expect("the run fails");
+        assert!(message.contains("none of its tool calls ran"), "{message}");
+    }
+    for (stop, finish) in [
+        (StopReason::Length, FinishReason::Length),
+        (StopReason::ToolUse, FinishReason::ToolCalls),
+    ] {
+        assert_eq!(turn_failure(&turn, Some(&stop), Some(&finish)), None);
+    }
+}
+
+/// One answer rule (round-5 F2): whitespace text is no answer, so a turn the
+/// budget cut with only whitespace beside its reasoning fails its run, and
+/// the empty-turn rule agrees with it.
+#[test]
+fn a_whitespace_answer_is_no_answer() {
+    use super::{AssistantContent, StopReason, turn_delivered_no_answer, turn_failure};
+    use crate::completion::FinishReason;
+    let cut = vec![
+        AssistantContent::reasoning("thinking").with_native(serde_json::json!({"signature": "s"})),
+        AssistantContent::text("\n\n"),
+    ];
+    assert!(cut[1].is_blank());
+    assert!(
+        turn_failure(&cut, Some(&StopReason::Length), Some(&FinishReason::Length)).is_some(),
+        "a turn cut by the budget with only whitespace text fails"
+    );
+    let whitespace = vec![AssistantContent::text("  ")];
+    assert!(turn_delivered_no_answer(&whitespace));
+    assert!(crate::transcript::is_empty_assistant_turn(&whitespace));
+}
+
+/// Redacted reasoning without a current provider item has nothing to send
+/// (round-5 F7); with one, it replays.
+#[test]
+fn redacted_reasoning_without_its_item_is_blank() {
+    use super::{AssistantContent, Reasoning};
+    let redacted = AssistantContent::Reasoning(Reasoning {
+        text: "kept".to_owned(),
+        redacted: true,
+        native: None,
+    });
+    assert!(redacted.is_blank());
+    let with_item =
+        redacted.with_native(serde_json::json!({"type": "redacted_thinking", "data": "x"}));
+    assert!(!with_item.is_blank());
 }

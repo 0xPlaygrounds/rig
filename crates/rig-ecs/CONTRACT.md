@@ -57,19 +57,22 @@ A user utterance's content is the caller's, verbatim: `spawn_run` takes a
 `Prompt` (a user message's parts), and those parts — text and image, in the order given, each
 image's bytes or URL, media type and options unchanged — are what every
 request of the run carries, what memory appends and loads (§11), and what a
-checkpoint saves and restores (§13); the assistant's canonical part order
-(`rig_core::message::ordered_assistant_content`) does not apply to user
-content. Pinned by the `*_image_*` goldens
+checkpoint saves and restores (§13). An assistant utterance's parts keep the
+order the provider produced them in, one part per provider item, streamed or
+not: nothing regroups them. Pinned by the `*_image_*` goldens
 (`inline_mixed_order`: text, image, text, the same image, text; `inline_tool_unary`:
 the image in the second request and after a checkpoint load; `inline_followup`: the
 image loaded from memory, once, before a text-only prompt).
 
 Content entities carry one reflected `agent::content::parts::ContentPart` enum:
-`Text`, `Image`, `Audio`, `Video`, `Document`, `ToolCall`, `Reasoning`, `ToolResult`,
-or `Json`. Query the component and match its variant; media metadata structs
-are fields, not independent components. A `ToolResult` owns ordered `Text`,
-`Image`, or `Json` child entities. `Role` and the assistant's `MessageId` belong
-to the utterance. Sibling order is `Children` order. Conflicting payload types
+`Text`, `Image`, `Audio`, `Video`, `Document`, `ToolCall`, `Reasoning`, `Opaque`,
+`ToolResult`, or `Json`. Query the component and match its variant; media
+metadata structs are fields, not independent components. An assistant part's
+provider item rides inside its payload (`native`), and an `Opaque` part is a
+provider item with no canonical meaning. A `ToolResult` owns ordered `Text`,
+`Image`, or `Json` child entities. `Role` and the assistant's `AssistantHead`
+(its origin, how it ended, and the provider's whole message) belong to the
+utterance. Sibling order is `Children` order. Conflicting payload types
 are unrepresentable; missing required components, children on leaf parts,
 nested tool results, and invalid role/content combinations are rejected.
 `read_message` and the `ContentGraph` system parameter reconstruct transport DTOs

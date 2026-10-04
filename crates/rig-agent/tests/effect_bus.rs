@@ -1801,7 +1801,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
     let unary = within(model.call(request("hi"))).await.expect("unary");
     let mut stream = streamer.stream(request("hi"));
     assert_eq!(
-        stream.partial().provider,
+        stream.partial().provider(),
         "streamer",
         "before the terminal record the stream carries the handler's label"
     );
@@ -1813,7 +1813,8 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         .await
         .expect("the stream produced a terminal record");
     assert_eq!(
-        streamed.provider, unary.provider,
+        streamed.provider(),
+        unary.provider(),
         "the terminal record names the provider"
     );
     assert_eq!(streamed.choice, unary.choice);
@@ -1994,7 +1995,7 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
         let assistant_calls: Vec<Vec<CallId>> = messages
             .iter()
             .filter_map(|message| match message {
-                Message::Assistant { content, .. } => Some(
+                Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => Some(
                     content
                         .iter()
                         .filter_map(|item| match item {

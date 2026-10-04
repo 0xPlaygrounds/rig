@@ -2,7 +2,7 @@ use futures::{StreamExt, stream};
 use rig::driver::{Exchange, Local, Model, Opened, Opening, Step, Transport};
 use rig::error::ProviderError;
 use rig::streaming::Item;
-use rig::wire::{Call, Fold, Free, Operation, Reply};
+use rig::wire::{Call, Descriptor, Fold, Free, Operation, Reply};
 
 /// Pose estimation over a sequence of video frames.
 pub struct PoseEstimation;
@@ -65,13 +65,13 @@ impl Operation for PoseEstimation {
     }
 
     // Checked before the request reaches the runtime.
-    fn validate(request: &PoseRequest) -> Result<(), ProviderError> {
+    fn prepare(request: PoseRequest, _wire: &Descriptor<'_>) -> Result<PoseRequest, ProviderError> {
         if request.frames.is_empty() {
             return Err(ProviderError::request(
                 "a pose request needs at least one frame",
             ));
         }
-        Ok(())
+        Ok(request)
     }
 }
 

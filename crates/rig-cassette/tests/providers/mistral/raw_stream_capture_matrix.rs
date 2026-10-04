@@ -2,22 +2,23 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the chat-completions terminal
-//! record the wire's decoder assembled, serialized — and it carries it whole:
-//! a dialect's own usage fields ride along beside the OpenAI-compatible ones
-//! that [`chat::Terminal`] models. Capture is always on: there is
+//! [`rig::completion::CompletionResponse::raw`] carries the chat-completions
+//! terminal record the wire's decoder assembled, a JSON object with the keys
+//! `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
+//! `additional_params`. It carries it whole: a dialect's own usage fields ride
+//! along beside the OpenAI-compatible counters. Capture is always on: there is
 //! no flag to request it, nothing about it reaches the wire, and a
 //! `Value::Null` only ever means a terminal built by hand with no provider
-//! record behind it. It is the terminal record only, never the stream's frames.
-//! Mistral's terminal usage carries the capacity tier (`usage.service_tier`)
-//! that the normalized `Usage` has no slot for, so it is the terminal-only
-//! field pinned here.
+//! record behind it. It is the terminal record only, never the stream's
+//! frames. Mistral's terminal usage carries the capacity tier
+//! (`usage.service_tier`) that the normalized `Usage` has no slot for, so it
+//! is the terminal-only field pinned here.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into the chat-completions terminal record and re-serializes equal, and its typed accounting normalizes to the terminal's usage; the normalized terminal reproduces the recorded terminal frame and `mistral-correlation-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat-completions terminal record, and its accounting is the terminal's usage; the normalized terminal reproduces the recorded terminal frame and `mistral-correlation-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_service_tier` | terminal-only field | `raw.usage.service_tier` equals the recorded terminal frame's | recorded |
-//! | 3 | `stream_tool_call_raw_round_trips_terminal_type` | forced tool call | a `tool_choice: any` stream's terminal `raw` round-trips into the terminal record and reproduces the recorded finish frame; the normalized terminal reports `ToolCalls` while the recorded frame spells `"tool_calls"`, and the stream's one tool call reassembles the fixture's `delta.tool_calls` fragments | recorded |
+//! | 3 | `stream_tool_call_raw_round_trips_terminal_type` | forced tool call | a `tool_choice: any` stream's terminal `raw` is the terminal record and reproduces the recorded finish frame; the normalized terminal reports `ToolCalls` while the recorded frame spells `"tool_calls"`, and the stream's one tool call reassembles the fixture's `delta.tool_calls` fragments | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that usage appears on exactly one frame — Mistral's finish
@@ -157,7 +158,7 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
 }
 
 // ================================================================
-// 1. raw round-trips the terminal type
+// 1. raw is the terminal record
 // ================================================================
 
 #[tokio::test]
@@ -179,8 +180,8 @@ async fn stream_raw_round_trips_terminal_type() {
 
     let (text, terminal) = observed.take();
     assert!(!text.is_empty());
-    // The accounting rides the record typed: `ChatUsage` folds the
-    // OpenAI-compatible counters and the dialect's extras, and its mapping is
+    // The accounting rides the record as the provider's usage object: the
+    // OpenAI-compatible counters and the dialect's extras, whose mapping is
     // what the normalized terminal reports.
     chat::assert_terminal_round_trips(&terminal);
 
@@ -244,7 +245,7 @@ async fn stream_raw_exposes_terminal_service_tier() {
 }
 
 // ================================================================
-// 3. A forced tool call: the terminal round-trips and reports ToolCalls
+// 3. A forced tool call: raw is the terminal record, which reports ToolCalls
 // ================================================================
 
 #[tokio::test]
@@ -299,17 +300,17 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
         serde_json::from_str(&recorded_arguments).expect("recorded arguments parse as JSON");
     assert_eq!(recorded_arguments["city"], json!("Paris"));
 
-    // The normalized terminal reports ToolCalls, and raw's own finish reason
-    // agrees once mapped through the terminal type.
+    // The normalized terminal reports ToolCalls, and the terminal record's
+    // own finish reason agrees.
     assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
     assert_eq!(terminal.raw["finish_reason"], json!("tool_calls"));
     // The stream yielded exactly the recorded call, with object arguments.
     assert_eq!(observation.tool_calls.len(), 1, "one streamed tool call");
     let call = &observation.tool_calls[0];
     assert_eq!(call.function.name, TOOL_NAME);
-    assert_eq!(call.function.arguments, recorded_arguments);
+    assert_eq!(call.function.arguments_value(), recorded_arguments);
     assert_matches_recorded_token(
-        call.id.provider().map(|provider| provider.call_id.as_str()),
+        call.id.provider().map(|provider| provider.as_str()),
         Some(recorded_id.as_str()),
         "streamed tool call id",
     );

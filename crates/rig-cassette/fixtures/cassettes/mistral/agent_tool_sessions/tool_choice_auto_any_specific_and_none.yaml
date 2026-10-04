@@ -13,7 +13,9 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":9,"prompt_tokens":79,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":88}}'
+  - name: mistral-correlation-id
+    value: 01a1032a-aea7-74ce-a91f-7191fefcbcfd
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"k02ydZM8w","index":0,"type":"function"}]}}],"created":0,"id":"0a3c72db1eea4672ac8497847e54f0e7","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":9,"prompt_tokens":79,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":88}}'
 ---
 when:
   path: /v1/chat/completions
@@ -24,13 +26,15 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object and do not answer in prose.","role":"user"}],"model":"mistral-small-latest","tool_choice":"any","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object and do not answer in prose.","role":"user"}],"model":"mistral-small-latest","tool_choice":"required","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_2","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":9,"prompt_tokens":85,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":94}}'
+  - name: mistral-correlation-id
+    value: 01a1032a-b07c-7b29-979c-abcf6aacb3dd
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"7gaRVznEX","index":0,"type":"function"}]}}],"created":0,"id":"bbdb874a65de4e1eb694cb7efcc9b224","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":9,"prompt_tokens":85,"prompt_tokens_details":{"cached_tokens":48},"service_tier":"standard","total_tokens":94}}'
 ---
 when:
   path: /v1/chat/completions
@@ -47,7 +51,9 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"call_REDACTED_3","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":8,"prompt_tokens":91,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":99}}'
+  - name: mistral-correlation-id
+    value: 01a1032a-b244-76af-944a-4877599dff54
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"hNXZjkVQj","index":0,"type":"function"}]}}],"created":0,"id":"ff0ca38e8ef144ed850b635f6a3657ad","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":8,"prompt_tokens":91,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":99}}'
 ---
 when:
   path: /v1/chat/completions
@@ -64,4 +70,6 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"no-tool-answer","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":30,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":35}}'
+  - name: mistral-correlation-id
+    value: 01a1032a-b3cb-738f-b147-38290199faaa
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"no-tool-answer","role":"assistant","tool_calls":null}}],"created":0,"id":"f43259c7b20f4355b357e8d5574f7d35","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":30,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":35}}'

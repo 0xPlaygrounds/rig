@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 2
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -30,7 +30,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -70,7 +70,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -86,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -106,7 +106,7 @@
         }
       },
       {
-        "batch": 19,
+        "batch": 20,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -193,24 +193,27 @@
             "total_tokens": 70,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "0431b88a-bfd9-4885-b735-f7488875ff9d"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 55,
               "completion_tokens": 15,
-              "total_tokens": 70,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 55,
+              "prompt_tokens": 55,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 55
+              "total_tokens": 70
             },
             "finish_reason": "stop",
-            "response_id": "cb7f3fd8-9d88-4532-bf84-93fd0dfd251a",
+            "response_id": "0431b88a-bfd9-4885-b735-f7488875ff9d",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -361,6 +364,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     }
   ]

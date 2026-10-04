@@ -162,11 +162,46 @@
           "rig_ecs::agent::Outputs": {
             "content": [
               {
+                "type": "opaque",
+                "item": {
+                  "executableCode": {
+                    "code": "result = 13 * 13\nprint(f'{result=}')\n",
+                    "language": "PYTHON"
+                  }
+                },
+                "replay": true
+              },
+              {
+                "type": "opaque",
+                "item": {
+                  "codeExecutionResult": {
+                    "outcome": "OUTCOME_OK",
+                    "output": "result=169\n"
+                  }
+                },
+                "replay": true
+              },
+              {
                 "type": "text",
-                "text": "The number is 169."
+                "text": "The number is 169.",
+                "native": {
+                  "item": {
+                    "text": "The number is 169."
+                  },
+                  "fingerprint": "dfe9d28b3160b005"
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
+              },
+              "stop": "stop"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -186,8 +221,34 @@
               "outcome": "completion",
               "choice": [
                 {
+                  "type": "opaque",
+                  "item": {
+                    "executableCode": {
+                      "code": "result = 13 * 13\nprint(f'{result=}')\n",
+                      "language": "PYTHON"
+                    }
+                  },
+                  "replay": true
+                },
+                {
+                  "type": "opaque",
+                  "item": {
+                    "codeExecutionResult": {
+                      "outcome": "OUTCOME_OK",
+                      "output": "result=169\n"
+                    }
+                  },
+                  "replay": true
+                },
+                {
                   "type": "text",
-                  "text": "The number is 169."
+                  "text": "The number is 169.",
+                  "native": {
+                    "item": {
+                      "text": "The number is 169."
+                    },
+                    "fingerprint": "dfe9d28b3160b005"
+                  }
                 }
               ],
               "usage": {
@@ -197,11 +258,14 @@
                 "tool_use_prompt_tokens": 79,
                 "reasoning_tokens": 35
               },
-              "message_id": null,
-              "response_id": "kHizasKhO4DcqtsPz8-qwAY",
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
+              },
               "finish_reason": "stop",
-              "provider": "gcp.gemini",
-              "model": "gemini-2.5-flash",
               "raw": {
                 "candidates": [
                   {
@@ -230,7 +294,7 @@
                   }
                 ],
                 "modelVersion": "gemini-2.5-flash",
-                "responseId": "kHizasKhO4DcqtsPz8-qwAY",
+                "responseId": "b1a_arSRN6b6qtsP5v6ZgQg",
                 "usageMetadata": {
                   "candidatesTokenCount": 25,
                   "promptTokenCount": 20,
@@ -255,20 +319,63 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "gemini.generate_content",
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_model": "gemini-2.5-flash",
+              "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
+            },
+            "stop": "stop"
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Opaque": {
+              "item": {
+                "executableCode": {
+                  "code": "result = 13 * 13\nprint(f'{result=}')\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 7,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Opaque": {
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "result=169\n"
+                }
+              },
+              "replay": true
+            }
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "The number is 169."
+              "text": "The number is 169.",
+              "native": {
+                "item": {
+                  "text": "The number is 169."
+                },
+                "fingerprint": "dfe9d28b3160b005"
+              }
             }
           }
         },
@@ -290,12 +397,12 @@
           "rig_ecs::bus::effect::Scope": "parity/run#1"
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 9,
+          "bevy_ecs::hierarchy::ChildOf": 11,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 10,
+          "bevy_ecs::hierarchy::ChildOf": 12,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "Use the code execution tool to compute 13 times 13. State the number."
@@ -303,26 +410,69 @@
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 9,
+          "bevy_ecs::hierarchy::ChildOf": 11,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "gemini.generate_content",
+              "provider": "gcp.gemini",
+              "model": "gemini-2.5-flash",
+              "response_model": "gemini-2.5-flash",
+              "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
+            },
+            "stop": "stop"
+          }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 12,
+          "bevy_ecs::hierarchy::ChildOf": 14,
           "rig_ecs::agent::content::parts::ContentPart": {
-            "Text": {
-              "text": "The number is 169."
+            "Opaque": {
+              "item": {
+                "executableCode": {
+                  "code": "result = 13 * 13\nprint(f'{result=}')\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
             }
           }
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 9,
+          "bevy_ecs::hierarchy::ChildOf": 14,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Opaque": {
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "result=169\n"
+                }
+              },
+              "replay": true
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 14,
+          "rig_ecs::agent::content::parts::ContentPart": {
+            "Text": {
+              "text": "The number is 169.",
+              "native": {
+                "item": {
+                  "text": "The number is 169."
+                },
+                "fingerprint": "dfe9d28b3160b005"
+              }
+            }
+          }
+        },
+        {
+          "bevy_ecs::hierarchy::ChildOf": 11,
           "rig_ecs::agent::Role": "User",
           "rig_ecs::agent::Utterance": {}
         },
         {
-          "bevy_ecs::hierarchy::ChildOf": 14,
+          "bevy_ecs::hierarchy::ChildOf": 18,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
               "text": "Now double that number and state the result."

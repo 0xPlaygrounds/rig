@@ -17,17 +17,13 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{FinishReason, Message};
 use rig_core::error::ProviderError;
-use rig_core::json_utils;
 use rig_core::message::{
-    AssistantContent, CallId, Reasoning, Sealed, ToolCall, ToolFunction, ToolName, ToolResult,
+    AssistantContent, AssistantMessage, CallId, ToolCall, ToolName, ToolResult,
 };
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 
-use super::policy::InvalidToolCallReason;
-use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
-
 /// Detect unknown payloads containing assistant content that assembly would lose:
-/// tagged assistant blocks or text with malformed additional parameters.
+/// tagged assistant blocks or text with a malformed provider item.
 fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
     // Deserialize by reference to avoid cloning large unknown payloads.
     if AssistantContent::deserialize(payload).is_ok() {
@@ -37,16 +33,14 @@ fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool 
     payload
         .get("text")
         .is_some_and(serde_json::Value::is_string)
-        && payload.get("additional_params").is_some()
+        && payload.get("native").is_some()
 }
 
 /// One invalid tool call surfaced mid-stream, awaiting a resolution from
 /// `AgentRun::resolve_streamed_invalid_tool_call`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedInvalidToolCall {
-    /// The rejected tool call. For malformed arguments its `arguments` is
-    /// `Null`: no object was ever parsed, and fabricating one would
-    /// misrepresent the wire.
+    /// The rejected tool call.
     pub tool_call: ToolCall,
     /// Raw argument payload for diagnostics, when available.
     pub args: Option<String>,
@@ -54,8 +48,6 @@ pub struct StreamedInvalidToolCall {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active tool choice for this turn.
     pub allowed_tool_names: BTreeSet<String>,
-    /// Why the call was rejected.
-    pub reason: InvalidToolCallReason,
 }
 
 /// Snapshot of a streamed turn at the moment an invalid tool call appeared.
@@ -63,47 +55,56 @@ pub struct StreamedInvalidToolCall {
 /// exactly what the model has produced so far.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialStreamedTurn {
-    /// Provider-assigned assistant message ID, when already known.
-    pub message_id: Option<String>,
-    /// Aggregated assistant text, when any text was streamed this turn.
-    pub text: Option<String>,
-    /// The reasoning parts that ended so far, sealed to their issuer.
-    pub reasoning: Vec<Sealed<Reasoning>>,
+    /// The turn the reply began, with no content: its origin, so a rolled
+    /// back turn is known to come from its model. A reply cut before its end
+    /// keeps no provider item, so the rolled back turn replays canonically.
+    #[serde(default)]
+    pub head: AssistantMessage,
+    /// The parts that arrived so far, in the order they started, text still
+    /// streaming included.
+    pub content: Vec<AssistantContent>,
     /// Tool calls already validated (or repaired) this turn.
     pub pending_tool_calls: Vec<ToolCall>,
 }
 
 impl PartialStreamedTurn {
-    /// The assistant message representing this partial turn (reasoning, then
-    /// text, then calls), including `current_tool_call` when provided.
-    /// `None` when the turn has produced no representable content.
+    /// The assistant message representing this partial turn, in arrival
+    /// order: each validated call as validated, `current_tool_call` in its
+    /// own place, and any other call left out. A call keeps a provider item
+    /// only where the partial reply kept it, which a reply cut before its
+    /// end never does. `None` when the turn has produced no representable
+    /// content.
     pub fn assistant_message(&self, current_tool_call: Option<ToolCall>) -> Option<Message> {
-        let content = self
-            .reasoning
+        let mut calls: Vec<ToolCall> = self
+            .pending_tool_calls
             .iter()
             .cloned()
-            .map(AssistantContent::Reasoning)
-            .chain(
-                self.text
-                    .as_ref()
-                    .filter(|text| !text.is_empty())
-                    .map(|text| AssistantContent::text(text.clone())),
-            )
-            .chain(
-                self.pending_tool_calls
-                    .iter()
-                    .cloned()
-                    .chain(current_tool_call)
-                    .map(AssistantContent::ToolCall),
-            )
-            .collect::<Vec<_>>();
+            .chain(current_tool_call)
+            .collect();
+        let mut content: Vec<AssistantContent> = self
+            .content
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::ToolCall(call) => {
+                    let at = calls.iter().position(|kept| kept.id == call.id)?;
+                    let mut kept = calls.remove(at);
+                    kept.native.clone_from(&call.native);
+                    Some(AssistantContent::ToolCall(kept))
+                }
+                part => (!part.is_blank()).then(|| part.clone()),
+            })
+            .collect();
+        content.extend(calls.into_iter().map(|mut call| {
+            call.native = None;
+            AssistantContent::ToolCall(call)
+        }));
         if content.is_empty() {
             return None;
         }
-        Some(Message::Assistant {
-            id: self.message_id.clone(),
+        Some(Message::Assistant(AssistantMessage {
             content,
-        })
+            ..self.head.clone()
+        }))
     }
 
     /// Rollback messages for a retried or skipped streamed turn: the partial
@@ -116,28 +117,16 @@ impl PartialStreamedTurn {
     ) -> Option<(Message, Message)> {
         // Preserve call IDs so synthetic results correlate with their diagnostic calls.
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
-
-        let mut retry_results = self
-            .pending_tool_calls
-            .iter()
-            .map(|tool_call| {
-                tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.function.name.clone(),
-                    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-                )
-            })
-            .collect::<Vec<_>>();
-        retry_results.push(tool_result_message(
-            invalid_tool_call.id,
-            invalid_tool_call.function.name,
-            feedback,
-        ));
-
-        let user_message = Message::User {
-            content: retry_results,
+        let Message::Assistant(turn) = &assistant_message else {
+            return None;
         };
-
+        let user_message = Message::User {
+            content: rig_core::transcript::invalid_call_feedback(
+                &turn.content,
+                &invalid_tool_call.id,
+                &feedback,
+            ),
+        };
         Some((assistant_message, user_message))
     }
 }
@@ -146,8 +135,8 @@ impl PartialStreamedTurn {
 /// `AgentRun::streamed_turn`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedTurn {
-    /// Provider-assigned assistant message ID, when available.
-    pub message_id: Option<String>,
+    /// The turn's origin, stop and provider message, without content.
+    pub head: AssistantMessage,
     /// The assistant content to record in history, in the order its parts
     /// started, with ignored calls left out and repaired calls renamed.
     pub choice: Vec<AssistantContent>,
@@ -200,20 +189,16 @@ pub enum StreamedTurnEvent {
         /// The validated call.
         call: ToolCall,
     },
-    /// The model emitted an unknown or disallowed tool call, or one whose
-    /// arguments are not JSON. Resolve it via
+    /// The model emitted an unknown or disallowed tool call. Resolve it via
     /// `AgentRun::resolve_streamed_invalid_tool_call`, then apply the
     /// outcome with [`StreamedTurnAssembler::resolve_pending_invalid`].
     InvalidToolCall(StreamedInvalidToolCall),
 }
 
+/// A complete tool call with a disallowed name, awaiting resolution.
 #[derive(Clone, Serialize, Deserialize)]
-enum PendingInvalid {
-    /// A complete tool call with a disallowed name.
-    Call { tool_call: ToolCall },
-    /// A tool call whose arguments were not JSON. The reply ended with it,
-    /// so the only resolutions are abandon or fail.
-    MalformedArgs { tool_call: ToolCall },
+struct PendingInvalid {
+    tool_call: ToolCall,
 }
 
 /// Serializable accumulator for one streamed turn. Persisted state requires the
@@ -356,13 +341,7 @@ impl StreamedTurnAssembler {
                 {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
-                        Some(json_utils::serialize_json_value(
-                            &tool_call.function.arguments,
-                        )),
-                        PendingInvalid::Call {
-                            tool_call: tool_call.clone(),
-                        },
-                        InvalidToolCallReason::UnknownTool,
+                        Some(tool_call.function.arguments_value().to_string()),
                     ));
                 }
                 self.pending_tool_calls.push(tool_call.clone());
@@ -387,11 +366,9 @@ impl StreamedTurnAssembler {
             return Vec::new();
         };
 
-        match (resolution, pending) {
-            (
-                StreamedResolution::Repaired { tool_name },
-                PendingInvalid::Call { mut tool_call },
-            ) => {
+        let PendingInvalid { mut tool_call } = pending;
+        match resolution {
+            StreamedResolution::Repaired { tool_name } => {
                 if let Ok(tool_name) = ToolName::new(tool_name.clone()) {
                     self.repaired_calls
                         .push((tool_call.id.clone(), tool_name.clone()));
@@ -400,39 +377,24 @@ impl StreamedTurnAssembler {
                 self.pending_tool_calls.push(tool_call.clone());
                 vec![StreamedTurnEvent::EmitToolCall { call: tool_call }]
             }
-            // Repair is rejected upstream for malformed arguments (the run
-            // fails closed); reaching here would be a protocol violation, so
-            // the call is simply not resurrected.
-            (StreamedResolution::Repaired { .. }, PendingInvalid::MalformedArgs { .. })
-            | (StreamedResolution::TurnAbandoned { .. }, _) => Vec::new(),
-            (
-                StreamedResolution::Ignored,
-                PendingInvalid::Call { tool_call } | PendingInvalid::MalformedArgs { tool_call },
-            ) => {
+            StreamedResolution::TurnAbandoned { .. } => Vec::new(),
+            StreamedResolution::Ignored => {
                 self.ignored_calls.push(tool_call.id);
                 Vec::new()
             }
         }
     }
 
-    /// Snapshot of the turn so far, for diagnostics and rollback messages.
-    /// `ended` is what the stream folded so far; its reasoning parts are the
-    /// snapshot's.
+    /// Snapshot of the turn so far, for diagnostics and rollback messages:
+    /// `partial` is what the stream folded so far
+    /// ([`Streamed::partial`](rig_core::streaming::Streamed::partial)).
     pub fn partial_turn(
         &self,
-        message_id: Option<String>,
-        ended: &[AssistantContent],
+        partial: &rig_core::completion::CompletionResponse,
     ) -> PartialStreamedTurn {
         PartialStreamedTurn {
-            message_id,
-            text: (!self.text.is_empty()).then(|| self.text.clone()),
-            reasoning: ended
-                .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
-                    _ => None,
-                })
-                .collect(),
+            head: partial.continued(Vec::new()),
+            content: partial.choice.clone(),
             pending_tool_calls: self.pending_tool_calls.clone(),
         }
     }
@@ -440,11 +402,7 @@ impl StreamedTurnAssembler {
     /// Assemble the completed turn from the response the stream folded
     /// into: its choice in start order, with the calls this turn ignored
     /// left out and the ones it repaired renamed.
-    pub fn finish(
-        self,
-        message_id: Option<String>,
-        response: &rig_core::completion::CompletionResponse,
-    ) -> StreamedTurn {
+    pub fn finish(self, response: &rig_core::completion::CompletionResponse) -> StreamedTurn {
         let choice = response
             .choice
             .iter()
@@ -452,7 +410,8 @@ impl StreamedTurnAssembler {
                 AssistantContent::ToolCall(call) => !self.ignored_calls.contains(&call.id),
                 AssistantContent::Text(_)
                 | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => true,
+                | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_) => true,
             })
             .cloned()
             .map(|content| match content {
@@ -469,7 +428,7 @@ impl StreamedTurnAssembler {
             .collect();
 
         StreamedTurn {
-            message_id,
+            head: response.head(),
             choice,
             executable_tool_names: self.executable_tool_names.clone(),
             allowed_tool_names: self.allowed_tool_names.clone(),
@@ -477,48 +436,21 @@ impl StreamedTurnAssembler {
         }
     }
 
-    /// Park resolution on `pending` and surface the rejected call to the
-    /// caller as an [`StreamedTurnEvent::InvalidToolCall`].
+    /// Park resolution on `tool_call` and surface it to the caller as an
+    /// [`StreamedTurnEvent::InvalidToolCall`].
     fn surface_invalid_call(
         &mut self,
         tool_call: ToolCall,
         args: Option<String>,
-        pending: PendingInvalid,
-        reason: InvalidToolCallReason,
     ) -> Vec<StreamedTurnEvent> {
         let invalid = StreamedInvalidToolCall {
-            tool_call,
+            tool_call: tool_call.clone(),
             args,
             executable_tool_names: self.executable_tool_names.clone(),
             allowed_tool_names: self.allowed_tool_names.clone(),
-            reason,
         };
-        self.pending_invalid = Some(pending);
+        self.pending_invalid = Some(PendingInvalid { tool_call });
         vec![StreamedTurnEvent::InvalidToolCall(invalid)]
-    }
-
-    /// Surface a call whose arguments were not JSON, the error that ended
-    /// the reply, for resolution. Retains raw argument text and call
-    /// identity, with `Null` parsed arguments.
-    pub fn surface_malformed_input(
-        &mut self,
-        detail: &rig_core::error::MalformedToolInput,
-    ) -> Vec<StreamedTurnEvent> {
-        let Ok(name) = ToolName::new(detail.name.clone()) else {
-            return Vec::new();
-        };
-        let tool_call = ToolCall::new(
-            detail.id.clone(),
-            ToolFunction::new(name, serde_json::Value::Null),
-        );
-        self.surface_invalid_call(
-            tool_call.clone(),
-            Some(detail.raw.clone()),
-            PendingInvalid::MalformedArgs { tool_call },
-            InvalidToolCallReason::MalformedArguments {
-                error: detail.error.clone(),
-            },
-        )
     }
 }
 

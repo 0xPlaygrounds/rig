@@ -2,29 +2,37 @@
   "header": {
     "deliveries": [
       {
-        "batch": 20,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 6
+          "items": 4
         }
       },
       {
-        "batch": 21,
+        "batch": 27,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 30,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 24,
+        "batch": 32,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -174,9 +182,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_BpbgaN2bEwYW34EbOsYJQpIM"
-                }
+                "provider": "call_BpbgaN2bEwYW34EbOsYJQpIM"
               },
               "function": {
                 "name": "alpha",
@@ -184,15 +190,22 @@
                   "value": "red"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"value\": \"red\"}",
+                    "name": "alpha"
+                  },
+                  "id": "call_BpbgaN2bEwYW34EbOsYJQpIM",
+                  "type": "function"
+                },
+                "fingerprint": "306df73d2623cba2"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_RtM8ybJUkyh7CK1d8donWsC3"
-                }
+                "provider": "call_RtM8ybJUkyh7CK1d8donWsC3"
               },
               "function": {
                 "name": "beta",
@@ -200,8 +213,17 @@
                   "value": "blue"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"value\": \"blue\"}",
+                    "name": "beta"
+                  },
+                  "id": "call_RtM8ybJUkyh7CK1d8donWsC3",
+                  "type": "function"
+                },
+                "fingerprint": "8432c8db7c179599"
+              }
             }
           ],
           "usage": {
@@ -211,23 +233,30 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDAy43pAROqR342mOcEOmQVKAWrx",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-ERDAy43pAROqR342mOcEOmQVKAWrx"
+          },
           "provider_request_id": "req_23dff62b153d49c7b65d6cdbab4190bd",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "usage": {
-              "prompt_tokens": 90,
               "completion_tokens": 42,
-              "total_tokens": 132,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 90,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 132
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-ERDAy43pAROqR342mOcEOmQVKAWrx",
@@ -267,9 +296,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_BpbgaN2bEwYW34EbOsYJQpIM"
-                }
+                "provider": "call_BpbgaN2bEwYW34EbOsYJQpIM"
               },
               "function": {
                 "name": "alpha",
@@ -277,8 +304,17 @@
                   "value": "red"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"value\": \"red\"}",
+                    "name": "alpha"
+                  },
+                  "id": "call_BpbgaN2bEwYW34EbOsYJQpIM",
+                  "type": "function"
+                },
+                "fingerprint": "306df73d2623cba2"
+              }
             }
           }
         },
@@ -306,9 +342,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_RtM8ybJUkyh7CK1d8donWsC3"
-                }
+                "provider": "call_RtM8ybJUkyh7CK1d8donWsC3"
               },
               "function": {
                 "name": "beta",
@@ -316,12 +350,26 @@
                   "value": "blue"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"value\": \"blue\"}",
+                    "name": "beta"
+                  },
+                  "id": "call_RtM8ybJUkyh7CK1d8donWsC3",
+                  "type": "function"
+                },
+                "fingerprint": "8432c8db7c179599"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4.1-mini"
+      },
       "scope": "parity/run#0"
     },
     {

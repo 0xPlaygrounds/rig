@@ -72,7 +72,7 @@ impl Serve for Capturing {
                 let response = CompletionResponse::new(
                     vec![AssistantContent::text(&self.answer)],
                     Usage::default(),
-                    "capturing",
+                    rig_core::message::Origin::new("test.api", "capturing", ""),
                     serde_json::json!({ "provider": "capturing" }),
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
@@ -185,7 +185,10 @@ pub fn texts(request: &CompletionRequest) -> Vec<String> {
                     })
                     .collect::<String>()
             ),
-            rig_core::message::Message::Assistant { content, .. } => format!(
+            rig_core::message::Message::Assistant(rig_core::message::AssistantMessage {
+                content,
+                ..
+            }) => format!(
                 "assistant:{}",
                 content
                     .iter()
@@ -193,7 +196,8 @@ pub fn texts(request: &CompletionRequest) -> Vec<String> {
                         AssistantContent::Text(text) => Some(text.text.clone()),
                         AssistantContent::ToolCall(_)
                         | AssistantContent::Reasoning(_)
-                        | AssistantContent::Image(_) => None,
+                        | AssistantContent::Image(_)
+                        | AssistantContent::Opaque(_) => None,
                     })
                     .collect::<String>()
             ),
@@ -226,29 +230,48 @@ impl Serve for NeverAnswers {
     }
 }
 
-/// A model that answers a script: one assistant turn per request, in
-/// order, then a fixed text.
+/// A model that answers a script: one reply per request, in order, then a
+/// fixed text.
 pub struct Scripted {
     pub label: String,
-    pub turns: Mutex<std::collections::VecDeque<Vec<AssistantContent>>>,
+    pub replies: Mutex<std::collections::VecDeque<CompletionResponse>>,
     pub requests: Arc<Mutex<Vec<CompletionRequest>>>,
 }
 
 impl Scripted {
+    /// A script of assistant turns, each a reply with no finish reason.
     pub fn new(
         label: &str,
         turns: Vec<Vec<AssistantContent>>,
+    ) -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
+        Self::replies(label, turns.into_iter().map(reply).collect())
+    }
+
+    /// A script of whole replies, such as ones that end in an error.
+    pub fn replies(
+        label: &str,
+        replies: Vec<CompletionResponse>,
     ) -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
         let requests = Arc::new(Mutex::new(Vec::new()));
         (
             Self {
                 label: label.to_owned(),
-                turns: Mutex::new(turns.into()),
+                replies: Mutex::new(replies.into()),
                 requests: Arc::clone(&requests),
             },
             requests,
         )
     }
+}
+
+/// The reply a scripted model sends for `choice`, with no finish reason.
+pub fn reply(choice: Vec<AssistantContent>) -> CompletionResponse {
+    CompletionResponse::new(
+        choice,
+        Usage::default(),
+        rig_core::message::Origin::new("test.api", "scripted", ""),
+        serde_json::json!({}),
+    )
 }
 
 impl Serve for Scripted {
@@ -269,18 +292,12 @@ impl Serve for Scripted {
         match kind {
             EffectKind::Completion { request, .. } => {
                 self.requests.lock().expect("requests").push(request);
-                let choice = self
-                    .turns
+                let response = self
+                    .replies
                     .lock()
-                    .expect("turns")
+                    .expect("replies")
                     .pop_front()
-                    .unwrap_or_else(|| vec![AssistantContent::text("done")]);
-                let response = CompletionResponse::new(
-                    choice,
-                    Usage::default(),
-                    "scripted",
-                    serde_json::json!({}),
-                );
+                    .unwrap_or_else(|| reply(vec![AssistantContent::text("done")]));
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
@@ -370,7 +387,16 @@ pub fn scripted_agent(
     key: &str,
     turns: Vec<Vec<AssistantContent>>,
 ) -> (Entity, RequestsSeen) {
-    let (model, requests) = Scripted::new(key, turns);
+    replied_agent(app, key, turns.into_iter().map(reply).collect())
+}
+
+/// [`scripted_agent`] over whole replies ([`Scripted::replies`]).
+pub fn replied_agent(
+    app: &mut App,
+    key: &str,
+    replies: Vec<CompletionResponse>,
+) -> (Entity, RequestsSeen) {
+    let (model, requests) = Scripted::replies(key, replies);
     let model = register(app, key, model);
     (spawn_agent(app.world_mut(), "t", model), requests)
 }

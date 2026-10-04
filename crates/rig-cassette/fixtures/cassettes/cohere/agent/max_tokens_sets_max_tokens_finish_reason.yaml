@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":4,"messages":[{"content":[{"text":"Write a detailed fifty-word description of the ocean.","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+  body: '{"max_tokens":4,"messages":[{"content":"Write a detailed fifty-word description of the ocean.","role":"user"}],"model":"command-a-03-2025"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"MAX_TOKENS","id":"20ae3cc4-46d2-4e78-8566-83649fbfc218","message":{"content":[{"text":"The ocean,","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":11,"output_tokens":3},"cached_tokens":448,"tokens":{"input_tokens":506,"output_tokens":4}}}'
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"The ocean,","role":"assistant"}}],"created":0,"id":"0fee28f3-a1d6-4b0b-a04a-54d187028a4d","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":3,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":11,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":14}}'

@@ -87,18 +87,42 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_f5f1208e-5cd6-9eae-b976-e9f087a15637",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "This is an image-analysis cassette test."
-                }
-              ]
+              "text": "This is an image-analysis cassette test.",
+              "native": {
+                "item": {
+                  "id": "rs_f5f1208e-5cd6-9eae-b976-e9f087a15637",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "This is an image-analysis cassette test.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "f6a76378df34aaf4"
+              }
             },
             {
               "type": "text",
-              "text": "The main visible subject is a black ant."
+              "text": "The main visible subject is a black ant.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The main visible subject is a black ant.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_f5f1208e-5cd6-9eae-b976-e9f087a15637",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "3df2fa138129948e"
+              }
             }
           ],
           "usage": {
@@ -108,12 +132,15 @@
             "cached_input_tokens": 128,
             "reasoning_tokens": 200
           },
-          "message_id": "msg_f5f1208e-5cd6-9eae-b976-e9f087a15637",
-          "response_id": "f5f1208e-5cd6-9eae-b976-e9f087a15637",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-4.3",
+            "response_model": "grok-4.3",
+            "response_id": "f5f1208e-5cd6-9eae-b976-e9f087a15637"
+          },
           "provider_request_id": "f5f1208e-5cd6-9eae-b976-e9f087a15637",
           "finish_reason": "stop",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
             "background": false,
             "completed_at": 0,

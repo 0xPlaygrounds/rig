@@ -2,78 +2,120 @@
   "header": {
     "deliveries": [
       {
-        "batch": 4,
+        "batch": 5,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 5,
+        "batch": 6,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 12,
+        "batch": 14,
         "id": 4,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 15,
         "id": 5,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 16,
+        "batch": 18,
         "id": 6,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 19,
         "id": 7,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 20,
+        "batch": 22,
         "id": 8,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 22,
+        "batch": 24,
         "id": 9,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 25,
+        "batch": 27,
         "id": 10,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 31,
+        "id": 11,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 36,
+        "id": 12,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 40,
+        "id": 13,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 46,
+        "id": 14,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 51,
+        "id": 15,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 55,
+        "id": 16,
         "kind": {
           "delivery": "outcome"
         }
@@ -284,16 +326,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                }
+                "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
               },
               "function": {
                 "name": "list_files",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "list_files"
+                  },
+                  "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                  "type": "function"
+                },
+                "fingerprint": "ebe7079d86963740"
+              }
             }
           ],
           "usage": {
@@ -303,12 +352,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDM0CxFmk1QfIpEd5t0FoXaPwG6",
-          "provider_request_id": "req_d6a97303d9164ec0845ae77a3cbe53f4",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+          },
+          "provider_request_id": "req_cc344d8d014541b7939a2abc534158f4",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -326,7 +378,7 @@
                         "arguments": "{}",
                         "name": "list_files"
                       },
-                      "id": "call_GoUFnDKoMnkSFZt0T85zfDp9",
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
                       "type": "function"
                     }
                   ]
@@ -334,11 +386,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDM0CxFmk1QfIpEd5t0FoXaPwG6",
+            "id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_eb9b0343ec",
+            "system_fingerprint": "fp_1fda40dbd6",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -408,23 +460,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -432,9 +498,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "name": "list_files",
                   "content": [
@@ -522,9 +586,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                }
+                "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
               },
               "function": {
                 "name": "read_file",
@@ -532,8 +594,17 @@
                   "path": "README.md"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\": \"README.md\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                  "type": "function"
+                },
+                "fingerprint": "5cf3dad64e87ea51"
+              }
             }
           ],
           "usage": {
@@ -543,12 +614,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDMZASyROj0y1Ln8G6ZKFCRDqLM",
-          "provider_request_id": "req_0802fa4171c7433fb6da197f12345fbe",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+          },
+          "provider_request_id": "req_0a3986daf0f44460b53c318bdef5cd8a",
           "finish_reason": "length",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -566,7 +640,7 @@
                         "arguments": "{\"path\": \"README.md\"}",
                         "name": "read_file"
                       },
-                      "id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd",
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
                       "type": "function"
                     }
                   ]
@@ -574,11 +648,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDMZASyROj0y1Ln8G6ZKFCRDqLM",
+            "id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_eb9b0343ec",
+            "system_fingerprint": "fp_1fda40dbd6",
             "usage": {
               "completion_tokens": 32,
               "completion_tokens_details": {
@@ -648,23 +722,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -672,9 +760,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "name": "list_files",
                   "content": [
@@ -688,14 +774,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "function": {
                     "name": "read_file",
@@ -703,10 +786,27 @@
                       "path": "README.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
             },
             {
               "role": "user",
@@ -714,9 +814,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "name": "read_file",
                   "content": [
@@ -804,9 +902,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_HTe2fUE1uk8pf2STMPrxcOvB"
-                }
+                "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
               },
               "function": {
                 "name": "read_file",
@@ -814,8 +910,17 @@
                   "path": "tests/basic.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\":\"tests/basic.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                  "type": "function"
+                },
+                "fingerprint": "b118b1df0a22ad76"
+              }
             }
           ],
           "usage": {
@@ -825,12 +930,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDNsdBomBSw6ARWLTBsF4X4E8j0",
-          "provider_request_id": "req_05c077e808ea44659d8295c7bd7789fb",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+          },
+          "provider_request_id": "req_d22ee3d52d6c4f51ae0db7014d828be4",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -848,7 +956,7 @@
                         "arguments": "{\"path\":\"tests/basic.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_HTe2fUE1uk8pf2STMPrxcOvB",
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
                       "type": "function"
                     }
                   ]
@@ -856,11 +964,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDNsdBomBSw6ARWLTBsF4X4E8j0",
+            "id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_eb9b0343ec",
+            "system_fingerprint": "fp_1fda40dbd6",
             "usage": {
               "completion_tokens": 16,
               "completion_tokens_details": {
@@ -930,23 +1038,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -954,9 +1076,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "name": "list_files",
                   "content": [
@@ -970,14 +1090,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "function": {
                     "name": "read_file",
@@ -985,10 +1102,27 @@
                       "path": "README.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
             },
             {
               "role": "user",
@@ -996,9 +1130,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "name": "read_file",
                   "content": [
@@ -1012,14 +1144,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_HTe2fUE1uk8pf2STMPrxcOvB"
-                    }
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
                   },
                   "function": {
                     "name": "read_file",
@@ -1027,10 +1156,27 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1038,9 +1184,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_HTe2fUE1uk8pf2STMPrxcOvB"
-                    }
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
                   },
                   "name": "read_file",
                   "content": [
@@ -1128,9 +1272,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_wv0cNNX7sQkSnPtaqbVYohyT"
-                }
+                "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
               },
               "function": {
                 "name": "read_file",
@@ -1138,8 +1280,17 @@
                   "path": "src/lib.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"path\":\"src/lib.rs\"}",
+                    "name": "read_file"
+                  },
+                  "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                  "type": "function"
+                },
+                "fingerprint": "abb4333f01215111"
+              }
             }
           ],
           "usage": {
@@ -1149,12 +1300,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDNuhoT4dw2PQvTLkyFqeIfRJCK",
-          "provider_request_id": "req_f2cf31ae4a7a443f8f7d9cae5c7c5af9",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+          },
+          "provider_request_id": "req_d56383bd0809482b880c3e7625da4374",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -1172,7 +1326,7 @@
                         "arguments": "{\"path\":\"src/lib.rs\"}",
                         "name": "read_file"
                       },
-                      "id": "call_wv0cNNX7sQkSnPtaqbVYohyT",
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
                       "type": "function"
                     }
                   ]
@@ -1180,11 +1334,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDNuhoT4dw2PQvTLkyFqeIfRJCK",
+            "id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_eb9b0343ec",
+            "system_fingerprint": "fp_1fda40dbd6",
             "usage": {
               "completion_tokens": 16,
               "completion_tokens_details": {
@@ -1254,23 +1408,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1278,9 +1446,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "name": "list_files",
                   "content": [
@@ -1294,14 +1460,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "function": {
                     "name": "read_file",
@@ -1309,10 +1472,27 @@
                       "path": "README.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
             },
             {
               "role": "user",
@@ -1320,9 +1500,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "name": "read_file",
                   "content": [
@@ -1336,14 +1514,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_HTe2fUE1uk8pf2STMPrxcOvB"
-                    }
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
                   },
                   "function": {
                     "name": "read_file",
@@ -1351,10 +1526,27 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1362,9 +1554,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_HTe2fUE1uk8pf2STMPrxcOvB"
-                    }
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
                   },
                   "name": "read_file",
                   "content": [
@@ -1378,14 +1568,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_wv0cNNX7sQkSnPtaqbVYohyT"
-                    }
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
                   },
                   "function": {
                     "name": "read_file",
@@ -1393,10 +1580,27 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1404,9 +1608,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_wv0cNNX7sQkSnPtaqbVYohyT"
-                    }
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
                   },
                   "name": "read_file",
                   "content": [
@@ -1494,16 +1696,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_QMIovzytPnQjhAGSpxhLq3Lv"
-                }
+                "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
               },
               "function": {
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "run_tests"
+                  },
+                  "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                  "type": "function"
+                },
+                "fingerprint": "4252a64ca6b165a8"
+              }
             }
           ],
           "usage": {
@@ -1513,12 +1722,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDOvOsYi7jxzd27YrBg09WfhpOt",
-          "provider_request_id": "req_9ac8c81e6dea42f6b401109a225ea5c7",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+          },
+          "provider_request_id": "req_47242737220b42768b208e124f73e3cd",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -1536,7 +1748,7 @@
                         "arguments": "{}",
                         "name": "run_tests"
                       },
-                      "id": "call_QMIovzytPnQjhAGSpxhLq3Lv",
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
                       "type": "function"
                     }
                   ]
@@ -1544,11 +1756,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDOvOsYi7jxzd27YrBg09WfhpOt",
+            "id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_eb9b0343ec",
+            "system_fingerprint": "fp_1fda40dbd6",
             "usage": {
               "completion_tokens": 10,
               "completion_tokens_details": {
@@ -1618,23 +1830,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "function": {
                     "name": "list_files",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1642,9 +1868,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_GoUFnDKoMnkSFZt0T85zfDp9"
-                    }
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
                   },
                   "name": "list_files",
                   "content": [
@@ -1658,14 +1882,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "function": {
                     "name": "read_file",
@@ -1673,10 +1894,27 @@
                       "path": "README.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
             },
             {
               "role": "user",
@@ -1684,9 +1922,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_JTCdHjpRxK2ls5GQ0pv6R5Zd"
-                    }
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
                   },
                   "name": "read_file",
                   "content": [
@@ -1700,14 +1936,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_HTe2fUE1uk8pf2STMPrxcOvB"
-                    }
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
                   },
                   "function": {
                     "name": "read_file",
@@ -1715,10 +1948,27 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1726,9 +1976,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_HTe2fUE1uk8pf2STMPrxcOvB"
-                    }
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
                   },
                   "name": "read_file",
                   "content": [
@@ -1742,14 +1990,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_wv0cNNX7sQkSnPtaqbVYohyT"
-                    }
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
                   },
                   "function": {
                     "name": "read_file",
@@ -1757,10 +2002,27 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1768,9 +2030,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_wv0cNNX7sQkSnPtaqbVYohyT"
-                    }
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
                   },
                   "name": "read_file",
                   "content": [
@@ -1784,23 +2044,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_QMIovzytPnQjhAGSpxhLq3Lv"
-                    }
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
                   },
                   "function": {
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                      "type": "function"
+                    },
+                    "fingerprint": "4252a64ca6b165a8"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1808,9 +2082,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_QMIovzytPnQjhAGSpxhLq3Lv"
-                    }
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
                   },
                   "name": "run_tests",
                   "content": [
@@ -1894,7 +2166,22 @@
       "outcome": {
         "Ok": {
           "outcome": "completion",
-          "choice": [],
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common"
+                },
+                "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+              }
+            }
+          ],
           "usage": {
             "input_tokens": 812,
             "output_tokens": 32,
@@ -1902,12 +2189,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDDPdULD556mOIQQN3bGYGoRuoc1",
-          "provider_request_id": "req_e5de46145766457bb12788c5bb11bcdb",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi"
+          },
+          "provider_request_id": "req_2a9bbf349ed04e389ff0c19f414f4d2d",
           "finish_reason": "length",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -1925,7 +2215,7 @@
                         "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common",
                         "name": "write_file"
                       },
-                      "id": "call_cAasxA6qHxo9EPRQwo7fgcmP",
+                      "id": "call_2yV9OYguCf1UKFWKvF4SjTyQ",
                       "type": "function"
                     }
                   ]
@@ -1933,11 +2223,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDDPdULD556mOIQQN3bGYGoRuoc1",
+            "id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_eb9b0343ec",
+            "system_fingerprint": "fp_1fda40dbd6",
             "usage": {
               "completion_tokens": 32,
               "completion_tokens_details": {
@@ -1952,6 +2242,3624 @@
                 "cached_tokens": 0
               },
               "total_tokens": 844
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 11,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                      "type": "function"
+                    },
+                    "fingerprint": "4252a64ca6b165a8"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common"
+                },
+                "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 903,
+            "output_tokens": 32,
+            "total_tokens": 935,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflY1JxT44tAP1o25nKtivOyVZhk"
+          },
+          "provider_request_id": "req_ee40e37ff245403b83f794f98d06499d",
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common",
+                        "name": "write_file"
+                      },
+                      "id": "call_oz6pGZkqO9lYtRc3SFCDcYAS",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUflY1JxT44tAP1o25nKtivOyVZhk",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_1fda40dbd6",
+            "usage": {
+              "completion_tokens": 32,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 903,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 935
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 12,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                      "type": "function"
+                    },
+                    "fingerprint": "4252a64ca6b165a8"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflY1JxT44tAP1o25nKtivOyVZhk"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common"
+                },
+                "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 994,
+            "output_tokens": 32,
+            "total_tokens": 1026,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflZmanG99l92CZLvqsS2MAiW3Gf"
+          },
+          "provider_request_id": "req_76733bbd83b74c7b99e30ccfb380d0c7",
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common",
+                        "name": "write_file"
+                      },
+                      "id": "call_nnQyU9tSZl7ijPcrH3GyltZr",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUflZmanG99l92CZLvqsS2MAiW3Gf",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_1fda40dbd6",
+            "usage": {
+              "completion_tokens": 32,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 994,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 1026
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 13,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                      "type": "function"
+                    },
+                    "fingerprint": "4252a64ca6b165a8"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflY1JxT44tAP1o25nKtivOyVZhk"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflZmanG99l92CZLvqsS2MAiW3Gf"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_acbeLQDd8HaRj3IkyKhprysR"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common"
+                },
+                "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1085,
+            "output_tokens": 32,
+            "total_tokens": 1117,
+            "cached_input_tokens": 1024,
+            "reasoning_tokens": 0
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflaNekPBDBAx34ODTlzxmc2aL4X"
+          },
+          "provider_request_id": "req_216ce290c2664105a51bcb46857bb29e",
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common",
+                        "name": "write_file"
+                      },
+                      "id": "call_acbeLQDd8HaRj3IkyKhprysR",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUflaNekPBDBAx34ODTlzxmc2aL4X",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_1fda40dbd6",
+            "usage": {
+              "completion_tokens": 32,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1085,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 1024
+              },
+              "total_tokens": 1117
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 14,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                      "type": "function"
+                    },
+                    "fingerprint": "4252a64ca6b165a8"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflY1JxT44tAP1o25nKtivOyVZhk"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflZmanG99l92CZLvqsS2MAiW3Gf"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_acbeLQDd8HaRj3IkyKhprysR"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflaNekPBDBAx34ODTlzxmc2aL4X"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_acbeLQDd8HaRj3IkyKhprysR"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_ua0NbtbCsweZ39FNM54STZbC"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common"
+                },
+                "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1176,
+            "output_tokens": 32,
+            "total_tokens": 1208,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflagLO1tc6WiJu9aSYf3E6MXOv2"
+          },
+          "provider_request_id": "req_7d790db6adfb432fa75ba281c1b6d3b9",
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common",
+                        "name": "write_file"
+                      },
+                      "id": "call_ua0NbtbCsweZ39FNM54STZbC",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUflagLO1tc6WiJu9aSYf3E6MXOv2",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_1fda40dbd6",
+            "usage": {
+              "completion_tokens": 32,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1176,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 1208
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 15,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                      "type": "function"
+                    },
+                    "fingerprint": "4252a64ca6b165a8"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflY1JxT44tAP1o25nKtivOyVZhk"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflZmanG99l92CZLvqsS2MAiW3Gf"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_acbeLQDd8HaRj3IkyKhprysR"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflaNekPBDBAx34ODTlzxmc2aL4X"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_acbeLQDd8HaRj3IkyKhprysR"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_ua0NbtbCsweZ39FNM54STZbC"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflagLO1tc6WiJu9aSYf3E6MXOv2"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_ua0NbtbCsweZ39FNM54STZbC"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_WGl9H9gqOBIPfQqETGx4lJ9y"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common"
+                },
+                "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1267,
+            "output_tokens": 32,
+            "total_tokens": 1299,
+            "cached_input_tokens": 1152,
+            "reasoning_tokens": 0
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflba8EMYHzelEjzqsq9FwDRJ1sD"
+          },
+          "provider_request_id": "req_fefe6ae0be034d18aedd4c6da0ee8f05",
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common",
+                        "name": "write_file"
+                      },
+                      "id": "call_WGl9H9gqOBIPfQqETGx4lJ9y",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUflba8EMYHzelEjzqsq9FwDRJ1sD",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_1fda40dbd6",
+            "usage": {
+              "completion_tokens": 32,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1267,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 1152
+              },
+              "total_tokens": 1299
+            }
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 16,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_pIYhk1Q0pnOJEaqJNEhg3f3U",
+                      "type": "function"
+                    },
+                    "fingerprint": "ebe7079d86963740"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUGKT1EH6hgQXSBv1CMB1tsAGv"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_pIYhk1Q0pnOJEaqJNEhg3f3U"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_EGTKpfYifewMdqMAEdIGiUpP",
+                      "type": "function"
+                    },
+                    "fingerprint": "5cf3dad64e87ea51"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflUmG7mF9pIIMrBDaameIHSvQFA"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_EGTKpfYifewMdqMAEdIGiUpP"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_7vPj4dEfhEA4VgQM5VWT4hk3",
+                      "type": "function"
+                    },
+                    "fingerprint": "b118b1df0a22ad76"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflV2ypUAd1GZlVCmu8vhkUlkDP7"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_7vPj4dEfhEA4VgQM5VWT4hk3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_WuHzMEjE0X6NtW0Cqdb8j8j0",
+                      "type": "function"
+                    },
+                    "fingerprint": "abb4333f01215111"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWXEq86Cszn4K9WFWtC0Sbig3T"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_WuHzMEjE0X6NtW0Cqdb8j8j0"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_gK7zgG5QnZdnRUNav2P6qjYj",
+                      "type": "function"
+                    },
+                    "fingerprint": "4252a64ca6b165a8"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflWKnhPXRGcxIIy8nCjFrOYP9br"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_gK7zgG5QnZdnRUNav2P6qjYj"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflX2AjTRSf7C11Q8iWCqeMzVuMi"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_2yV9OYguCf1UKFWKvF4SjTyQ"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflY1JxT44tAP1o25nKtivOyVZhk"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_oz6pGZkqO9lYtRc3SFCDcYAS"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflZmanG99l92CZLvqsS2MAiW3Gf"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_nnQyU9tSZl7ijPcrH3GyltZr"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_acbeLQDd8HaRj3IkyKhprysR"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflaNekPBDBAx34ODTlzxmc2aL4X"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_acbeLQDd8HaRj3IkyKhprysR"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_ua0NbtbCsweZ39FNM54STZbC"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflagLO1tc6WiJu9aSYf3E6MXOv2"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_ua0NbtbCsweZ39FNM54STZbC"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "call_WGl9H9gqOBIPfQqETGx4lJ9y"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common"
+                    },
+                    "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUflba8EMYHzelEjzqsq9FwDRJ1sD"
+              },
+              "stop": "length"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "call_WGl9H9gqOBIPfQqETGx4lJ9y"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The arguments for tool `write_file` are not a JSON object: {\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common. Call the tool again with a JSON object as its arguments."
+                    }
+                  ],
+                  "is_error": true
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 32,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_O3cxQHYOZ9XV2Hb651DLLcnB"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common"
+                },
+                "invalid_arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 1358,
+            "output_tokens": 32,
+            "total_tokens": 1390,
+            "cached_input_tokens": 1280,
+            "reasoning_tokens": 0
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUflcZhpUW4L1R3lOlw7XQubtTvPd"
+          },
+          "provider_request_id": "req_28abe3060035415e92cc6930d5561616",
+          "finish_reason": "length",
+          "raw": {
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common",
+                        "name": "write_file"
+                      },
+                      "id": "call_O3cxQHYOZ9XV2Hb651DLLcnB",
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUflcZhpUW4L1R3lOlw7XQubtTvPd",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_1fda40dbd6",
+            "usage": {
+              "completion_tokens": 32,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1358,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 1280
+              },
+              "total_tokens": 1390
             }
           }
         }

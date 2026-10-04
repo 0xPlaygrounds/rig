@@ -123,11 +123,21 @@ impl Audit {
                         }
                         Some("toolcall") => {
                             let streamed = arguments.remove(&part).unwrap_or_default();
-                            let parsed = match streamed.trim() {
-                                "" => Some(Value::Object(serde_json::Map::new())),
-                                json => serde_json::from_str(json).ok(),
-                            };
-                            parsed.as_ref() == content.pointer("/function/arguments")
+                            // Arguments that were not a JSON object end as the
+                            // text they arrived as, verbatim.
+                            match content
+                                .pointer("/function/invalid_arguments")
+                                .and_then(Value::as_str)
+                            {
+                                Some(raw) => raw == streamed,
+                                None => {
+                                    let parsed = match streamed.trim() {
+                                        "" => Some(Value::Object(serde_json::Map::new())),
+                                        json => serde_json::from_str(json).ok(),
+                                    };
+                                    parsed.as_ref() == content.pointer("/function/arguments")
+                                }
+                            }
                         }
                         _ => continue,
                     };
@@ -735,7 +745,7 @@ impl<'a> File<'a> {
         let strip = |error: &Value| {
             let mut error = error.clone();
             if let Some(object) = error.as_object_mut() {
-                object.remove("item");
+                object.shift_remove("item");
             }
             error
         };
@@ -787,7 +797,7 @@ fn streamed(effect: &serde_json::Map<String, Value>) -> bool {
 fn without_raw(outcome: &Value) -> Value {
     let mut outcome = outcome.clone();
     if let Some(ok) = outcome.get_mut("Ok").and_then(Value::as_object_mut) {
-        ok.remove("raw");
+        ok.shift_remove("raw");
     }
     outcome
 }

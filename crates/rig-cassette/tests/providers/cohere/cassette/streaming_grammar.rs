@@ -1,4 +1,4 @@
-//! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
+//! Canonical streaming-grammar coverage for Cohere's Chat dialect, asserted
 //! through the *normalized* path: the aggregated
 //! [`Streamed::finish`](rig::streaming::Streamed::finish) response, the terminal `CompletionResponse`
 //! record, usage, and finish reason.
@@ -6,7 +6,7 @@
 use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
-use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
+use rig::message::{AssistantContent, Reasoning, ToolCall, ToolChoice};
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
@@ -49,12 +49,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks.push(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .cloned()
-                        .expect("reasoning opens"),
-                );
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
@@ -118,19 +113,7 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
             .choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => Some(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .expect("sealed reasoning")
-                        .content
-                        .iter(),
-                ),
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|part| match part {
-                ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                ReasoningContent::Summary(text) => Some(text.as_str()),
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.text.as_str()),
                 _ => None,
             })
             .collect();
@@ -230,7 +213,7 @@ async fn required_tool_choice_streams_tool_call() {
             assert_eq!(run.tool_calls.len(), 1, "expected one streamed tool call");
             assert_eq!(run.tool_calls[0].function.name, "subtract");
             assert_eq!(
-                run.tool_calls[0].function.arguments,
+                run.tool_calls[0].function.arguments_value(),
                 serde_json::json!({"x": 8, "y": 3})
             );
             assert_eq!(

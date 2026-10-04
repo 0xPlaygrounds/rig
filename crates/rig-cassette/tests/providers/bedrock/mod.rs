@@ -1,3 +1,4 @@
+mod history;
 mod streaming_conformance;
 mod support;
 

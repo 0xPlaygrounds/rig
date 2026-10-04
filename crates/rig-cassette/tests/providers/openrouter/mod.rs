@@ -3,6 +3,7 @@ mod support;
 mod cassette {
     mod agent;
     mod agent_tool_sessions;
+    mod context_binding;
     mod document_file_data;
     mod document_ordering;
     mod ecs_completion;

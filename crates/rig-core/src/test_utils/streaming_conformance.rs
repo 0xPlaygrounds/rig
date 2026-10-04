@@ -195,8 +195,6 @@ pub const WIRE_FAMILIES: &[&str] = &[
     "gemini_rest",
     "gemini_interactions",
     "gemini_grpc",
-    "cohere",
-    "ollama",
     "xai",
     "copilot",
     "bedrock",
@@ -574,7 +572,7 @@ impl DrainedStream {
         self.choice
             .iter()
             .filter_map(|content| match content {
-                AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()),
+                AssistantContent::Reasoning(reasoning) => Some(reasoning),
                 _ => None,
             })
             .collect()
@@ -678,7 +676,7 @@ impl BufferedBodyDriver {
 /// Per-provider wire frames for the shared scenario set.
 ///
 /// `Option` fields cover sequence shapes a wire family cannot spell (e.g.
-/// ollama's NDJSON has no event types, so no "unknown event type" frame).
+/// an NDJSON wire has no event types, so no "unknown event type" frame).
 pub struct ProviderWireFixture {
     /// The provider's full pipeline.
     pub driver: WireDriver,
@@ -1312,13 +1310,8 @@ pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
     let reasoning = drained.choice_reasoning();
     let occurrences: usize = reasoning
         .iter()
-        .flat_map(|item| item.content.iter())
-        .filter(|content| match content {
-            crate::message::ReasoningContent::Summary(text)
-            | crate::message::ReasoningContent::Text { text, .. } => text.contains(summary_text),
-            _ => false,
-        })
-        .count();
+        .map(|item| item.text.matches(summary_text).count())
+        .sum();
     checks.require(occurrences == 1, || {
         format!(
             "the summary must appear exactly once in the aggregated choice, observed {occurrences} across {reasoning:?}"
@@ -1336,12 +1329,8 @@ pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
 }
 
 /// A reasoning item whose `output_item.done` carries several parts under one
-/// item id (summary parts, text, encrypted) must keep every part, in order —
-/// same-id sibling blocks append, they never replace each other.
-///
-/// Pins the open P1 in `rig-2257-code-review-findings-34ee8ba5.md` ("The by-id
-/// fallback collapses multi-part same-id reasoning items"): the `rposition`
-/// fallback replaces the just-appended same-id sibling.
+/// item id (summary parts, text, encrypted) must keep every part, in order:
+/// the item is one block whose provider item holds them all.
 pub async fn multi_part_same_id_reasoning_keeps_every_part(
     driver: &WireDriver,
     frames: Vec<WireInput>,
@@ -1357,18 +1346,24 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
         drained.completed_cleanly(),
         || "the reasoning stream must complete without errors",
     )?;
-    let observed: Vec<String> = drained
+    let items: Vec<String> = drained
         .choice_reasoning()
         .iter()
-        .flat_map(|item| item.content.iter())
-        .map(|content| match content {
-            crate::message::ReasoningContent::Summary(text) => text.clone(),
-            crate::message::ReasoningContent::Text { text, .. } => text.clone(),
-            crate::message::ReasoningContent::Encrypted(data) => data.clone(),
-            crate::message::ReasoningContent::Redacted { data } => data.clone(),
-        })
+        .filter_map(|item| item.native.as_ref())
+        .map(|native| native.item.to_string())
         .collect();
-    checks.require(observed == expected_parts, || {
+    let in_order = |item: &String| {
+        let mut rest = item.as_str();
+        expected_parts.iter().all(|part| match rest.find(part) {
+            Some(at) => {
+                rest = &rest[at + part.len()..];
+                true
+            }
+            None => false,
+        })
+    };
+    let observed = items;
+    checks.require(observed.len() == 1 && observed.iter().all(in_order), || {
         format!(
             "every same-id reasoning part must survive in order: expected {expected_parts:?}, observed {observed:?}"
         )
@@ -1410,14 +1405,7 @@ pub async fn interleaved_reasoning_aggregates_to_one_item(
             reasoning.len()
         )
     })?;
-    let carries_text = reasoning
-        .iter()
-        .flat_map(|item| item.content.iter())
-        .any(|content| match content {
-            crate::message::ReasoningContent::Summary(text)
-            | crate::message::ReasoningContent::Text { text, .. } => text == expected_text,
-            _ => false,
-        });
+    let carries_text = reasoning.iter().any(|item| item.text == expected_text);
     checks.require(carries_text, || {
         format!("the reasoning item must carry the completed block's text {expected_text:?}")
     })?;
@@ -1491,17 +1479,10 @@ pub async fn interleaved_signed_full_reasoning_does_not_erase_prior_thought(
         || "the interleaved stream must complete without errors",
     )?;
     assert_reasoning_tool_reasoning(&checks, &drained, first, tool_name, second)?;
-    let signed = drained.choice_reasoning().last().is_some_and(|reasoning| {
-        reasoning.content.iter().any(|content| {
-            matches!(
-                content,
-                crate::message::ReasoningContent::Text {
-                    signature: Some(_),
-                    ..
-                }
-            )
-        })
-    });
+    let signed = drained
+        .choice_reasoning()
+        .last()
+        .is_some_and(|reasoning| reasoning.native.is_some());
     checks.require(signed, || "the post-boundary block must keep its signature")?;
 
     checks.note("pre-boundary thought survived; signed block completed the post-boundary part");
@@ -1521,26 +1502,13 @@ fn assert_reasoning_tool_reasoning(
         .choice
         .iter()
         .map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => {
-                let text: String = reasoning
-                    .value()
-                    .content
-                    .iter()
-                    .filter_map(|content| match content {
-                        crate::message::ReasoningContent::Summary(text)
-                        | crate::message::ReasoningContent::Text { text, .. } => {
-                            Some(text.as_str())
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                format!("reasoning:{text}")
-            }
+            AssistantContent::Reasoning(reasoning) => format!("reasoning:{}", reasoning.text),
             AssistantContent::ToolCall(tool_call) => {
                 format!("tool:{}", tool_call.function.name)
             }
             AssistantContent::Text(text) => format!("text:{}", text.text),
             AssistantContent::Image(_) => "image".to_string(),
+            AssistantContent::Opaque(opaque) => format!("opaque:{}", opaque.kind().unwrap_or("")),
         })
         .collect();
     let expected = vec![
@@ -1683,10 +1651,6 @@ pub mod fixtures {
         WireInput::Bytes(Bytes::from(format!("data: {data}\n\n")))
     }
 
-    fn ndjson(frame: &serde_json::Value) -> WireInput {
-        WireInput::Bytes(Bytes::from(format!("{frame}\n")))
-    }
-
     /// The frame's SSE text, for buffered-body pipelines that re-parse a
     /// whole body string.
     fn frame_text(frame: &WireInput) -> String {
@@ -1778,7 +1742,9 @@ pub mod fixtures {
                 // A wrongly-typed `content` is tolerated by the lenient delta
                 // decode; a wrongly-typed `choices` is a genuine schema defect
                 // of the known chunk shape.
-                defective_known_frame: Some(sse_raw(r#"{"choices": 42}"#)),
+                // The Chat decoder reads leniently, as pi does: `choices`
+                // of another type is a chunk with no choices, not a defect.
+                defective_known_frame: None,
                 // The Azure `prompt_filter_results` prelude: a choice with no
                 // `delta` at all.
                 delta_less_prelude_frame: Some(sse_raw(
@@ -2021,16 +1987,9 @@ pub mod fixtures {
                     "sequence_number": 4,
                     "item_id": "ws_1",
                 }))),
-                // The P2 probe shape from `rig-2257-code-review-findings-34ee8ba5.md`:
-                // a known part tag (`output_text`) with a schema-defective payload.
-                defective_known_frame: Some(sse(&json!({
-                    "type": "response.content_part.added",
-                    "item_id": "msg_1",
-                    "output_index": 0,
-                    "content_index": 0,
-                    "sequence_number": 5,
-                    "part": {"type": "output_text", "text": 42},
-                }))),
+                // The decoder reads only the fields it builds blocks from, and
+                // reads those leniently, so no known event fails a reply (#2668).
+                defective_known_frame: None,
                 delta_less_prelude_frame: None,
                 refusal: Some(RefusalFixture {
                     frames: vec![sse(&json!({
@@ -2182,9 +2141,22 @@ pub mod fixtures {
                     "output_index": 0,
                     "content_index": 0,
                     "sequence_number": 1,
-                    "delta": "thinking",
+                    "delta": "full ",
                 })),
-                tool_call_done(),
+                // The call is the reply's next output item.
+                sse(&json!({
+                    "type": "response.output_item.done",
+                    "output_index": 1,
+                    "sequence_number": 2,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "arguments": "{\"city\":\"Tokyo\"}",
+                        "call_id": "call_1",
+                        "name": "get_weather",
+                        "status": "completed",
+                    },
+                })),
                 reasoning_done_item(
                     "rs_2",
                     &json!([]),
@@ -2397,8 +2369,8 @@ pub mod fixtures {
                     "event_type": "future.event",
                     "index": 0,
                 }))),
-                // A known tag (`step.delta`) with a schema-defective payload
-                // must classify `Corrupt`, never `Unknown`.
+                // A known tag (`step.delta`) whose delta, the content of its
+                // block, is not an object fails the reply, never skipped.
                 defective_known_frame: Some(sse_raw(
                     r#"{"event_type":"step.delta","index":0,"delta":42}"#,
                 )),
@@ -2408,9 +2380,8 @@ pub mod fixtures {
             }
         }
 
-        /// Thought-summary delta, interleaved function call, thought-summary
-        /// delta, terminal — the constant-id (`reasoning-0`) interleaving
-        /// shape on the Interactions wire.
+        /// A thought step, a function-call step, a second thought step,
+        /// terminal: each step is its own block on the Interactions wire.
         fn interleaved_thought_fixture() -> InterleavedReasoningFixture {
             let frames = vec![
                 sse(&json!({
@@ -2423,7 +2394,7 @@ pub mod fixtures {
                 })),
                 sse(&json!({
                     "event_type": "step.delta",
-                    "index": 0,
+                    "index": 1,
                     "delta": {
                         "type": "function_call",
                         "name": "get_weather",
@@ -2433,7 +2404,7 @@ pub mod fixtures {
                 })),
                 sse(&json!({
                     "event_type": "step.delta",
-                    "index": 0,
+                    "index": 2,
                     "delta": {
                         "type": "thought_summary",
                         "content": {"type": "text", "text": "after tool"},
@@ -2566,229 +2537,6 @@ pub mod fixtures {
                 delta_less_prelude_frame: None,
                 refusal: None,
                 interleaved_reasoning: None,
-            }
-        }
-    }
-
-    /// Cohere v2 chat SSE wire.
-    pub mod cohere {
-        use super::*;
-
-        fn driver() -> WireDriver {
-            byte_driver("cohere", |transport| {
-                crate::driver::Model::new(
-                    crate::providers::cohere::wire::CohereConfig::new("test-key")
-                        .completion(crate::providers::cohere::COMMAND_R_08_2024),
-                    transport,
-                )
-            })
-        }
-
-        /// The Cohere fixture.
-        pub fn fixture() -> ProviderWireFixture {
-            ProviderWireFixture {
-                driver: driver(),
-                text_frames: vec![
-                    sse(&json!({"type": "message-start", "id": "msg_1"})),
-                    sse(&json!({
-                        "type": "content-delta",
-                        "delta": {"message": {"content": {"text": "hi"}}},
-                    })),
-                ],
-                expected_texts: vec!["hi"],
-                tool_call_frames: vec![
-                    sse(&json!({
-                        "type": "tool-call-start",
-                        "delta": {"message": {"tool_calls": {
-                            "id": "call_1",
-                            "function": {"name": "get_weather", "arguments": ""},
-                        }}},
-                    })),
-                    sse(&json!({
-                        "type": "tool-call-delta",
-                        "delta": {"message": {"tool_calls": {
-                            "function": {"arguments": "{\"city\":\"Tokyo\"}"},
-                        }}},
-                    })),
-                    sse(&json!({"type": "tool-call-end"})),
-                ],
-                expected_tool_name: "get_weather",
-                partial_tool_call_frames: Some(vec![sse(&json!({
-                    "type": "tool-call-start",
-                    "delta": {"message": {"tool_calls": {
-                        "id": "call_1",
-                        "function": {"name": "get_weather", "arguments": "{\"cit"},
-                    }}},
-                }))]),
-                terminal_frames: vec![sse(&json!({
-                    "type": "message-end",
-                    "delta": {
-                        "finish_reason": "COMPLETE",
-                        "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
-                    },
-                }))],
-                expected_usage_total: 14,
-                expected_finish_reason: Some(FinishReason::Stop),
-                zero_usage_terminal_frames: Some(vec![sse(&json!({"type": "message-end"}))]),
-                bare_terminal_frames: None,
-                malformed_frame: Some(sse_raw("{not json")),
-                unknown_event_frame: Some(sse(&json!({
-                    "type": "citation-start",
-                    "delta": {"message": {"citations": {}}},
-                }))),
-                defective_known_frame: Some(sse_raw(r#"{"type":"content-delta","delta":42}"#)),
-                delta_less_prelude_frame: None,
-                refusal: None,
-                interleaved_reasoning: Some(interleaved_thinking_fixture()),
-            }
-        }
-
-        /// Thinking delta, interleaved tool call, thinking delta, terminal —
-        /// the constant-id (`reasoning-0`) interleaving shape on the Cohere
-        /// v2 SSE wire.
-        fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
-            let frames = vec![
-                sse(&json!({"type": "message-start", "id": "msg_1"})),
-                sse(&json!({
-                    "type": "content-delta",
-                    "delta": {"message": {"content": {"thinking": "before tool"}}},
-                })),
-                sse(&json!({
-                    "type": "tool-call-start",
-                    "delta": {"message": {"tool_calls": {
-                        "id": "call_1",
-                        "function": {"name": "get_weather", "arguments": "{\"city\":\"Tokyo\"}"},
-                    }}},
-                })),
-                sse(&json!({"type": "tool-call-end"})),
-                sse(&json!({
-                    "type": "content-delta",
-                    "delta": {"message": {"content": {"thinking": "after tool"}}},
-                })),
-                sse(&json!({
-                    "type": "message-end",
-                    "delta": {
-                        "finish_reason": "COMPLETE",
-                        "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
-                    },
-                })),
-            ];
-            InterleavedReasoningFixture {
-                frames,
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
-            }
-        }
-    }
-
-    /// Ollama `/api/chat` NDJSON wire.
-    pub mod ollama {
-        use super::*;
-
-        fn driver() -> WireDriver {
-            byte_driver("ollama", |transport| {
-                crate::driver::Model::new(
-                    crate::providers::ollama::wire::OllamaConfig::new().completion("llama3.2"),
-                    transport,
-                )
-            })
-        }
-
-        /// The Ollama fixture.
-        pub fn fixture() -> ProviderWireFixture {
-            ProviderWireFixture {
-                driver: driver(),
-                text_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "hi"},
-                    "done": false,
-                }))],
-                expected_texts: vec!["hi"],
-                tool_call_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "", "tool_calls": [{
-                        "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
-                    }]},
-                    "done": false,
-                }))],
-                expected_tool_name: "get_weather",
-                // NDJSON delivers tool calls whole; arguments never stream.
-                partial_tool_call_frames: None,
-                terminal_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 10,
-                    "eval_count": 4,
-                }))],
-                expected_usage_total: 14,
-                expected_finish_reason: Some(FinishReason::Stop),
-                zero_usage_terminal_frames: Some(vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                }))]),
-                bare_terminal_frames: None,
-                malformed_frame: Some(WireInput::Bytes(Bytes::from_static(b"{not json\n"))),
-                unknown_event_frame: None,
-                defective_known_frame: Some(ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:46.499127Z",
-                    "message": {"role": "assistant", "content": 42},
-                    "done": false,
-                }))),
-                delta_less_prelude_frame: None,
-                refusal: None,
-                interleaved_reasoning: Some(interleaved_thinking_fixture()),
-            }
-        }
-
-        /// Thinking delta, interleaved tool call, thinking delta, terminal —
-        /// the constant-id (`reasoning-0`) interleaving shape on NDJSON.
-        fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
-            let frames = vec![
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "", "thinking": "before tool"},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.599127Z",
-                    "message": {"role": "assistant", "content": "", "tool_calls": [{
-                        "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
-                    }]},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.699127Z",
-                    "message": {"role": "assistant", "content": "", "thinking": "after tool"},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 10,
-                    "eval_count": 4,
-                })),
-            ];
-            InterleavedReasoningFixture {
-                frames,
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
             }
         }
     }

@@ -45,13 +45,15 @@ fn tool_calls(log: &rig::cassette::effect_log::EffectLog) -> Vec<rig::message::T
 fn assert_dual_ids(calls: &[rig::message::ToolCall]) {
     assert!(!calls.is_empty(), "the program calls tools");
     for call in calls {
-        let provider = call
-            .id
-            .provider()
-            .unwrap_or_else(|| panic!("a Responses call carries a provider id: {call:?}"));
         assert!(
-            provider.item_id.is_some(),
-            "a Responses call carries the item id too: {call:?}"
+            call.id.provider().is_some(),
+            "a Responses call carries a provider id: {call:?}"
+        );
+        assert!(
+            call.native
+                .as_ref()
+                .is_some_and(|native| native.item["id"].is_string()),
+            "a Responses call carries its item, item id included: {call:?}"
         );
     }
 }

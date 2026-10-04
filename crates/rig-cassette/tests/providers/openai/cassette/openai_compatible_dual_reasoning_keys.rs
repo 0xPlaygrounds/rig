@@ -4,8 +4,9 @@
 //!
 //! Not live traffic: the fixture is recorded from a local server that
 //! answers in that shape. No configured endpoint was found sending both
-//! keys. The two keys carry different text so the recording shows which one
-//! rig keeps, and the server refuses a continuation that does not echo
+//! keys. The two keys carry different text: rig reads `reasoning_content`
+//! as the turn's reasoning and, as pi does, sends it back under that key
+//! alone; the server refuses a continuation that does not echo
 //! `reasoning_content` back, as reasoning endpoints do.
 
 use std::future::Future;
@@ -37,8 +38,8 @@ const UPSTREAM_REASONING: &str =
 const SURFACE_REASONING: &str = "Calling get_weather for Tokyo.";
 
 /// The first reply decodes with its tool call whole and its reasoning taken
-/// from `reasoning_content`, and the continuation echoes that reasoning
-/// under the key rig serializes.
+/// from `reasoning_content`, and the continuation sends that reasoning back
+/// under that key alone.
 #[tokio::test]
 async fn dual_reasoning_keys_tool_roundtrip() {
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -76,18 +77,28 @@ async fn dual_reasoning_keys_tool_roundtrip() {
         .flatten()
         .find(|message| message["role"] == "assistant")
         .expect("the continuation replays the assistant turn");
+    // As pi does, the reasoning goes back under the first key that carried
+    // it, once.
     assert_eq!(
-        echoed["reasoning_content"], upstream,
-        "reasoning_content wins"
+        (
+            echoed["reasoning_content"].as_str(),
+            echoed["reasoning"].as_str()
+        ),
+        (Some(upstream), None),
+        "the reasoning goes back under the key it arrived in: {echoed}"
     );
-    assert!(
-        echoed.get("reasoning").is_none(),
-        "one key is sent: {echoed}"
-    );
-    assert_eq!(
-        echoed["tool_calls"], replied["tool_calls"],
-        "the tool call is replayed whole"
-    );
+    let call = |message: &serde_json::Value| {
+        let call = &message["tool_calls"][0];
+        let arguments: serde_json::Value =
+            serde_json::from_str(call["function"]["arguments"].as_str().unwrap_or("{}"))
+                .unwrap_or_default();
+        (
+            call["id"].clone(),
+            call["function"]["name"].clone(),
+            arguments,
+        )
+    };
+    assert_eq!(call(echoed), call(replied), "the tool call is replayed");
 }
 
 async fn with_local_dual_reasoning_keys_cassette<F, Fut>(scenario: &'static str, test_body: F)
@@ -108,7 +119,7 @@ where
         .with_route(Route::Chat);
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

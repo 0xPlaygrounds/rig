@@ -136,7 +136,7 @@ pub(crate) async fn live_client() -> CopilotModels {
         authorize(live_source(), None, true)
             .await
             .expect("Copilot credential should resolve"),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )
 }
 
@@ -193,7 +193,7 @@ where
     let (cassette, client) = copilot_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(CopilotModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -211,7 +211,7 @@ where
     let (cassette, client) = copilot_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(CopilotModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -228,7 +228,7 @@ pub(crate) async fn with_copilot_noninteractive_oauth_cassette<F, Fut>(
     let (cassette, client, _temp) = copilot_noninteractive_oauth_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(CopilotModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

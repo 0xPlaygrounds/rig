@@ -21,7 +21,9 @@ fn assert_history_tool_calls(history: &[Message], expected: &[&str], forbidden: 
     let tool_names = history
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                Some(content)
+            }
             _ => None,
         })
         .flat_map(|content| content.iter())
@@ -89,7 +91,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
                 .find(|tool_call| tool_call.function.name == Adder::NAME)
                 .expect("expected add tool call");
             assert_eq!(
-                add_call.function.arguments,
+                add_call.function.arguments_value(),
                 serde_json::json!({ "x": 20, "y": 22 })
             );
         },
@@ -142,7 +144,7 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
                 .find(|tool_call| tool_call.function.name == Adder::NAME)
                 .expect("expected add tool call");
             assert_eq!(
-                add_call.function.arguments,
+                add_call.function.arguments_value(),
                 serde_json::json!({ "x": 20, "y": 22 })
             );
         },

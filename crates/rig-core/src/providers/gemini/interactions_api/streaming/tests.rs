@@ -1,111 +1,152 @@
 use super::*;
-use crate::message::AssistantContent;
+use crate::message::{AssistantContent, Message};
 use crate::streaming::{Item, StreamEvent};
+use crate::test_utils::history::{assert_every_variant, assert_restated_agrees, decode};
+use crate::wire::Mode;
 use serde_json::json;
 
-/// The request every stream test below sends. The decoder is what they
-/// exercise, so the request only has to be well-formed.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn interactions_request() -> crate::completion::CompletionRequest {
-    crate::completion::CompletionRequest::new("hello")
+use super::super::{Interactions, create_request_body};
+
+fn wire() -> Interactions {
+    crate::providers::gemini::GeminiConfig::new("test-key").interactions("gemini-2.5-pro")
+}
+
+fn frame(value: serde_json::Value) -> WireFrame {
+    WireFrame::Text(value.to_string())
+}
+
+/// A whole interaction resource holding `steps`.
+fn whole(steps: Vec<serde_json::Value>) -> WireFrame {
+    frame(json!({"id": "int_1", "status": "completed", "steps": steps}))
+}
+
+fn start(index: usize, step: serde_json::Value) -> WireFrame {
+    frame(json!({"event_type": "step.start", "index": index, "step": step}))
+}
+
+fn delta(index: usize, delta: serde_json::Value) -> WireFrame {
+    frame(json!({"event_type": "step.delta", "index": index, "delta": delta}))
+}
+
+fn stop(index: usize) -> WireFrame {
+    frame(json!({"event_type": "step.stop", "index": index}))
+}
+
+fn completed() -> WireFrame {
+    frame(json!({
+        "event_type": "interaction.completed",
+        "interaction": {"id": "int_1", "status": "completed"},
+    }))
+}
+
+/// The turn `frames` decode to as a stream.
+fn streamed(frames: Vec<WireFrame>) -> crate::completion::CompletionResponse {
+    decode(&wire(), Mode::Streaming, frames).expect("the stream decodes")
+}
+
+/// The steps the decoded turn of `response` encodes to for the same model,
+/// with the tools its calls name declared: what follows the user's prompt,
+/// without the results the request boundary adds for its calls.
+fn replayed(response: &crate::completion::CompletionResponse) -> Vec<serde_json::Value> {
+    let turn = response.message().expect("a turn");
+    let tools = match &turn {
+        Message::Assistant(turn) => turn
+            .tool_calls()
+            .map(|call| crate::completion::ToolDefinition {
+                name: call.function.name.clone(),
+                description: "A tool.".to_owned(),
+                parameters: json!({"type": "object", "properties": {}}),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let mut request =
+        crate::completion::CompletionRequest::from(vec![Message::user("hello"), turn]);
+    request.tools = tools;
+    let request = <Completion as crate::wire::Operation>::prepare(
+        request,
+        &crate::wire::Wire::describe(&wire()),
+    )
+    .expect("the request is valid");
+    let body = create_request_body(&wire(), request, None).expect("the request builds");
+    let mut steps = body["input"].as_array().cloned().unwrap_or_default();
+    steps.remove(0);
+    steps.retain(|step| step["type"] != "function_result");
+    steps
+}
+
+/// How a step decodes, by its `type`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StepKind {
+    /// `thought`: reasoning, its signature kept in the step.
+    Thought,
+    /// `model_output`: one block per content item.
+    Output,
+    /// `function_call`: a call the client answers.
+    Call,
+    /// Input a reply restates (`user_input`, `function_result`): kept,
+    /// never sent back.
+    Input,
+    /// A hosted-tool step, or a step type rig does not know: sent back to
+    /// the model that produced it.
+    Other,
+}
+
+fn step_kind(step: &serde_json::Value) -> StepKind {
+    match step.get("type").and_then(serde_json::Value::as_str) {
+        Some("thought") => StepKind::Thought,
+        Some("model_output") => StepKind::Output,
+        Some("function_call") => StepKind::Call,
+        Some("user_input" | "function_result") => StepKind::Input,
+        _ => StepKind::Other,
+    }
+}
+
+/// How a model output content item decodes, by its `type`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ContentKind {
+    Text,
+    /// An image block, or an opaque one when it states no data or URI.
+    Image,
+    /// Audio, video, a document, or a type rig does not know.
+    Other,
+}
+
+fn content_kind(content: &serde_json::Value) -> ContentKind {
+    match content.get("type").and_then(serde_json::Value::as_str) {
+        Some("text") => ContentKind::Text,
+        Some("image") => ContentKind::Image,
+        _ => ContentKind::Other,
+    }
+}
+
+/// How the decoder classifies the frame `data`.
+fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
+    InteractionsDecoder::default().classify(WireFrame::Text(data.to_owned()))
 }
 
 /// The Interactions wire bound to a transport answering with `frames` as
-/// one SSE body.
+/// one SSE body, driven through the full normalized path.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn interactions_stream(
+async fn drive_frames(
     frames: &[&str],
-) -> crate::driver::Model<
-    crate::providers::gemini::interactions_api::Interactions,
-    crate::test_utils::MockStreamingClient,
-> {
+) -> (
+    Vec<Result<Item<StreamEvent>, String>>,
+    Result<crate::completion::CompletionResponse, ProviderError>,
+) {
+    use futures::StreamExt;
+
     let sse_bytes = bytes::Bytes::from(
         frames
             .iter()
             .map(|event| format!("data: {event}\n\n"))
             .collect::<String>(),
     );
-    crate::driver::Model::new(
-        crate::providers::gemini::GeminiConfig::new("test-key").interactions("gemini-2.5-pro"),
-        crate::test_utils::MockStreamingClient { sse_bytes },
-    )
-}
-
-#[test]
-fn test_streaming_completion_response_has_model_version() {
-    let response = StreamingCompletionResponse {
-        usage: None,
-        interaction: None,
-        model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
-    };
-
-    assert_eq!(
-        response.model_version.as_deref(),
-        Some("gemini-2.5-pro-preview-05-06")
-    );
-
-    let json = serde_json::to_string(&response).unwrap();
-    let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        deserialized.model_version.as_deref(),
-        Some("gemini-2.5-pro-preview-05-06")
-    );
-}
-
-#[test]
-fn test_content_delta_text_event() {
-    let event_json = json!({
-        "event_type": "step.delta",
-        "index": 0,
-        "delta": {
-            "type": "text",
-            "text": "Hello"
-        }
-    });
-
-    let event: InteractionSseEvent = serde_json::from_value(event_json).unwrap();
-    let InteractionSseEvent::StepDelta { delta, .. } = event else {
-        panic!("expected step delta");
-    };
-    assert!(matches!(
-        delta_content(delta),
-        Some(Content::Text(TextContent { text, .. })) if text == "Hello"
-    ));
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[tokio::test]
-async fn truncated_stream_does_not_synthesize_an_end() {
-    // Content deltas then EOF without `interaction.completed`: the
-    // truncated stream delivers its content, then its truncation.
-    let (items, outcome) = drive_frames(&[
-        r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#,
-    ])
-    .await;
-    assert_eq!(texts_of(&items), ["hi"]);
-    assert!(
-        matches!(outcome, Err(crate::error::ProviderError::Truncated)),
-        "EOF without interaction.completed is truncation: {outcome:?}"
-    );
-}
-
-/// Drive Interactions SSE frames through the full normalized path and
-/// collect what the consumer sees, in order, and what the reply finished
-/// with.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-async fn drive_frames(
-    frames: &[&str],
-) -> (
-    Vec<Result<Item<StreamEvent>, String>>,
-    Result<crate::completion::CompletionResponse, crate::error::ProviderError>,
-) {
-    use futures::StreamExt;
-
-    let model = interactions_stream(frames);
+    let model =
+        crate::driver::Model::new(wire(), crate::test_utils::MockStreamingClient { sse_bytes });
     let mut stream = model
-        .stream(interactions_request())
+        .stream(crate::completion::CompletionRequest::new("hello"))
         .expect("stream should open");
-
     let mut items = Vec::new();
     while let Some(item) = stream.next().await {
         items.push(item.map_err(|error| error.to_string()));
@@ -113,7 +154,6 @@ async fn drive_frames(
     (items, stream.finish().await)
 }
 
-/// The text fragments among `items`.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn texts_of(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&str> {
     items
@@ -125,196 +165,23 @@ fn texts_of(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&str> {
         .collect()
 }
 
-/// What the parts among `items` ended with.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn ended(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&AssistantContent> {
-    items
-        .iter()
-        .filter_map(|item| match item {
-            Ok(Item::Event(StreamEvent::End { content, .. })) => Some(content),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The calls among `items`.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn calls_of(items: &[Result<Item<StreamEvent>, String>]) -> Vec<&crate::message::ToolCall> {
-    ended(items)
-        .into_iter()
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
-        .collect()
-}
-
-/// A `model_output` step interleaving text and a function call in one
-/// step's `content`: every convertible item must surface, in wire
-/// order. `find_map` kept only the first — a `function_call` following
-/// text in the same step silently vanished.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
-async fn a_model_output_step_yields_every_convertible_item() {
-    let (items, _) = drive_frames(&[
-        r#"{"event_type":"step.start","index":0,"step":{"type":"model_output","content":[{"type":"text","text":"answer: "},{"type":"function_call","name":"add","arguments":{"x":1},"id":"fc_9"}]}}"#,
-        r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
-    ])
-    .await;
-
-    let calls = calls_of(&items);
-    assert_eq!(
-        texts_of(&items),
-        ["answer: "],
-        "the text survives, got {items:?}"
-    );
-    assert_eq!(
-        calls.len(),
-        1,
-        "the function_call after text must also survive, got {items:?}"
-    );
-    let call = calls.first().expect("one call");
-    assert_eq!(call.function.name, "add");
-    assert_eq!(call.function.arguments, serde_json::json!({"x": 1}));
-}
-
-/// A `step.start` that announces non-empty arguments AND fragments the
-/// real payload across `arguments_delta` events: the deltas are the
-/// arguments. Concatenating the announce payload with the fragments
-/// yields `{..}{..}` — unparseable under the step's Error policy, so
-/// the call was lost outright.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[tokio::test]
-async fn announce_arguments_never_concatenate_with_fragments() {
-    let (items, _) = drive_frames(&[
-        r#"{"event_type":"step.start","index":1,"step":{"arguments":{"x":1},"id":"fc_1","name":"add","type":"function_call"}}"#,
-        r#"{"delta":{"arguments":"{\"x\":1}","type":"arguments_delta"},"event_type":"step.delta","index":1}"#,
-        r#"{"event_type":"step.stop","index":1}"#,
-        r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
-    ])
-    .await;
-
-    let tool_calls = calls_of(&items);
-    assert_eq!(
-        tool_calls.len(),
-        1,
-        "the announced-then-fragmented call must survive, got {items:?}"
-    );
-    assert_eq!(
-        tool_calls.first().expect("one call").function.arguments,
-        serde_json::json!({"x": 1}),
-        "streamed fragments are the arguments; the announce payload is not prepended"
-    );
-}
-
-/// A partial announce with NO fragments: the announce payload is the
-/// only arguments the wire sent, so it finalizes the call
-/// (replace-if-no-deltas).
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[tokio::test]
-async fn announce_arguments_finalize_a_call_with_no_fragments() {
-    let (items, _) = drive_frames(&[
-        r#"{"event_type":"step.start","index":1,"step":{"arguments":{"x":7},"id":"fc_1","name":"add","type":"function_call"}}"#,
-        r#"{"event_type":"step.stop","index":1}"#,
-        r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
-    ])
-    .await;
-
-    let tool_calls = calls_of(&items);
-    assert_eq!(tool_calls.len(), 1, "got {items:?}");
-    assert_eq!(
-        tool_calls.first().expect("one call").function.arguments,
-        serde_json::json!({"x": 7})
-    );
-}
-
-/// Interactions is a single-identifier wire: its `fc_…` id must land
-/// in `provider.call_id` with `item_id` empty. Filling both slots
-/// fabricated a Responses-shaped dual identity whose fake item id
-/// passed the foreign-id guard on cross-provider replay.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[tokio::test]
-async fn a_streamed_call_carries_a_single_wire_identity() {
-    let (items, _) = drive_frames(&[
-        r#"{"event_type":"step.start","index":1,"step":{"arguments":{},"id":"fc_1","name":"add","type":"function_call"}}"#,
-        r#"{"delta":{"arguments":"{\"x\":1}","type":"arguments_delta"},"event_type":"step.delta","index":1}"#,
-        r#"{"event_type":"step.stop","index":1}"#,
-        r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
-    ])
-    .await;
-
-    let tool_calls = calls_of(&items);
-    let provider = tool_calls
-        .first()
-        .expect("one call")
-        .id
-        .provider()
-        .expect("the wire issued an id");
-    assert_eq!(provider.call_id, "fc_1");
-    assert_eq!(
-        provider.item_id, None,
-        "a single-identifier wire must not fabricate a dual identity"
-    );
-}
-
-/// A `step.stop` that never arrives must not lose the call: the wire
-/// announced it (`step.start`), streamed its full arguments
-/// (`arguments_delta`), and proved the turn finished
-/// (`interaction.completed`). Before this fix the assembly stayed open,
-/// `finish` never ran (terminal return), and the accumulator's
-/// end-of-stream clear dropped the whole call — the agent then treated
-/// a tool-calling turn as plain text.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[tokio::test]
-async fn a_missing_step_stop_does_not_lose_the_announced_call() {
+async fn truncated_stream_does_not_synthesize_an_end() {
     let (items, outcome) = drive_frames(&[
-        r#"{"event_type":"step.start","index":1,"step":{"arguments":{},"id":"fc_1","name":"get_weather","type":"function_call"}}"#,
-        r#"{"delta":{"arguments":"{\"city\":\"Paris\"}","type":"arguments_delta"},"event_type":"step.delta","index":1}"#,
-        r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+        r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#,
     ])
     .await;
-
-    let tool_calls = calls_of(&items);
-    assert_eq!(
-        tool_calls.len(),
-        1,
-        "the announced call must survive the missing step.stop, got {items:?}"
-    );
-    let tool_call = tool_calls.first().expect("one call");
-    assert_eq!(tool_call.function.name, "get_weather");
-    assert_eq!(
-        tool_call.function.arguments,
-        serde_json::json!({"city": "Paris"}),
-        "the streamed argument fragments finalize the call"
-    );
-    assert_eq!(
-        tool_call
-            .id
-            .provider()
-            .map(|provider| provider.call_id.as_str()),
-        Some("fc_1")
-    );
-
-    // The turn completed normally.
-    let aggregated_calls = outcome
-        .expect("the reply ended")
-        .choice
-        .iter()
-        .filter(|content| matches!(content, crate::message::AssistantContent::ToolCall(_)))
-        .count();
-    assert_eq!(
-        aggregated_calls, 1,
-        "the call reaches the aggregated choice"
+    assert_eq!(texts_of(&items), ["hi"]);
+    assert!(
+        matches!(outcome, Err(ProviderError::Truncated)),
+        "EOF without interaction.completed is truncation: {outcome:?}"
     );
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
-    // A provider `error` event, then more frames: well-formed content, an
-    // unknown frame, and a terminal `interaction.completed`. The error
-    // must be the LAST item — the driver stops reading (`is_finished`),
-    // so nothing after it is interpreted or passed through as `Unknown`.
     let (items, outcome) = drive_frames(&[
         r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#,
         r#"{"event_type":"error","error":{"code":"internal","message":"boom"}}"#,
@@ -323,114 +190,381 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
         r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
     ])
     .await;
-
     let error_position = items
         .iter()
-        .position(|item| item.is_err())
+        .position(Result::is_err)
         .expect("the provider error must reach the consumer");
-    assert_eq!(
-        error_position,
-        items.len() - 1,
-        "the in-band error must end the stream: no later text, Unknown passthrough, or terminal; got {items:?}"
-    );
-    assert_eq!(
-        texts_of(&items),
-        ["hi"],
-        "content before the error must survive"
-    );
+    assert_eq!(error_position, items.len() - 1, "got {items:?}");
+    assert_eq!(texts_of(&items), ["hi"]);
     assert!(outcome.is_err());
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[tokio::test]
-async fn thought_signature_completes_the_accumulated_reasoning_block() {
-    // Text-then-signature: the signed part carries the full accumulated
-    // thought text and the signature, beside the later text.
-    let (items, _) = drive_frames(&[
-        r#"{"event_type":"step.delta","index":0,"delta":{"type":"thought_summary","content":{"type":"text","text":"think1 "}}}"#,
-        r#"{"event_type":"step.delta","index":0,"delta":{"type":"thought_summary","content":{"type":"text","text":"think2"}}}"#,
-        r#"{"event_type":"step.delta","index":0,"delta":{"type":"thought_signature","signature":"sig-abc"}}"#,
-        r#"{"event_type":"step.delta","index":1,"delta":{"type":"text","text":"answer"}}"#,
-    ])
-    .await;
-
-    let signed = ended(&items)
-        .into_iter()
-        .find_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
-            _ => None,
-        })
-        .expect("the signature must yield a completed Reasoning block");
-    assert_eq!(
-        signed.value().content,
-        vec![crate::completion::message::ReasoningContent::Text {
-            text: "think1 think2".to_string(),
-            signature: Some("sig-abc".to_string()),
-        }],
-        "the signed block must restate the accumulated text with the signature"
-    );
-
-    // Exactly one reasoning part ended: the signature closed the one the
-    // fragments opened.
-    let reasoning = ended(&items)
-        .into_iter()
-        .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
-        .count();
-    assert_eq!(reasoning, 1, "got {items:?}");
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-#[tokio::test]
-async fn signature_only_thought_still_carries_the_signature() {
-    // Signature with no preceding thought-summary text: the signature is
-    // the provider's replay-validated payload and must still survive as a
-    // signed (empty-text) Reasoning block.
-    let (items, _) = drive_frames(&[
-        r#"{"event_type":"step.delta","index":0,"delta":{"type":"thought_signature","signature":"sig-only"}}"#,
-        r#"{"event_type":"step.delta","index":1,"delta":{"type":"text","text":"answer"}}"#,
-    ])
-    .await;
-
-    let signed = ended(&items)
-        .into_iter()
-        .find_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
-            _ => None,
-        })
-        .expect("a signature-only block must still yield a signed Reasoning");
-    assert_eq!(
-        signed.value().content,
-        vec![crate::completion::message::ReasoningContent::Text {
-            text: String::new(),
-            signature: Some("sig-only".to_string()),
-        }]
-    );
-}
-
+/// Streamed fragments are the arguments: the arguments the start
+/// announced are not prepended to them.
 #[test]
-fn test_content_delta_function_call_event() {
-    let event_json = json!({
-        "event_type": "step.delta",
-        "index": 0,
-        "delta": {
-            "type": "function_call",
-            "name": "get_weather",
-            "arguments": {"location": "Paris"},
-            "id": "call-1"
+fn announced_arguments_never_concatenate_with_fragments() {
+    let call = json!({"arguments": {"x": 1}, "id": "fc_1", "name": "add", "type": "function_call"});
+    let response = streamed(vec![
+        start(1, call),
+        delta(
+            1,
+            json!({"type": "arguments_delta", "arguments": "{\"x\":2}"}),
+        ),
+        stop(1),
+        completed(),
+    ]);
+    let calls: Vec<_> = response
+        .message()
+        .into_iter()
+        .flat_map(|message| match message {
+            Message::Assistant(turn) => turn.tool_calls().cloned().collect::<Vec<_>>(),
+            _ => Vec::new(),
+        })
+        .collect();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].function.arguments_value(), json!({"x": 2}));
+    assert_eq!(calls[0].id.provider().map(|id| id.as_str()), Some("fc_1"));
+    assert_eq!(
+        replayed(&response),
+        [json!({"arguments": {"x": 2}, "id": "fc_1", "name": "add", "type": "function_call"})],
+        "the replayed step carries the streamed arguments"
+    );
+}
+
+/// With no fragments, the announced arguments are the call's.
+#[test]
+fn announced_arguments_finalize_a_call_with_no_fragments() {
+    let call = json!({"arguments": {"x": 7}, "id": "fc_1", "name": "add", "type": "function_call"});
+    let response = streamed(vec![start(1, call.clone()), stop(1), completed()]);
+    let Some(AssistantContent::ToolCall(tool_call)) = response.choice.first() else {
+        panic!("one call: {:?}", response.choice);
+    };
+    assert_eq!(tool_call.function.arguments_value(), json!({"x": 7}));
+    assert_eq!(replayed(&response), [call]);
+}
+
+/// A call whose `step.stop` never came is kept, with the arguments it
+/// streamed, when the interaction completes.
+#[test]
+fn a_missing_step_stop_does_not_lose_the_call() {
+    let response = streamed(vec![
+        start(
+            1,
+            json!({"arguments": {}, "id": "fc_1", "name": "get_weather", "type": "function_call"}),
+        ),
+        delta(
+            1,
+            json!({"type": "arguments_delta", "arguments": "{\"city\":\"Paris\"}"}),
+        ),
+        completed(),
+    ]);
+    let Some(AssistantContent::ToolCall(tool_call)) = response.choice.first() else {
+        panic!("one call: {:?}", response.choice);
+    };
+    assert_eq!(
+        tool_call.function.arguments_value(),
+        json!({"city": "Paris"})
+    );
+}
+
+/// A resumed stream can join a step after its start: the deltas open the
+/// step they imply, and the thought keeps its text and signature.
+#[test]
+fn deltas_without_a_start_open_the_step_they_imply() {
+    let response = streamed(vec![
+        delta(
+            0,
+            json!({"type": "thought_summary", "content": {"type": "text", "text": "think1 "}}),
+        ),
+        delta(
+            0,
+            json!({"type": "thought_summary", "content": {"type": "text", "text": "think2"}}),
+        ),
+        delta(
+            0,
+            json!({"type": "thought_signature", "signature": "sig-abc"}),
+        ),
+        stop(0),
+        delta(1, json!({"type": "text", "text": "answer"})),
+        completed(),
+    ]);
+    let [
+        AssistantContent::Reasoning(reasoning),
+        AssistantContent::Text(text),
+    ] = response.choice.as_slice()
+    else {
+        panic!("a thought, then the answer: {:?}", response.choice);
+    };
+    assert_eq!(reasoning.text, "think1 think2");
+    assert_eq!(text.text, "answer");
+    assert_eq!(
+        replayed(&response),
+        [
+            json!({
+                "type": "thought",
+                "summary": [
+                    {"type": "text", "text": "think1 "},
+                    {"type": "text", "text": "think2"},
+                ],
+                "signature": "sig-abc",
+            }),
+            json!({"type": "model_output", "content": [{"type": "text", "text": "answer"}]}),
+        ]
+    );
+}
+
+/// A thought with only a signature is kept: the signature is what the
+/// model needs back.
+#[test]
+fn a_signature_only_thought_replays_its_signature() {
+    let response = streamed(vec![
+        start(0, json!({"type": "thought"})),
+        delta(
+            0,
+            json!({"type": "thought_signature", "signature": "sig-only"}),
+        ),
+        stop(0),
+        completed(),
+    ]);
+    assert!(matches!(
+        response.choice.as_slice(),
+        [AssistantContent::Reasoning(reasoning)] if reasoning.text.is_empty()
+    ));
+    assert_eq!(
+        replayed(&response),
+        [json!({"type": "thought", "signature": "sig-only"})]
+    );
+}
+
+/// A whole thought, a model output with annotated text, and a hosted
+/// search: the unary resource and its restatement as a stream fold into
+/// the same turn.
+#[test]
+fn a_whole_interaction_and_its_stream_agree() {
+    let thought = json!({"type": "thought", "signature": "sig", "summary": [{"type": "text", "text": "plan"}]});
+    let search = json!({"type": "google_search_call", "id": "call_1", "signature": "s", "arguments": {"queries": ["euro 2024"]}, "search_type": "web_search"});
+    let output = json!({"type": "model_output", "content": [{"type": "text", "text": "Spain won.", "annotations": [{"start_index": 0, "end_index": 5, "source": "https://example.com"}]}]});
+    assert_restated_agrees(
+        &wire(),
+        [whole(vec![thought, search.clone(), output])],
+        [
+            start(0, json!({"type": "thought"})),
+            delta(
+                0,
+                json!({"type": "thought_summary", "content": {"type": "text", "text": "plan"}}),
+            ),
+            delta(0, json!({"type": "thought_signature", "signature": "sig"})),
+            stop(0),
+            start(
+                1,
+                json!({"type": "google_search_call", "id": "call_1", "signature": ""}),
+            ),
+            delta(1, search),
+            stop(1),
+            start(2, json!({"type": "model_output"})),
+            delta(
+                2,
+                json!({"type": "text", "text": "Spain", "annotations": [{"start_index": 0, "end_index": 5, "source": "https://example.com"}]}),
+            ),
+            delta(2, json!({"type": "text", "text": " won."})),
+            stop(2),
+            completed(),
+        ],
+    );
+}
+
+/// A thought `step.start` that already states its summary writes it, as a
+/// whole reply does.
+#[test]
+fn a_thought_start_with_its_summary_agrees_with_the_whole() {
+    let thought = json!({"type": "thought", "signature": "sig", "summary": [{"type": "text", "text": "plan"}]});
+    assert_restated_agrees(
+        &wire(),
+        [whole(vec![thought.clone()])],
+        [start(0, thought), stop(0), completed()],
+    );
+}
+
+/// A model output that is one image is an image block, streamed or whole,
+/// and replays verbatim.
+#[test]
+fn an_image_output_is_an_image_block_in_both_modes() {
+    let image = json!({"type": "image", "data": "aW1n", "mime_type": "image/png"});
+    let output = json!({"type": "model_output", "content": [image.clone()]});
+    let response =
+        decode(&wire(), Mode::Unary, [whole(vec![output.clone()])]).expect("the resource decodes");
+    let [AssistantContent::Image(decoded)] = response.choice.as_slice() else {
+        panic!("one image: {:?}", response.choice);
+    };
+    assert_eq!(
+        decoded.data,
+        crate::message::DocumentSourceKind::Base64("aW1n".to_owned())
+    );
+    assert_eq!(decoded.media_type, Some(ImageMediaType::PNG));
+    assert_eq!(replayed(&response), [output]);
+    assert_restated_agrees(
+        &wire(),
+        [whole(vec![
+            json!({"type": "model_output", "content": [image.clone()]}),
+        ])],
+        [
+            start(0, json!({"type": "model_output"})),
+            delta(0, image),
+            stop(0),
+            completed(),
+        ],
+    );
+}
+
+/// A step type rig has never seen, and a field rig has never seen on a
+/// known step, survive decoding in both modes and go back to the same
+/// model verbatim.
+#[test]
+fn an_invented_step_and_field_survive_both_modes_and_replay() {
+    let invented = json!({"type": "hologram", "id": "h_1", "frames": [1, 2]});
+    let output =
+        json!({"type": "model_output", "tone": "dry", "content": [{"type": "text", "text": "hi"}]});
+    let whole_frames = [whole(vec![invented.clone(), output.clone()])];
+    let stream_frames = vec![
+        start(0, json!({"type": "hologram", "id": "h_1"})),
+        delta(0, json!({"type": "hologram", "frames": [1, 2]})),
+        stop(0),
+        start(1, json!({"type": "model_output", "tone": "dry"})),
+        delta(1, json!({"type": "text", "text": "hi"})),
+        stop(1),
+        completed(),
+    ];
+    assert_restated_agrees(&wire(), whole_frames.clone(), stream_frames.clone());
+    for response in [
+        decode(&wire(), Mode::Unary, whole_frames).expect("the resource decodes"),
+        streamed(stream_frames),
+    ] {
+        assert!(matches!(
+            response.choice.first(),
+            Some(AssistantContent::Opaque(opaque)) if opaque.replay
+        ));
+        assert_eq!(replayed(&response), [invented.clone(), output.clone()]);
+    }
+}
+
+/// A call whose name is not a string has no name: it is dropped, and the
+/// reply still decodes.
+#[test]
+fn a_call_without_a_string_name_is_dropped() {
+    let response = decode(
+        &wire(),
+        Mode::Unary,
+        [whole(vec![
+            json!({"type": "function_call", "name": 5}),
+            json!({"type": "model_output", "content": [{"type": "text", "text": "hi"}]}),
+        ])],
+    )
+    .expect("the resource decodes");
+    assert!(
+        matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "hi"),
+        "{:?}",
+        response.choice
+    );
+}
+
+/// Every step kind decodes, whole and streamed alike: thoughts, calls and
+/// output to their canonical blocks, input steps to opaque steps that are
+/// never sent back, and hosted-tool steps and invented ones to opaque
+/// steps that are.
+#[test]
+fn every_step_kind_decodes() {
+    #[deny(clippy::wildcard_enum_match_arm)]
+    fn variant_index(kind: StepKind) -> usize {
+        match kind {
+            StepKind::Thought => 0,
+            StepKind::Output => 1,
+            StepKind::Call => 2,
+            StepKind::Input => 3,
+            StepKind::Other => 4,
         }
-    });
+    }
+    let samples = [
+        json!({"type": "thought", "signature": "sig"}),
+        json!({"type": "model_output", "content": [{"type": "text", "text": "hello"}]}),
+        json!({"type": "function_call", "id": "call_1", "name": "add", "arguments": {"x": 1}}),
+        json!({"type": "user_input", "content": [{"type": "text", "text": "hi"}]}),
+        json!({"type": "function_result", "call_id": "call_1", "name": "add", "result": 1}),
+        json!({"type": "code_execution_call", "id": "c"}),
+        json!({"type": "code_execution_result", "call_id": "c", "result": "2"}),
+        json!({"type": "url_context_call", "id": "u"}),
+        json!({"type": "url_context_result", "call_id": "u"}),
+        json!({"type": "google_search_call", "id": "g"}),
+        json!({"type": "google_search_result", "call_id": "g"}),
+        json!({"type": "mcp_server_tool_call", "id": "m", "name": "lookup"}),
+        json!({"type": "mcp_server_tool_result", "call_id": "m", "name": "lookup"}),
+        json!({"type": "file_search_result"}),
+        json!({"type": "x_rig_invented", "id": "x"}),
+    ];
+    assert_every_variant(&samples, |step| variant_index(step_kind(step)), 5);
+    for step in &samples {
+        assert_restated_agrees(
+            &wire(),
+            [whole(vec![step.clone()])],
+            [start(0, step.clone()), stop(0), completed()],
+        );
+        let response =
+            decode(&wire(), Mode::Unary, [whole(vec![step.clone()])]).expect("the sample decodes");
+        let block = response.choice.first().cloned();
+        let expected = match step_kind(step) {
+            StepKind::Thought => matches!(&block, Some(AssistantContent::Reasoning(_))),
+            StepKind::Output => {
+                matches!(&block, Some(AssistantContent::Text(text)) if text.text == "hello")
+            }
+            StepKind::Call => matches!(&block, Some(AssistantContent::ToolCall(_))),
+            StepKind::Input => {
+                matches!(&block, Some(AssistantContent::Opaque(opaque)) if !opaque.replay)
+            }
+            StepKind::Other => {
+                matches!(&block, Some(AssistantContent::Opaque(opaque)) if opaque.replay && opaque.item == *step)
+            }
+        };
+        assert!(expected, "{step} decoded to {block:?}");
+    }
+}
 
-    let event: InteractionSseEvent = serde_json::from_value(event_json).unwrap();
-    let InteractionSseEvent::StepDelta { delta, .. } = event else {
-        panic!("expected step delta");
-    };
-
-    let Some(Content::FunctionCall(call)) = delta_content(delta) else {
-        panic!("a function call delta is a whole call");
-    };
-    assert_eq!(call.name.as_deref(), Some("get_weather"));
-    assert_eq!(call.id.as_deref(), Some("call-1"));
-    assert_eq!(call.arguments, Some(json!({"location": "Paris"})));
+/// Every model output content kind decodes to its block: text to text, an
+/// image with a source to an image, and audio, video, documents, a
+/// sourceless image and invented items to opaque blocks that replay.
+#[test]
+fn every_content_kind_decodes() {
+    #[deny(clippy::wildcard_enum_match_arm)]
+    fn variant_index(kind: ContentKind) -> usize {
+        match kind {
+            ContentKind::Text => 0,
+            ContentKind::Image => 1,
+            ContentKind::Other => 2,
+        }
+    }
+    let samples = [
+        json!({"type": "text", "text": "hello"}),
+        json!({"type": "image", "uri": "https://example.com/a.png", "mime_type": "image/png"}),
+        json!({"type": "image", "mime_type": "image/png"}),
+        json!({"type": "audio", "data": "YQ==", "mime_type": "audio/wav"}),
+        json!({"type": "video", "uri": "https://example.com/a.mp4"}),
+        json!({"type": "document", "data": "YQ==", "mime_type": "application/pdf"}),
+        json!({"type": "x_rig_invented"}),
+    ];
+    assert_every_variant(&samples, |item| variant_index(content_kind(item)), 3);
+    for item in &samples {
+        let step = json!({"type": "model_output", "content": [item]});
+        let response =
+            decode(&wire(), Mode::Unary, [whole(vec![step.clone()])]).expect("the sample decodes");
+        let block = response.choice.first();
+        let expected = match (content_kind(item), item.get("uri").or(item.get("data"))) {
+            (ContentKind::Text, _) => matches!(block, Some(AssistantContent::Text(_))),
+            (ContentKind::Image, Some(_)) => matches!(block, Some(AssistantContent::Image(_))),
+            (ContentKind::Image, None) | (ContentKind::Other, _) => {
+                matches!(block, Some(AssistantContent::Opaque(opaque)) if opaque.replay && opaque.item == step)
+            }
+        };
+        assert!(expected, "{item} decoded to {block:?}");
+        assert_eq!(replayed(&response), [step]);
+    }
 }
 
 /// An unstored interaction (`store: false`) streams its status update
@@ -442,37 +576,37 @@ fn a_status_update_without_an_interaction_id_is_a_status_update() {
     let event = classify_interactions_frame(
         r#"{"event_type":"interaction.status_update","status":"in_progress"}"#,
     );
-    assert!(
-        matches!(
-            event,
-            WireEvent::Known(InteractionsEvent::Sse(
-                InteractionSseEvent::InteractionStatusUpdate { .. }
-            ))
-        ),
-        "the status update decodes as itself"
-    );
+    assert!(matches!(
+        event,
+        WireEvent::Known(InteractionsEvent::Sse(event))
+            if event.event_type == "interaction.status_update"
+    ));
 }
 
-/// A tagged frame that fails its typed decode (a `step.stop` without its
-/// index) is corrupt: its `status` key must never let it pass for a whole
-/// interaction, which would end the reply as if completed.
+/// A tagged frame is an event, never a whole interaction, even with a
+/// `status` key; a step event without its index fails the reply.
 #[test]
-fn a_tagged_frame_that_fails_its_decode_is_corrupt_not_a_whole_interaction() {
+fn a_tagged_frame_never_passes_for_a_whole_interaction() {
     let event = classify_interactions_frame(r#"{"event_type":"step.stop","status":"completed"}"#);
-    assert!(
-        matches!(event, WireEvent::Corrupt(_)),
-        "a malformed tagged event is corrupt"
+    assert!(matches!(event, WireEvent::Known(InteractionsEvent::Sse(_))));
+    let outcome = decode(
+        &wire(),
+        Mode::Streaming,
+        [frame(
+            json!({"event_type": "step.stop", "status": "completed"}),
+        )],
     );
+    assert!(outcome.is_err(), "{outcome:?}");
 }
 
-/// The unary reply, an untagged interaction resource, still decodes whole.
+/// The unary reply, an untagged interaction resource, decodes whole.
 #[test]
 fn an_untagged_interaction_resource_decodes_whole() {
     let event = classify_interactions_frame(
         r#"{"id":"v1_1","object":"interaction","status":"completed","steps":[]}"#,
     );
-    assert!(
-        matches!(event, WireEvent::Known(InteractionsEvent::Whole(_))),
-        "the unary resource decodes whole"
-    );
+    assert!(matches!(
+        event,
+        WireEvent::Known(InteractionsEvent::Whole(_))
+    ));
 }

@@ -75,7 +75,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A gathering for Rust enthusiasts in Seattle to discuss projects and network.\"}"
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A gathering for Rust enthusiasts in Seattle to discuss projects and network.\"}",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A gathering for Rust enthusiasts in Seattle to discuss projects and network.\"}",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_040722326228b5b1006ab3968cae7c87d091a3c94dcf6bf95d",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "a01503b8085b7dd4"
+              }
             }
           ],
           "usage": {
@@ -86,12 +103,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_040722326228b5b1006ab3968cae7c87d091a3c94dcf6bf95d",
-          "response_id": "resp_040722326228b5b1006ab3968c168887d090b38f8d36ff2328",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_040722326228b5b1006ab3968c168887d090b38f8d36ff2328"
+          },
           "provider_request_id": "req_ab0972d6cb58461aa9ebcf99f84b4b47",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,

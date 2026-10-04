@@ -71,7 +71,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "agent raw probe"
+              "text": "agent raw probe",
+              "native": {
+                "item": {
+                  "text": "agent raw probe",
+                  "type": "text"
+                },
+                "fingerprint": "e821b82e695dce4c"
+              }
             }
           ],
           "usage": {
@@ -81,12 +88,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcfm5Sz4TRJgtJHGiwQ",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcfm5Sz4TRJgtJHGiwQ"
+          },
           "provider_request_id": "req_011CfLcfkcBCxB1FKNHCMW5j",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "container": null,
             "content": [

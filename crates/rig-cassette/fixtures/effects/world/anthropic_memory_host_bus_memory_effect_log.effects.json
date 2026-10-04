@@ -117,7 +117,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready."
+              "text": "ready.",
+              "native": {
+                "item": {
+                  "text": "ready.",
+                  "type": "text"
+                },
+                "fingerprint": "6e6a093ada329f96"
+              }
             }
           ],
           "usage": {
@@ -127,12 +134,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcbVdATvSpoBh6ZEk67",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcbVdATvSpoBh6ZEk67"
+          },
           "provider_request_id": "req_011CfLcbVBsGyKMh1XjfewH3",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -186,13 +196,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcbVdATvSpoBh6ZEk67",
               "content": [
                 {
                   "type": "text",
-                  "text": "ready."
+                  "text": "ready.",
+                  "native": {
+                    "item": {
+                      "text": "ready.",
+                      "type": "text"
+                    },
+                    "fingerprint": "6e6a093ada329f96"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbVdATvSpoBh6ZEk67"
+              },
+              "stop": "stop"
             }
           ]
         }

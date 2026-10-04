@@ -132,9 +132,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_d39ce89883f943708442d533"
-                }
+                "provider": "call_d39ce89883f943708442d533"
               },
               "function": {
                 "name": "add",
@@ -143,8 +141,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_d39ce89883f943708442d533",
+                  "type": "function"
+                },
+                "fingerprint": "4467e27b31bb450d"
+              }
             }
           ],
           "usage": {
@@ -154,11 +161,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_e2c1f142-0fbb-430f-87fc-85cf5f4d2bc2",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_e2c1f142-0fbb-430f-87fc-85cf5f4d2bc2"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {
@@ -259,14 +269,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_d39ce89883f943708442d533"
-                    }
+                    "provider": "call_d39ce89883f943708442d533"
                   },
                   "function": {
                     "name": "add",
@@ -275,10 +282,27 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_d39ce89883f943708442d533",
+                      "type": "function"
+                    },
+                    "fingerprint": "4467e27b31bb450d"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_e2c1f142-0fbb-430f-87fc-85cf5f4d2bc2"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -286,9 +310,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_d39ce89883f943708442d533"
-                    }
+                    "provider": "call_d39ce89883f943708442d533"
                   },
                   "name": "add",
                   "content": [
@@ -351,11 +373,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_dbff2126-e852-442f-a0b2-36fc07409c34",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "resp_dbff2126-e852-442f-a0b2-36fc07409c34"
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "choices": [
               {

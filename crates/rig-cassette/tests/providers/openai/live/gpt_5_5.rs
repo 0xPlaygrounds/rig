@@ -432,25 +432,22 @@ async fn responses_websocket_smoke() -> anyhow::Result<()> {
     loop {
         match session.next_event().await? {
             ResponsesWebSocketEvent::Item(item) => {
-                if let rig::providers::openai::responses_api::streaming::ItemChunkKind::OutputTextDelta(delta) =
-                    item.data
+                if item["type"] == "response.output_text.delta"
+                    && let Some(delta) = item["delta"].as_str()
                 {
-                    streamed_text.push_str(&delta.delta);
+                    streamed_text.push_str(delta);
                 }
             }
-            ResponsesWebSocketEvent::Response(chunk) => {
-                if matches!(
-                    chunk.kind,
-                    rig::providers::openai::responses_api::streaming::ResponseChunkKind::ResponseCompleted
-                        | rig::providers::openai::responses_api::streaming::ResponseChunkKind::ResponseFailed
-                        | rig::providers::openai::responses_api::streaming::ResponseChunkKind::ResponseIncomplete
-                ) {
+            event @ ResponsesWebSocketEvent::Response { .. } => {
+                if event.is_terminal() {
                     break;
                 }
             }
             // Unknown frames are raw passthrough noise for this live assertion.
             ResponsesWebSocketEvent::Done(_) | ResponsesWebSocketEvent::Unknown(_) => {}
-            ResponsesWebSocketEvent::Error(error) => return Err(anyhow::anyhow!(error.to_string())),
+            ResponsesWebSocketEvent::Error(error) => {
+                return Err(anyhow::anyhow!(error.to_string()));
+            }
         }
     }
 

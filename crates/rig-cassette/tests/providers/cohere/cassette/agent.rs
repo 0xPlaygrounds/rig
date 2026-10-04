@@ -1,10 +1,7 @@
-//! Cassette-backed Cohere non-streaming completion coverage.
+//! Cassette-backed Cohere non-streaming completion coverage, on the Chat
+//! Completions wire of Cohere's OpenAI Compatibility API.
 
-use rig::completion::{AssistantContent, Message};
-use rig::providers::cohere::completion::{
-    CompletionResponse as CohereCompletionResponse, FinishReason,
-};
-use serde::Deserialize as _;
+use rig::completion::{AssistantContent, FinishReason, Message};
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{
@@ -36,56 +33,35 @@ async fn usage_is_reported_from_token_counts() {
         "agent/usage_is_reported_from_token_counts",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let request = CompletionRequest::new(BASIC_PROMPT)
-                .preamble(BASIC_PREAMBLE.to_string());
+            let request = CompletionRequest::new(BASIC_PROMPT).preamble(BASIC_PREAMBLE.to_string());
 
-            // The normalized response carries Cohere's own payload on `raw`, so
-            // both views come out of the cassette's one recorded interaction
-            // rather than a second request.
+            // The normalized usage and the reply's own `usage` come out of the
+            // cassette's one recorded interaction.
             let response = model
                 .call(request)
                 .await
                 .expect("completion should succeed");
-            let raw_response = CohereCompletionResponse::deserialize(&response.raw)
-                .expect("`raw` carries Cohere's own response");
+            let count = |pointer: &str| {
+                response
+                    .raw
+                    .pointer(pointer)
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or_else(|| panic!("Cohere should report `{pointer}`"))
+            };
+            let input = count("/usage/prompt_tokens");
+            let output = count("/usage/completion_tokens");
 
-            assert_eq!(raw_response.finish_reason, FinishReason::Complete);
-
-            let raw_usage = raw_response
-                .usage
-                .as_ref()
-                .expect("Cohere should report usage");
-            let tokens = raw_usage
-                .tokens
-                .as_ref()
-                .expect("Cohere should report `usage.tokens`");
-            let raw_input_tokens = tokens.input_tokens;
-            let expected_input_tokens = tokens.input_tokens.expect("input token count") as u64;
-            let expected_output_tokens = tokens.output_tokens.expect("output token count") as u64;
-            let billed_input_tokens = raw_usage
-                .billed_units
-                .as_ref()
-                .expect("Cohere should report `usage.billed_units`")
-                .input_tokens;
-            let cached = raw_usage
-                .cached_tokens
-                .expect("Cohere should report `usage.cached_tokens`");
-            let expected_usage = rig::completion::Usage::from(raw_usage);
-
-            assert_eq!(response.usage.input_tokens, Some(expected_input_tokens));
-            assert_eq!(response.usage.output_tokens, Some(expected_output_tokens));
+            assert_eq!(response.usage.input_tokens, Some(input));
+            assert_eq!(response.usage.output_tokens, Some(output));
             assert_eq!(
                 response.usage.total_tokens,
-                Some(expected_input_tokens + expected_output_tokens)
+                Some(count("/usage/total_tokens"))
             );
-
-            assert_ne!(
-                raw_input_tokens, billed_input_tokens,
-                "expected Cohere's two input counters to differ, so the assertions above are meaningful"
+            assert_eq!(
+                response.usage.cached_input_tokens,
+                Some(count("/usage/prompt_tokens_details/cached_tokens"))
             );
-
-            assert_eq!(response.usage.cached_input_tokens, Some(cached as u64));
-            assert_eq!(expected_usage, response.usage);
+            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
         },
     )
     .await;
@@ -105,10 +81,8 @@ async fn max_tokens_sets_max_tokens_finish_reason() {
                 .call(request)
                 .await
                 .expect("capped completion should succeed");
-            let raw = CohereCompletionResponse::deserialize(&response.raw)
-                .expect("`raw` carries Cohere's own response");
-
-            assert_eq!(raw.finish_reason, FinishReason::MaxTokens);
+            assert_eq!(response.raw["choices"][0]["finish_reason"], "length");
+            assert_eq!(response.finish_reason(), Some(FinishReason::Length));
         },
     )
     .await;
@@ -154,17 +128,27 @@ async fn stop_sequences_are_forwarded() {
             .max_tokens(32)
             .additional_params(serde_json::json!({
                 "seed": 7,
-                "stop_sequences": ["<END>"]
+                "stop": ["<END>"]
             }));
 
         let response = model
             .call(request)
             .await
             .expect("stop sequence request should succeed");
-        let raw = CohereCompletionResponse::deserialize(&response.raw)
-            .expect("`raw` carries Cohere's own response");
+        let text = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
 
-        assert_eq!(raw.finish_reason, FinishReason::StopSequence);
+        assert!(
+            !text.contains("omega"),
+            "the stop sequence ends the text: {text}"
+        );
+        assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
     })
     .await;
 }
@@ -180,10 +164,9 @@ async fn sampling_parameters_are_forwarded() {
                 .max_tokens(24)
                 .additional_params(serde_json::json!({
                     "seed": 11,
-                    "p": 0.8,
-                    "k": 20,
-                    "frequency_penalty": 0.1,
-                    "presence_penalty": 0.1
+                    "top_p": 0.8,
+                    // Cohere takes one penalty at a time.
+                    "frequency_penalty": 0.1
                 }));
 
             let response = model

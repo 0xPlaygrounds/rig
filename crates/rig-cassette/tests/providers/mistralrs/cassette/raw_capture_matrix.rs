@@ -16,17 +16,16 @@
 //! envelope on every response; none has a home on the normalized
 //! [`rig::completion::CompletionResponse`], and cell 2 reads them back
 //! through `raw`. Its per-second throughput fields inside `usage`
-//! (`avg_compl_tok_per_sec` and friends) are not modelled by the shared
-//! [`openai::CompletionResponse`] either — and they still reach a caller,
-//! because `raw` is the document rather than the parse: cell 1 pins that by
-//! requiring `raw` to reproduce the recorded reply key for key while the
-//! typed view is only as wide as the shared shape.
+//! (`avg_compl_tok_per_sec` and friends) have no normalized home either, and
+//! they still reach a caller because `raw` is the document rather than the
+//! parse. Cell 1 pins that by requiring `raw` to reproduce the recorded reply
+//! key for key.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_is_the_reply_document` | body fidelity | `raw` reproduces the recorded reply, and reads back as `openai::CompletionResponse` | unrecorded (no mistral.rs server in this environment) |
+//! | 1 | `raw_is_the_reply_document` | body fidelity | `raw` reproduces the recorded reply, and its id and model are the normalized response's | unrecorded (no mistral.rs server in this environment) |
 //! | 2 | `raw_exposes_envelope_fields` | provider-only fields | `system_fingerprint`/`object`/`created` in `raw` equal the fixture body | unrecorded (no mistral.rs server in this environment) |
 //! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized fields are the fields the reply document carries, live and in the fixture | unrecorded (no mistral.rs server in this environment) |
 //!
@@ -43,8 +42,6 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_capture_matrix/`.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
@@ -90,7 +87,7 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the reply document, and the shared type reads it back
+// 1: raw is the reply document, key for key
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -110,23 +107,20 @@ async fn raw_is_the_reply_document() {
     .await;
 
     let response = captured.take();
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into openai::CompletionResponse");
-    // The typed view agrees with the normalized one on what the model said,
+    let typed = response.raw.clone();
+    // `raw` agrees with the normalized view on what the model said,
     // so raw is a superset, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(response.provider, NORMALIZED_PROVIDER);
+    assert_eq!(typed["model"].as_str(), response.model());
+    assert_eq!(typed["id"].as_str(), response.response_id());
+    assert_eq!(response.provider(), NORMALIZED_PROVIDER);
     assert!(!response.choice.is_empty());
 
     let raw = &response.raw;
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
-    openai::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be a chat-completions response");
-    // The document, key for key: whatever mistral.rs sent — including the
-    // `usage` throughput fields no shared type models — is what a caller
-    // reads off `raw`.
+    // The document, key for key: whatever mistral.rs sent, including the
+    // `usage` throughput fields the normalized response has no home for, is
+    // what a caller reads off `raw`.
     assert_matches_recorded_document(raw, &body, &["id"], "raw is the provider's document");
     assert_wire_value_matches(raw, &body, "id");
 }
@@ -168,12 +162,11 @@ async fn raw_exposes_envelope_fields() {
     for field in ["created", "id"] {
         assert_wire_value_matches(raw, &body, field);
     }
-    let typed = openai::CompletionResponse::deserialize(raw).expect("raw must deserialize");
     assert_eq!(
-        typed.system_fingerprint.as_deref(),
+        raw["system_fingerprint"].as_str(),
         body["system_fingerprint"].as_str()
     );
-    assert_eq!(Some(typed.object.as_str()), body["object"].as_str());
+    assert_eq!(raw["object"].as_str(), body["object"].as_str());
 }
 
 // ---------------------------------------------------------------------------
@@ -201,36 +194,30 @@ async fn normalized_fields_equal_raw_renormalized() {
     .await;
 
     let response = captured.take();
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into openai::CompletionResponse");
-    assert_eq!(response.provider, NORMALIZED_PROVIDER);
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    let choice = typed
-        .choices
-        .first()
-        .expect("the reply must carry a choice");
+    let typed = response.raw.clone();
+    assert_eq!(response.provider(), NORMALIZED_PROVIDER);
+    assert_eq!(typed["model"].as_str(), response.model());
+    assert_eq!(typed["id"].as_str(), response.response_id());
+    let finish = typed["choices"][0]["finish_reason"]
+        .as_str()
+        .unwrap_or_default();
     // Deliberately weaker than the shared body contract: mistral.rs's finish
     // vocabulary is unrecorded here, so this claims only that a native reason
     // was reported and that one reached the normalized response.
     assert!(
-        !choice.finish_reason.is_empty() && response.finish_reason().is_some(),
-        "the native finish reason `{}` must reach the normalized response",
-        choice.finish_reason
+        !finish.is_empty() && response.finish_reason().is_some(),
+        "the native finish reason `{finish}` must reach the normalized response"
     );
-    let usage = typed.usage.expect("mistral.rs reports usage");
-    assert_eq!(
-        Some(usage.prompt_tokens as u64),
-        response.usage.input_tokens
-    );
-    assert_eq!(Some(usage.total_tokens as u64), response.usage.total_tokens);
+    let usage = &typed["usage"];
+    assert_eq!(usage["prompt_tokens"].as_u64(), response.usage.input_tokens);
+    assert_eq!(usage["total_tokens"].as_u64(), response.usage.total_tokens);
     assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     // And the same fields against the recorded bytes, so a recording that
     // stopped carrying them fails loudly instead of covering nothing.
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
+    assert_eq!(response.model(), body["model"].as_str(), "model");
     assert_eq!(
         response.usage.input_tokens,
         body["usage"]["prompt_tokens"].as_u64(),

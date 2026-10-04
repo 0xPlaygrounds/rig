@@ -139,10 +139,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_xdKuh1lbynBw3MuPAemSq0Oo",
-                  "item_id": "fc_0515904448de9346006ab3969e39b887d08c2102cf2ac1eb42"
-                }
+                "provider": "call_xdKuh1lbynBw3MuPAemSq0Oo"
               },
               "function": {
                 "name": "add",
@@ -151,8 +148,17 @@
                   "y": 15
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":7,\"y\":15}",
+                  "call_id": "call_xdKuh1lbynBw3MuPAemSq0Oo",
+                  "id": "fc_0515904448de9346006ab3969e39b887d08c2102cf2ac1eb42",
+                  "name": "add",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "7f405b42536a01cc"
+              }
             }
           ],
           "usage": {
@@ -163,12 +169,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0515904448de9346006ab3969d991087d092c7bd45b369c0dd",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0515904448de9346006ab3969d991087d092c7bd45b369c0dd"
+          },
           "provider_request_id": "req_8c9c3e0ba9744fcdba376dec28695d71",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -334,15 +343,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_xdKuh1lbynBw3MuPAemSq0Oo",
-                      "item_id": "fc_0515904448de9346006ab3969e39b887d08c2102cf2ac1eb42"
-                    }
+                    "provider": "call_xdKuh1lbynBw3MuPAemSq0Oo"
                   },
                   "function": {
                     "name": "add",
@@ -351,10 +356,27 @@
                       "y": 15
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"x\":7,\"y\":15}",
+                      "call_id": "call_xdKuh1lbynBw3MuPAemSq0Oo",
+                      "id": "fc_0515904448de9346006ab3969e39b887d08c2102cf2ac1eb42",
+                      "name": "add",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "7f405b42536a01cc"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_0515904448de9346006ab3969d991087d092c7bd45b369c0dd"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -362,10 +384,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_xdKuh1lbynBw3MuPAemSq0Oo",
-                      "item_id": "fc_0515904448de9346006ab3969e39b887d08c2102cf2ac1eb42"
-                    }
+                    "provider": "call_xdKuh1lbynBw3MuPAemSq0Oo"
                   },
                   "name": "add",
                   "content": [
@@ -416,7 +435,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "22"
+              "text": "22",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "22",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0515904448de9346006ab3969f439487d0916c1b6081ea5fcf",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "828341493e4ecce1"
+              }
             }
           ],
           "usage": {
@@ -427,12 +463,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_0515904448de9346006ab3969f439487d0916c1b6081ea5fcf",
-          "response_id": "resp_0515904448de9346006ab3969eca1887d0b670b7e80f9f7c13",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0515904448de9346006ab3969eca1887d0b670b7e80f9f7c13"
+          },
           "provider_request_id": "req_c21d941773664f35906d675232b452be",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,

@@ -2,27 +2,26 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own terminal
-//! record — for DeepSeek the shared chat-completions
-//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
-//! is always on: there is no flag to request it, nothing about it reaches the
-//! wire, and a `Value::Null` only ever means a terminal built by hand with no
-//! provider record behind it. It is the terminal record only, never the
-//! stream's frames.
+//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own
+//! terminal record: for DeepSeek the shared chat-completions record, a JSON
+//! object with the keys `usage`, `finish_reason`, `response_id`, `model`,
+//! `logprobs` and `additional_params`. Capture is always on: there is no flag
+//! to request it, nothing about it reaches the wire, and a `Value::Null` only
+//! ever means a terminal built by hand with no provider record behind it. It
+//! is the terminal record only, never the stream's frames.
 //!
-//! [`ChatUsage`] flattens the OpenAI-compatible counters and keeps whatever
-//! else the dialect sent in a sibling map, so DeepSeek's
+//! The record's `usage` is the provider's usage object, so it keeps whatever
+//! the dialect sent beside the OpenAI-compatible counters. DeepSeek's
 //! `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` split survives into
-//! `raw` instead of being dropped at the type boundary. Only half of it is
-//! normalized — [`ChatUsage::to_normalized`] reads the hit count into
-//! `Usage::cached_input_tokens`, and the miss count has no slot at all —
-//! which makes the miss count the natural terminal-only field to pin here.
+//! `raw`. Only half of it is normalized: the hit count reaches
+//! `Usage::cached_input_tokens`, and the miss count has no slot at all. That
+//! makes the miss count the natural terminal-only field to pin here.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
-//! | 2 | `stream_raw_exposes_terminal_cache_miss_tokens` | terminal-only field | the terminal accounting reads back as [`ChatUsage`], whose `extra` carries `prompt_cache_miss_tokens` and whose `to_normalized` keeps only the hit half | recorded |
-//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` round-trips the same way and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat terminal record and agrees with the normalized terminal; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 2 | `stream_raw_exposes_terminal_cache_miss_tokens` | terminal-only field | the terminal record's `usage` carries `prompt_cache_miss_tokens` and `prompt_cache_hit_tokens`, and the normalized usage keeps only the hit half | recorded |
+//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` is the same record and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is [`chat::recorded_sole_usage_frame`]: the recorded SSE stream
@@ -40,10 +39,8 @@ use rig::streaming::Item;
 
 use futures::StreamExt as _;
 use rig::completion::CompletionRequest;
-use rig::message::ReasoningContent;
 use rig::providers::deepseek;
 use rig::streaming::StreamEvent;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::support::with_deepseek_cassette_result;
@@ -104,16 +101,7 @@ async fn collect_reasoning_text_and_terminal(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                observation.reasoning = reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content
-                    .iter()
-                    .filter_map(|content| match content {
-                        ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect();
+                observation.reasoning = reasoning.text;
             }
             Item::Event(StreamEvent::Text { text: chunk, .. }) => observation.text.push_str(&chunk),
             _ => {}
@@ -138,7 +126,7 @@ fn recorded_reasoning(scenario: &str) -> String {
 }
 
 // ================================================================
-// 1. raw round-trips the terminal type
+// 1. raw is the terminal record
 // ================================================================
 
 #[tokio::test]
@@ -189,27 +177,19 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
         .expect("DeepSeek's terminal usage reports prompt_cache_hit_tokens");
 
     let raw = &terminal.raw;
-    // Typed, through the wire's own accounting shape: the OpenAI-compatible
-    // counters are modeled and DeepSeek's split rides in `extra`.
-    let usage = chat::Terminal::deserialize(raw)
-        .expect("raw is the chat-completions terminal over the wire's own usage")
-        .usage
-        .expect("the recorded terminal carries usage");
+    // The record's `usage` is the wire's own accounting object, so
+    // DeepSeek's split rides beside the OpenAI-compatible counters.
+    let usage = &raw["usage"];
     assert_eq!(
-        usage.extra.get("prompt_cache_miss_tokens"),
+        usage.get("prompt_cache_miss_tokens"),
         Some(&json!(recorded_miss))
     );
     assert_eq!(
-        usage.extra.get("prompt_cache_hit_tokens"),
+        usage.get("prompt_cache_hit_tokens"),
         Some(&json!(recorded_hit))
     );
     // The normalized terminal keeps the hit count (as cached input) and has
-    // no slot for the miss count: `to_normalized` is where exactly half of
-    // the split crosses over.
-    assert_eq!(
-        usage.to_normalized().cached_input_tokens,
-        Some(recorded_hit)
-    );
+    // no slot for the miss count: exactly half of the split crosses over.
     assert_eq!(terminal.usage.cached_input_tokens, Some(recorded_hit));
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
     assert!(
@@ -219,7 +199,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
 }
 
 // ================================================================
-// 3. A thinking-mode stream: the terminal round-trips, reasoning stays on
+// 3. A thinking-mode stream: raw is the terminal record, reasoning stays on
 //    the frames
 // ================================================================
 

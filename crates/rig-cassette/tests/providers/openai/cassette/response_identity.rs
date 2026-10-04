@@ -29,11 +29,10 @@ async fn responses_nonstreaming_carries_identity() {
 
             assert!(
                 response
-                    .response_id
-                    .as_deref()
+                    .response_id()
                     .is_some_and(|id| id.starts_with("resp")),
                 "Responses API reports resp_ ids, got {:?}",
-                response.response_id
+                response.response_id()
             );
             assert_request_id(
                 response.provider_request_id.as_deref(),
@@ -85,11 +84,10 @@ async fn chat_completions_nonstreaming_carries_identity() {
 
             assert!(
                 response
-                    .response_id
-                    .as_deref()
+                    .response_id()
                     .is_some_and(|id| id.starts_with("chatcmpl")),
                 "Chat Completions reports chatcmpl- ids, got {:?}",
-                response.response_id
+                response.response_id()
             );
             assert_request_id(response.provider_request_id.as_deref(), "chat blocking");
         },

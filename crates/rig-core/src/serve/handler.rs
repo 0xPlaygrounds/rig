@@ -203,6 +203,10 @@ pub trait Observe: Send + Sync {
     fn event(&mut self, item: &Item<StreamEvent>);
     /// An error item in a kept stream.
     fn stream_error(&mut self, _error: &ErrorReport) {}
+    /// Who a streamed reply is from, before its first item. Required, so a
+    /// recording observer cannot drop it: a replayed stream cut short needs
+    /// it to know its origin.
+    fn origin(&mut self, origin: &crate::message::Origin);
     /// Observe one stream item together with its first folded outcome, if any.
     /// Drivers that snapshot recording concurrently with cancellation can override
     /// this operation to make the item and its answer one observation boundary.
@@ -213,6 +217,7 @@ pub trait Observe: Send + Sync {
     ) {
         if self.keep_events() {
             match item {
+                Ok(Relayed::Origin(origin)) => self.origin(origin),
                 Ok(Relayed::Item(item)) => self.event(item),
                 Ok(Relayed::Done(_)) => {}
                 Err(error) => self.stream_error(error),
@@ -256,7 +261,7 @@ impl StreamTap {
             return None;
         }
         let outcome = match item {
-            Ok(Relayed::Item(_)) => None,
+            Ok(Relayed::Origin(_) | Relayed::Item(_)) => None,
             Ok(Relayed::Done(response)) => Some(Ok(Outcome::Completion((**response).clone()))),
             Err(report) => Some(Err(report.clone())),
         };
@@ -316,9 +321,8 @@ impl Reply {
             Self::Outcome(outcome) => Box::pin(futures::stream::iter(match outcome {
                 Ok(Outcome::Completion(response)) => {
                     match crate::operation::completion::events_of(&response) {
-                        Ok(items) => items
-                            .into_iter()
-                            .map(|item| Ok(Relayed::Item(item)))
+                        Ok(items) => std::iter::once(Ok(Relayed::Origin(response.origin.clone())))
+                            .chain(items.into_iter().map(|item| Ok(Relayed::Item(item))))
                             .chain(std::iter::once(Ok(Relayed::Done(Box::new(response)))))
                             .collect(),
                         Err(error) => vec![Err(ErrorReport::from(&error))],

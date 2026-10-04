@@ -58,7 +58,7 @@ fn validate_tool_correlation(
     let mut turn = 0usize;
     for message in messages {
         match message {
-            Message::Assistant { content, .. } => {
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                 turn += 1;
                 calls.extend(content.iter().filter_map(|item| {
                     match item {
@@ -68,7 +68,7 @@ fn validate_tool_correlation(
                             call.id
                                 .provider()
                                 .as_ref()
-                                .map(|provider| provider.call_id.as_str()),
+                                .map(|provider| provider.as_str()),
                         )),
                         _ => None,
                     }
@@ -84,7 +84,7 @@ fn validate_tool_correlation(
                                 .call
                                 .provider()
                                 .as_ref()
-                                .map(|provider| provider.call_id.as_str()),
+                                .map(|provider| provider.as_str()),
                         )),
                         _ => None,
                     }
@@ -342,7 +342,8 @@ pub(super) async fn parallel_tools<
     };
     let messages = correlated_messages(scenario, &response)?;
     let Some((call_index, calls)) = messages.iter().enumerate().find_map(|(index, message)| {
-        let Message::Assistant { content, .. } = message else {
+        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
+        else {
             return None;
         };
         let calls = content

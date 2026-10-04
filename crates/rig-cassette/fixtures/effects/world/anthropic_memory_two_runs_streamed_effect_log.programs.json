@@ -188,8 +188,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -197,10 +197,26 @@
             "content": [
               {
                 "type": "text",
-                "text": "ready."
+                "text": "ready.",
+                "native": {
+                  "item": {
+                    "text": "ready.",
+                    "type": "text"
+                  },
+                  "fingerprint": "6e6a093ada329f96"
+                }
               }
             ],
-            "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
+            "head": {
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbcSRmtBkgTuDADDu7"
+              },
+              "stop": "stop"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 4
@@ -221,7 +237,14 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "ready."
+                  "text": "ready.",
+                  "native": {
+                    "item": {
+                      "text": "ready.",
+                      "type": "text"
+                    },
+                    "fingerprint": "6e6a093ada329f96"
+                  }
                 }
               ],
               "usage": {
@@ -231,22 +254,25 @@
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0
               },
-              "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
-              "response_id": null,
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbcSRmtBkgTuDADDu7"
+              },
               "provider_request_id": "req_011CfLcbbyeZ6Xmk9QEsWPfD",
               "finish_reason": "stop",
-              "provider": "anthropic",
-              "model": "claude-sonnet-4-6",
               "raw": {
                 "usage": {
                   "output_tokens": 5,
                   "input_tokens": 26,
                   "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
                   "cache_creation": {
-                    "ephemeral_5m_input_tokens": 0,
-                    "ephemeral_1h_input_tokens": 0
-                  },
-                  "cache_read_input_tokens": 0
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_5m_input_tokens": 0
+                  }
                 },
                 "stop_reason": "end_turn",
                 "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
@@ -255,7 +281,6 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
           "rig_ecs::bus::effect::Seq": 1,
           "rig_ecs::bus::effect::Streamed": {
             "errors": [],
@@ -291,19 +316,38 @@
                   "part": 0,
                   "content": {
                     "type": "text",
-                    "text": "ready."
+                    "text": "ready.",
+                    "native": {
+                      "item": {
+                        "text": "ready.",
+                        "type": "text"
+                      },
+                      "fingerprint": "6e6a093ada329f96"
+                    }
                   }
                 }
               }
             ],
             "text": "ready.",
+            "origin": {
+              "api": "anthropic.messages",
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6"
+            },
             "outcome": {
               "Ok": {
                 "outcome": "completion",
                 "choice": [
                   {
                     "type": "text",
-                    "text": "ready."
+                    "text": "ready.",
+                    "native": {
+                      "item": {
+                        "text": "ready.",
+                        "type": "text"
+                      },
+                      "fingerprint": "6e6a093ada329f96"
+                    }
                   }
                 ],
                 "usage": {
@@ -313,22 +357,25 @@
                   "cached_input_tokens": 0,
                   "cache_creation_input_tokens": 0
                 },
-                "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
-                "response_id": null,
+                "origin": {
+                  "api": "anthropic.messages",
+                  "provider": "anthropic",
+                  "model": "claude-sonnet-4-6",
+                  "response_model": "claude-sonnet-4-6",
+                  "response_id": "msg_011CfLcbcSRmtBkgTuDADDu7"
+                },
                 "provider_request_id": "req_011CfLcbbyeZ6Xmk9QEsWPfD",
                 "finish_reason": "stop",
-                "provider": "anthropic",
-                "model": "claude-sonnet-4-6",
                 "raw": {
                   "usage": {
                     "output_tokens": 5,
                     "input_tokens": 26,
                     "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
                     "cache_creation": {
-                      "ephemeral_5m_input_tokens": 0,
-                      "ephemeral_1h_input_tokens": 0
-                    },
-                    "cache_read_input_tokens": 0
+                      "ephemeral_1h_input_tokens": 0,
+                      "ephemeral_5m_input_tokens": 0
+                    }
                   },
                   "stop_reason": "end_turn",
                   "message_id": "msg_011CfLcbcSRmtBkgTuDADDu7",
@@ -336,19 +383,36 @@
                 }
               }
             }
-          }
+          },
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_011CfLcbcSRmtBkgTuDADDu7"
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "anthropic.messages",
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "response_model": "claude-sonnet-4-6",
+              "response_id": "msg_011CfLcbcSRmtBkgTuDADDu7"
+            },
+            "stop": "stop"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "ready."
+              "text": "ready.",
+              "native": {
+                "item": {
+                  "text": "ready.",
+                  "type": "text"
+                },
+                "fingerprint": "6e6a093ada329f96"
+              }
             }
           }
         },
@@ -361,8 +425,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

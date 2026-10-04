@@ -57,7 +57,9 @@ where
     W: Wire<Op = Completion, Payload = Encoded, Frame = WireFrame>,
 {
     let model = Model::new(wire.clone(), Recorded(body.to_owned()));
-    futures::executor::block_on(model.call(""))
+    // The prompt is never sent, but it must not be blank: an encoder drops
+    // blank text and refuses a request left with no input.
+    futures::executor::block_on(model.call("restate"))
 }
 
 /// The wire whose recording supplies the ported turn.
@@ -114,14 +116,14 @@ impl Source {
         let decoded = match self {
             Self::Anthropic => decode_whole_reply(
                 &AnthropicConfig::new("decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .completion("claude-sonnet-4-6")
                     .wire,
                 &body,
             ),
             Self::OpenAiResponses => decode_whole_reply(
                 &OpenAIConfig::new("decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .responses("gpt-5.2")
                     .wire,
                 &body,
@@ -132,7 +134,7 @@ impl Source {
             ),
             Self::DeepSeek => decode_whole_reply(
                 &OpenAIConfig::with_key(&DEEPSEEK, "decode-only")
-                    .connect(rig_reqwest::shared())
+                    .connect(crate::cassettes::local_http())
                     .chat("deepseek-v4-flash")
                     .wire,
                 &body,
@@ -158,6 +160,7 @@ impl Source {
                     .unwrap_or("Tokyo")
                     .to_owned();
                 UserContent::ToolResult(ToolResult {
+                    is_error: false,
                     call: call.id.clone(),
                     name: call.function.name.clone(),
                     content: vec![ToolResultContent::text(weather_report(&city))],
@@ -171,10 +174,10 @@ impl Source {
         );
         vec![
             Message::user(TOOL_USER_PROMPT),
-            Message::Assistant {
-                id: reply.message_id,
-                content: reply.choice,
-            },
+            Message::Assistant(rig_core::message::AssistantMessage {
+                content: reply.choice.clone(),
+                ..reply.head()
+            }),
             Message::User { content: results },
         ]
     }
@@ -198,14 +201,6 @@ pub struct Cell {
     pub max_tokens: u64,
     /// Which wire's recording supplies the history.
     pub source: Source,
-}
-
-/// Whether the source's reasoning issuer is the target model's own: direct
-/// Anthropic reasoning continued on Claude through OpenRouter.
-pub fn shares_issuer(cell: Cell) -> bool {
-    cell.source == Source::Anthropic
-        && cell.provider == "openrouter"
-        && cell.model.starts_with("anthropic/")
 }
 
 /// What the continuation produced.
@@ -322,32 +317,20 @@ pub fn assert_recorded(cell: Cell, scenario: &str) -> Forwarded {
         .collect();
     forwarded.sort();
     forwarded.dedup();
-    // Reasoning state is only meaningful to its issuer: none of it may reach
-    // another issuer's model. Tool-call ids are correlation, not state, and a
-    // message's `phase` labels the message for every Responses dialect. Claude
-    // through OpenRouter shares the Anthropic issuer (its thinking signatures
-    // verified valid between OpenRouter and the Claude API both ways), so
-    // there the signature must arrive.
-    let shared = shares_issuer(cell);
+    // Reasoning state is only meaningful to the model that produced it: none
+    // of it may reach another model. Tool-call ids are correlation, not
+    // state, and a message's `phase` labels the message for every Responses
+    // dialect.
     let leaked: Vec<&str> = forwarded
         .iter()
         .copied()
-        .filter(|kind| {
-            *kind != "tool_call_id" && *kind != "phase" && !(shared && *kind == "signature")
-        })
+        .filter(|kind| *kind != "tool_call_id" && *kind != "phase")
         .collect();
     assert!(
         leaked.is_empty(),
         "[{provider} from {}] foreign reasoning state reached the target request: {leaked:?}",
         cell.source.provider()
     );
-    if shared {
-        assert!(
-            forwarded.contains(&"signature"),
-            "[{provider} from {}] the shared issuer's signature reaches the target",
-            cell.source.provider()
-        );
-    }
     let report = Forwarded {
         delivered,
         forwarded,

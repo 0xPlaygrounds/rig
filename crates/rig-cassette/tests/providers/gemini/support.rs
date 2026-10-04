@@ -314,7 +314,7 @@ where
 {
     let spec = spec.into();
     let (cassette, config) = gemini_cassette(spec).await;
-    let client = config.connect(rig::rig_reqwest::shared());
+    let client = config.connect(rig_test_support::cassettes::local_http());
     let clock = cassette.clock();
     let result = AssertUnwindSafe(test_body(client, clock))
         .catch_unwind()
@@ -355,7 +355,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     .await;
     let provider =
         GeminiConfig::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
-    let http = rig::http_client::DynHttpClient::new(rig::http_client::ReqwestClient::default())
+    let http = rig::http_client::DynHttpClient::new(rig_test_support::cassettes::local_reqwest())
         .with_middleware(middleware);
     let result = AssertUnwindSafe(test_body(GeminiModels::new(provider, http)))
         .catch_unwind()
@@ -408,12 +408,34 @@ where
     let (cassette, client) = gemini_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(GeminiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
     crate::cassettes::checkpoint_attempt(&cassette, "gemini", spec.scenario()).await;
     cassette.finish_after_test(result).await;
+}
+
+/// [`with_gemini_cassette`], with `check` run on what the session
+/// recorded before the recording is written (`cassettes::finish_checked`).
+pub(super) async fn with_gemini_checked_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+    check: impl FnOnce(&std::path::Path, &str),
+) where
+    F: FnOnce(GeminiModels) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let spec = spec.into();
+    let (cassette, bound) = gemini_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(GeminiModels::new(
+        bound,
+        rig_test_support::cassettes::local_http(),
+    )))
+    .catch_unwind()
+    .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "gemini", spec.scenario()).await;
+    crate::cassettes::finish_checked(cassette, "gemini", spec.scenario(), result, check).await;
 }
 
 /// Per-bug wrapper for the model-turn termination-metadata matrix
@@ -438,7 +460,7 @@ pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
     let (cassette, client) = gemini_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(GeminiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -505,7 +527,7 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     let client = GeminiConfig::new(cassette.bogus_api_key()).with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(GeminiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -649,7 +671,7 @@ mod always_deleting_cached_contents_tests {
         });
         let client = GeminiModels::new(
             GeminiConfig::new("stub-key").with_base_url(format!("http://{addr}")),
-            rig::rig_reqwest::shared(),
+            rig_test_support::cassettes::local_http(),
         );
 
         (client, server)

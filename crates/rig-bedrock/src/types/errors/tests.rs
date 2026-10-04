@@ -2,7 +2,7 @@ use super::*;
 use aws_sdk_bedrockruntime::error::ErrorMetadata;
 use aws_sdk_bedrockruntime::operation::converse::ConverseError;
 use aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError;
-use aws_sdk_bedrockruntime::types::error::{ThrottlingException, ValidationException};
+use aws_sdk_bedrockruntime::types::error::ThrottlingException;
 use aws_smithy_types::body::SdkBody;
 
 /// The raw response the SDK keeps beside a service error.
@@ -104,9 +104,10 @@ fn failures_without_a_reply_are_transport_errors_or_rig_prose() {
 
 #[test]
 fn a_stream_exception_with_a_message_is_the_provider_reply() {
-    let error = stream_error(ConverseStreamOutputError::ThrottlingException(
-        ThrottlingException::builder().message("slow down").build(),
-    ));
+    let error = exception(
+        "throttlingException",
+        &serde_json::json!({ "message": "slow down" }),
+    );
 
     assert_eq!(error.provider_response_body(), Some("slow down"));
     assert_eq!(error.provider_response_status(), None);
@@ -118,9 +119,7 @@ fn a_stream_exception_with_a_message_is_the_provider_reply() {
 /// reply.
 #[test]
 fn a_message_less_stream_exception_is_rig_prose() {
-    let error = stream_error(ConverseStreamOutputError::ValidationException(
-        ValidationException::builder().build(),
-    ));
+    let error = exception("validationException", &serde_json::json!({}));
 
     assert!(
         matches!(&error, ProviderError::Provider(message)

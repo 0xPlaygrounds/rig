@@ -69,12 +69,34 @@ where
     let (cassette, bound) = anthropic_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(AnthropicModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
     crate::cassettes::checkpoint_attempt(&cassette, "anthropic", spec.scenario()).await;
     cassette.finish_after_test(result).await;
+}
+
+/// [`with_anthropic_cassette`], with `check` run on what the session
+/// recorded before the recording is written (`cassettes::finish_checked`).
+pub(super) async fn with_anthropic_checked_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+    check: impl FnOnce(&std::path::Path, &str),
+) where
+    F: FnOnce(AnthropicModels) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let spec = spec.into();
+    let (cassette, bound) = anthropic_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(AnthropicModels::new(
+        bound,
+        rig_test_support::cassettes::local_http(),
+    )))
+    .catch_unwind()
+    .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "anthropic", spec.scenario()).await;
+    crate::cassettes::finish_checked(cassette, "anthropic", spec.scenario(), result, check).await;
 }
 
 /// Long-run caching recordings
@@ -92,7 +114,7 @@ where
 {
     let spec = spec.into();
     let (cassette, bound) = anthropic_cassette(spec).await;
-    let models = AnthropicModels::new(bound, rig::rig_reqwest::shared());
+    let models = AnthropicModels::new(bound, rig_test_support::cassettes::local_http());
     let result = AssertUnwindSafe(test_body(models, cassette.clock()))
         .catch_unwind()
         .await;
@@ -155,7 +177,7 @@ pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
 
     let result = AssertUnwindSafe(test_body(AnthropicModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -177,7 +199,7 @@ where
     let (cassette, bound) = anthropic_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(AnthropicModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -206,7 +228,7 @@ pub(super) async fn with_anthropic_files_cassette<F, Fut>(
         .with_beta(beta_header);
 
     let parts = AnthropicFilesCassette {
-        bound: AnthropicModels::new(bound, rig::rig_reqwest::shared()),
+        bound: AnthropicModels::new(bound, rig_test_support::cassettes::local_http()),
         base_url,
         api_key,
     };
@@ -243,7 +265,7 @@ where
     let base_url = normalize_anthropic_base_url(&cassette.base_url());
     let api_key = cassette.api_key("ANTHROPIC_API_KEY");
     let config = AnthropicConfig::new(api_key.as_str()).with_base_url(&base_url);
-    let models = AnthropicModels::new(config.clone(), rig::rig_reqwest::shared());
+    let models = AnthropicModels::new(config.clone(), rig_test_support::cassettes::local_http());
     let clock = cassette.clock();
     let result = AssertUnwindSafe(async {
         let uploaded = if upload_pdf {
@@ -255,7 +277,7 @@ where
             (
                 AnthropicModels::new(
                     config.clone().with_beta(ANTHROPIC_FILES_BETA),
-                    rig::rig_reqwest::shared(),
+                    rig_test_support::cassettes::local_http(),
                 ),
                 file_id,
             )
@@ -403,7 +425,7 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
         AnthropicConfig::new("sk-invalid-edge-matrix-key").with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(AnthropicModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -772,4 +794,17 @@ pub(super) async fn delete_uploaded_file(base_url: &str, api_key: &str, file_id:
             response.status()
         );
     }
+}
+
+/// A response serialized without its `raw` document or its blocks'
+/// provider items: what rig normalized, in rig's own spelling.
+pub(super) fn canonical_without_raw(
+    mut response: rig::completion::CompletionResponse,
+) -> serde_json::Value {
+    response.choice = response
+        .choice
+        .iter()
+        .map(rig::message::AssistantContent::canonical)
+        .collect();
+    crate::support::normalized_without_raw(response)
 }

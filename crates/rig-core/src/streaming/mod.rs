@@ -65,10 +65,14 @@ impl From<serde_json::Value> for UnknownPayload {
 #[cfg(test)]
 mod unknown_payload_tests;
 
-/// One item of a completion stream relayed over the bus: an item of the
-/// reply, or the response the origin folded when the provider ended it.
+/// One item of a completion stream relayed over the bus: who the reply is
+/// from, an item of the reply, or the response the origin folded when the
+/// provider ended it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Relayed {
+    /// The wire, provider and model the reply is from, sent before its
+    /// first item, so a reply cut short still knows its origin.
+    Origin(crate::message::Origin),
     /// An event, or a payload the origin's decoder did not model.
     Item(Item<StreamEvent>),
     /// The provider ended the reply; the origin's response.
@@ -184,6 +188,28 @@ impl<Op: Operation> Streamed<Op> {
     }
 }
 
+/// The assistant content a stream's `items` delivered, as its partial reply
+/// holds it: every part that ended, in start order, and the text of a text
+/// or reasoning part still open. The items hold no provider end, so no
+/// block keeps its provider item and the content replays canonically.
+pub fn delivered(items: &[Item<StreamEvent>]) -> Vec<crate::message::AssistantContent> {
+    use crate::wire::Fold;
+    let mut turn = Turn::relayed("delivered");
+    for item in items {
+        if let Item::Event(event) = item
+            && turn.absorb(event).is_err()
+        {
+            break;
+        }
+    }
+    let reply = crate::wire::Reply {
+        provider: String::new(),
+        raw: serde_json::Value::Null,
+        provider_request_id: None,
+    };
+    turn.partial(None, &reply, None).choice
+}
+
 impl Streamed<Completion> {
     /// A stream relayed over the bus under `label`: its events, then the
     /// response the origin folded. A relay that ends without one was cut
@@ -198,6 +224,10 @@ impl Streamed<Completion> {
                 let ended = {
                     let mut shared = lock(&writer);
                     match item {
+                        Ok(Relayed::Origin(origin)) => {
+                            Turn::set_origin(&mut shared.fold, origin);
+                            false
+                        }
                         Ok(Relayed::Item(item)) => {
                             shared.items.push_back(Ok(item));
                             false
@@ -228,7 +258,9 @@ impl Streamed<Completion> {
     /// folds into, or the error that ended it. A reply cut short closes the
     /// relay without a response, as its transport closed.
     pub fn into_relay(mut self) -> StreamEvents {
+        let origin = lock(&self.shared).fold.origin().clone();
         Box::pin(async_stream::stream! {
+            yield Ok(Relayed::Origin(origin));
             while let Some(item) = self.next().await {
                 match item {
                     Ok(item) => yield Ok(Relayed::Item(item)),
@@ -255,24 +287,11 @@ impl Streamed<Completion> {
         if let Some(response) = &shared.response {
             return response.clone();
         }
-        shared
-            .fold
-            .partial(shared.end.as_ref(), &shared.reply(&self.provider))
-    }
-
-    /// The assistant message id the reply recorded so far.
-    pub fn message_id(&self) -> Option<String> {
-        let shared = lock(&self.shared);
-        shared
-            .response
-            .as_ref()
-            .and_then(|response| response.message_id.clone())
-            .or_else(|| shared.fold.message_id().map(str::to_owned))
-    }
-
-    /// The issuer this reply's reasoning is sealed to.
-    pub fn reasoning_issuer(&self) -> crate::message::Issuer {
-        lock(&self.shared).fold.reasoning_issuer()
+        shared.fold.partial(
+            shared.end.as_ref(),
+            &shared.reply(&self.provider),
+            self.failed.as_ref(),
+        )
     }
 }
 

@@ -101,23 +101,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n"
-                  }
-                }
-              ]
+              "text": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n"
+                },
+                "fingerprint": "e4bc5d1e62741af5"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-9ead3cc0c2dad76d"
-                }
+                "provider": "chatcmpl-tool-9ead3cc0c2dad76d"
               },
               "function": {
                 "name": "submit",
@@ -127,8 +122,17 @@
                   "job": "mathematician"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                    "name": "submit"
+                  },
+                  "id": "chatcmpl-tool-9ead3cc0c2dad76d",
+                  "type": "function"
+                },
+                "fingerprint": "5819df31705b7c6b"
+              }
             }
           ],
           "usage": {
@@ -138,11 +142,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 60
           },
-          "message_id": null,
-          "response_id": "chatcmpl-c7758c0e2f3976dd2dc1ab417887d0c3",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-5-9b",
+            "response_model": "qwen3-5-9b",
+            "response_id": "chatcmpl-c7758c0e2f3976dd2dc1ab417887d0c3"
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-5-9b",
           "raw": {
             "choices": [
               {

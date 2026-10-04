@@ -25,9 +25,9 @@
 //! # }
 //! ```
 
+mod auth;
 pub mod client;
 pub mod completion;
 pub(crate) mod types;
 
 pub use client::{VertexAi, VertexAiBuilder};
-pub use types::completion_response::VERTEX_TEXT_EXTRAS_KEY;

@@ -8,7 +8,10 @@ use rig_test_support::cassette_models::OpenAiModels;
 #[ignore = "requires OPENAI_API_KEY environment variable"]
 async fn test_openai_streaming_tools_reasoning() {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
-    let client = OpenAiModels::new(OpenAIConfig::new(api_key), rig::rig_reqwest::shared());
+    let client = OpenAiModels::new(
+        OpenAIConfig::new(api_key),
+        rig_test_support::cassettes::local_http(),
+    );
     let agent = rig::AgentBuilder::new(client.completion("gpt-5.2"))
         .max_tokens(8192)
         .tool(MockExampleTool)

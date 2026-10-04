@@ -139,9 +139,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_A597c6UkHbxbojQsiUyT6037"
-                }
+                "provider": "call_00_dQJhVwhgn16k5UBcmjSk7539"
               },
               "function": {
                 "name": "add",
@@ -150,21 +148,33 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_dQJhVwhgn16k5UBcmjSk7539",
+                  "type": "function"
+                },
+                "fingerprint": "caf73f9221d01dc9"
+              }
             }
           ],
           "usage": {
             "input_tokens": 329,
             "output_tokens": 62,
             "total_tokens": 391,
-            "cached_input_tokens": 0
+            "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "c7f92718-feef-4fb0-b4cf-0e2fbdc8f1aa",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "5c8f9287-ca7b-4314-977d-3ac462ed27f7"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -180,7 +190,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_A597c6UkHbxbojQsiUyT6037",
+                      "id": "call_00_dQJhVwhgn16k5UBcmjSk7539",
                       "index": 0,
                       "type": "function"
                     }
@@ -189,17 +199,17 @@
               }
             ],
             "created": 0,
-            "id": "c7f92718-feef-4fb0-b4cf-0e2fbdc8f1aa",
+            "id": "5c8f9287-ca7b-4314-977d-3ac462ed27f7",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 62,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 329,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 201,
               "prompt_tokens": 329,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 128
               },
               "total_tokens": 391
             }
@@ -265,7 +275,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -274,9 +283,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_A597c6UkHbxbojQsiUyT6037"
-                    }
+                    "provider": "call_00_dQJhVwhgn16k5UBcmjSk7539"
                   },
                   "function": {
                     "name": "add",
@@ -285,10 +292,27 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_dQJhVwhgn16k5UBcmjSk7539",
+                      "type": "function"
+                    },
+                    "fingerprint": "caf73f9221d01dc9"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "5c8f9287-ca7b-4314-977d-3ac462ed27f7"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -296,9 +320,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_A597c6UkHbxbojQsiUyT6037"
-                    }
+                    "provider": "call_00_dQJhVwhgn16k5UBcmjSk7539"
                   },
                   "name": "add",
                   "content": [
@@ -306,7 +328,8 @@
                       "type": "text",
                       "text": "the adder is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -356,11 +379,14 @@
             "total_tokens": 431,
             "cached_input_tokens": 256
           },
-          "message_id": null,
-          "response_id": "85932f5b-4e01-4958-8de3-ca4899ca8b13",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "438141c9-6776-4ef6-a6a2-0578a25bd256"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -374,7 +400,7 @@
               }
             ],
             "created": 0,
-            "id": "85932f5b-4e01-4958-8de3-ca4899ca8b13",
+            "id": "438141c9-6776-4ef6-a6a2-0578a25bd256",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

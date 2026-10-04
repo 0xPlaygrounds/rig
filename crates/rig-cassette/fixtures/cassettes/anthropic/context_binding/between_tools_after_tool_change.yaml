@@ -1,0 +1,64 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  - name: anthropic-beta
+    value: thinking-binding-controls-2026-08-01
+  body: '{"max_tokens":8000,"messages":[{"content":[{"text":"A train leaves at 3:17pm going 83 km/h; another leaves 41 minutes later going 112 km/h on the same track. Reason through when the second catches up, then call calc once to verify your final expression.","type":"text"}],"role":"user"}],"model":"claude-sonnet-5-5","output_config":{"effort":"high"},"thinking":{"block_binding":{"prefix_mismatch_behavior":"drop_block"},"display":"summarized","type":"adaptive"},"tools":[{"description":"Evaluates an arithmetic expression.","input_schema":{"properties":{"q":{"type":"string"}},"required":["q"],"type":"object"},"name":"calc"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CffkyvH76ftNgcKUbUpoo
+  body: '{"container":null,"content":[{"signature":"CAQS/gcKEAgSGAI4AUIIdGhpbmtpbmcSDL6b/cGSSvwyLoQtJBoMl/H64ojZoQV2WEHSIjAXyiAD2XR28dY2gXZa3n0f8oP5Bo7OyQqvKDD24JW5n/UJF1V10/2dfDUP7py1yE8qmwd2kSAFt+Hm2uQeD1jzbCKQ4BiStOVG4gq0WQFC+lOcfHVpQ1jg0YPRTIr/WyWKKjz1tKdNp7lDvxPpeH0uqzEZJvhHgXnwQovFEe7JHWRgdESS0x5Vex3/ltuwq3HZi5lUwBW1f4LlGTQ9b1CmWYDmn0Mcxj1/YqTZMYuroze10xwgh4Cb7s3hbEObyDQoKsh5OZ1/I6Ntb7A7kZN0lthAuYk4cgIBAG6c8RBmZpp9oodPtTo+K/xGJg8OArQsnItVi+x1HYCLz+Ja41hGOBL/TWujvxa/S8dcWA8OpMqylGEoMwOnyMfvDSc+GRWTxB2S1n52HM7jMe0vUZMLTA5Ne/5vtRC0Nk6W2FpedGshy1SD3AdSao5QnYRboudLaxOb0Wg0KwqmS8xYy0l0ETtzvcUlfD0jHI0Z0weCp53cV4DUOy0eGmfcGvMZo6zqVOiIzob7sHrUEYmB2zgYZ6ff+nDrA2YaDgCPIOfybGANUz9sHgIGUF1ff1+1ikfUC81F25QDwLr/Pg5D/WOkolOIAcCrUMDuUWfsuLdqcTT7Hdwmfyk2xnjq7cMiEYEEwlbnttHyJRIay0qD8NJ+MrYFCafVe7ZkCfCkwTtpcVWgLXJZ3l6EoIg1EChnbhwYz+A61f+IYQFBsHvegkzgLZYiyl5QdgQYabdOnfaEXpHIm+6eUDYN6Yf7LqlbQwJAvFNepWBv1dMb+/tgjqFmRv9eN6bDk+7Ogi3lzn+YTeug2GHnE+dY5EIVzfCMn4FipYFl0Uy0sOQCx/9lVNYWUbUtooTXv1o2OqHQ4RoHbG9gbFgNA5ZDudEzKUKBS0k2lYi75ad7G7A/e01qh9jsud/tFoyFVwmkU7ga2hcOX4TiJnmDWpf4lwaBCalVBhNwJUQHY87jtjPlKSVassTTwRfPBbC5brjmq/raElmnNZ8IWqRskjgLhhHb846IfsEaWVdLvBoMOhxUcQhqPpM9FTsT0zxG5jgQqZrtWa2YEFuEoFE6qKY2PBY3OPsX9bz6S0gJu1L58QNnGH/5Taw8D53FEVdn0mGs9fFSuYAlmY0W2C4GkwMWZTnxUjmRsx3HOL9jXuHCR8WcOX+6zkryM6udpPV2jzCsT/98jIldMbpQP3lVZJtmVkiFGx3L64Pq79whVGg7y/DbkNJUDGLkoqalt2OvdA8/SbJk+6NDGQ6n7WS9k14MNr2knFtwYAeXB/kQiM5karniT+1wOhgB","thinking":"The first train has a 41-minute head start, covering about 56.72 km before the second departs. With a closing speed of 29 km/h, the second train catches up in roughly 1.9557 hours, or about 1 hour 57.3 minutes after it leaves.\n\n","type":"thinking"},{"text":"**Setup**\n- Train A leaves at 3:17 pm at 83 km/h.\n- Train B leaves 41 minutes later, at 3:58 pm, at 112 km/h.\n\n**Reasoning**\n- When B departs, A has a head start of 83 × (41/60) km, which is about 56.72 km.\n- B closes the gap at 112 − 83 = 29 km/h.\n- Catch-up time after B departs = (83 × 41/60) / 29 hours. In minutes this is 83 × 41 / 29.\n\nI''ll verify that expression with the calculator.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_01U1i3p5jG1KYzfrX3pGHhPM","input":{"q":"83*41/29"},"name":"calc","type":"tool_use"}],"diagnostics":null,"id":"msg_011CffkywWm3Rekryc2mffEF","input_transformations":[],"model":"claude-sonnet-5-5","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":435,"output_tokens":482,"output_tokens_details":{"thinking_tokens":242},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":8000,"messages":[{"content":[{"text":"A train leaves at 3:17pm going 83 km/h; another leaves 41 minutes later going 112 km/h on the same track. Reason through when the second catches up, then call calc once to verify your final expression.","type":"text"}],"role":"user"},{"content":[{"text":"The first train has a 41-minute head start, covering about 56.72 km before the second departs. With a closing speed of 29 km/h, the second train catches up in roughly 1.9557 hours, or about 1 hour 57.3 minutes after it leaves.\n\n","type":"text"},{"text":"**Setup**\n- Train A leaves at 3:17 pm at 83 km/h.\n- Train B leaves 41 minutes later, at 3:58 pm, at 112 km/h.\n\n**Reasoning**\n- When B departs, A has a head start of 83 × (41/60) km, which is about 56.72 km.\n- B closes the gap at 112 − 83 = 29 km/h.\n- Catch-up time after B departs = (83 × 41/60) / 29 hours. In minutes this is 83 × 41 / 29.\n\nI''ll verify that expression with the calculator.","type":"text"},{"id":"toolu_01U1i3p5jG1KYzfrX3pGHhPM","input":{"q":"83*41/29"},"name":"calc","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"1.07","type":"text"}],"tool_use_id":"toolu_01U1i3p5jG1KYzfrX3pGHhPM","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-5-5","thinking":{"type":"between_tools"},"tools":[{"description":"Evaluates an arithmetic expression.","input_schema":{"properties":{"q":{"type":"string"}},"required":["q"],"type":"object"},"name":"calc"},{"description":"Evaluates an arithmetic expression.","input_schema":{"properties":{"q":{"type":"string"}},"required":["q"],"type":"object"},"name":"plot"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CffkzEq572HmngSGY4Mn1
+  body: '{"container":null,"content":[{"signature":"CAQSoAcKEQgSGAI4AUIJbmFycmF0aW9uEgzkKvuMOzuNJVb04JYaDHS7HQS2H8UHFCDFnSIw2Uid60WZiJy+/isrUkcjnmI6KbAOu8nl9/KmwvmdKbmc6HlFOz/BMnb3tqSNDmg8KrwGz07U9uW0Rnt9Crop62fHdn7znhlqgzEqt/C751eO3jfjOGZaUA/6uBgBa170AT9c1muyJrOrD768WtvgKNShUA1weY5m0STsU4av9UbllrqOmP+IcZldo2P3As5rrlv0bh1oJ6a+R5sw+tDLrRnfJVfJSipASupKcqnCJC7+hEmviiQOYjoRuHWkrViuJFaRSbTugzNd2mw4SHBjualbIyZnDNv86yoVSfReO70/sVj7BlsaMq0PQboqNXjnpuF4y5Y8gFwlPoc7XVxdigXFrXRCQMt9pVm+W5AqDsDvzTPBunAKmR1oaXyT31wRvSFkqaKpDe7drhJ1SHrPfH81i+8o3G8vHMuH+NFLXlqEO5WTO0rx/12cgaew5UrnqQxMbt1P3I6ncDG0qu3eARDwjPiZNvz1D2aW9IMmMW546MCggsvRjOicbLHfV0ubAVeIpKsM0RK5nkbdO4HwKSH7w4jntyLM8pwfQ+bD7zA1MKv+Cp8mcezziBThWC8uYIezrytJ2VEPn5ZIFojRCn0/YKgsRkZCbl3TXAFrvePLEaDRqI9BWQyuWLcuNObHbZ9CMmXhv4tYzh+Dd0JyYrYNk7IUmRXZXrRP3mLXb88DV9/X7O3yT5equsbGcMzXZQ0Y6Xo53CsVVGJ0tr0fRSftTJitt4SVWCcllcZMMZT/6BXiFsuGpTjMi3Q1vN0o7aMwujILgGczu5VGE9Ls2Vvx/EMy9uNUiCSEUtDXP9yO5VggTYHDmIJ+OfTgk7bRzt9liSk3S3ka8ySJQyZmaVrGvG8Tx+nkUDk3opiTd4Q85W6XbThrRJyzmNMOtcOOy/zy7fdGI4hvq6XuNuQYFFuWGLvc2KHnHfMlgVTPjt1Dfy0LWERBEwjHlMQzOKz4FUN535Gp+ihZ70QbR+NWvNPwNA4Zg9BIQen7GnQv76hikpHqNSQshCpA9+NmLk8rDtY4HhQ8ndixA5fqcx7bnw1vlikcDbp7FPIjMEzLjF+9gtG4hw65uHYd557vI4op+ZI6QJfhdg+DltGMEvUy94MDHE4dQbTLiNGBE0+KXAJbOl2htz28gv6NG3uPZtntpIChRpqrOskwcMUnc2NoGAE=","thinking":"The calculator''s result of 1.07 doesn''t match my hand calculation of about 117.34 minutes, so I''ll rerun the expression to check.\n\n","type":"thinking"},{"caller":{"type":"direct"},"id":"toolu_015wmZQHKCtMpT8A8N3Asuok","input":{"q":"(83*41)/29"},"name":"calc","type":"tool_use"}],"diagnostics":null,"id":"msg_011CffkzFCdqaEUiKgvUBV4c","model":"claude-sonnet-5-5","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":839,"output_tokens":181,"output_tokens_details":{"thinking_tokens":130},"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":8000,"messages":[{"content":[{"text":"A train leaves at 3:17pm going 83 km/h; another leaves 41 minutes later going 112 km/h on the same track. Reason through when the second catches up, then call calc once to verify your final expression.","type":"text"}],"role":"user"},{"content":[{"signature":"CAQS/gcKEAgSGAI4AUIIdGhpbmtpbmcSDL6b/cGSSvwyLoQtJBoMl/H64ojZoQV2WEHSIjAXyiAD2XR28dY2gXZa3n0f8oP5Bo7OyQqvKDD24JW5n/UJF1V10/2dfDUP7py1yE8qmwd2kSAFt+Hm2uQeD1jzbCKQ4BiStOVG4gq0WQFC+lOcfHVpQ1jg0YPRTIr/WyWKKjz1tKdNp7lDvxPpeH0uqzEZJvhHgXnwQovFEe7JHWRgdESS0x5Vex3/ltuwq3HZi5lUwBW1f4LlGTQ9b1CmWYDmn0Mcxj1/YqTZMYuroze10xwgh4Cb7s3hbEObyDQoKsh5OZ1/I6Ntb7A7kZN0lthAuYk4cgIBAG6c8RBmZpp9oodPtTo+K/xGJg8OArQsnItVi+x1HYCLz+Ja41hGOBL/TWujvxa/S8dcWA8OpMqylGEoMwOnyMfvDSc+GRWTxB2S1n52HM7jMe0vUZMLTA5Ne/5vtRC0Nk6W2FpedGshy1SD3AdSao5QnYRboudLaxOb0Wg0KwqmS8xYy0l0ETtzvcUlfD0jHI0Z0weCp53cV4DUOy0eGmfcGvMZo6zqVOiIzob7sHrUEYmB2zgYZ6ff+nDrA2YaDgCPIOfybGANUz9sHgIGUF1ff1+1ikfUC81F25QDwLr/Pg5D/WOkolOIAcCrUMDuUWfsuLdqcTT7Hdwmfyk2xnjq7cMiEYEEwlbnttHyJRIay0qD8NJ+MrYFCafVe7ZkCfCkwTtpcVWgLXJZ3l6EoIg1EChnbhwYz+A61f+IYQFBsHvegkzgLZYiyl5QdgQYabdOnfaEXpHIm+6eUDYN6Yf7LqlbQwJAvFNepWBv1dMb+/tgjqFmRv9eN6bDk+7Ogi3lzn+YTeug2GHnE+dY5EIVzfCMn4FipYFl0Uy0sOQCx/9lVNYWUbUtooTXv1o2OqHQ4RoHbG9gbFgNA5ZDudEzKUKBS0k2lYi75ad7G7A/e01qh9jsud/tFoyFVwmkU7ga2hcOX4TiJnmDWpf4lwaBCalVBhNwJUQHY87jtjPlKSVassTTwRfPBbC5brjmq/raElmnNZ8IWqRskjgLhhHb846IfsEaWVdLvBoMOhxUcQhqPpM9FTsT0zxG5jgQqZrtWa2YEFuEoFE6qKY2PBY3OPsX9bz6S0gJu1L58QNnGH/5Taw8D53FEVdn0mGs9fFSuYAlmY0W2C4GkwMWZTnxUjmRsx3HOL9jXuHCR8WcOX+6zkryM6udpPV2jzCsT/98jIldMbpQP3lVZJtmVkiFGx3L64Pq79whVGg7y/DbkNJUDGLkoqalt2OvdA8/SbJk+6NDGQ6n7WS9k14MNr2knFtwYAeXB/kQiM5karniT+1wOhgB","thinking":"The first train has a 41-minute head start, covering about 56.72 km before the second departs. With a closing speed of 29 km/h, the second train catches up in roughly 1.9557 hours, or about 1 hour 57.3 minutes after it leaves.\n\n","type":"thinking"},{"text":"**Setup**\n- Train A leaves at 3:17 pm at 83 km/h.\n- Train B leaves 41 minutes later, at 3:58 pm, at 112 km/h.\n\n**Reasoning**\n- When B departs, A has a head start of 83 × (41/60) km, which is about 56.72 km.\n- B closes the gap at 112 − 83 = 29 km/h.\n- Catch-up time after B departs = (83 × 41/60) / 29 hours. In minutes this is 83 × 41 / 29.\n\nI''ll verify that expression with the calculator.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_01U1i3p5jG1KYzfrX3pGHhPM","input":{"q":"83*41/29"},"name":"calc","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"1.07","type":"text"}],"tool_use_id":"toolu_01U1i3p5jG1KYzfrX3pGHhPM","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-5-5","thinking":{"type":"between_tools"},"tools":[{"description":"Evaluates an arithmetic expression.","input_schema":{"properties":{"q":{"type":"string"}},"required":["q"],"type":"object"},"name":"calc"},{"description":"Evaluates an arithmetic expression.","input_schema":{"properties":{"q":{"type":"string"}},"required":["q"],"type":"object"},"name":"plot"}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_011CffkzSjg5syEsnEyXB4tK
+  body: '{"error":{"message":"messages.1.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation. Remove the block, or set `thinking.block_binding.prefix_mismatch_behavior` to \"drop_block\". That setting requires the `thinking-binding-controls-2026-08-01` value in the `anthropic-beta` header. The `tools` list differs from the one this block was created with.","type":"invalid_request_error"},"request_id":"req_011CffkzSjg5syEsnEyXB4tK","type":"error"}'

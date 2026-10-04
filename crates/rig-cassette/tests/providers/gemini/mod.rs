@@ -77,6 +77,7 @@ mod cassette {
     mod interactions_raw_capture_matrix;
     mod interactions_raw_stream_capture_matrix;
     mod lifecycle_matrix;
+    mod live_facts;
     mod models;
     mod multi_turn_streaming;
     mod portability_matrix;
@@ -89,6 +90,7 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod response_identity;
+    mod restated_replies;
     mod session_matrix;
     mod stateful_chain_matrix;
     mod stream_faults;

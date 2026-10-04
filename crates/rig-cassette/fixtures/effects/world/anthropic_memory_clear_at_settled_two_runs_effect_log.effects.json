@@ -159,7 +159,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready."
+              "text": "ready.",
+              "native": {
+                "item": {
+                  "text": "ready.",
+                  "type": "text"
+                },
+                "fingerprint": "6e6a093ada329f96"
+              }
             }
           ],
           "usage": {
@@ -169,12 +176,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcb8eMLPrE4ccmYnbCB",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcb8eMLPrE4ccmYnbCB"
+          },
           "provider_request_id": "req_011CfLcb8E3c6bSHEUsqB6gg",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -228,13 +238,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcb8eMLPrE4ccmYnbCB",
               "content": [
                 {
                   "type": "text",
-                  "text": "ready."
+                  "text": "ready.",
+                  "native": {
+                    "item": {
+                      "text": "ready.",
+                      "type": "text"
+                    },
+                    "fingerprint": "6e6a093ada329f96"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcb8eMLPrE4ccmYnbCB"
+              },
+              "stop": "stop"
             }
           ]
         }
@@ -325,7 +349,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "again"
+              "text": "again",
+              "native": {
+                "item": {
+                  "text": "again",
+                  "type": "text"
+                },
+                "fingerprint": "581902e273477399"
+              }
             }
           ],
           "usage": {
@@ -335,12 +366,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcbDNMaQRvkJUBhvgcN",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcbDNMaQRvkJUBhvgcN"
+          },
           "provider_request_id": "req_011CfLcbCupagC22Kti7xUrq",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -394,13 +428,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcbDNMaQRvkJUBhvgcN",
               "content": [
                 {
                   "type": "text",
-                  "text": "again"
+                  "text": "again",
+                  "native": {
+                    "item": {
+                      "text": "again",
+                      "type": "text"
+                    },
+                    "fingerprint": "581902e273477399"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcbDNMaQRvkJUBhvgcN"
+              },
+              "stop": "stop"
             }
           ]
         }

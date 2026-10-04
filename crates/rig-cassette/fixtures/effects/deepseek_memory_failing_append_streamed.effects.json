@@ -102,24 +102,27 @@
             "total_tokens": 23,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "86ba0af5-782b-4b3e-840f-fdbfd88dba5a",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "3bb581b7-3375-4438-9506-f6dc41325011"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 22,
               "completion_tokens": 1,
-              "total_tokens": 23,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 22,
+              "prompt_tokens": 22,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 22
+              "total_tokens": 23
             },
             "finish_reason": "stop",
-            "response_id": "86ba0af5-782b-4b3e-840f-fdbfd88dba5a",
+            "response_id": "3bb581b7-3375-4438-9506-f6dc41325011",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -157,7 +160,12 @@
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      }
     },
     {
       "tool_output": null,
@@ -180,13 +188,20 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
                   "text": "ready"
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "3bb581b7-3375-4438-9506-f6dc41325011"
+              },
+              "stop": "stop"
             }
           ]
         }

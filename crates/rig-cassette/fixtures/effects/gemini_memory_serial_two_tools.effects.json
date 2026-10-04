@@ -143,30 +143,43 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_205931"
-                }
+                "provider": "call_45868"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "EpEECo4EAWkUfRObglcz57NzM+Q/2yA76kIGUC+pVjbRMcMkZw80UHYq4J5JBbCWOJf8cTegPsrhrNHnjaEJu9lBH4P8cv9xUi/By+TkHIEmhG6EQIMWep+niw0W8F5k1Z5FdpVqd5z/vUUsreadbOEnlazJlhRQZ+HetTFhM7PfKMLdQ2IFvsQZvGdk3T9bqEAw8XlwdCLf/oeCFz+J8OAQREZFgK7/ra4J1KnCgY3M4+6Z1qwQ2uKCJcWTRvGwWIeBAyJBjEg2VGjmu/QqfX9Ircv7M+e67sWlhu/kxSH34AleS6jBcqYYWXXRHXEf2QFj4zb+cA0kMtaNn8CdDGCc1wu9D8JLfobN/RZQ7clkLXo6czbnnL09QXwk3bLJNEuUzfNCwwnfoZo867nn3jYRneYhi7iBBSUylitpi9csON1TxI7C9GTVEgikyjnhCuTPw8T4+0casVRFGFpg7X71NZ89/yiRmTgASV4pQpC/3VMmTMM6268H6XSg8c7yvvZId978v8wyzvmqKCZIvpQmLJIJ6q3oK3zVi7mzbp5LgmxfBxuIWf2DEk9eDk+Cr0EAWiVhkDYgufxdznuKMbdzEbdNn0UzlS9VbKY3kIDrKiQJhOmk7iGVkq3shlby+Im7W9Qq5PyDvAoTXPz0hxIuDmMOl5QtaPEXbavhJvVIRLY5XiJRZ5Dp+md/9K+jnndAMg==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "id": "call_45868",
+                    "name": "lookup_harbor_label"
+                  },
+                  "thoughtSignature": "EpEECo4EAWkUfROw26IoVMCeBo5xqAyP37ntOKGKM8DXLcVqY8pB/20ijfjbBIIN5NQ3TNmXFzLiZuZneFzqhL554bJgWkTf8xHBbm0lDzruz9pUzfWIjd0NmGigUfIigxYCDq/mbnlLtmqzynAEyILxrqwyLLOyoZR+gKf9IAmRZHqoEhb6O+A5OnfB0RqvBBhSgOGmnRmugj1iSEor7Ypqz0V5nnaBpHCvjxBeYpFqSsWNeqWz/3xLuYVA6P/QKt1v84Xg/7LwJBZ5CfLng7K59vPayylgcVqSGlaNurqS14nKe9cE6athJfCWVrjb/4IEII7VYFwh7xn1cHIRi1nB4VW5C05feStDXJQs2TWdEFxmREGlnJV0LfATHx+ZSLhTKe3RVMSoQHOC3d8LczGuzEVeFj9ThZKjEmn3PMgXgzF3qJDZBbC9C4GzAXuMhqk9Jv5kVjqVuK/CAqoyXSHLXtBSs1tX/VR8YY+sACBffN5lfCtYVSEShCQbE2G0AkLe4jquBPRTWecoR57OORbjUEs1vx3PlKTamRVUog2J90bzStBLVHdPEw/6tW2zNyCxBexBI1hundstBhEEcW+lq7adZokA4f7amnTJRiY1pDYVAfaBy6XYeV1i+yuU9H5MbYJw5/wFPCdd8El7Bxnt9Ere1PUFa2+RSSMThY4JrKR49eMRdj4CUqkLEfKarRNVrQ=="
+                },
+                "fingerprint": "67eb68483c1aa81f"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_205933"
-                }
+                "provider": "call_45871"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "id": "call_45871",
+                    "name": "lookup_orchard_label"
+                  }
+                },
+                "fingerprint": "c85115d2276bb414"
+              }
             }
           ],
           "usage": {
@@ -175,27 +188,31 @@
             "total_tokens": 287,
             "reasoning_tokens": 95
           },
-          "message_id": null,
-          "response_id": "h62yapOvIqz-qtsPwsSUmQk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "2AvBaovgA8ukmtkP0dbS8Qc"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 166,
               "candidatesTokenCount": 26,
-              "totalTokenCount": 287,
-              "thoughtsTokenCount": 95,
+              "promptTokenCount": 166,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 166
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 95,
+              "totalTokenCount": 287
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "h62yapOvIqz-qtsPwsSUmQk"
+            "response_id": "2AvBaovgA8ukmtkP0dbS8Qc"
           }
         }
       },
@@ -224,16 +241,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_205931"
-                }
+                "provider": "call_45868"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "EpEECo4EAWkUfRObglcz57NzM+Q/2yA76kIGUC+pVjbRMcMkZw80UHYq4J5JBbCWOJf8cTegPsrhrNHnjaEJu9lBH4P8cv9xUi/By+TkHIEmhG6EQIMWep+niw0W8F5k1Z5FdpVqd5z/vUUsreadbOEnlazJlhRQZ+HetTFhM7PfKMLdQ2IFvsQZvGdk3T9bqEAw8XlwdCLf/oeCFz+J8OAQREZFgK7/ra4J1KnCgY3M4+6Z1qwQ2uKCJcWTRvGwWIeBAyJBjEg2VGjmu/QqfX9Ircv7M+e67sWlhu/kxSH34AleS6jBcqYYWXXRHXEf2QFj4zb+cA0kMtaNn8CdDGCc1wu9D8JLfobN/RZQ7clkLXo6czbnnL09QXwk3bLJNEuUzfNCwwnfoZo867nn3jYRneYhi7iBBSUylitpi9csON1TxI7C9GTVEgikyjnhCuTPw8T4+0casVRFGFpg7X71NZ89/yiRmTgASV4pQpC/3VMmTMM6268H6XSg8c7yvvZId978v8wyzvmqKCZIvpQmLJIJ6q3oK3zVi7mzbp5LgmxfBxuIWf2DEk9eDk+Cr0EAWiVhkDYgufxdznuKMbdzEbdNn0UzlS9VbKY3kIDrKiQJhOmk7iGVkq3shlby+Im7W9Qq5PyDvAoTXPz0hxIuDmMOl5QtaPEXbavhJvVIRLY5XiJRZ5Dp+md/9K+jnndAMg==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "id": "call_45868",
+                    "name": "lookup_harbor_label"
+                  },
+                  "thoughtSignature": "EpEECo4EAWkUfROw26IoVMCeBo5xqAyP37ntOKGKM8DXLcVqY8pB/20ijfjbBIIN5NQ3TNmXFzLiZuZneFzqhL554bJgWkTf8xHBbm0lDzruz9pUzfWIjd0NmGigUfIigxYCDq/mbnlLtmqzynAEyILxrqwyLLOyoZR+gKf9IAmRZHqoEhb6O+A5OnfB0RqvBBhSgOGmnRmugj1iSEor7Ypqz0V5nnaBpHCvjxBeYpFqSsWNeqWz/3xLuYVA6P/QKt1v84Xg/7LwJBZ5CfLng7K59vPayylgcVqSGlaNurqS14nKe9cE6athJfCWVrjb/4IEII7VYFwh7xn1cHIRi1nB4VW5C05feStDXJQs2TWdEFxmREGlnJV0LfATHx+ZSLhTKe3RVMSoQHOC3d8LczGuzEVeFj9ThZKjEmn3PMgXgzF3qJDZBbC9C4GzAXuMhqk9Jv5kVjqVuK/CAqoyXSHLXtBSs1tX/VR8YY+sACBffN5lfCtYVSEShCQbE2G0AkLe4jquBPRTWecoR57OORbjUEs1vx3PlKTamRVUog2J90bzStBLVHdPEw/6tW2zNyCxBexBI1hundstBhEEcW+lq7adZokA4f7amnTJRiY1pDYVAfaBy6XYeV1i+yuU9H5MbYJw5/wFPCdd8El7Bxnt9Ere1PUFa2+RSSMThY4JrKR49eMRdj4CUqkLEfKarRNVrQ=="
+                },
+                "fingerprint": "67eb68483c1aa81f"
+              }
             }
           }
         },
@@ -261,20 +285,31 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_205933"
-                }
+                "provider": "call_45871"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "id": "call_45871",
+                    "name": "lookup_orchard_label"
+                  }
+                },
+                "fingerprint": "c85115d2276bb414"
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      }
     },
     {
       "tool_output": {},
@@ -348,37 +383,57 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_205931"
-                    }
+                    "provider": "call_45868"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "EpEECo4EAWkUfRObglcz57NzM+Q/2yA76kIGUC+pVjbRMcMkZw80UHYq4J5JBbCWOJf8cTegPsrhrNHnjaEJu9lBH4P8cv9xUi/By+TkHIEmhG6EQIMWep+niw0W8F5k1Z5FdpVqd5z/vUUsreadbOEnlazJlhRQZ+HetTFhM7PfKMLdQ2IFvsQZvGdk3T9bqEAw8XlwdCLf/oeCFz+J8OAQREZFgK7/ra4J1KnCgY3M4+6Z1qwQ2uKCJcWTRvGwWIeBAyJBjEg2VGjmu/QqfX9Ircv7M+e67sWlhu/kxSH34AleS6jBcqYYWXXRHXEf2QFj4zb+cA0kMtaNn8CdDGCc1wu9D8JLfobN/RZQ7clkLXo6czbnnL09QXwk3bLJNEuUzfNCwwnfoZo867nn3jYRneYhi7iBBSUylitpi9csON1TxI7C9GTVEgikyjnhCuTPw8T4+0casVRFGFpg7X71NZ89/yiRmTgASV4pQpC/3VMmTMM6268H6XSg8c7yvvZId978v8wyzvmqKCZIvpQmLJIJ6q3oK3zVi7mzbp5LgmxfBxuIWf2DEk9eDk+Cr0EAWiVhkDYgufxdznuKMbdzEbdNn0UzlS9VbKY3kIDrKiQJhOmk7iGVkq3shlby+Im7W9Qq5PyDvAoTXPz0hxIuDmMOl5QtaPEXbavhJvVIRLY5XiJRZ5Dp+md/9K+jnndAMg==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "id": "call_45868",
+                        "name": "lookup_harbor_label"
+                      },
+                      "thoughtSignature": "EpEECo4EAWkUfROw26IoVMCeBo5xqAyP37ntOKGKM8DXLcVqY8pB/20ijfjbBIIN5NQ3TNmXFzLiZuZneFzqhL554bJgWkTf8xHBbm0lDzruz9pUzfWIjd0NmGigUfIigxYCDq/mbnlLtmqzynAEyILxrqwyLLOyoZR+gKf9IAmRZHqoEhb6O+A5OnfB0RqvBBhSgOGmnRmugj1iSEor7Ypqz0V5nnaBpHCvjxBeYpFqSsWNeqWz/3xLuYVA6P/QKt1v84Xg/7LwJBZ5CfLng7K59vPayylgcVqSGlaNurqS14nKe9cE6athJfCWVrjb/4IEII7VYFwh7xn1cHIRi1nB4VW5C05feStDXJQs2TWdEFxmREGlnJV0LfATHx+ZSLhTKe3RVMSoQHOC3d8LczGuzEVeFj9ThZKjEmn3PMgXgzF3qJDZBbC9C4GzAXuMhqk9Jv5kVjqVuK/CAqoyXSHLXtBSs1tX/VR8YY+sACBffN5lfCtYVSEShCQbE2G0AkLe4jquBPRTWecoR57OORbjUEs1vx3PlKTamRVUog2J90bzStBLVHdPEw/6tW2zNyCxBexBI1hundstBhEEcW+lq7adZokA4f7amnTJRiY1pDYVAfaBy6XYeV1i+yuU9H5MbYJw5/wFPCdd8El7Bxnt9Ere1PUFa2+RSSMThY4JrKR49eMRdj4CUqkLEfKarRNVrQ=="
+                    },
+                    "fingerprint": "67eb68483c1aa81f"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_205933"
-                    }
+                    "provider": "call_45871"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "id": "call_45871",
+                        "name": "lookup_orchard_label"
+                      }
+                    },
+                    "fingerprint": "c85115d2276bb414"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "2AvBaovgA8ukmtkP0dbS8Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -386,9 +441,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_205931"
-                    }
+                    "provider": "call_45868"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -401,9 +454,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_205933"
-                    }
+                    "provider": "call_45871"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -451,15 +502,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The markers are crimson-harbor and silver-orchard."
-            },
-            {
-              "type": "text",
-              "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
-                }
+              "text": "The markers are crimson-harbor and silver-orchard.",
+              "native": {
+                "item": {
+                  "text": "The markers are crimson-harbor and silver-orchard.",
+                  "thoughtSignature": "ErsCCrgCAWkUfRP4N5p+Pa5pan2doFWBFarKs6uPMn6eCR893Ej397n4ZTq/x1rBKlVjmacst2WPL3iO/wsnvGv9uF/+K5X862bdomOLtN3+WRD5eeIDbtqLio4YqVBkBPEiDegnW6sIrCbPrcpN6evvV0EGukF4e73bJFNO0+jQTd2CmfBsFHGBMwBCYYAMN7haGZIJWeH1ys2+SrVDEAKJvOVlFI0dx3sloPatrKXiUrB3KAob+kz1jONblIs7EgoodZWWJSYnjgqFJUuscCgjkBuqP/1VEREDECnankcW3mYoETIlSDveKBNbPj1+zpGA6TLOsqy6YlisGwv6E/wnJv0zQtjfNVfat137UAt8bM9m8o23dQiCgNI6vVTmJgpg/BikRkaifRB59ifbQpPeBNtQzxqm0utB3ZV8"
+                },
+                "fingerprint": "c507577782bcc823"
               }
             }
           ],
@@ -469,27 +518,31 @@
             "total_tokens": 388,
             "reasoning_tokens": 49
           },
-          "message_id": null,
-          "response_id": "iK2yarCFKvKvqtsPwNXsuAo",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "2QvBarCGB6T7qtsP5bKMsAQ"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 326,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 388,
-              "thoughtsTokenCount": 49,
+              "promptTokenCount": 326,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 326
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 49,
+              "totalTokenCount": 388
             },
             "finish_reason": "STOP",
             "model_version": "gemini-3-flash-preview",
-            "response_id": "iK2yarCFKvKvqtsPwNXsuAo"
+            "response_id": "2QvBarCGB6T7qtsP5bKMsAQ"
           }
         }
       },
@@ -517,35 +570,23 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The markers are crimson-harbor and silver-orchard."
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 1,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 1,
-            "content": {
-              "type": "text",
-              "text": "",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
-                }
+              "text": "The markers are crimson-harbor and silver-orchard.",
+              "native": {
+                "item": {
+                  "text": "The markers are crimson-harbor and silver-orchard.",
+                  "thoughtSignature": "ErsCCrgCAWkUfRP4N5p+Pa5pan2doFWBFarKs6uPMn6eCR893Ej397n4ZTq/x1rBKlVjmacst2WPL3iO/wsnvGv9uF/+K5X862bdomOLtN3+WRD5eeIDbtqLio4YqVBkBPEiDegnW6sIrCbPrcpN6evvV0EGukF4e73bJFNO0+jQTd2CmfBsFHGBMwBCYYAMN7haGZIJWeH1ys2+SrVDEAKJvOVlFI0dx3sloPatrKXiUrB3KAob+kz1jONblIs7EgoodZWWJSYnjgqFJUuscCgjkBuqP/1VEREDECnankcW3mYoETIlSDveKBNbPj1+zpGA6TLOsqy6YlisGwv6E/wnJv0zQtjfNVfat137UAt8bM9m8o23dQiCgNI6vVTmJgpg/BikRkaifRB59ifbQpPeBNtQzxqm0utB3ZV8"
+                },
+                "fingerprint": "c507577782bcc823"
               }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      }
     },
     {
       "tool_output": null,
@@ -568,37 +609,57 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_205931"
-                    }
+                    "provider": "call_45868"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "EpEECo4EAWkUfRObglcz57NzM+Q/2yA76kIGUC+pVjbRMcMkZw80UHYq4J5JBbCWOJf8cTegPsrhrNHnjaEJu9lBH4P8cv9xUi/By+TkHIEmhG6EQIMWep+niw0W8F5k1Z5FdpVqd5z/vUUsreadbOEnlazJlhRQZ+HetTFhM7PfKMLdQ2IFvsQZvGdk3T9bqEAw8XlwdCLf/oeCFz+J8OAQREZFgK7/ra4J1KnCgY3M4+6Z1qwQ2uKCJcWTRvGwWIeBAyJBjEg2VGjmu/QqfX9Ircv7M+e67sWlhu/kxSH34AleS6jBcqYYWXXRHXEf2QFj4zb+cA0kMtaNn8CdDGCc1wu9D8JLfobN/RZQ7clkLXo6czbnnL09QXwk3bLJNEuUzfNCwwnfoZo867nn3jYRneYhi7iBBSUylitpi9csON1TxI7C9GTVEgikyjnhCuTPw8T4+0casVRFGFpg7X71NZ89/yiRmTgASV4pQpC/3VMmTMM6268H6XSg8c7yvvZId978v8wyzvmqKCZIvpQmLJIJ6q3oK3zVi7mzbp5LgmxfBxuIWf2DEk9eDk+Cr0EAWiVhkDYgufxdznuKMbdzEbdNn0UzlS9VbKY3kIDrKiQJhOmk7iGVkq3shlby+Im7W9Qq5PyDvAoTXPz0hxIuDmMOl5QtaPEXbavhJvVIRLY5XiJRZ5Dp+md/9K+jnndAMg==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "id": "call_45868",
+                        "name": "lookup_harbor_label"
+                      },
+                      "thoughtSignature": "EpEECo4EAWkUfROw26IoVMCeBo5xqAyP37ntOKGKM8DXLcVqY8pB/20ijfjbBIIN5NQ3TNmXFzLiZuZneFzqhL554bJgWkTf8xHBbm0lDzruz9pUzfWIjd0NmGigUfIigxYCDq/mbnlLtmqzynAEyILxrqwyLLOyoZR+gKf9IAmRZHqoEhb6O+A5OnfB0RqvBBhSgOGmnRmugj1iSEor7Ypqz0V5nnaBpHCvjxBeYpFqSsWNeqWz/3xLuYVA6P/QKt1v84Xg/7LwJBZ5CfLng7K59vPayylgcVqSGlaNurqS14nKe9cE6athJfCWVrjb/4IEII7VYFwh7xn1cHIRi1nB4VW5C05feStDXJQs2TWdEFxmREGlnJV0LfATHx+ZSLhTKe3RVMSoQHOC3d8LczGuzEVeFj9ThZKjEmn3PMgXgzF3qJDZBbC9C4GzAXuMhqk9Jv5kVjqVuK/CAqoyXSHLXtBSs1tX/VR8YY+sACBffN5lfCtYVSEShCQbE2G0AkLe4jquBPRTWecoR57OORbjUEs1vx3PlKTamRVUog2J90bzStBLVHdPEw/6tW2zNyCxBexBI1hundstBhEEcW+lq7adZokA4f7amnTJRiY1pDYVAfaBy6XYeV1i+yuU9H5MbYJw5/wFPCdd8El7Bxnt9Ere1PUFa2+RSSMThY4JrKR49eMRdj4CUqkLEfKarRNVrQ=="
+                    },
+                    "fingerprint": "67eb68483c1aa81f"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_205933"
-                    }
+                    "provider": "call_45871"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "id": "call_45871",
+                        "name": "lookup_orchard_label"
+                      }
+                    },
+                    "fingerprint": "c85115d2276bb414"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "2AvBaovgA8ukmtkP0dbS8Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -606,9 +667,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_205931"
-                    }
+                    "provider": "call_45868"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -621,9 +680,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_205933"
-                    }
+                    "provider": "call_45871"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -637,22 +694,27 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
-                  "text": "The markers are crimson-harbor and silver-orchard."
-                },
-                {
-                  "type": "text",
-                  "text": "",
-                  "additional_params": {
-                    "gemini": {
-                      "thoughtSignature": "ErsCCrgCAWkUfRNQbkceL+cdQE5mP/0N+M6UdTqVwNiw1od7Mm5Eu3cOvJalwQu7f8v8lalAKweqMqqvfOitQt1Liri0GkmYn0rBjPbRsr1B1XDCHmvnaPdpP3gX6BDXqHVrOPyzDithGQpIjMTTB1qkdP02eKRINNXS2J7IzMiCtMgbz7H8aLIpsdz3b5wukMXmCP9VrPUjJFlyszeD17P6/dfe2P449jZx8eUtetZDTDP/jdpabRVRh5WkaVhRC6eMkHbMp2TWTli/93sGiXCbbw+QDCRUUMvIBru9ginRPj6Wn6v7nk5SdlwmvsoU6JAXXPfMTXeL6ED4SVd4+D46Ui3dgbDZ4xufZwiN1hgKWhODYXGgTHhfSzGbMiiD5a3V1npU4KowFPR+rORBPuutUmfW/U9ibaiaYyE8"
-                    }
+                  "text": "The markers are crimson-harbor and silver-orchard.",
+                  "native": {
+                    "item": {
+                      "text": "The markers are crimson-harbor and silver-orchard.",
+                      "thoughtSignature": "ErsCCrgCAWkUfRP4N5p+Pa5pan2doFWBFarKs6uPMn6eCR893Ej397n4ZTq/x1rBKlVjmacst2WPL3iO/wsnvGv9uF/+K5X862bdomOLtN3+WRD5eeIDbtqLio4YqVBkBPEiDegnW6sIrCbPrcpN6evvV0EGukF4e73bJFNO0+jQTd2CmfBsFHGBMwBCYYAMN7haGZIJWeH1ys2+SrVDEAKJvOVlFI0dx3sloPatrKXiUrB3KAob+kz1jONblIs7EgoodZWWJSYnjgqFJUuscCgjkBuqP/1VEREDECnankcW3mYoETIlSDveKBNbPj1+zpGA6TLOsqy6YlisGwv6E/wnJv0zQtjfNVfat137UAt8bM9m8o23dQiCgNI6vVTmJgpg/BikRkaifRB59ifbQpPeBNtQzxqm0utB3ZV8"
+                    },
+                    "fingerprint": "c507577782bcc823"
                   }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "2QvBarCGB6T7qtsP5bKMsAQ"
+              },
+              "stop": "stop"
             }
           ]
         }

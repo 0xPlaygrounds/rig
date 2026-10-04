@@ -227,7 +227,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                 let request = prepared.apply(CompletionRequest::new(prompt));
                 let response = within(model.call(request)).await.expect("the model");
                 run.model_response(ModelTurn::new(
-                    None,
+                    response.head(),
                     response.choice,
                     response.usage,
                     executable,
@@ -247,7 +247,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     let name = call.tool_call.function.name.clone();
                     let answer = within(tool.call(
                         name.clone(),
-                        call.tool_call.function.arguments.to_string(),
+                        call.tool_call.function.arguments_value().to_string(),
                         ToolContext::new(),
                     ))
                     .await
@@ -256,7 +256,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
                         name,
-                        answer.result.output().clone(),
+                        &answer.result,
                     ));
                 }
                 run.tool_results(results).expect("tool results");
@@ -524,7 +524,7 @@ async fn a_hooks_decision_is_program_not_record() {
 /// resume. (Before this held, the resume performed the load and threw the
 /// result away: a `Memory{Load}` record led every resumed log.)
 #[tokio::test]
-async fn a_resumed_run_loads_nothing_from_memory() {
+async fn a_resumed_run_loads_nothing_and_saves_once() {
     use rig_core::memory::InMemoryConversationMemory;
     fn builder() -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
         AgentBuilder::new(script())
@@ -550,7 +550,8 @@ async fn a_resumed_run_loads_nothing_from_memory() {
     assert_eq!(families.last(), Some(&EffectFamily::Memory), "saved last");
 
     // Resumed from a fresh state through an agent that has the same
-    // memory configured: no memory dispatch at either end.
+    // memory configured: the run carries its history, so nothing is
+    // loaded, and the messages it adds are saved once, last (#2244).
     let recorder = EffectLogRecorder::new();
     let agent = builder().record_to(recorder.clone()).build();
     let spec = RunSpec {
@@ -564,17 +565,13 @@ async fn a_resumed_run_loads_nothing_from_memory() {
     assert_eq!(response.output(), "done");
     let resumed = agent.stamp(recorder.take());
     let families: Vec<EffectFamily> = resumed.iter().map(|record| record.kind.family()).collect();
-    assert!(
-        !families.contains(&EffectFamily::Memory),
-        "a resumed run performed a memory dispatch: {families:?}"
-    );
     assert_eq!(
         families,
         log.iter()
             .map(|record| record.kind.family())
-            .filter(|family| *family != EffectFamily::Memory)
+            .skip(1)
             .collect::<Vec<_>>(),
-        "the resumed log is the reference log without its memory ends"
+        "the resumed log is the reference log without its load"
     );
 }
 

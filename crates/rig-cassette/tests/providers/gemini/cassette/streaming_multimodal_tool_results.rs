@@ -6,9 +6,6 @@ use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
 };
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig,
-};
 use rig::tool::{Tool, ToolOutput};
 use serde_json::json;
 
@@ -18,8 +15,7 @@ const RED_PIXEL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ
 const MULTIMODAL_FUNCTION_RESPONSE_MODEL: &str = gemini::completion::GEMINI_3_FLASH_PREVIEW;
 
 fn streaming_tool_params() -> serde_json::Value {
-    serde_json::to_value(AdditionalParameters::default().with_config(GenerationConfig::default()))
-        .expect("Gemini additional params should serialize")
+    json!({ "generationConfig": {} })
 }
 
 #[derive(Debug)]
@@ -109,7 +105,7 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     assert!(
         history.iter().any(|message| matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)

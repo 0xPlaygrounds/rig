@@ -67,7 +67,7 @@ impl Serve for Scripted {
                 let response = CompletionResponse::new(
                     self.next(),
                     Usage::default(),
-                    "scripted",
+                    rig_core::message::Origin::new("example.api", "scripted", ""),
                     serde_json::json!({}),
                 );
                 Reply::Outcome(Ok(Outcome::Completion(response)))
@@ -75,39 +75,44 @@ impl Serve for Scripted {
             EffectKind::Completion { stream: true, .. } => {
                 // The next answer, streamed a word at a time.
                 let parts = self.next();
-                Reply::written(move |mut writer| async move {
-                    for part in parts {
-                        match part {
-                            AssistantContent::Text(text) => {
-                                for word in text.text.split_inclusive(' ') {
-                                    if writer.text(word).await.is_err() {
+                Reply::written(
+                    rig_core::message::Origin::new("scripted", "scripted", "scripted"),
+                    move |mut writer| async move {
+                        for part in parts {
+                            match part {
+                                AssistantContent::Text(text) => {
+                                    for word in text.text.split_inclusive(' ') {
+                                        if writer.text(word).await.is_err() {
+                                            return;
+                                        }
+                                    }
+                                }
+                                AssistantContent::ToolCall(call) => {
+                                    if writer
+                                        .tool_call(
+                                            call.function.name.clone(),
+                                            call.function.arguments_value(),
+                                        )
+                                        .await
+                                        .is_err()
+                                    {
                                         return;
                                     }
                                 }
+                                AssistantContent::Reasoning(_)
+                                | AssistantContent::Image(_)
+                                | AssistantContent::Opaque(_) => {}
                             }
-                            AssistantContent::ToolCall(call) => {
-                                if writer
-                                    .tool_call(call.function.name, call.function.arguments)
-                                    .await
-                                    .is_err()
-                                {
-                                    return;
-                                }
-                            }
-                            AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
                         }
-                    }
-                    writer.raw(serde_json::json!({ "provider": "scripted" }));
-                    let _ = writer
-                        .finish(
-                            "scripted",
-                            rig_core::operation::Finish {
+                        writer.raw(serde_json::json!({ "provider": "scripted" }));
+                        let _ = writer
+                            .finish(rig_core::operation::Finish {
                                 usage: Usage::default(),
                                 ..rig_core::operation::Finish::default()
-                            },
-                        )
-                        .await;
-                })
+                            })
+                            .await;
+                    },
+                )
             }
             other => Reply::Outcome(Err(ErrorReport::new(
                 ErrorKind::HandlerUnavailable,

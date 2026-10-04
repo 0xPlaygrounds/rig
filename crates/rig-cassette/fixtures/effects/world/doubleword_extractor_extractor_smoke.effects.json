@@ -101,23 +101,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "doubleword",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n"
-                  }
-                }
-              ]
+              "text": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n",
+                  "reasoning_details": [
+                    {
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "The user wants me to extract structured data from the text provided. They are introducing themselves as Ada Lovelace and stating they work as a mathematician.\n\nLooking at the submit function, it requires:\n- first_name (required)\n- last_name (required)\n- job (required)\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI need to call the submit function with these values.\n",
+                      "type": "reasoning.text"
+                    }
+                  ]
+                },
+                "fingerprint": "0e33b0090ab4fbd5"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-b75d96f17fafb479"
-                }
+                "provider": "chatcmpl-tool-b75d96f17fafb479"
               },
               "function": {
                 "name": "submit",
@@ -127,8 +130,17 @@
                   "last_name": "Lovelace"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"first_name\": \"Ada\", \"job\": \"mathematician\", \"last_name\": \"Lovelace\"}",
+                    "name": "submit"
+                  },
+                  "id": "chatcmpl-tool-b75d96f17fafb479",
+                  "type": "function"
+                },
+                "fingerprint": "0dc83505c0a6c144"
+              }
             }
           ],
           "usage": {
@@ -138,11 +150,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_d4da397d-b4ce-46a4-9168-2e3ca5d47a59",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-9B",
+            "response_model": "Qwen/Qwen3.5-9B",
+            "response_id": "resp_d4da397d-b4ce-46a4-9168-2e3ca5d47a59"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-9B",
           "raw": {
             "choices": [
               {

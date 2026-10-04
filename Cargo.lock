@@ -6663,7 +6663,7 @@ dependencies = [
  "jiff",
  "nom 8.0.0",
  "num-traits",
- "ordered-float",
+ "ordered-float 5.3.0",
  "rand 0.9.4",
  "serde",
  "serde_json",
@@ -8644,6 +8644,15 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ordered-float"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "ordered-float"
 version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7d950ca161dc355eaf28f82b11345ed76c6e1f6eb1f4f4479e0323b9e2fbd0e"
@@ -9351,6 +9360,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "prost-reflect"
+version = "0.16.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01b80ea363c31af2de2b92e3c07ed1156628f7838c4afb4df75ee78a37fedbd1"
+dependencies = [
+ "base64 0.22.1",
+ "prost 0.14.4",
+ "prost-types 0.14.3",
+ "serde",
+ "serde-value",
 ]
 
 [[package]]
@@ -10377,6 +10399,7 @@ dependencies = [
  "rig-fastembed",
  "rig-gemini-grpc",
  "rig-helixdb",
+ "rig-history-conformance",
  "rig-lancedb",
  "rig-memory",
  "rig-milvus",
@@ -10442,13 +10465,18 @@ dependencies = [
  "async-stream",
  "aws-config",
  "aws-sdk-bedrockruntime",
+ "aws-smithy-eventstream",
+ "aws-smithy-runtime-api",
  "aws-smithy-types",
  "base64 0.22.1",
+ "bytes",
  "futures",
+ "http-body 1.0.1",
  "reqwest 0.13.4",
  "rig-agent",
  "rig-core",
  "rig-derive",
+ "rig-history-conformance",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10469,6 +10497,7 @@ dependencies = [
  "image",
  "rig-agent",
  "rig-core",
+ "rig-history-conformance",
  "safetensors",
  "serde",
  "serde_json",
@@ -10561,7 +10590,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "ordered-float",
+ "ordered-float 5.3.0",
  "proptest",
  "quick-xml",
  "redis",
@@ -10651,10 +10680,12 @@ dependencies = [
  "base64 0.22.1",
  "futures",
  "prost 0.14.4",
+ "prost-reflect",
+ "prost-types 0.14.3",
  "protoc-bin-vendored",
  "rig-agent",
  "rig-core",
- "serde",
+ "rig-history-conformance",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -10677,6 +10708,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "rig-history-conformance"
+version = "0.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "rig-core",
+ "rig-memory",
+ "serde_json",
 ]
 
 [[package]]
@@ -11021,6 +11062,7 @@ dependencies = [
  "rig-agent",
  "rig-core",
  "rig-ecs",
+ "rig-history-conformance",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -11780,6 +11822,16 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-value"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
+dependencies = [
+ "ordered-float 2.10.1",
+ "serde",
 ]
 
 [[package]]

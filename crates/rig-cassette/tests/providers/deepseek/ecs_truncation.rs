@@ -1,8 +1,8 @@
-//! Truncated provider tool calls never dispatch through native agent execution.
+//! A truncated provider tool call whose arguments never parse never runs
+//! under native agent execution; one cut before its arguments begin states
+//! an empty object, as pi reads it.
 use super::truncation_matrix::*;
 use crate::{ecs_agent::EcsAgent, ecs_observation};
-use rig::completion::FinishReason;
-use rig::error::ErrorKind;
 use rig_ecs::{
     agent::{AdditionalParams, DefaultMaxTurns, Failure, MaxTokens},
     systems::RunCommands,
@@ -35,29 +35,18 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
                         ecs.app
                             .world_mut()
                             .spawn_run(ecs.agent, &[], INCIDENT_PROMPT, false, None);
-                    // The truncated turn reaches the loop and, answerless under
-                    // `Length`, fails as rig-agent's does (CONTRACT §4): a response
-                    // error naming the reason, never the provider's reply.
+                    // The cut call is kept with what its arguments state, as pi's
+                    // tolerant parse reads them. The loop answers it with an error
+                    // result rather than running it, and the one-turn budget then
+                    // ends the run before the model can call again.
                     match ecs.wait_for_outcome(run).await {
-                        Err(Failure::Provider(report)) => {
-                            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-                            assert!(
-                                report
-                                    .message
-                                    .contains(&FinishReason::Length.no_answer_message()),
-                                "{report:?}"
-                            );
-                        }
-                        other => panic!("the answerless truncated turn fails the run: {other:?}"),
+                        Err(Failure::MaxTurns { limit: 1 }) => {}
+                        other => panic!("the cut call is answered, not run: {other:?}"),
                     }
-                    assert!(
-                        ecs_observation::observation(&ecs).tool_calls.is_empty(),
-                        "truncated calls must not materialise"
-                    );
                     assert_eq!(
                         invocations.load(Ordering::SeqCst),
                         0,
-                        "an incomplete call must never be dispatched"
+                        "a call whose arguments never parse is never dispatched"
                     );
                     Ok::<(), anyhow::Error>(())
                 },
@@ -103,29 +92,18 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                         true,
                         Some(1),
                     );
-                    // The truncated turn reaches the loop and, answerless under
-                    // `Length`, fails as rig-agent's does (CONTRACT §4): a response
-                    // error naming the reason, never the provider's reply.
+                    // The cut call is kept with what its arguments state, as pi's
+                    // tolerant parse reads them. The loop answers it with an error
+                    // result rather than running it, and the one-turn budget then
+                    // ends the run before the model can call again.
                     match ecs.wait_for_outcome(run).await {
-                        Err(Failure::Provider(report)) => {
-                            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-                            assert!(
-                                report
-                                    .message
-                                    .contains(&FinishReason::Length.no_answer_message()),
-                                "{report:?}"
-                            );
-                        }
-                        other => panic!("the answerless truncated turn fails the run: {other:?}"),
+                        Err(Failure::MaxTurns { limit: 1 }) => {}
+                        other => panic!("the cut call is answered, not run: {other:?}"),
                     }
-                    assert!(
-                        ecs_observation::observation(&ecs).tool_calls.is_empty(),
-                        "truncated calls must not materialise"
-                    );
                     assert_eq!(
                         invocations.load(Ordering::SeqCst),
                         0,
-                        "an incomplete call must never be dispatched"
+                        "a call whose arguments never parse is never dispatched"
                     );
                     Ok::<(), anyhow::Error>(())
                 },
@@ -168,29 +146,20 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
                         ecs.app
                             .world_mut()
                             .spawn_run(ecs.agent, &[], INCIDENT_PROMPT, false, None);
-                    // The truncated turn reaches the loop and, answerless under
-                    // `Length`, fails as rig-agent's does (CONTRACT §4): a response
-                    // error naming the reason, never the provider's reply.
+                    // A call cut before its first argument token states an empty
+                    // object, as pi's tolerant parse reads blank arguments, so the
+                    // zero-argument tool runs once; the one-turn budget then ends
+                    // the run.
                     match ecs.wait_for_outcome(run).await {
-                        Err(Failure::Provider(report)) => {
-                            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-                            assert!(
-                                report
-                                    .message
-                                    .contains(&FinishReason::Length.no_answer_message()),
-                                "{report:?}"
-                            );
+                        Err(Failure::MaxTurns { limit: 1 }) => {}
+                        other => {
+                            panic!("the empty call runs, then the budget ends the run: {other:?}")
                         }
-                        other => panic!("the answerless truncated turn fails the run: {other:?}"),
                     }
-                    assert!(
-                        ecs_observation::observation(&ecs).tool_calls.is_empty(),
-                        "truncated calls must not materialise"
-                    );
                     assert_eq!(
                         invocations.load(Ordering::SeqCst),
-                        0,
-                        "an incomplete call must never be dispatched"
+                        1,
+                        "blank arguments are an empty object"
                     );
                     Ok::<(), anyhow::Error>(())
                 },
@@ -237,29 +206,20 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                         true,
                         Some(1),
                     );
-                    // The truncated turn reaches the loop and, answerless under
-                    // `Length`, fails as rig-agent's does (CONTRACT §4): a response
-                    // error naming the reason, never the provider's reply.
+                    // A call cut before its first argument token states an empty
+                    // object, as pi's tolerant parse reads blank arguments, so the
+                    // zero-argument tool runs once; the one-turn budget then ends
+                    // the run.
                     match ecs.wait_for_outcome(run).await {
-                        Err(Failure::Provider(report)) => {
-                            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-                            assert!(
-                                report
-                                    .message
-                                    .contains(&FinishReason::Length.no_answer_message()),
-                                "{report:?}"
-                            );
+                        Err(Failure::MaxTurns { limit: 1 }) => {}
+                        other => {
+                            panic!("the empty call runs, then the budget ends the run: {other:?}")
                         }
-                        other => panic!("the answerless truncated turn fails the run: {other:?}"),
                     }
-                    assert!(
-                        ecs_observation::observation(&ecs).tool_calls.is_empty(),
-                        "truncated calls must not materialise"
-                    );
                     assert_eq!(
                         invocations.load(Ordering::SeqCst),
-                        0,
-                        "an incomplete call must never be dispatched"
+                        1,
+                        "blank arguments are an empty object"
                     );
                     Ok::<(), anyhow::Error>(())
                 },

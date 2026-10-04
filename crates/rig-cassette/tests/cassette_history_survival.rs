@@ -9,18 +9,23 @@
 //! `test-support/rig-test-support/src/history_survival.rs` so the recorded
 //! round-trip cells apply the identical rule to fresh exchanges.
 //!
-//! Four checks:
+//! Five checks:
 //!
 //! 1. [`delivered_opaque_fields_reach_the_next_request`]: each continuation
 //!    request carries every opaque value the previous response delivered.
-//! 2. [`every_recorded_request_pairs_tool_calls_with_results`]: no request
+//! 2. [`same_model_replay_sends_the_recorded_output_items`]: a continuation
+//!    on the same model sends each output item of the previous reply back
+//!    equal to the recorded item, as JSON values, in the reply's order. A
+//!    message-shaped wire sends the projection its rebuild makes of the
+//!    reply's message instead.
+//! 3. [`every_recorded_request_pairs_tool_calls_with_results`]: no request
 //!    leaves a tool call unanswered or a result unmatched, including the
 //!    request after a fault.
-//! 3. [`every_native_request_pairs_tool_calls_with_results`]: the same
+//! 4. [`every_native_request_pairs_tool_calls_with_results`]: the same
 //!    pairing rule over the normalized `chat_history` of every completion
 //!    request in the effect goldens, which include the requests after
 //!    cancellations, invalid arguments and provider faults.
-//! 4. [`every_provider_and_content_kind_is_examined`]: the first checks
+//! 5. [`every_provider_and_content_kind_is_examined`]: the first checks
 //!    actually looked at each provider, and each content kind the corpus can
 //!    show was seen somewhere. A kind no cassette carries is a coverage gap
 //!    to record, not a silent pass.
@@ -45,23 +50,114 @@ use rig_test_support::history_survival::{
 /// as stale so exemptions cannot outlive the behavior they excuse.
 const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
     (
+        "anthropic/context_binding/between_tools_after_tool_change.yaml",
+        "signature",
+        "under `between_tools`, which takes no thinking binding, Rig replays the turn made under other tools as another model's (its signed thinking as text), which this cell pins live",
+    ),
+    (
+        "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "gemini/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "thought_signature",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "gemini/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_chat/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "encrypted_content",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "reasoning_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "encrypted_content",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "reasoning_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/tool_then_followup_text.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "venice/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "tool_call_id",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
+        "thought_signature",
+        "the skip hook abandons the turn before its stream ends, and a turn the consumer has \
+         not wholly taken replays only its canonical fields, as pi drops an unfinished turn's \
+         provider data",
+    ),
+    (
         "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
         "tool_call_id",
         "the cell's repair hook renames the call from `sum_values` to `add` by design, \
          so the id returns on a call whose name no longer anchors it",
     ),
     (
-        "copilot/reasoning_roundtrip/streaming.yaml",
-        "phase",
-        "the shared reasoning round trip rebuilds turn 1's answer from the streamed text \
-         deltas rather than from rig's decoded choice, so the history it sends holds no \
-         text block to carry the message's phase",
+        "xai/prompt_caching/streaming_probe.yaml",
+        "encrypted_content",
+        "the streaming cache probe rebuilds each answer from its text deltas rather than \
+         from rig's decoded choice, so the history it sends holds no reasoning item",
     ),
     (
-        "openai/gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip.yaml",
-        "phase",
-        "the cell rebuilds each streamed answer from its text deltas rather than from rig's \
-         decoded choice, so the history it sends holds no text block to carry the phase",
+        "xai/prompt_caching/streaming_probe.yaml",
+        "reasoning_id",
+        "the same text-only rebuild of each streamed answer",
+    ),
+    (
+        "gemini/agent_run_recovery/repair_renames_tool_call_and_executes_it.yaml",
+        "thought_signature",
+        "the repair hook renames the call, and an edited block replays from its canonical \
+         fields, so the signature its provider item carried is not sent",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream.yaml",
+        "thought_signature",
+        "the same rename by a repair hook, on a streamed turn",
     ),
     (
         "gemini/auto_caching/support_chat_100_current_turn.yaml",
@@ -88,6 +184,94 @@ const SURVIVAL_EXEMPT: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// Scenarios whose same-model continuation legitimately sends an output item
+/// other than as recorded. `(cassette path suffix, reason)`, reported as
+/// stale once it stops matching a real difference.
+const VERBATIM_EXEMPT: &[(&str, &str)] = &[
+    (
+        "anthropic/context_binding/between_tools_after_tool_change.yaml",
+        "under `between_tools`, which takes no thinking binding, Rig replays the turn made under other tools as another model's (its signed thinking as text), which this cell pins live",
+    ),
+    (
+        "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "gemini/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_chat/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/three_turn_tool_session.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "openai/streaming_grammar/tool_then_followup_text.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "venice/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
+        "the request lets the model call no tools, so the core sends the history's calls and results as text (rule R4): the recorded call items are not replayed by design",
+    ),
+    (
+        "anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml",
+        "the repair hook renames the call, and an edited block replays from its canonical fields",
+    ),
+    (
+        "gemini/agent_run_recovery/repair_renames_tool_call_and_executes_it.yaml",
+        "the repair hook renames the call, and an edited block replays from its canonical fields",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_repair_continues_the_same_stream.yaml",
+        "the same rename by a repair hook, on a streamed turn",
+    ),
+    (
+        "gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
+        "the skip hook abandons the turn before its stream ends, so it replays only its \
+         canonical fields",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_compaction.yaml",
+        "the run opts into ThoughtReplay::CurrentTurn, which drops a finished turn's signatures",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_current_turn.yaml",
+        "the same opt-in current-turn thought replay",
+    ),
+    (
+        "gemini/auto_caching/support_chat_100_resume.yaml",
+        "the same opt-in current-turn thought replay, across a checkpoint and resume",
+    ),
+    (
+        "gemini/chat_history/chat_appends_reasoning_tool_turns_to_caller_history.yaml",
+        "Gemini can split one thought across parts; both modes merge consecutive thought parts \
+         into one block so a stream and a whole reply fold alike, and the block replays as one part",
+    ),
+    (
+        "openai/prompt_caching/responses_streaming_probe.yaml",
+        "the cache probe rebuilds each answer from its text, so the history holds no item ids",
+    ),
+    (
+        "xai/prompt_caching/streaming_probe.yaml",
+        "the cache probe rebuilds each answer from its text, so the history holds no reasoning",
+    ),
+];
+
 /// Scenarios whose recorded requests deliberately carry unpaired calls.
 const PAIRING_EXEMPT: &[(&str, &str)] = &[];
 
@@ -95,6 +279,10 @@ const PAIRING_EXEMPT: &[(&str, &str)] = &[];
 /// reason. Absent entries are findings: a provider that could carry the kind
 /// but has no recording of it is a coverage gap.
 const KIND_COVERAGE_EXEMPT: &[(&str, &str, &str)] = &[];
+
+/// Providers no committed cassette continues a conversation for, with the
+/// reason. An entry is stale once the provider has a continuation pair.
+const CONTINUATION_EXEMPT: &[(&str, &str)] = &[];
 
 #[derive(Deserialize)]
 struct RecordedInteraction {
@@ -120,6 +308,7 @@ struct RecordedResponse {
 
 struct Exchange {
     dialect: Dialect,
+    path: String,
     request: Value,
     status: u16,
     response: String,
@@ -156,6 +345,7 @@ fn exchanges(contents: &str) -> Vec<Exchange> {
                 .unwrap_or(request);
             Some(Exchange {
                 dialect: Dialect::from_path(&interaction.when.path),
+                path: interaction.when.path,
                 request,
                 status: interaction.then.status,
                 response: interaction.then.body.unwrap_or_default(),
@@ -238,6 +428,27 @@ fn census_report(census: &BTreeMap<String, Census>) -> String {
     lines.join("\n")
 }
 
+/// The model an exchange addressed: the request's `model`, or the model
+/// segment of a Gemini or Bedrock path.
+fn model_of(exchange: &Exchange) -> Option<&str> {
+    if let Some(model) = exchange.request.get("model").and_then(Value::as_str) {
+        return Some(model.strip_prefix("models/").unwrap_or(model));
+    }
+    let path = exchange.path.as_str();
+    if let Some((_, rest)) = path.split_once("/models/") {
+        return rest.split(':').next();
+    }
+    path.split_once("/model/")
+        .and_then(|(_, rest)| rest.split('/').next())
+}
+
+/// Whether `later` continues on the model that answered `earlier`. A
+/// continuation on another model replays canonical fields only, which the
+/// session cells assert on their own.
+fn same_model(earlier: &Exchange, later: &Exchange) -> bool {
+    model_of(earlier) == model_of(later)
+}
+
 /// Continuation pairs across the corpus: `(scenario, pair index, response
 /// of the earlier exchange, request of the later one)`.
 fn continuation_pairs(
@@ -278,6 +489,9 @@ fn delivered_opaque_fields_reach_the_next_request() {
     let mut legacy_absent: Vec<String> = Vec::new();
 
     for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
+        if !same_model(earlier, later) {
+            continue;
+        }
         compared += 1;
         let placeholders = legacy_tokens(earlier.dialect, &earlier.response);
         legacy += placeholders.len();
@@ -354,6 +568,261 @@ fn delivered_opaque_fields_reach_the_next_request() {
         "opaque content lost between turns ({} pairs compared):\n{}\n\nstale exemptions:\n{}",
         compared,
         losses.join("\n"),
+        stale.join("\n")
+    );
+}
+
+/// The output items of a whole reply, or of a Responses stream's finished
+/// items, as the provider sent them. `None` for a stream whose items arrive
+/// as deltas.
+fn output_items(dialect: Dialect, body: &str) -> Option<Vec<Value>> {
+    let documents = rig_test_support::history_survival::response_documents(body);
+    if dialect == Dialect::OpenAiResponses && documents.len() > 1 {
+        return Some(
+            documents
+                .into_iter()
+                .filter(|document| document["type"] == "response.output_item.done")
+                .map(|document| document["item"].clone())
+                .collect(),
+        );
+    }
+    let [reply] = documents.as_slice() else {
+        return None;
+    };
+    let items = match dialect {
+        Dialect::AnthropicMessages => reply.get("content")?.clone(),
+        Dialect::OpenAiResponses => reply.get("output")?.clone(),
+        Dialect::GeminiGenerateContent => reply.pointer("/candidates/0/content/parts")?.clone(),
+        Dialect::GeminiInteractions => reply.get("steps")?.clone(),
+        Dialect::BedrockConverse => reply.pointer("/output/message/content")?.clone(),
+        Dialect::ChatCompletions => {
+            Value::Array(vec![reply.pointer("/choices/0/message")?.clone()])
+        }
+        Dialect::Unmodeled => return None,
+    };
+    match items {
+        Value::Array(items) => Some(items),
+        _ => None,
+    }
+}
+
+/// The history items a request sends, in order: the content of each model
+/// turn for wires whose turns hold content arrays, the turns themselves
+/// otherwise.
+fn replayed_items(dialect: Dialect, request: &Value) -> Vec<Value> {
+    let Some(turns) = dialect
+        .conversation_field()
+        .and_then(|field| request.get(field))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let content = match dialect {
+        Dialect::AnthropicMessages | Dialect::BedrockConverse => Some(("assistant", "content")),
+        Dialect::GeminiGenerateContent => Some(("model", "parts")),
+        _ => None,
+    };
+    match content {
+        Some((role, field)) => turns
+            .iter()
+            .filter(|turn| turn["role"] == role)
+            .filter_map(|turn| turn.get(field).and_then(Value::as_array))
+            .flatten()
+            .cloned()
+            .collect(),
+        None => turns.clone(),
+    }
+}
+
+/// The item a same-model replay sends for the reply item `item`. An
+/// item-shaped wire sends its items as they came. A message-shaped wire
+/// (Chat) rebuilds the message from its blocks, as pi's
+/// `openai-completions` does, so the item is the projection of the reply's
+/// message that rebuild sends: never the whole message.
+fn as_replayed(scenario: &str, dialect: Dialect, item: Value) -> Value {
+    match dialect {
+        Dialect::ChatCompletions => chat_projection(provider_of(scenario), &item),
+        Dialect::AnthropicMessages
+        | Dialect::GeminiGenerateContent
+        | Dialect::GeminiInteractions
+        | Dialect::OpenAiResponses
+        | Dialect::BedrockConverse
+        | Dialect::Unmodeled => item,
+    }
+}
+
+/// A call's arguments as the rebuild sends them: the object they state,
+/// as JSON text when `text`.
+fn canonical_arguments(arguments: Option<&Value>, text: bool) -> Value {
+    let object = match arguments {
+        Some(Value::String(raw)) => match serde_json::from_str::<Value>(raw) {
+            Ok(Value::String(inner)) => serde_json::from_str(&inner).unwrap_or_default(),
+            Ok(value) => value,
+            // A cut call states what pi's tolerant parse reads from it.
+            Err(_) => rig_core::json_utils::parse_partial_object(raw)
+                .map(Value::Object)
+                .unwrap_or_default(),
+        },
+        Some(value) => value.clone(),
+        None => Value::Null,
+    };
+    let object = if object.is_object() {
+        object
+    } else {
+        Value::Object(Default::default())
+    };
+    if text {
+        Value::String(object.to_string())
+    } else {
+        object
+    }
+}
+
+/// `call` as the rebuild sends it: its item with `arguments` canonical, and
+/// without the stream `index` Chat calls carry.
+fn replayed_call(call: &Value, text: bool, keep_index: bool) -> Value {
+    let mut call = call.clone();
+    if let Some(fields) = call.as_object_mut()
+        && !keep_index
+    {
+        fields.shift_remove("index");
+    }
+    if call.get("type").and_then(Value::as_str) != Some("custom") {
+        let arguments = canonical_arguments(call.pointer("/function/arguments"), text);
+        call["function"]["arguments"] = arguments;
+    }
+    call
+}
+
+/// The assistant message a Chat dialect's rebuild sends for a reply's
+/// `message`: its text as `content`, its reasoning under the first field
+/// that carries it, `reasoning_details` and an answer's audio id, and each
+/// call. DeepSeek takes `content` and `reasoning_content` on every
+/// assistant turn, Mistral `content`.
+fn chat_projection(provider: &str, message: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    out.insert("role".to_owned(), "assistant".into());
+    let text = ["content", "refusal"].iter().find_map(|key| {
+        message
+            .get(*key)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
+    });
+    if let Some(text) = text.filter(|text| !text.trim().is_empty()) {
+        out.insert("content".to_owned(), text.into());
+    }
+    let reasoning = ["reasoning_content", "reasoning", "reasoning_text"]
+        .iter()
+        .find_map(|key| {
+            let text = message.get(*key).and_then(Value::as_str)?;
+            (!text.is_empty()).then_some((*key, text))
+        });
+    if let Some((field, text)) = reasoning.filter(|(_, text)| !text.trim().is_empty()) {
+        out.insert(field.to_owned(), text.into());
+    }
+    if let Some(details) = message.get("reasoning_details").filter(|details| {
+        details
+            .as_array()
+            .is_some_and(|details| !details.is_empty())
+    }) {
+        out.insert("reasoning_details".to_owned(), details.clone());
+    }
+    if let Some(id) = message.pointer("/audio/id") {
+        out.insert("audio".to_owned(), serde_json::json!({ "id": id }));
+    }
+    let calls: Vec<Value> = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|call| replayed_call(call, true, false))
+        .collect();
+    if !calls.is_empty() {
+        out.insert("tool_calls".to_owned(), calls.into());
+    }
+    // A message with no content and no calls is not sent, as pi skips it.
+    if !["content", "audio", "tool_calls"]
+        .iter()
+        .any(|key| out.contains_key(*key))
+    {
+        return Value::Null;
+    }
+    if provider == "deepseek" {
+        out.entry("reasoning_content").or_insert_with(|| "".into());
+    }
+    Value::Object(out)
+}
+
+#[test]
+fn same_model_replay_sends_the_recorded_output_items() {
+    for (suffix, reason) in VERBATIM_EXEMPT {
+        assert!(
+            !reason.trim().is_empty(),
+            "VERBATIM_EXEMPT `{suffix}` needs a reason"
+        );
+    }
+    let root = cassette_root();
+    let cassettes = all_cassettes(&root);
+    let mut failures = Vec::new();
+    let mut used = BTreeSet::new();
+    let mut compared = 0usize;
+    for (scenario, index, earlier, later) in continuation_pairs(&cassettes) {
+        if !same_model(earlier, later) {
+            continue;
+        }
+        let Some(items) = output_items(earlier.dialect, &earlier.response) else {
+            continue;
+        };
+        let items: Vec<Value> = items
+            .into_iter()
+            .map(|item| as_replayed(scenario, earlier.dialect, item))
+            .filter(|item| !item.is_null())
+            .collect();
+        compared += 1;
+        let sent: Vec<Value> = replayed_items(later.dialect, &later.request);
+        let mut from = 0;
+        let missing: Vec<&Value> = items
+            .iter()
+            .filter(
+                |item| match sent.iter().skip(from).position(|sent| sent == *item) {
+                    Some(at) => {
+                        from += at + 1;
+                        false
+                    }
+                    None => true,
+                },
+            )
+            .collect();
+        if missing.is_empty() {
+            continue;
+        }
+        if let Some((suffix, _)) = VERBATIM_EXEMPT
+            .iter()
+            .find(|(suffix, _)| scenario.ends_with(suffix))
+        {
+            used.insert(*suffix);
+            continue;
+        }
+        failures.push(format!(
+            "{scenario} exchange {index}: not sent as recorded, in order: {}",
+            missing
+                .iter()
+                .map(|item| item.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    let stale: Vec<&str> = VERBATIM_EXEMPT
+        .iter()
+        .filter(|(suffix, _)| !used.contains(suffix))
+        .map(|(suffix, _)| *suffix)
+        .collect();
+    assert!(compared > 0, "no same-model continuation pairs found");
+    eprintln!("same-model replies compared item by item: {compared}");
+    assert!(
+        failures.is_empty() && stale.is_empty(),
+        "same-model replay changed recorded output items ({compared} replies compared):\n{}\n\nstale exemptions:\n{}",
+        failures.join("\n"),
         stale.join("\n")
     );
 }
@@ -528,9 +997,17 @@ fn every_provider_and_content_kind_is_examined() {
 
     let mut findings = Vec::new();
     for (provider, entry) in &census {
-        if entry.continuation_pairs == 0 {
+        let exempt = CONTINUATION_EXEMPT
+            .iter()
+            .any(|(exempt, _)| exempt == provider);
+        if entry.continuation_pairs == 0 && !exempt {
             findings.push(format!(
                 "{provider}: no continuation pair was compared; the survival check never looked at it"
+            ));
+        }
+        if entry.continuation_pairs > 0 && exempt {
+            findings.push(format!(
+                "{provider}: CONTINUATION_EXEMPT is stale, the corpus now continues its conversations"
             ));
         }
     }

@@ -21,15 +21,10 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
     let model = moonshot::from_env()
         .expect("MOONSHOT_API_KEY should be set")
         .completion(moonshot::KIMI_K3);
-    let assistant = Message::Assistant {
-        id: None,
-        content: vec![
-            AssistantContent::Reasoning(
-                Reasoning::new("Remember the chosen color.").sealed("test"),
-            ),
-            AssistantContent::text("Understood. I will remember teal."),
-        ],
-    };
+    let assistant = Message::Assistant(rig::message::AssistantMessage::new(vec![
+        AssistantContent::Reasoning(Reasoning::new("Remember the chosen color.")),
+        AssistantContent::text("Understood. I will remember teal."),
+    ]));
 
     let response = model
         .call(

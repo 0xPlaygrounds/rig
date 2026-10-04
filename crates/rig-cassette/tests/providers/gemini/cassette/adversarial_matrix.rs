@@ -4,7 +4,8 @@
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 
 use super::super::support::with_gemini_cassette;
-use crate::history_survival::adversarial::{self, Hop};
+use crate::history_survival::adversarial;
+use crate::history_survival::adversarial::Hop;
 
 #[tokio::test]
 async fn colliding_ids() {

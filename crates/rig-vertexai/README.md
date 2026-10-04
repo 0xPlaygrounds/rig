@@ -22,8 +22,9 @@ is not an authentication or service test.
 
 ## Raw responses
 
-A response's `raw` is the SDK's `GenerateContentResponse`, serialized. It can
-be recovered from a normalized response without another RPC:
+A response's `raw` is the reply's REST JSON: the SDK's `GenerateContentResponse`
+serialized, with enum values spelled by name. It can be recovered from a
+normalized response without another RPC:
 
 ```rust
 use google_cloud_aiplatform_v1::model::GenerateContentResponse;

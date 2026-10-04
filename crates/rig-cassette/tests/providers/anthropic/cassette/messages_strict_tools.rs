@@ -65,7 +65,7 @@ pub(super) async fn strict_tool_call_arguments(
         "exactly one strict tool call is expected"
     );
     assert_eq!(tool_calls[0].function.name, tool_name);
-    tool_calls[0].function.arguments.clone()
+    tool_calls[0].function.arguments_value()
 }
 
 #[tokio::test]

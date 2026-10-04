@@ -195,8 +195,19 @@
                   "y": 6
                 }
               },
-              "signature": "CugBAWkUfRO+8sqWGeUTk8C+5vnnm8u+iIM69FKDl5jwZMxd64HEKbTXtZ/CtKfCpG3MVsIY0A1ciJMU3L7+XnrySkzt2uts1sx3EdGuSlUFVpjBVW5vmIdPcp+IND7STY/AVJPibKseX2QDIZie/cp4MeCrg3dq6IGKfY40drFrBwfXObEsWoLl4JFmgbLTOM05wcaWLOX8p8fu4Kw9F+B4WU6X9a7h7QCtoaFsmw4EeRkH+X/bV45iigh4v0NzBACBk8KqxMZvzYSem5uSS9EjNCxZBR6WgREWuuCuhYf1jn4LJ/Tjke53Cw==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 14,
+                      "y": 6
+                    },
+                    "name": "add"
+                  },
+                  "thoughtSignature": "CugBAWkUfROTLMftW+SqFkiZVzg+1YtMehkWwblYFyF3NHtLTbM7Fyoa7XPDB0MKUF7cGuf2XxmmA3Vh0vC/o+G7mXQ04KxzAZ673Foh4JxvbEWPqI39rFYYWMa95a/3rdAMpfunv+/f/TeKZXmapQyZ06nkkaIGQsJk3AMfu2C2b0+fI8JTz+/ZXKEVxl8xvkJYtUeHJyFConzNmwUJEWFwbPs+f+svEi+8FxkvL5PnYirXE0l329kKlg5RAux/8MSUzdl/3S+plFj20zIpIm4OHMo92ysfEQ3vpkbOMOzN1l+t8GcmfgkAsw=="
+                },
+                "fingerprint": "24eb2f726ba0c58b"
+              }
             },
             {
               "type": "toolcall",
@@ -210,8 +221,18 @@
                   "y": 9
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 40,
+                      "y": 9
+                    },
+                    "name": "subtract"
+                  }
+                },
+                "fingerprint": "934f06706b3684fc"
+              }
             }
           ],
           "usage": {
@@ -220,11 +241,14 @@
             "total_tokens": 275,
             "reasoning_tokens": 56
           },
-          "message_id": null,
-          "response_id": "a66yatf6CLHVz7IP2J_OIA",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "Ww3BaoiiJbadqtsPwsiMoQM"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -238,7 +262,7 @@
                         },
                         "name": "add"
                       },
-                      "thoughtSignature": "CugBAWkUfRO+8sqWGeUTk8C+5vnnm8u+iIM69FKDl5jwZMxd64HEKbTXtZ/CtKfCpG3MVsIY0A1ciJMU3L7+XnrySkzt2uts1sx3EdGuSlUFVpjBVW5vmIdPcp+IND7STY/AVJPibKseX2QDIZie/cp4MeCrg3dq6IGKfY40drFrBwfXObEsWoLl4JFmgbLTOM05wcaWLOX8p8fu4Kw9F+B4WU6X9a7h7QCtoaFsmw4EeRkH+X/bV45iigh4v0NzBACBk8KqxMZvzYSem5uSS9EjNCxZBR6WgREWuuCuhYf1jn4LJ/Tjke53Cw=="
+                      "thoughtSignature": "CugBAWkUfROTLMftW+SqFkiZVzg+1YtMehkWwblYFyF3NHtLTbM7Fyoa7XPDB0MKUF7cGuf2XxmmA3Vh0vC/o+G7mXQ04KxzAZ673Foh4JxvbEWPqI39rFYYWMa95a/3rdAMpfunv+/f/TeKZXmapQyZ06nkkaIGQsJk3AMfu2C2b0+fI8JTz+/ZXKEVxl8xvkJYtUeHJyFConzNmwUJEWFwbPs+f+svEi+8FxkvL5PnYirXE0l329kKlg5RAux/8MSUzdl/3S+plFj20zIpIm4OHMo92ysfEQ3vpkbOMOzN1l+t8GcmfgkAsw=="
                     },
                     {
                       "functionCall": {
@@ -258,7 +282,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "a66yatf6CLHVz7IP2J_OIA",
+            "responseId": "Ww3BaoiiJbadqtsPwsiMoQM",
             "usageMetadata": {
               "candidatesTokenCount": 38,
               "promptTokenCount": 181,
@@ -326,7 +350,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -340,8 +363,19 @@
                       "y": 6
                     }
                   },
-                  "signature": "CugBAWkUfRO+8sqWGeUTk8C+5vnnm8u+iIM69FKDl5jwZMxd64HEKbTXtZ/CtKfCpG3MVsIY0A1ciJMU3L7+XnrySkzt2uts1sx3EdGuSlUFVpjBVW5vmIdPcp+IND7STY/AVJPibKseX2QDIZie/cp4MeCrg3dq6IGKfY40drFrBwfXObEsWoLl4JFmgbLTOM05wcaWLOX8p8fu4Kw9F+B4WU6X9a7h7QCtoaFsmw4EeRkH+X/bV45iigh4v0NzBACBk8KqxMZvzYSem5uSS9EjNCxZBR6WgREWuuCuhYf1jn4LJ/Tjke53Cw==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 14,
+                          "y": 6
+                        },
+                        "name": "add"
+                      },
+                      "thoughtSignature": "CugBAWkUfROTLMftW+SqFkiZVzg+1YtMehkWwblYFyF3NHtLTbM7Fyoa7XPDB0MKUF7cGuf2XxmmA3Vh0vC/o+G7mXQ04KxzAZ673Foh4JxvbEWPqI39rFYYWMa95a/3rdAMpfunv+/f/TeKZXmapQyZ06nkkaIGQsJk3AMfu2C2b0+fI8JTz+/ZXKEVxl8xvkJYtUeHJyFConzNmwUJEWFwbPs+f+svEi+8FxkvL5PnYirXE0l329kKlg5RAux/8MSUzdl/3S+plFj20zIpIm4OHMo92ysfEQ3vpkbOMOzN1l+t8GcmfgkAsw=="
+                    },
+                    "fingerprint": "24eb2f726ba0c58b"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -355,10 +389,28 @@
                       "y": 9
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 40,
+                          "y": 9
+                        },
+                        "name": "subtract"
+                      }
+                    },
+                    "fingerprint": "934f06706b3684fc"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "Ww3BaoiiJbadqtsPwsiMoQM"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -387,7 +439,8 @@
                       "type": "text",
                       "text": "the subtract tool is offline; treat its result as unavailable and continue"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -451,33 +504,38 @@
           "choice": [
             {
               "type": "text",
-              "text": "The `add` tool computed 14 + 6 = 20. The `subtract` tool is offline, so I cannot compute 40 - 9.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "CqsCAWkUfRNbcHVyEY88tugEFa/OKi8vScgpYZ0LL4h82/aPbh3FOfrEpvlAVOCb3PLcAG8u0weZ7iZ91qCqB5KLPyOSUOjzzK10mURqX9gFbN1vYjbm4nz4Hfms/a9cs/nFHJJXdEUuMSTV4Aio/Zu2LhXEEpCz7zyKjW7N7zrf7tsO5TVt1muL7oU3cr7S3JwP5f19Tagiz7c9FRxqcFvPUCY32uAqTYdrRdlnCS7RF28stJLETyFmqWw5a6Ev+E9U9iYxmJGbafq/ejBTPccuvZl2d4sZKFlwXqZDDy/6vMtO1e6LuX4jOMFHTV48wJr9R9qmTv1cdhjoCbmhOjW3WhZCJOHWdfCAtkjI4hBQOTtDVoeUmGurD385A3DWv2K39Bzs/PtwjCEqPeI="
-                }
+              "text": "14 + 6 = 20. The subtract tool is offline, so I cannot compute 40 - 9.",
+              "native": {
+                "item": {
+                  "text": "14 + 6 = 20. The subtract tool is offline, so I cannot compute 40 - 9.",
+                  "thoughtSignature": "CsECAWkUfRP7UXqUD/I8WSMGAC5d2k19aDt11pH5JQv1re08ev2mBVC6TvBvmbudbMSepm5yVGHz+Zz5ttsmPME5F/n69wOktYYTjXTQ7Lb/sSbxXg6M61ZbHcWmuKKeF7eG3FzEiuWglYB8i1Fdfvvoh71fcC8qNKbJxthGkNnHyNPOfunFl04h+gR/vWJLb8owlgd1ctn1EMG7SY6AzdHIvIthq+XZ6CKaMHvuvVq9mVVgI46bsNjhEB+ksuTJNvo3Yi340IS5ExbxN29/9d8Z0GHM6CVg4uNjwccAzOBRvL68pHJJNH+Nm0hmMYEQxhtjQ+IqOHxUG3sizXD75u+MBYHZJOHIkVIltXEbYSS05HT/21TNrMsmjCJ/6atBjUK0e09roJPJzk+HKrA4HW5AHnajOTr+uNQE3M9dKTx5PshH"
+                },
+                "fingerprint": "5b94d8d92047fedf"
               }
             }
           ],
           "usage": {
             "input_tokens": 256,
-            "output_tokens": 120,
-            "total_tokens": 376,
-            "reasoning_tokens": 84
+            "output_tokens": 115,
+            "total_tokens": 371,
+            "reasoning_tokens": 88
           },
-          "message_id": null,
-          "response_id": "bK6yarUGxdfPsg-4oZFA",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "XA3Batr0KP7dqtsPsrLZmQI"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "text": "The `add` tool computed 14 + 6 = 20. The `subtract` tool is offline, so I cannot compute 40 - 9.",
-                      "thoughtSignature": "CqsCAWkUfRNbcHVyEY88tugEFa/OKi8vScgpYZ0LL4h82/aPbh3FOfrEpvlAVOCb3PLcAG8u0weZ7iZ91qCqB5KLPyOSUOjzzK10mURqX9gFbN1vYjbm4nz4Hfms/a9cs/nFHJJXdEUuMSTV4Aio/Zu2LhXEEpCz7zyKjW7N7zrf7tsO5TVt1muL7oU3cr7S3JwP5f19Tagiz7c9FRxqcFvPUCY32uAqTYdrRdlnCS7RF28stJLETyFmqWw5a6Ev+E9U9iYxmJGbafq/ejBTPccuvZl2d4sZKFlwXqZDDy/6vMtO1e6LuX4jOMFHTV48wJr9R9qmTv1cdhjoCbmhOjW3WhZCJOHWdfCAtkjI4hBQOTtDVoeUmGurD385A3DWv2K39Bzs/PtwjCEqPeI="
+                      "text": "14 + 6 = 20. The subtract tool is offline, so I cannot compute 40 - 9.",
+                      "thoughtSignature": "CsECAWkUfRP7UXqUD/I8WSMGAC5d2k19aDt11pH5JQv1re08ev2mBVC6TvBvmbudbMSepm5yVGHz+Zz5ttsmPME5F/n69wOktYYTjXTQ7Lb/sSbxXg6M61ZbHcWmuKKeF7eG3FzEiuWglYB8i1Fdfvvoh71fcC8qNKbJxthGkNnHyNPOfunFl04h+gR/vWJLb8owlgd1ctn1EMG7SY6AzdHIvIthq+XZ6CKaMHvuvVq9mVVgI46bsNjhEB+ksuTJNvo3Yi340IS5ExbxN29/9d8Z0GHM6CVg4uNjwccAzOBRvL68pHJJNH+Nm0hmMYEQxhtjQ+IqOHxUG3sizXD75u+MBYHZJOHIkVIltXEbYSS05HT/21TNrMsmjCJ/6atBjUK0e09roJPJzk+HKrA4HW5AHnajOTr+uNQE3M9dKTx5PshH"
                     }
                   ],
                   "role": "model"
@@ -487,9 +545,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "bK6yarUGxdfPsg-4oZFA",
+            "responseId": "XA3Batr0KP7dqtsPsrLZmQI",
             "usageMetadata": {
-              "candidatesTokenCount": 36,
+              "candidatesTokenCount": 27,
               "promptTokenCount": 256,
               "promptTokensDetails": [
                 {
@@ -498,8 +556,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 84,
-              "totalTokenCount": 376
+              "thoughtsTokenCount": 88,
+              "totalTokenCount": 371
             }
           }
         }

@@ -214,8 +214,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -226,7 +226,16 @@
                 "text": "ready"
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
+              },
+              "stop": "stop"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -257,11 +266,14 @@
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0
               },
-              "message_id": null,
-              "response_id": "resp_97467be9-8d5c-4877-861e-2f837858e425",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
+              },
               "finish_reason": "stop",
-              "provider": "doubleword",
-              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
               "raw": {
                 "choices": [
                   {
@@ -275,7 +287,7 @@
                   }
                 ],
                 "created": 0,
-                "id": "resp_97467be9-8d5c-4877-861e-2f837858e425",
+                "id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974",
                 "model": "Qwen/Qwen3.5-397B-A17B-FP8",
                 "object": "chat.completion",
                 "usage": {
@@ -305,14 +317,23 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 1
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "doubleword",
+              "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+              "response_id": "resp_ba2fb2fc-9910-4d38-9f1e-e9079d148974"
+            },
+            "stop": "stop"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
@@ -331,8 +352,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

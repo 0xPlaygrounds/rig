@@ -9,10 +9,8 @@
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api;
 use rig::tool::Tool;
 use rig_test_support::cassette_models::MapWire;
-use serde::Deserialize;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
 use crate::cassettes::recorded_interaction_bodies;
@@ -84,7 +82,7 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
             let model = client.completion(chatgpt::GPT_5_4);
             // `store` and `prompt_cache_key` are Responses-API wire fields
             // with no normalized home, so they are read off the backend's own
-            // response type — deserialized from the one reply's `raw`, which
+            // response object, the one reply's `raw`, which
             // for a dialect that answers even a unary request with an event
             // stream is the envelope the decoder reassembled from the terminal
             // `response.completed` frame. That frame carries no output items,
@@ -99,27 +97,34 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized responses_api::CompletionResponse");
+            let raw = &response.raw;
 
             assert_eq!(
-                raw.additional_parameters.store,
-                Some(false),
+                raw["store"],
+                serde_json::json!(false),
                 "ChatGPT provider must force store=false"
             );
             assert!(
-                raw.additional_parameters
-                    .prompt_cache_key
-                    .as_deref()
+                raw["prompt_cache_key"]
+                    .as_str()
                     .is_some_and(|value| !value.is_empty()),
                 "ChatGPT backend should return a prompt cache key that cassettes scrub"
             );
-            let usage = raw
-                .usage
-                .as_ref()
-                .expect("ChatGPT/Codex completion should report usage");
-            assert!(usage.input_tokens > 0);
-            assert!(usage.output_tokens > 0);
+            let usage = &raw["usage"];
+            assert!(
+                usage.is_object(),
+                "ChatGPT/Codex completion should report usage"
+            );
+            assert!(
+                usage["input_tokens"]
+                    .as_u64()
+                    .is_some_and(|tokens| tokens > 0)
+            );
+            assert!(
+                usage["output_tokens"]
+                    .as_u64()
+                    .is_some_and(|tokens| tokens > 0)
+            );
         },
     )
     .await;

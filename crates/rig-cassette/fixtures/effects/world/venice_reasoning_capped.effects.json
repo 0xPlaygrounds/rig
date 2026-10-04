@@ -79,16 +79,13 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
-                  }
-                }
-              ]
+              "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**",
+              "native": {
+                "item": {
+                  "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
+                },
+                "fingerprint": "8d65a9c09d28e795"
+              }
             }
           ],
           "usage": {
@@ -96,11 +93,14 @@
             "output_tokens": 16,
             "total_tokens": 1022
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RqRBfGOV1gJZTR0fcgDZyFBj",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-RqRBfGOV1gJZTR0fcgDZyFBj"
+          },
           "finish_reason": "length",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "choices": [
               {

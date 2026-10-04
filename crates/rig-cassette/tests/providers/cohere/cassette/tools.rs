@@ -30,7 +30,7 @@ async fn tool_call_roundtrip() {
 }
 
 /// Asserted on a single completion rather than through the agent loop: Cohere
-/// applies `REQUIRED` to every turn, so an agent configured this way is forced to
+/// applies a required choice to every turn, so an agent configured this way is forced to
 /// keep calling tools and never reaches a final text answer.
 #[tokio::test]
 async fn required_tool_choice_is_accepted() {
@@ -75,7 +75,7 @@ async fn required_tool_choice_is_accepted() {
                 .expect("response should contain a tool call");
             assert_eq!(tool_call.function.name, "subtract");
             assert_eq!(
-                tool_call.function.arguments,
+                tool_call.function.arguments_value(),
                 serde_json::json!({"x": 2, "y": 5})
             );
         },
@@ -93,7 +93,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
                 .tool(rig::tool::tool_definition(&IntegerAdder))
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::Required)
-                .max_tokens(128);
+                .max_tokens(512);
 
             let response = model
                 .call(request)
@@ -112,7 +112,7 @@ async fn required_tool_choice_selects_from_multiple_tools() {
             assert_eq!(tool_calls.len(), 1, "expected exactly one tool call");
             assert_eq!(tool_calls[0].function.name, "subtract");
             assert_eq!(
-                tool_calls[0].function.arguments,
+                tool_calls[0].function.arguments_value(),
                 serde_json::json!({"x": 9, "y": 4})
             );
         },
@@ -189,17 +189,17 @@ async fn strict_required_tool_choice_is_accepted() {
     with_cohere_cassette(
         "tools/strict_required_tool_choice_is_accepted",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let mut model = client.completion(CASSETTE_MODEL);
+            model.wire = model.wire.with_strict_tools();
             let request = CompletionRequest::new("Use the subtract tool to calculate 11 - 6.")
                 .tool(rig::tool::tool_definition(&IntegerSubtract))
                 .tool_choice(ToolChoice::Required)
-                .additional_params(serde_json::json!({"strict_tools": true}))
                 .max_tokens(128);
 
             let response = model
                 .call(request)
                 .await
-                .expect("strict_tools should compose with REQUIRED");
+                .expect("strict tools should compose with a required choice");
             let tool_call = response
                 .choice
                 .iter()
@@ -212,7 +212,7 @@ async fn strict_required_tool_choice_is_accepted() {
             assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
             assert_eq!(tool_call.function.name, "subtract");
             assert_eq!(
-                tool_call.function.arguments,
+                tool_call.function.arguments_value(),
                 serde_json::json!({"x": 11, "y": 6})
             );
         },

@@ -268,66 +268,91 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_3bbe883962ac48469d8a9da4"
-                }
+                "provider": "call_b8265633bfb54c878d5cb3bf"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_b8265633bfb54c878d5cb3bf",
+                  "type": "function"
+                },
+                "fingerprint": "4bb56da97048a4cd"
+              }
+            },
+            {
+              "type": "text",
+              "text": "\n"
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_ccfb5570df7c457fae60f73a"
-                }
+                "provider": "call_cc21fb8d6315440b8e53f1f0"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_cc21fb8d6315440b8e53f1f0",
+                  "type": "function"
+                },
+                "fingerprint": "4db265b5cb9557ab"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 410,
+            "input_tokens": 430,
             "output_tokens": 36,
-            "total_tokens": 446,
+            "total_tokens": 466,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146070-4eniUr02QOSd2PLKbsbT",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790976466-O8wbWFNi0lzAwiMHwZ3I"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 410,
-              "completion_tokens": 36,
-              "total_tokens": 446,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 36,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 430,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 466
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790146070-4eniUr02QOSd2PLKbsbT",
+            "response_id": "gen-1790976466-O8wbWFNi0lzAwiMHwZ3I",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -412,37 +437,62 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_3bbe883962ac48469d8a9da4"
-                    }
+                    "provider": "call_b8265633bfb54c878d5cb3bf"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_b8265633bfb54c878d5cb3bf",
+                      "type": "function"
+                    },
+                    "fingerprint": "4bb56da97048a4cd"
+                  }
+                },
+                {
+                  "type": "text",
+                  "text": "\n"
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_ccfb5570df7c457fae60f73a"
-                    }
+                    "provider": "call_cc21fb8d6315440b8e53f1f0"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_cc21fb8d6315440b8e53f1f0",
+                      "type": "function"
+                    },
+                    "fingerprint": "4db265b5cb9557ab"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790976466-O8wbWFNi0lzAwiMHwZ3I"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -450,9 +500,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_3bbe883962ac48469d8a9da4"
-                    }
+                    "provider": "call_b8265633bfb54c878d5cb3bf"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -465,9 +513,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_ccfb5570df7c457fae60f73a"
-                    }
+                    "provider": "call_cc21fb8d6315440b8e53f1f0"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -517,47 +563,55 @@
           "choice": [
             {
               "type": "text",
-              "text": "The alpha signal marker is crimson-harbor and the beta signal marker is silver-orchard."
+              "text": "The labels are crimson-harbor and silver-orchard."
             }
           ],
           "usage": {
             "input_tokens": 477,
-            "output_tokens": 21,
-            "total_tokens": 498,
+            "output_tokens": 14,
+            "total_tokens": 491,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146071-gE2rdEVHdEmVdOGUzcMs",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790976469-kQpqoOrWDdb1IEPzWdy4"
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 477,
-              "completion_tokens": 21,
-              "total_tokens": 498,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 14,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 477,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 491
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790146071-gE2rdEVHdEmVdOGUzcMs",
+            "response_id": "gen-1790976469-kQpqoOrWDdb1IEPzWdy4",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "service_tier": "default"
             }
           }
         }

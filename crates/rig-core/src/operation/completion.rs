@@ -1,9 +1,10 @@
-//! Generating an assistant turn. A completion decoder writes its reply
-//! through move-only part handles, and the writer emits each part's events
-//! in order: a fragment needs its part's handle, closing a part consumes it,
-//! and ending the reply closes every part still open, in the order they
-//! opened. The provider's end of the reply is a [`Finish`], which the fold
-//! needs to produce the response.
+//! Generating an assistant turn. A completion decoder writes its reply one
+//! provider item at a time, keyed by the item's wire index: the item opens
+//! when its first event arrives and takes the next position in the reply,
+//! its fragments grow it, and closing it finalizes its block with the
+//! provider's item as the block's native. Nothing regroups: blocks keep the
+//! order their items opened in. The provider's end of the reply is a
+//! [`Finish`], which the fold needs to produce the response.
 //!
 //! ```
 //! use rig_core::operation::Finish;
@@ -16,18 +17,17 @@
 //! assert_eq!(finish.reason, Some(FinishReason::Stop));
 //! ```
 
-use std::collections::{BTreeMap, HashSet};
-use std::marker::PhantomData;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
-use crate::error::{MalformedToolInput, ProviderError};
+use crate::error::ProviderError;
 use crate::message::{
-    AdditionalParams, AssistantContent, CallId, Image, Issuer, LocalCallId, ProviderCallId,
-    Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolName,
+    Api, AssistantContent, CallId, Image, LocalCallId, Opaque, Origin, Reasoning, Text, ToolCall,
+    ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Assembled, Call, Emit, Fold, Mode, Operation, Out, Reply, Shared};
+use crate::wire::{Assembled, Call, Descriptor, Emit, Fold, Mode, Operation, Out, Reply, Shared};
 
 /// Generating an assistant turn, unary or streamed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +56,7 @@ impl Operation for Completion {
             .model
             .as_deref()
             .or(call.wire.model)
+            .or_else(|| call.wire.replay.map(|target| target.model()))
             .unwrap_or_default();
         let span = SpanBuilder::new(call.wire.name, model, telemetry)
             .system_instructions(
@@ -64,15 +65,82 @@ impl Operation for Completion {
             )
             .build();
         call.instrument(span.clone());
+        let api = call.wire.replay.map_or_else(
+            || Api::from(call.wire.name.to_owned()),
+            |target| target.api(),
+        );
+        let mut origin = Origin::new(api, call.wire.name, model);
+        // Only a wire that binds items to the context needs it recorded.
+        if call
+            .wire
+            .replay
+            .is_some_and(|target| target.binds_context(model))
+        {
+            origin.context = call
+                .wire
+                .replay
+                .map(|target| crate::completion::history::context_of(request, target, model));
+        }
         Turn {
             span,
-            ..Turn::new(call.wire.name)
+            wire: call
+                .wire
+                .replay
+                .is_some_and(|target| target.states_finish_reason()),
+            call_id_slot: call.wire.replay.and_then(|target| target.call_id_slot()),
+            ..Turn::new(origin)
         }
     }
 
-    /// [`CompletionRequest::validate_message_content`].
-    fn validate(request: &Self::Request) -> Result<(), ProviderError> {
-        request.validate_message_content()
+    /// Resolve the model the request addresses once, as the request's
+    /// `model`: the one it names, else the wire's. The history is checked
+    /// with [`CompletionRequest::validate_message_content`], then
+    /// [`adapt`](crate::completion::adapt)ed for that model on the wire's
+    /// replay target and checked again. Encoders, the fold and replay all
+    /// read the one resolved model.
+    fn prepare(
+        mut request: Self::Request,
+        wire: &Descriptor<'_>,
+    ) -> Result<Self::Request, ProviderError> {
+        let Some(target) = wire.replay else {
+            return Err(ProviderError::request(format!(
+                "completion wire `{}` names no replay target",
+                wire.name
+            )));
+        };
+        // The caller's history is checked as written, so a rejection names
+        // its own messages; adapting never empties a message it keeps.
+        request.validate_message_content()?;
+        // A wire that addresses no model (an interaction read back) leaves
+        // it to the reply, which names the model the turn is from.
+        request.model = request
+            .model
+            .take()
+            .filter(|model| !model.is_empty())
+            .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
+        // Documents join the history before it is adapted, so the adapter's
+        // rules apply to them and no encoder places them.
+        request.chat_history = request.chat_history_with_documents();
+        request.documents.clear();
+        let stored = target.continues_stored(&request);
+        let shape = crate::completion::history::Request {
+            model: request.model.as_deref(),
+            stored,
+            // A conversation the provider stores holds its own tools, so a
+            // continuation that declares none still calls them.
+            tools: stored || target.declares_tools(&request),
+            context: (!target.drops_unbound_items(&request)).then(|| {
+                crate::completion::history::context_of(
+                    &request,
+                    target,
+                    request.model.as_deref().unwrap_or(target.model()),
+                )
+            }),
+        };
+        request.chat_history =
+            crate::completion::history::adapt_for(&request.chat_history, target, &shape);
+        request.validate_message_content()?;
+        Ok(request)
     }
 }
 
@@ -94,58 +162,137 @@ pub struct Finish {
     /// Why the model stopped, when the provider said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<FinishReason>,
-    /// The assistant message id, for replay. A message id the decoder
-    /// recorded while the reply was open outranks it.
-    pub message_id: Option<String>,
-    /// The response id. Never replayed as a message id.
+    /// The response id.
     pub response_id: Option<String>,
     /// The model the provider reports.
     pub model: Option<String>,
+    /// The provider's report that the turn failed, such as a refusal's
+    /// explanation. The turn is then never replayed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// What a provider item becomes when it opens.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Block {
+    /// Answer text.
+    Text,
+    /// Reasoning, possibly withheld by the provider.
+    Reasoning {
+        /// Whether the provider withheld the text.
+        redacted: bool,
+    },
+    /// An image, its canonical fields stated at open; fragments append
+    /// base64 data.
+    Image(Image),
+    /// A tool call with its id and name.
+    Call {
+        /// The call's id.
+        id: CallId,
+        /// The tool's name.
+        name: ToolName,
+    },
+    /// An item with no canonical meaning.
+    Opaque {
+        /// Whether the item goes back to the model that produced it.
+        replay: bool,
+    },
 }
 
 /// The completion fold. The driver and the bus writer build it; no other
 /// code can feed one.
 ///
 /// It is both sides of one reply: the writer state a decoder writes through
-/// (open parts, the pending-call buffer, the issuer of the reply's
-/// reasoning) and the parts the consumer has taken, in their position.
+/// (the open items by wire index) and the blocks the consumer has taken, in
+/// their position.
 pub struct Turn {
     span: tracing::Span,
-    /// The provider the reply is from, and the default issuer of its
-    /// reasoning.
-    provider: String,
+    /// Who the reply is from; the end adds the provider's model and id.
+    origin: Origin,
     // The writer.
-    drafts: Vec<Draft>,
+    open: BTreeMap<usize, Draft>,
+    /// The position of the block each wire index last closed, whose item
+    /// [`Out::edit`] may still amend until the reply ends.
+    ended: HashMap<usize, usize>,
     next_part: u32,
-    issuer: Option<Issuer>,
-    message_id: Option<String>,
-    pending: BTreeMap<usize, Pending>,
-    provider_ids: HashSet<ProviderCallId>,
+    call_ids: HashSet<CallId>,
+    /// Whether the reply's end must name a finish reason: a wire's fold
+    /// whose target states one (a relayed or written reply states its own).
+    wire: bool,
+    /// Where the wire's call items hold their id ([`ReplayTarget::call_id_slot`]).
+    ///
+    /// [`ReplayTarget::call_id_slot`]: crate::completion::ReplayTarget::call_id_slot
+    call_id_slot: Option<&'static str>,
+    /// The first position whose item closed without the provider stating it
+    /// complete. An item there may be the partner a later one needs, so
+    /// blocks from it on replay from their canonical fields.
+    first_incomplete: Option<usize>,
+    /// Whether a call was still open when the provider ended the reply.
+    unfinished_call: bool,
+    /// The call the last index-less fragment went to.
+    last_call: Option<usize>,
+    /// The index of the block a boundary-less wire is streaming.
+    run: Option<usize>,
+    next_auto: usize,
+    /// The wire index of each position, for a wire whose choice follows
+    /// its indices ([`Out::order_by_index`]).
+    by_index: Option<BTreeMap<usize, usize>>,
+    /// The position of the block the choice holds first ([`Out::lead`]).
+    lead: Option<usize>,
     // The fold.
     choice: Vec<Option<AssistantContent>>,
-    /// The text the consumer took of parts still open, by position.
-    open_text: BTreeMap<usize, String>,
+    /// The text the consumer took of text and reasoning parts still open,
+    /// by position.
+    open_text: BTreeMap<usize, AssistantContent>,
 }
 
-/// A part a handle names, as the writer holds it.
-enum Draft {
-    Text {
-        part: Option<Part>,
-        text: String,
-        params: Option<AdditionalParams>,
-    },
+/// One open provider item.
+struct Draft {
+    part: Part,
+    /// Whether its start was emitted.
+    started: bool,
+    /// The provider's item as assembled so far; `Null` for none.
+    item: serde_json::Value,
+    body: Body,
+}
+
+/// Whether a closing item keeps its provider item as the block's native.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Closing {
+    /// The provider stated the item complete: it becomes the native.
+    Complete,
+    /// The item never completed: the block has no native, and an opaque
+    /// item does not replay.
+    Incomplete,
+}
+
+enum Body {
+    Text(String),
+    Image(Image),
     Reasoning {
-        part: Option<Part>,
         text: String,
+        redacted: bool,
     },
     Call {
-        id: CallId,
-        name: ToolName,
+        id: Option<CallId>,
+        name: String,
         arguments: Arguments,
-        signature: Option<String>,
-        additional_params: Option<serde_json::Value>,
     },
-    Closed,
+    Opaque {
+        replay: bool,
+    },
+}
+
+impl Body {
+    fn kind(&self) -> PartKind {
+        match self {
+            Self::Text(_) => PartKind::Text,
+            Self::Reasoning { .. } => PartKind::Reasoning,
+            Self::Image(_) => PartKind::Image,
+            Self::Call { .. } => PartKind::ToolCall,
+            Self::Opaque { .. } => PartKind::Opaque,
+        }
+    }
 }
 
 /// A tool call's argument text as it arrives.
@@ -184,50 +331,35 @@ impl Arguments {
         }
     }
 
-    /// The arguments as JSON: the announced ones when no fragment arrived.
-    fn parse(&self) -> Result<serde_json::Value, serde_json::Error> {
+    /// The call to `name` these arguments make: the announced ones when no
+    /// fragment arrived, else the text, read by [`ToolFunction::parse`].
+    fn function(&self, name: ToolName) -> ToolFunction {
         if self.text.is_empty()
             && let Some(announced) = &self.announced
         {
-            return Ok(announced.clone());
+            return ToolFunction::new(name, announced.clone());
         }
-        let arguments = crate::json_utils::parse_tool_arguments(&self.text)?;
+        let mut function = ToolFunction::parse(name, &self.text);
         if self.overflowed {
-            return Err(serde::de::Error::custom(
-                "tool-call input exceeded the accumulation bound",
-            ));
+            function.invalid_arguments = Some(self.text.clone());
         }
-        Ok(arguments)
+        function
+    }
+
+    /// Whether the text is a complete JSON object.
+    fn complete(&self) -> bool {
+        !self.overflowed
+            && matches!(
+                crate::json_utils::parse_tool_arguments(&self.text),
+                Ok(serde_json::Value::Object(_))
+            )
     }
 }
 
-/// One tool call the provider streams under a wire index, until its id and
-/// name are both known and it opens.
-#[derive(Default)]
-struct Pending {
-    id: Option<String>,
-    item_id: Option<String>,
-    name: String,
-    arguments: Arguments,
-    signature: Option<String>,
-    additional_params: Option<serde_json::Value>,
-    /// The call's handle, once it opened.
-    open: Option<usize>,
-}
-
-/// What to do with a call whose arguments do not parse when it closes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IfMalformed {
-    /// Fail the reply with [`ProviderError::MalformedToolInput`]: the
-    /// provider said the call was complete.
-    Fail,
-    /// Deliver the call with `{}` arguments: the provider superseded it
-    /// mid-assembly.
-    EmptyObject,
-    /// Drop it: its input never fully arrived.
-    Drop,
-    /// Leave it open: the close was a probe, and more input may follow.
-    KeepOpen,
+/// Whether `id` names a call: some providers send `""` or `"null"` for a
+/// call they gave no id.
+fn stated(id: &str) -> bool {
+    !id.is_empty() && id != "null"
 }
 
 /// What one fragment of a buffered tool call carries.
@@ -235,114 +367,57 @@ pub enum IfMalformed {
 pub struct CallFragment<'a> {
     /// The provider's id for the call.
     pub id: Option<&'a str>,
-    /// The output-item id a dual-identifier wire issues beside it.
-    pub item_id: Option<&'a str>,
     /// The tool's name.
     pub name: Option<&'a str>,
     /// A fragment of the argument JSON.
     pub arguments: Option<&'a str>,
 }
 
-/// How a closed reasoning part ends: its provider id, a signature, or the
-/// provider's whole restatement of it.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Seal {
-    /// The provider's id for the reasoning item.
-    pub id: Option<String>,
-    /// A signature for the reasoning text.
-    pub signature: Option<String>,
-    /// The provider's authoritative restatement, which supersedes the
-    /// fragments.
-    pub restated: Option<Reasoning>,
-}
+/// The first index the writer hands out itself ([`Out::fresh_index`]); a
+/// provider's wire indices stay below it.
+pub const AUTO_INDEX: usize = 1 << 30;
 
-type Brand<'id> = PhantomData<fn(&'id ()) -> &'id ()>;
-
-/// An open text part of one reply. Only opening the part gives one, so a
-/// fragment cannot precede its part's start:
-///
-/// ```compile_fail,E0599
-/// use rig_core::operation::{Completion, TextPart};
-/// use rig_core::wire::Out;
-///
-/// fn early(out: &mut Out<'_, Completion>) {
-///     out.push_text(&TextPart::default(), "before the start");
-/// }
-/// ```
-///
-/// Nor can one be built from its fields to write into a part:
-///
-/// ```compile_fail,E0451
-/// use rig_core::operation::{Completion, TextPart};
-/// use rig_core::wire::Out;
-///
-/// fn forge<'id>(out: &mut Out<'id, Completion>) {
-///     let part = TextPart { slot: 0, brand: std::marker::PhantomData };
-///     out.push_text(&part, "into a part this code never opened");
-/// }
-/// ```
-#[must_use = "an open part is closed when the reply ends"]
-#[derive(Debug)]
-pub struct TextPart<'id> {
-    slot: usize,
-    brand: Brand<'id>,
-}
-
-/// An open reasoning part of one reply.
-#[must_use = "an open part is closed when the reply ends"]
-#[derive(Debug)]
-pub struct ReasoningPart<'id> {
-    slot: usize,
-    brand: Brand<'id>,
-}
-
-/// An open tool call of one reply. It has its id and its name, and becomes
-/// visible when it closes.
-///
-/// ```compile_fail,E0382
-/// use rig_core::operation::{CallPart, Completion};
-/// use rig_core::wire::Out;
-///
-/// // A closed call cannot be written again.
-/// fn twice<'id>(out: &mut Out<'id, Completion>, part: CallPart<'id>) {
-///     let _ = out.close_call(part);
-///     out.push_arguments(&part, "{}");
-/// }
-/// ```
-#[must_use = "an open call that is not closed never becomes visible"]
-#[derive(Debug)]
-pub struct CallPart<'id> {
-    slot: usize,
-    brand: Brand<'id>,
+fn not_open(index: usize) -> ProviderError {
+    ProviderError::Response(format!(
+        "the reply wrote to item {index}, which is not open"
+    ))
 }
 
 impl Turn {
-    /// The writer of a reply from `provider`.
-    pub(crate) fn new(provider: impl Into<String>) -> Self {
+    /// The writer of a reply from `origin`.
+    pub(crate) fn new(origin: Origin) -> Self {
         Self {
             span: tracing::Span::none(),
-            provider: provider.into(),
-            drafts: Vec::new(),
+            origin,
+            open: BTreeMap::new(),
+            ended: HashMap::new(),
             next_part: 0,
-            issuer: None,
-            message_id: None,
-            pending: BTreeMap::new(),
-            provider_ids: HashSet::new(),
+            call_ids: HashSet::new(),
+            wire: false,
+            call_id_slot: None,
+            first_incomplete: None,
+            unfinished_call: false,
+            last_call: None,
+            run: None,
+            next_auto: AUTO_INDEX,
+            by_index: None,
+            lead: None,
             choice: Vec::new(),
             open_text: BTreeMap::new(),
         }
     }
 
-    /// The issuer this reply's reasoning is sealed to.
-    fn issuer(&self) -> Issuer {
-        self.issuer
-            .clone()
-            .unwrap_or_else(|| Issuer::from(self.provider.clone()))
+    /// The fold of a stream relayed from another fold, which built its
+    /// events: it only collects them, and takes its origin from the relay
+    /// ([`Self::set_origin`]). Until then it names the relay `label`.
+    pub(crate) fn relayed(label: impl Into<String>) -> Self {
+        let label = label.into();
+        Self::new(Origin::new(label.clone(), label.clone(), label))
     }
 
-    fn draft(&mut self, draft: Draft) -> usize {
-        self.drafts.push(draft);
-        self.drafts.len() - 1
+    /// Who the reply is from, as the relay or the writer's owner states it.
+    pub(crate) fn set_origin(&mut self, origin: Origin) {
+        self.origin = origin;
     }
 
     /// The next position in the choice.
@@ -352,392 +427,577 @@ impl Turn {
         part
     }
 
-    fn start(&mut self, items: &mut Items, kind: PartKind) -> Part {
-        let part = self.next();
-        emit(items, StreamEvent::Start { part, kind });
-        part
+    fn fresh_index(&mut self) -> usize {
+        let index = self.next_auto;
+        self.next_auto += 1;
+        index
     }
 
-    fn push_text(&mut self, items: &mut Items, slot: usize, fragment: &str) {
-        if fragment.is_empty() {
-            return;
-        }
-        let started = match self.drafts.get(slot) {
-            Some(Draft::Text { part, .. }) => *part,
-            _ => return,
-        };
-        let part = match started {
-            Some(part) => part,
-            None => {
-                let part = self.start(items, PartKind::Text);
-                if let Some(Draft::Text {
-                    part: slot_part, ..
-                }) = self.drafts.get_mut(slot)
-                {
-                    *slot_part = Some(part);
-                }
-                part
-            }
-        };
-        if let Some(Draft::Text { text, .. }) = self.drafts.get_mut(slot) {
-            text.push_str(fragment);
-        }
-        emit(
-            items,
-            StreamEvent::Text {
-                part,
-                text: fragment.to_owned(),
-            },
-        );
+    fn draft(&mut self, index: usize) -> Result<&mut Draft, ProviderError> {
+        self.open.get_mut(&index).ok_or_else(|| not_open(index))
     }
 
-    fn close_text(&mut self, items: &mut Items, slot: usize) {
-        let Some(Draft::Text { part, text, params }) = self
-            .drafts
-            .get_mut(slot)
-            .map(|draft| std::mem::replace(draft, Draft::Closed))
-        else {
-            return;
-        };
-        // A text part survives with text or with the metadata it carries.
-        if text.is_empty() && params.is_none() {
-            return;
-        }
-        let part = part.unwrap_or_else(|| self.start(items, PartKind::Text));
-        emit(
-            items,
-            StreamEvent::End {
-                part,
-                content: AssistantContent::Text(Text {
-                    text,
-                    additional_params: params,
-                }),
-            },
-        );
-    }
-
-    fn push_reasoning(&mut self, items: &mut Items, slot: usize, fragment: &str) {
-        if fragment.is_empty() {
-            return;
-        }
-        let started = match self.drafts.get(slot) {
-            Some(Draft::Reasoning { part, .. }) => *part,
-            _ => return,
-        };
-        let part = match started {
-            Some(part) => part,
-            None => {
-                let part = self.start(items, PartKind::Reasoning);
-                if let Some(Draft::Reasoning {
-                    part: slot_part, ..
-                }) = self.drafts.get_mut(slot)
-                {
-                    *slot_part = Some(part);
-                }
-                part
-            }
-        };
-        if let Some(Draft::Reasoning { text, .. }) = self.drafts.get_mut(slot) {
-            text.push_str(fragment);
-        }
-        emit(
-            items,
-            StreamEvent::Reasoning {
-                part,
-                text: fragment.to_owned(),
-            },
-        );
-    }
-
-    fn close_reasoning(&mut self, items: &mut Items, slot: usize, seal: Seal) {
-        let Some(Draft::Reasoning { part, text }) = self
-            .drafts
-            .get_mut(slot)
-            .map(|draft| std::mem::replace(draft, Draft::Closed))
-        else {
-            return;
-        };
-        let Seal {
-            id,
-            signature,
-            restated,
-        } = seal;
-        let reasoning = match restated {
-            Some(mut restated) => {
-                // An omitted restatement id must not erase an established one.
-                if restated.id.is_none() {
-                    restated.id = id;
-                }
-                if let Some(signature) = signature {
-                    attach_signature(&mut restated, signature);
-                }
-                restated
-            }
-            None if !text.is_empty() => Reasoning {
-                id,
-                content: vec![ReasoningContent::Text { text, signature }],
-            },
-            // A signature with nothing streamed to sign is replay state of
-            // its own.
-            None => match signature {
-                Some(signature) => Reasoning {
-                    id,
-                    content: vec![ReasoningContent::Text {
-                        text: String::new(),
-                        signature: Some(signature),
-                    }],
-                },
-                None => return,
-            },
-        };
-        let part = part.unwrap_or_else(|| self.start(items, PartKind::Reasoning));
-        let content = AssistantContent::Reasoning(reasoning.sealed(self.issuer()));
-        emit(items, StreamEvent::End { part, content });
-    }
-
-    fn open_call(&mut self, id: CallId, name: ToolName) -> Result<usize, ProviderError> {
-        if let Some(provider) = id.provider()
-            && !self.provider_ids.insert(provider.clone())
-        {
-            return Err(ProviderError::DuplicateCallId(id));
-        }
-        Ok(self.draft(Draft::Call {
-            id,
-            name,
-            arguments: Arguments::default(),
-            signature: None,
-            additional_params: None,
-        }))
-    }
-
-    fn push_arguments(&mut self, slot: usize, fragment: &str) {
-        if let Some(Draft::Call {
-            name, arguments, ..
-        }) = self.drafts.get_mut(slot)
-        {
-            arguments.push(fragment, name.as_str());
-        }
-    }
-
-    /// Close the call in `slot`: it becomes visible with its arguments, or
-    /// `if_malformed` decides.
-    fn close_call(
+    pub(crate) fn open_item(
         &mut self,
-        items: &mut Items,
-        slot: usize,
-        if_malformed: IfMalformed,
+        index: usize,
+        block: Block,
+        item: serde_json::Value,
     ) -> Result<(), ProviderError> {
-        let parsed = match self.drafts.get(slot) {
-            Some(Draft::Call { arguments, .. }) => arguments.parse(),
-            _ => return Ok(()),
-        };
-        let parsed = match (parsed, if_malformed) {
-            (Ok(arguments), _) => arguments,
-            (Err(_), IfMalformed::KeepOpen) => return Ok(()),
-            (Err(_), IfMalformed::EmptyObject) => serde_json::Value::Object(Default::default()),
-            (Err(_), IfMalformed::Drop) => {
-                if let Some(draft) = self.drafts.get_mut(slot) {
-                    *draft = Draft::Closed;
-                }
-                return Ok(());
-            }
-            (Err(error), IfMalformed::Fail) => {
-                let Some(Draft::Call {
-                    id,
-                    name,
-                    arguments,
-                    ..
-                }) = self
-                    .drafts
-                    .get_mut(slot)
-                    .map(|draft| std::mem::replace(draft, Draft::Closed))
-                else {
-                    return Ok(());
-                };
-                return Err(ProviderError::MalformedToolInput(MalformedToolInput {
-                    name: name.into(),
-                    id,
-                    raw: arguments.text,
-                    error: error.to_string(),
-                }));
-            }
-        };
-        let Some(Draft::Call {
-            id,
-            name,
-            arguments,
-            signature,
-            additional_params,
-        }) = self
-            .drafts
-            .get_mut(slot)
-            .map(|draft| std::mem::replace(draft, Draft::Closed))
-        else {
-            return Ok(());
-        };
-        let json = if arguments.text.is_empty() {
-            parsed.to_string()
-        } else {
-            arguments.text
-        };
-        let part = self.start(items, PartKind::ToolCall);
-        emit(items, StreamEvent::Arguments { part, json });
-        emit(
-            items,
-            StreamEvent::End {
-                part,
-                content: AssistantContent::ToolCall(ToolCall {
-                    id,
-                    function: ToolFunction {
-                        name,
-                        arguments: parsed,
-                    },
-                    signature,
-                    additional_params,
-                }),
+        if self.open.contains_key(&index) {
+            return Err(ProviderError::Response(format!(
+                "the reply opened item {index} twice"
+            )));
+        }
+        let body = match block {
+            Block::Text => Body::Text(String::new()),
+            Block::Image(image) => Body::Image(image),
+            Block::Reasoning { redacted } => Body::Reasoning {
+                text: String::new(),
+                redacted,
             },
-        );
+            Block::Call { id, name } => Body::Call {
+                id: Some(id),
+                name: name.into(),
+                arguments: Arguments::default(),
+            },
+            Block::Opaque { replay } => Body::Opaque { replay },
+        };
+        self.insert(index, body, item);
         Ok(())
     }
 
-    /// The buffered call at `index`, opened when its id and name are both
-    /// known. A wire that sends no id gets one rig issues when the call
-    /// closes (`issue`).
-    fn open_pending(&mut self, index: usize, issue: bool) -> Result<Option<usize>, ProviderError> {
-        let Some(pending) = self.pending.get(&index) else {
-            return Ok(None);
-        };
-        if let Some(slot) = pending.open {
-            return Ok(Some(slot));
+    fn insert(&mut self, index: usize, body: Body, item: serde_json::Value) {
+        self.ended.remove(&index);
+        let part = self.next();
+        if let Some(by_index) = &mut self.by_index {
+            by_index.insert(part.index(), index);
         }
-        let Ok(name) = ToolName::new(pending.name.clone()) else {
-            return Ok(None);
-        };
-        let id = match (&pending.id, &pending.item_id) {
-            (Some(call_id), item_id) => match ProviderCallId::new(call_id.clone()) {
-                Some(provider) => CallId::Provider(match item_id {
-                    Some(item_id) => provider.with_item_id(item_id.clone()),
-                    None => provider,
-                }),
-                None => CallId::Local(LocalCallId::new()),
+        let started = false;
+        self.open.insert(
+            index,
+            Draft {
+                part,
+                started,
+                item,
+                body,
             },
-            (None, _) if issue => CallId::Local(LocalCallId::new()),
-            (None, _) => return Ok(None),
-        };
-        let slot = self.open_call(id, name)?;
-        let Some(pending) = self.pending.get_mut(&index) else {
-            return Ok(None);
-        };
-        pending.open = Some(slot);
-        let arguments = std::mem::take(&mut pending.arguments);
-        let signature = pending.signature.take();
-        let additional_params = pending.additional_params.take();
-        if let Some(Draft::Call {
-            arguments: open,
-            signature: open_signature,
-            additional_params: open_params,
-            ..
-        }) = self.drafts.get_mut(slot)
-        {
-            *open = arguments;
-            *open_signature = signature;
-            *open_params = additional_params;
-        }
-        Ok(Some(slot))
+        );
     }
 
-    /// Close every part still open, in the order they opened. A call closes
-    /// when its arguments parse; one whose input never completed is
-    /// dropped, and so is every call still buffered.
-    pub(crate) fn close_open(&mut self, items: &mut Items) {
-        self.pending.clear();
-        for slot in 0..self.drafts.len() {
-            match self.drafts.get(slot) {
-                Some(Draft::Text { .. }) => self.close_text(items, slot),
-                Some(Draft::Reasoning { .. }) => self.close_reasoning(items, slot, Seal::default()),
-                Some(Draft::Call { .. }) => {
-                    let _ = self.close_call(items, slot, IfMalformed::Drop);
+    pub(crate) fn push_item(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        fragment: &str,
+    ) -> Result<(), ProviderError> {
+        if fragment.is_empty() {
+            return Ok(());
+        }
+        let draft = self.draft(index)?;
+        let event = match &mut draft.body {
+            Body::Text(text) => {
+                text.push_str(fragment);
+                StreamEvent::Text {
+                    part: draft.part,
+                    text: fragment.to_owned(),
                 }
-                Some(Draft::Closed) | None => {}
+            }
+            Body::Reasoning { text, .. } => {
+                text.push_str(fragment);
+                StreamEvent::Reasoning {
+                    part: draft.part,
+                    text: fragment.to_owned(),
+                }
+            }
+            Body::Call {
+                name, arguments, ..
+            } => {
+                arguments.push(fragment, name);
+                return Ok(());
+            }
+            Body::Image(image) => {
+                if let crate::message::DocumentSourceKind::Base64(data) = &mut image.data {
+                    data.push_str(fragment);
+                    return Ok(());
+                }
+                return Err(ProviderError::Response(format!(
+                    "the reply wrote data to the image item {index}, which holds no base64 data"
+                )));
+            }
+            Body::Opaque { .. } => {
+                return Err(ProviderError::Response(format!(
+                    "the reply wrote text to the opaque item {index}"
+                )));
+            }
+        };
+        if !draft.started {
+            draft.started = true;
+            emit(
+                items,
+                StreamEvent::Start {
+                    part: draft.part,
+                    kind: draft.body.kind(),
+                },
+            );
+        }
+        emit(items, event);
+        Ok(())
+    }
+
+    /// The id a call closing now takes, and the provider item it keeps:
+    /// `id`, or, when the provider sent none or one an earlier call of the
+    /// reply holds, a fresh rig-issued id (as pi issues). A renamed call
+    /// keeps no item, since the item names the id it lost; a call sent with
+    /// no id keeps its item only on a wire whose items have an id slot,
+    /// which replay then fills with the id its result gets.
+    fn distinct_call_id(
+        &mut self,
+        id: Option<CallId>,
+        item: serde_json::Value,
+    ) -> (CallId, serde_json::Value) {
+        let (id, item) = match id {
+            Some(id) if !self.call_ids.contains(&id) => (id, item),
+            Some(id) => {
+                tracing::warn!(%id, "the provider named two tool calls with one id; renaming the second");
+                (CallId::Local(LocalCallId::new()), serde_json::Value::Null)
+            }
+            None if self.call_id_slot.is_some() => (CallId::Local(LocalCallId::new()), item),
+            None => (CallId::Local(LocalCallId::new()), serde_json::Value::Null),
+        };
+        self.call_ids.insert(id.clone());
+        (id, item)
+    }
+
+    /// Close the item at `index`: its block becomes visible, holding the
+    /// provider's item as its native when `closing` says it is complete.
+    fn close_item(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        closing: Closing,
+    ) -> Result<(), ProviderError> {
+        let draft = self.open.remove(&index).ok_or_else(|| not_open(index))?;
+        if self.run == Some(index) {
+            self.run = None;
+        }
+        self.ended.insert(index, draft.part.index());
+        let Draft {
+            part,
+            started,
+            item,
+            body,
+        } = draft;
+        let item = match (closing, &body) {
+            (Closing::Complete, _) | (Closing::Incomplete, Body::Opaque { .. }) => item,
+            (Closing::Incomplete, _) => {
+                self.cut_at(part.index());
+                serde_json::Value::Null
+            }
+        };
+        let content = match body {
+            Body::Text(text) => {
+                if text.is_empty() && item.is_null() {
+                    return Ok(());
+                }
+                with_item(AssistantContent::Text(Text::new(text)), item)
+            }
+            Body::Reasoning { text, redacted } => {
+                if text.is_empty() && !redacted && item.is_null() {
+                    return Ok(());
+                }
+                let reasoning = Reasoning {
+                    text,
+                    redacted,
+                    native: None,
+                };
+                with_item(AssistantContent::Reasoning(reasoning), item)
+            }
+            Body::Image(image) => with_item(AssistantContent::Image(image), item),
+            Body::Opaque { replay } => AssistantContent::Opaque(Opaque {
+                item,
+                replay: replay && closing == Closing::Complete,
+            }),
+            Body::Call {
+                id,
+                name,
+                arguments,
+            } => {
+                let Ok(name) = ToolName::new(name) else {
+                    tracing::warn!(
+                        index,
+                        "the provider closed a tool call without a name; nothing can answer it"
+                    );
+                    return Ok(());
+                };
+                let function = arguments.function(name);
+                let (id, item) = self.distinct_call_id(id, item);
+                let json = if arguments.text.is_empty() {
+                    serde_json::Value::Object(function.arguments.clone()).to_string()
+                } else {
+                    arguments.text
+                };
+                emit(
+                    items,
+                    StreamEvent::Start {
+                        part,
+                        kind: PartKind::ToolCall,
+                    },
+                );
+                emit(items, StreamEvent::Arguments { part, json });
+                let call = ToolCall::new(id, function);
+                let content = with_item(AssistantContent::ToolCall(call), item);
+                emit(items, StreamEvent::End { part, content });
+                return Ok(());
+            }
+        };
+        if !started {
+            emit(
+                items,
+                StreamEvent::Start {
+                    part,
+                    kind: kind_of(&content),
+                },
+            );
+        }
+        emit(items, StreamEvent::End { part, content });
+        Ok(())
+    }
+
+    /// Edit the item of the block the wire index `index` last closed, while
+    /// its end event waits to be taken or once the fold holds it.
+    fn edit_ended(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        edit: impl FnOnce(&mut serde_json::Value),
+    ) -> Result<(), ProviderError> {
+        let position = *self.ended.get(&index).ok_or_else(|| not_open(index))?;
+        let queued = items.iter_mut().find_map(|item| match item {
+            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
+                Some(content)
+            }
+            _ => None,
+        });
+        let content = match queued {
+            Some(content) => Some(content),
+            None => self.choice.get_mut(position).and_then(Option::as_mut),
+        };
+        if let Some(item) = content.and_then(item_of) {
+            edit(item);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn run_item(
+        &mut self,
+        items: &mut Items,
+        block: Block,
+        fragment: &str,
+    ) -> Result<usize, ProviderError> {
+        let current = self.run.filter(|index| {
+            self.open.get(index).is_some_and(|draft| {
+                matches!(
+                    (&draft.body, &block),
+                    (Body::Text(_), Block::Text)
+                        | (
+                            Body::Reasoning {
+                                redacted: false,
+                                ..
+                            },
+                            Block::Reasoning { redacted: false }
+                        )
+                )
+            })
+        });
+        let index = match current {
+            Some(index) => index,
+            None => {
+                self.end_run(items)?;
+                let index = self.fresh_index();
+                self.open_item(index, block, serde_json::Value::Null)?;
+                self.run = Some(index);
+                index
+            }
+        };
+        self.push_item(items, index, fragment)?;
+        Ok(index)
+    }
+
+    pub(crate) fn end_run(&mut self, items: &mut Items) -> Result<(), ProviderError> {
+        match self.run.take() {
+            Some(index) => self.close_item(items, index, Closing::Complete),
+            None => Ok(()),
+        }
+    }
+
+    /// One whole block at the next position, its native kept as given.
+    pub(crate) fn write_content(
+        &mut self,
+        items: &mut Items,
+        content: AssistantContent,
+    ) -> Result<(), ProviderError> {
+        let content = match content {
+            AssistantContent::ToolCall(mut call) => {
+                let item = call
+                    .native
+                    .take()
+                    .map_or(serde_json::Value::Null, |native| native.item);
+                let (id, item) = self.distinct_call_id(Some(call.id), item);
+                call.id = id;
+                with_item(AssistantContent::ToolCall(call), item)
+            }
+            content => content,
+        };
+        let part = self.next();
+        emit(
+            items,
+            StreamEvent::Start {
+                part,
+                kind: kind_of(&content),
+            },
+        );
+        match &content {
+            AssistantContent::Text(text) if !text.text.is_empty() => emit(
+                items,
+                StreamEvent::Text {
+                    part,
+                    text: text.text.clone(),
+                },
+            ),
+            AssistantContent::Reasoning(reasoning) if !reasoning.text.is_empty() => emit(
+                items,
+                StreamEvent::Reasoning {
+                    part,
+                    text: reasoning.text.clone(),
+                },
+            ),
+            AssistantContent::ToolCall(call) => emit(
+                items,
+                StreamEvent::Arguments {
+                    part,
+                    json: call.function.arguments_value().to_string(),
+                },
+            ),
+            _ => {}
+        }
+        emit(items, StreamEvent::End { part, content });
+        Ok(())
+    }
+
+    /// Close every item still open when the provider ends the reply, in the
+    /// order they opened. The block a boundary-less wire was streaming is
+    /// complete; any other item was never stated complete, so its block has
+    /// no native. Calls keep what their arguments state.
+    pub(crate) fn close_open(&mut self, items: &mut Items) {
+        let mut open: Vec<(Part, usize)> = self
+            .open
+            .iter()
+            .map(|(index, draft)| (draft.part, *index))
+            .collect();
+        open.sort();
+        for (_, index) in open {
+            let closing = if self.run == Some(index) {
+                Closing::Complete
+            } else {
+                Closing::Incomplete
+            };
+            if self
+                .open
+                .get(&index)
+                .is_some_and(|draft| matches!(draft.body, Body::Call { .. }))
+            {
+                self.unfinished_call = true;
+            }
+            if let Err(error) = self.close_item(items, index, closing) {
+                items.push_back(Err(error));
             }
         }
     }
 
-    /// The parts taken so far, in their position; a part that has not
-    /// ended is not among them.
+    /// Record that the item at `position` never completed.
+    fn cut_at(&mut self, position: usize) {
+        self.first_incomplete = Some(
+            self.first_incomplete
+                .map_or(position, |first| first.min(position)),
+        );
+    }
+
+    /// The parts taken so far, in their position (in wire-index order on a
+    /// wire that asked for it, after the lead block); a part that has not
+    /// ended is not among them, and parts from the first incomplete one on
+    /// keep no provider item.
     pub fn snapshot(&self) -> Vec<AssistantContent> {
-        self.choice.iter().flatten().cloned().collect()
+        self.ordered(
+            self.choice.iter().cloned().enumerate().collect(),
+            self.first_incomplete,
+        )
     }
 
-    /// The assistant message id the decoder recorded, if any.
-    pub fn message_id(&self) -> Option<&str> {
-        self.message_id.as_deref()
-    }
-
-    /// The issuer this reply's reasoning is sealed to.
-    pub fn reasoning_issuer(&self) -> Issuer {
-        self.issuer()
-    }
-
-    /// The provider the reply is from.
-    pub fn provider(&self) -> &str {
-        &self.provider
+    /// Who the reply is from.
+    pub fn origin(&self) -> &Origin {
+        &self.origin
     }
 
     /// What arrived so far as a response: every part that ended, the text
-    /// the consumer already took of a text part still open, and the
-    /// provider's end when it arrived.
-    pub(crate) fn partial(&self, end: Option<&Finish>, reply: &Reply) -> CompletionResponse {
+    /// the consumer already took of a text or reasoning part still open,
+    /// and the provider's end when it arrived. A reply the provider did not
+    /// end is a failed turn: `failure` is the error that ended it, and
+    /// without one the caller stopped reading. Unless the provider ended the
+    /// reply and the consumer took every part, no block keeps its provider
+    /// item.
+    pub(crate) fn partial(
+        &self,
+        end: Option<&Finish>,
+        reply: &Reply,
+        failure: Option<&ProviderError>,
+    ) -> CompletionResponse {
         let mut response = self.response(end.cloned().unwrap_or_default(), reply.clone());
-        response.choice = self
+        if end.is_none() {
+            match failure {
+                Some(error) => {
+                    response.error.get_or_insert_with(|| error.to_string());
+                }
+                None => {
+                    response.aborted = Some(
+                        "the caller stopped reading before the provider ended the reply".to_owned(),
+                    );
+                }
+            }
+        }
+        // A turn the consumer has not wholly taken replays only its canonical
+        // fields, as pi drops an unfinished turn's provider data: no item of
+        // it can then need a partner that never arrived.
+        let unfinished =
+            end.is_none() || !self.open.is_empty() || self.choice.iter().any(Option::is_none);
+        let canonical_from = if unfinished {
+            Some(0)
+        } else {
+            self.first_incomplete
+        };
+        let parts = self
             .choice
             .iter()
             .enumerate()
-            .filter_map(|(index, part)| {
-                part.clone().or_else(|| {
-                    self.open_text
-                        .get(&index)
-                        .map(|text| AssistantContent::text(text.clone()))
-                })
-            })
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(self.issuer()))
-                }
-                part => part,
+            .map(|(index, part)| {
+                let part = part.clone().or_else(|| self.open_text.get(&index).cloned());
+                (index, part)
             })
             .collect();
+        response.choice = self.ordered(parts, canonical_from);
         response
     }
 
-    fn response(&self, end: Finish, reply: Reply) -> CompletionResponse {
-        let issuer = self.issuer();
-        let choice = self
-            .snapshot()
+    /// `parts` by position, in wire-index order on a wire that asked for
+    /// it and after the lead block, each from position `canonical_from` on
+    /// with no provider item.
+    fn ordered(
+        &self,
+        parts: Vec<(usize, Option<AssistantContent>)>,
+        canonical_from: Option<usize>,
+    ) -> Vec<AssistantContent> {
+        let mut parts: Vec<(usize, AssistantContent)> = parts
             .into_iter()
-            .map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    AssistantContent::Reasoning(reasoning.reseal(issuer.clone()))
-                }
-                part => part,
+            .filter_map(|(position, part)| {
+                let part = part?;
+                Some(match canonical_from {
+                    Some(first) if position >= first => (position, canonical(part)),
+                    _ => (position, part),
+                })
             })
             .collect();
+        if let Some(by_index) = &self.by_index {
+            parts.sort_by_key(|(position, _)| {
+                (
+                    by_index.get(position).copied().unwrap_or(usize::MAX),
+                    *position,
+                )
+            });
+        }
+        if let Some(lead) = self.lead {
+            parts.sort_by_key(|(position, _)| *position != lead);
+        }
+        parts.into_iter().map(|(_, part)| part).collect()
+    }
+
+    fn response(&self, end: Finish, reply: Reply) -> CompletionResponse {
         let Finish {
             usage,
             reason,
-            message_id,
             response_id,
             model,
+            error,
         } = end;
         use crate::provider_response::reported;
-        let mut response = CompletionResponse::new(choice, usage, reply.provider, reply.raw)
+        let mut origin = self.origin.clone();
+        origin.response_model = reported(model);
+        // A request that named no model is from the model the provider
+        // reports.
+        if origin.model.is_empty()
+            && let Some(model) = &origin.response_model
+        {
+            origin.model.clone_from(model);
+        }
+        origin.response_id = reported(response_id);
+        let error = error.or_else(|| {
+            if !self.wire {
+                return None;
+            }
+            match &reason {
+                None => Some("the provider ended the reply without a finish reason".to_owned()),
+                Some(FinishReason::Length) => None,
+                Some(_) if self.unfinished_call => Some(
+                    "the provider ended the reply with a tool call it never finished".to_owned(),
+                ),
+                Some(_) => None,
+            }
+        });
+        let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
             .with_optional_finish_reason(reason);
-        // A message id the decoder recorded outranks the end's.
-        response.message_id = reported(self.message_id.clone().or(message_id));
-        response.response_id = reported(response_id);
-        response.model = reported(model);
+        response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response
+    }
+}
+
+/// `block` with no provider item: an opaque item no longer replays.
+pub(crate) fn canonical(block: AssistantContent) -> AssistantContent {
+    match block {
+        AssistantContent::Opaque(opaque) => AssistantContent::Opaque(Opaque {
+            replay: false,
+            ..opaque
+        }),
+        block => block.canonical(),
+    }
+}
+
+/// The provider item `content` holds, if any.
+fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
+    let native = match content {
+        AssistantContent::Text(text) => text.native.as_mut(),
+        AssistantContent::ToolCall(call) => call.native.as_mut(),
+        AssistantContent::Reasoning(reasoning) => reasoning.native.as_mut(),
+        AssistantContent::Image(image) => image.native.as_mut(),
+        AssistantContent::Opaque(opaque) => return Some(&mut opaque.item),
+    };
+    native.map(|native| &mut native.item)
+}
+
+/// `block` holding `item` as its native, unless there is no item.
+fn with_item(block: AssistantContent, item: serde_json::Value) -> AssistantContent {
+    if item.is_null() {
+        block
+    } else {
+        block.with_native(item)
+    }
+}
+
+fn kind_of(content: &AssistantContent) -> PartKind {
+    match content {
+        AssistantContent::Text(_) => PartKind::Text,
+        AssistantContent::Reasoning(_) => PartKind::Reasoning,
+        AssistantContent::ToolCall(_) => PartKind::ToolCall,
+        AssistantContent::Image(_) => PartKind::Image,
+        AssistantContent::Opaque(_) => PartKind::Opaque,
     }
 }
 
@@ -747,25 +1007,33 @@ fn emit(items: &mut Items, event: StreamEvent) {
     items.push_back(Ok(Item::Event(event)));
 }
 
-/// Attach a signature to the last unsigned reasoning text, or add a
-/// signature-only text: replay needs every signature.
-fn attach_signature(reasoning: &mut Reasoning, signature: String) {
-    match reasoning
-        .content
-        .iter_mut()
-        .rev()
-        .find_map(|content| match content {
-            ReasoningContent::Text {
-                signature: slot @ None,
-                ..
-            } => Some(slot),
-            _ => None,
-        }) {
-        Some(slot) => *slot = Some(signature),
-        None => reasoning.content.push(ReasoningContent::Text {
-            text: String::new(),
-            signature: Some(signature),
-        }),
+/// Merge `delta` into `item`: each string field but `type` appends to the
+/// item's string of that key, an array extends the item's array, and any
+/// other value replaces the key. A delta kind rig has never seen still
+/// lands in the item.
+pub fn merge(item: &mut serde_json::Value, delta: &serde_json::Map<String, serde_json::Value>) {
+    use serde_json::Value;
+    if !item.is_object() {
+        *item = Value::Object(serde_json::Map::new());
+    }
+    let Value::Object(item) = item else {
+        return;
+    };
+    for (key, value) in delta {
+        if key == "type" {
+            continue;
+        }
+        match (item.get_mut(key), value) {
+            (Some(Value::String(existing)), Value::String(fragment)) => {
+                existing.push_str(fragment);
+            }
+            (Some(Value::Array(existing)), Value::Array(more)) => {
+                existing.extend(more.iter().cloned());
+            }
+            _ => {
+                item.insert(key.clone(), value.clone());
+            }
+        }
     }
 }
 
@@ -784,578 +1052,310 @@ impl Fold<Completion> for Turn {
                 if let Some(slot) = self.choice.get_mut(part.index()) {
                     *slot = Some(content.clone());
                 }
-                // A relayed reply's reasoning names its issuer on its seal.
-                if let (None, AssistantContent::Reasoning(reasoning)) = (&self.issuer, content) {
-                    self.issuer = Some(reasoning.issuer().clone());
-                }
                 self.open_text.remove(&part.index());
             }
             StreamEvent::Text { part, text } => {
-                self.open_text
+                if let AssistantContent::Text(open) = self
+                    .open_text
                     .entry(part.index())
-                    .or_default()
-                    .push_str(text);
+                    .or_insert_with(|| AssistantContent::text(""))
+                {
+                    open.text.push_str(text);
+                }
             }
-            StreamEvent::Reasoning { .. } | StreamEvent::Arguments { .. } => {}
+            StreamEvent::Reasoning { part, text } => {
+                if let AssistantContent::Reasoning(open) = self
+                    .open_text
+                    .entry(part.index())
+                    .or_insert_with(|| AssistantContent::reasoning(""))
+                {
+                    open.text.push_str(text);
+                }
+            }
+            StreamEvent::Arguments { .. } => {}
         }
         Ok(())
     }
 
     fn finish(self, end: Finish, reply: Reply) -> Result<CompletionResponse, ProviderError> {
         let response = self.response(end, reply);
-        self.span.record_response(
-            response
-                .response_id
-                .as_deref()
-                .or(response.message_id.as_deref()),
-            response.model.as_deref(),
-            &response.usage,
-        );
+        self.span
+            .record_response(response.response_id(), response.model(), &response.usage);
         Ok(response)
     }
 }
 
 impl<'id> Out<'id, Completion> {
-    /// Open a text part. Nothing is emitted until its first fragment.
-    pub fn text(&mut self) -> TextPart<'id> {
-        let slot = self.lock().fold.draft(Draft::Text {
-            part: None,
-            text: String::new(),
-            params: None,
-        });
-        TextPart {
-            slot,
-            brand: PhantomData,
-        }
-    }
-
-    /// Append to an open text part.
-    pub fn push_text(&mut self, part: &TextPart<'id>, text: &str) {
-        let mut shared = self.lock();
-        let Shared { fold, items, .. } = &mut *shared;
-        fold.push_text(items, part.slot, text);
-    }
-
-    /// Merge provider metadata into an open text part. Metadata is content:
-    /// the part starts here if no text started it.
-    pub fn text_params(&mut self, part: &TextPart<'id>, additional_params: AdditionalParams) {
-        let mut shared = self.lock();
-        let Shared { fold, items, .. } = &mut *shared;
-        let unstarted = matches!(
-            fold.drafts.get(part.slot),
-            Some(Draft::Text { part: None, .. })
-        );
-        if unstarted {
-            let started = fold.start(items, PartKind::Text);
-            if let Some(Draft::Text { part, .. }) = fold.drafts.get_mut(part.slot) {
-                *part = Some(started);
-            }
-        }
-        if let Some(Draft::Text { params, .. }) = fold.drafts.get_mut(part.slot) {
-            match params {
-                Some(params) => params.merge(additional_params),
-                None => *params = Some(additional_params),
-            }
-        }
-    }
-
-    /// Close a text part. One with neither text nor metadata is dropped.
-    pub fn close_text(&mut self, part: TextPart<'id>) {
-        let mut shared = self.lock();
-        let Shared { fold, items, .. } = &mut *shared;
-        fold.close_text(items, part.slot);
-    }
-
-    /// Append to the text part `open` holds, opening one there first. For a
-    /// wire whose text chunks continue one part until other output
-    /// interleaves it.
-    pub fn extend_text<'p>(
+    /// Open the provider item at wire `index` as `block`: it takes the next
+    /// position in the reply. `item` is the item as its first event states
+    /// it, the base its deltas merge into; `Null` when the block keeps no
+    /// provider item. An index already open is an error.
+    pub fn open(
         &mut self,
-        open: &'p mut Option<TextPart<'id>>,
-        text: &str,
-    ) -> &'p TextPart<'id> {
-        let part = open.get_or_insert_with(|| self.text());
-        self.push_text(part, text);
-        part
+        index: usize,
+        block: Block,
+        item: serde_json::Value,
+    ) -> Result<(), ProviderError> {
+        self.lock().fold.open_item(index, block, item)
     }
 
-    /// Close the text part `open` holds, if any, leaving it empty.
-    pub fn close_open_text(&mut self, open: &mut Option<TextPart<'id>>) {
-        if let Some(part) = open.take() {
-            self.close_text(part);
-        }
-    }
-
-    /// Open a reasoning part. Nothing is emitted until its first fragment.
-    pub fn reasoning(&mut self) -> ReasoningPart<'id> {
-        let slot = self.lock().fold.draft(Draft::Reasoning {
-            part: None,
-            text: String::new(),
-        });
-        ReasoningPart {
-            slot,
-            brand: PhantomData,
-        }
-    }
-
-    /// Append to an open reasoning part.
-    pub fn push_reasoning(&mut self, part: &ReasoningPart<'id>, text: &str) {
+    /// Append a fragment to the open item at `index`: text, reasoning, or a
+    /// call's argument JSON, by the item's block.
+    pub fn push(&mut self, index: usize, fragment: &str) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        fold.push_reasoning(items, part.slot, text);
+        fold.push_item(items, index, fragment)
     }
 
-    /// Close a reasoning part, sealed to the reply's issuer. One with
-    /// nothing to replay is dropped.
-    pub fn close_reasoning(&mut self, part: ReasoningPart<'id>, seal: Seal) {
-        let mut shared = self.lock();
-        let Shared { fold, items, .. } = &mut *shared;
-        fold.close_reasoning(items, part.slot, seal);
-    }
-
-    /// A whole reasoning part the provider sent in one piece.
-    pub fn reasoning_block(&mut self, reasoning: Reasoning) {
-        let part = self.reasoning();
-        self.close_reasoning(
-            part,
-            Seal {
-                restated: Some(reasoning),
-                ..Seal::default()
-            },
-        );
-    }
-
-    /// Open a tool call with its id and name. A provider id already used by
-    /// another call of this reply is [`ProviderError::DuplicateCallId`].
-    ///
-    /// Both are required, so no call opens without an id:
-    ///
-    /// ```compile_fail,E0308
-    /// use rig_core::message::ToolName;
-    /// use rig_core::operation::Completion;
-    /// use rig_core::wire::Out;
-    ///
-    /// fn idless(out: &mut Out<'_, Completion>, name: ToolName) {
-    ///     let _ = out.call(None, name);
-    /// }
-    /// ```
-    ///
-    /// or without a name:
-    ///
-    /// ```compile_fail,E0308
-    /// use rig_core::message::CallId;
-    /// use rig_core::operation::Completion;
-    /// use rig_core::wire::Out;
-    ///
-    /// fn nameless(out: &mut Out<'_, Completion>, id: CallId) {
-    ///     let _ = out.call(id, "");
-    /// }
-    /// ```
-    pub fn call(&mut self, id: CallId, name: ToolName) -> Result<CallPart<'id>, ProviderError> {
-        let slot = self.lock().fold.open_call(id, name)?;
-        Ok(CallPart {
-            slot,
-            brand: PhantomData,
-        })
-    }
-
-    /// Append a fragment of an open call's argument JSON.
-    pub fn push_arguments(&mut self, part: &CallPart<'id>, json: &str) {
-        self.lock().fold.push_arguments(part.slot, json);
-    }
-
-    /// Attach a provider signature and metadata to an open call.
-    pub fn decorate_call(
+    /// Edit the item at `index` in place: apply a delta with [`merge`], or
+    /// replace the whole item a provider restates when it finishes.
+    /// Until the reply ends, an index whose block already closed edits that
+    /// block's item: the terminal backfill of a field the provider states
+    /// only at its end.
+    pub fn edit(
         &mut self,
-        part: &CallPart<'id>,
-        signature: Option<String>,
-        additional_params: Option<serde_json::Value>,
-    ) {
-        if let Some(Draft::Call {
-            signature: open_signature,
-            additional_params: open_params,
-            ..
-        }) = self.lock().fold.drafts.get_mut(part.slot)
-        {
-            if signature.is_some() {
-                *open_signature = signature;
+        index: usize,
+        edit: impl FnOnce(&mut serde_json::Value),
+    ) -> Result<(), ProviderError> {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        match fold.open.get_mut(&index) {
+            Some(draft) => {
+                edit(&mut draft.item);
+                Ok(())
             }
-            if additional_params.is_some() {
-                *open_params = additional_params;
-            }
+            None => fold.edit_ended(items, index, edit),
         }
     }
 
-    /// Close a call: it becomes visible. Arguments that do not parse are
-    /// [`ProviderError::MalformedToolInput`].
-    pub fn close_call(&mut self, part: CallPart<'id>) -> Result<(), ProviderError> {
+    /// Close the item at `index` the provider never stated complete: its
+    /// block becomes visible with no native, and an opaque item is kept but
+    /// does not replay. Empty text and reasoning are dropped, and so is a
+    /// call with no name. A call's arguments are read by
+    /// [`ToolFunction::parse`], so malformed ones never fail the reply; a
+    /// call that never got an id, or reuses one an earlier call took, gets
+    /// one rig issues.
+    pub fn close(&mut self, index: usize) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        fold.close_call(items, part.slot, IfMalformed::Fail)
+        fold.close_item(items, index, Closing::Incomplete)
     }
 
-    /// Drop an open call: it never becomes visible.
-    pub fn abandon_call(&mut self, part: CallPart<'id>) {
-        if let Some(draft) = self.lock().fold.drafts.get_mut(part.slot) {
-            *draft = Draft::Closed;
-        }
-    }
-
-    /// A whole tool call the provider sent in one piece.
-    pub fn tool_call(&mut self, call: ToolCall) -> Result<(), ProviderError> {
-        let ToolCall {
-            id,
-            function,
-            signature,
-            additional_params,
-        } = call;
-        let part = self.call(id, function.name)?;
-        self.decorate_call(&part, signature, additional_params);
+    /// Close the item at `index` the provider stated complete: [`Self::close`],
+    /// with the item as assembled becoming the block's native.
+    pub fn finish(&mut self, index: usize) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        if let Some(Draft::Call { arguments, .. }) = fold.drafts.get_mut(part.slot) {
-            arguments.announced = Some(function.arguments);
-        }
-        fold.close_call(items, part.slot, IfMalformed::Fail)
+        fold.close_item(items, index, Closing::Complete)
     }
 
-    /// An image part.
-    pub fn image(&mut self, image: Image) {
+    /// End every item still open as stated complete, for a wire whose end
+    /// of reply is the provider's statement that its items are done.
+    pub fn finish_open(&mut self) -> Result<(), ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        let part = fold.start(items, PartKind::Image);
-        emit(
-            items,
-            StreamEvent::End {
-                part,
-                content: AssistantContent::Image(image),
-            },
-        );
-    }
-
-    /// A whole part of an already assembled response.
-    pub fn content(&mut self, content: AssistantContent) -> Result<(), ProviderError> {
-        match content {
-            AssistantContent::Text(text) => {
-                let part = self.text();
-                self.push_text(&part, &text.text);
-                if let Some(params) = text.additional_params {
-                    self.text_params(&part, params);
-                }
-                self.close_text(part);
-            }
-            AssistantContent::Reasoning(reasoning) => {
-                let issuer = reasoning.issuer().clone();
-                self.issued_by(issuer.clone());
-                if let Some(reasoning) = reasoning.open(&issuer) {
-                    self.reasoning_block(reasoning.clone());
-                }
-            }
-            AssistantContent::ToolCall(call) => self.tool_call(call)?,
-            AssistantContent::Image(image) => self.image(image),
+        let mut open: Vec<(Part, usize)> = fold
+            .open
+            .iter()
+            .map(|(index, draft)| (draft.part, *index))
+            .collect();
+        open.sort();
+        for (_, index) in open {
+            fold.close_item(items, index, Closing::Complete)?;
         }
         Ok(())
     }
 
-    /// Record the assistant message id. It outranks the one the end names.
-    pub fn message_id(&mut self, id: impl Into<String>) {
-        let id = id.into();
-        if !id.is_empty() {
-            self.lock().fold.message_id = Some(id);
+    /// Open and finish the item at `index` in one step: a whole block a
+    /// provider states in one piece, `item` its provider item and `text`
+    /// its text, reasoning, argument JSON or base64 image data.
+    pub fn whole(
+        &mut self,
+        index: usize,
+        block: Block,
+        item: serde_json::Value,
+        text: &str,
+    ) -> Result<(), ProviderError> {
+        self.open(index, block, item)?;
+        self.push(index, text)?;
+        self.finish(index)
+    }
+
+    /// Order the response's blocks by wire index rather than by when they
+    /// opened, for a wire whose indices are the provider's item order and
+    /// whose end may state items it never streamed. Call it before the
+    /// first item opens; blocks with no wire index go last.
+    pub fn order_by_index(&mut self) {
+        let mut shared = self.lock();
+        if shared.fold.by_index.is_none() {
+            shared.fold.by_index = Some(BTreeMap::new());
         }
     }
 
-    /// Name the issuer of this reply's reasoning: a gateway relaying
-    /// another provider's models.
-    pub fn issued_by(&mut self, issuer: impl Into<Issuer>) {
-        self.lock().fold.issuer = Some(issuer.into());
+    /// Hold the open item at `index` first in the response whenever it
+    /// opened, for a wire that states one block of the turn apart from its
+    /// order. Its events keep their arrival order. A turn leads with the
+    /// first item named.
+    pub fn lead(&mut self, index: usize) -> Result<(), ProviderError> {
+        let mut shared = self.lock();
+        let position = shared.fold.draft(index)?.part.index();
+        shared.fold.lead.get_or_insert(position);
+        Ok(())
     }
 
-    /// Buffer one fragment of the tool call the provider streams under
-    /// `index`. The call opens when its id and name are both known; a
-    /// provider id another call already has is
-    /// [`ProviderError::DuplicateCallId`].
-    pub fn call_fragment(
+    /// Replace the text or reasoning of the open item at `index` with
+    /// `text`, the whole of it as the provider restates it at its end. The
+    /// fragments already streamed stand; the block ends holding `text`.
+    pub fn restate(&mut self, index: usize, text: &str) -> Result<(), ProviderError> {
+        if let Body::Text(body) | Body::Reasoning { text: body, .. } =
+            &mut self.lock().fold.draft(index)?.body
+        {
+            text.clone_into(body);
+        }
+        Ok(())
+    }
+
+    /// Buffer one fragment of a tool call the provider streams, opening the
+    /// call at its first fragment. Its id and name may arrive in any
+    /// fragment; the call becomes visible when it closes. Calls are told
+    /// apart by `index` when the wire gives one. A new id under an index
+    /// starts a new call once the held call's arguments are a complete
+    /// object or when it names a tool: some providers send a fresh id, and
+    /// no name, with every chunk of one call. Without
+    /// an index (`None`, or the wire's `null`), a fragment with an unseen id
+    /// opens a call, and one with no id continues the latest call while its
+    /// arguments are incomplete.
+    pub fn fragment(
         &mut self,
-        index: usize,
+        index: Option<usize>,
         fragment: CallFragment<'_>,
     ) -> Result<(), ProviderError> {
         let mut shared = self.lock();
-        let turn = &mut shared.fold;
-        let pending = turn.pending.entry(index).or_default();
-        if let Some(id) = fragment.id.filter(|id| !id.is_empty()) {
-            pending.id = Some(id.to_owned());
-        }
-        if let Some(item_id) = fragment.item_id.filter(|id| !id.is_empty()) {
-            pending.item_id = Some(item_id.to_owned());
-        }
-        if let Some(name) = fragment.name.filter(|name| !name.is_empty()) {
-            name.clone_into(&mut pending.name);
-        }
-        let open = pending.open;
-        if let Some(arguments) = fragment.arguments.filter(|arguments| !arguments.is_empty()) {
-            match open {
-                Some(slot) => turn.push_arguments(slot, arguments),
-                None => {
-                    let name = pending.name.clone();
-                    pending.arguments.push(arguments, &name);
+        let Shared {
+            fold: turn, items, ..
+        } = &mut *shared;
+        let new_id = fragment.id.filter(|id| stated(id));
+        let index = match index {
+            Some(index) => {
+                let names = fragment.name.is_some_and(|name| !name.is_empty());
+                let held = turn.open.get(&index).and_then(|draft| match &draft.body {
+                    Body::Call {
+                        id: Some(id),
+                        arguments,
+                        ..
+                    } if new_id.is_some_and(|new| id.wire() != new) => Some(arguments.complete()),
+                    _ => None,
+                });
+                if let Some(complete) = held.filter(|complete| *complete || names) {
+                    // Another call took over the index: the one it held ends.
+                    let moved = turn.fresh_index();
+                    if let Some(draft) = turn.open.remove(&index) {
+                        turn.open.insert(moved, draft);
+                    }
+                    let closing = if complete {
+                        Closing::Complete
+                    } else {
+                        Closing::Incomplete
+                    };
+                    turn.close_item(items, moved, closing)?;
+                }
+                index
+            }
+            None => {
+                let owner = new_id.and_then(|new| {
+                    turn.open
+                        .iter()
+                        .find_map(|(index, draft)| match &draft.body {
+                            Body::Call { id: Some(id), .. } if id.wire() == new => Some(*index),
+                            _ => None,
+                        })
+                });
+                let continues = |last: &usize| {
+                    turn.open.get(last).is_some_and(|draft| {
+                        matches!(&draft.body, Body::Call { arguments, .. } if !arguments.complete())
+                    })
+                };
+                match (owner, new_id, turn.last_call) {
+                    (Some(index), _, _) => index,
+                    (None, None, Some(last)) if continues(&last) => last,
+                    _ => turn.fresh_index(),
                 }
             }
+        };
+        turn.last_call = Some(index);
+        if !turn.open.contains_key(&index) {
+            let body = Body::Call {
+                id: None,
+                name: String::new(),
+                arguments: Arguments::default(),
+            };
+            turn.insert(index, body, serde_json::Value::Null);
         }
-        turn.open_pending(index, false)?;
+        let Body::Call {
+            id,
+            name,
+            arguments,
+        } = &mut turn.draft(index)?.body
+        else {
+            return Err(ProviderError::Response(format!(
+                "the reply sent a call fragment for item {index}, which is not a call"
+            )));
+        };
+        if let Some(call_id) = fragment.id.filter(|id| stated(id)) {
+            *id = Some(CallId::from_wire(call_id));
+        }
+        if let Some(fragment) = fragment.name.filter(|name| !name.is_empty()) {
+            fragment.clone_into(name);
+        }
+        if let Some(fragment) = fragment.arguments {
+            arguments.push(fragment, name);
+        }
         Ok(())
     }
 
-    /// Arguments the provider announced for the buffered call at `index`,
-    /// used only if no fragment arrives.
-    pub fn announce_pending(&mut self, index: usize, arguments: serde_json::Value) {
-        let mut shared = self.lock();
-        let turn = &mut shared.fold;
-        let Some(pending) = turn.pending.get_mut(&index) else {
-            return;
-        };
-        match pending.open {
-            Some(slot) => {
-                if let Some(Draft::Call {
-                    arguments: open, ..
-                }) = turn.drafts.get_mut(slot)
-                {
-                    open.announced = Some(arguments);
-                }
-            }
-            None => pending.arguments.announced = Some(arguments),
-        }
-    }
-
-    /// Attach a signature and metadata to the buffered call the provider
-    /// names `provider_id`. What it already has wins.
-    pub fn decorate_pending(
-        &mut self,
-        provider_id: &str,
-        signature: Option<String>,
-        additional_params: Option<serde_json::Value>,
-    ) {
-        if provider_id.is_empty() {
-            return;
-        }
-        let mut shared = self.lock();
-        let turn = &mut shared.fold;
-        let Some(pending) = turn
-            .pending
-            .values_mut()
-            .find(|pending| pending.id.as_deref() == Some(provider_id))
-        else {
-            return;
-        };
-        match pending.open {
-            Some(slot) => {
-                if let Some(Draft::Call {
-                    signature: open_signature,
-                    additional_params: open_params,
-                    ..
-                }) = turn.drafts.get_mut(slot)
-                {
-                    if open_signature.is_none() {
-                        *open_signature = signature;
-                    }
-                    if open_params.is_none() {
-                        *open_params = additional_params;
-                    }
-                }
-            }
-            None => {
-                if pending.signature.is_none() {
-                    pending.signature = signature;
-                }
-                if pending.additional_params.is_none() {
-                    pending.additional_params = additional_params;
-                }
-            }
-        }
-    }
-
-    /// Attach a signature and metadata to the buffered call at `index`.
-    pub fn decorate_pending_at(
+    /// Arguments the provider announced for the call at `index`, used only
+    /// if no fragment arrives.
+    pub fn announce(
         &mut self,
         index: usize,
-        signature: Option<String>,
-        additional_params: Option<serde_json::Value>,
-    ) {
-        let mut shared = self.lock();
-        let turn = &mut shared.fold;
-        let Some(pending) = turn.pending.get_mut(&index) else {
-            return;
-        };
-        match pending.open {
-            Some(slot) => {
-                if let Some(Draft::Call {
-                    signature: open_signature,
-                    additional_params: open_params,
-                    ..
-                }) = turn.drafts.get_mut(slot)
-                {
-                    if signature.is_some() {
-                        *open_signature = signature;
-                    }
-                    if additional_params.is_some() {
-                        *open_params = additional_params;
-                    }
-                }
-            }
-            None => {
-                if signature.is_some() {
-                    pending.signature = signature;
-                }
-                if additional_params.is_some() {
-                    pending.additional_params = additional_params;
-                }
-            }
-        }
-    }
-
-    /// The wire indices of the buffered calls, in order.
-    pub fn pending_calls(&self) -> Vec<usize> {
-        self.lock().fold.pending.keys().copied().collect()
-    }
-
-    /// The provider id of the buffered call at `index`, when it has one.
-    pub fn pending_id(&self, index: usize) -> Option<String> {
-        self.lock()
-            .fold
-            .pending
-            .get(&index)
-            .and_then(|pending| pending.id.clone())
-    }
-
-    /// The tool name the buffered call at `index` has so far.
-    pub fn pending_name(&self, index: usize) -> String {
-        self.lock()
-            .fold
-            .pending
-            .get(&index)
-            .map(|pending| pending.name.clone())
-            .unwrap_or_default()
-    }
-
-    /// Whether the buffered call at `index` received argument bytes that are
-    /// not blank, or announced arguments.
-    pub fn pending_has_arguments(&self, index: usize) -> bool {
-        let shared = self.lock();
-        let turn = &shared.fold;
-        let Some(pending) = turn.pending.get(&index) else {
-            return false;
-        };
-        let arguments = match pending.open {
-            Some(slot) => match turn.drafts.get(slot) {
-                Some(Draft::Call { arguments, .. }) => arguments,
-                _ => return false,
-            },
-            None => &pending.arguments,
-        };
-        arguments.substantive || arguments.announced.is_some()
-    }
-
-    /// Close the buffered call at `index`: it becomes visible, under the
-    /// provider's id or, for a wire that sent none, one rig issues. A call
-    /// with no name is dropped; `if_malformed` decides for one whose
-    /// arguments do not parse.
-    pub fn close_pending(
-        &mut self,
-        index: usize,
-        if_malformed: IfMalformed,
+        announced: serde_json::Value,
     ) -> Result<(), ProviderError> {
+        if let Body::Call { arguments, .. } = &mut self.lock().fold.draft(index)?.body {
+            arguments.announced = Some(announced);
+        }
+        Ok(())
+    }
+
+    /// An index no provider item uses, for a wire that indexes nothing.
+    pub fn fresh_index(&mut self) -> usize {
+        self.lock().fold.fresh_index()
+    }
+
+    /// A fragment on a wire that marks no item boundaries: it continues the
+    /// block the last fragment went to while `block` is the same kind, and
+    /// otherwise closes that block and opens a new one. Returns the block's
+    /// index, for merging its provider item.
+    pub fn run(&mut self, block: Block, fragment: &str) -> Result<usize, ProviderError> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
-        let Some(slot) = fold.open_pending(index, true)? else {
-            fold.pending.remove(&index);
-            return Ok(());
-        };
-        let result = fold.close_call(items, slot, if_malformed);
-        let kept_open = matches!(fold.drafts.get(slot), Some(Draft::Call { .. }));
-        if !kept_open {
-            fold.pending.remove(&index);
-        }
-        result
+        fold.run_item(items, block, fragment)
     }
 
-    /// Drop the buffered call at `index`: it never becomes visible.
-    pub fn drop_pending(&mut self, index: usize) {
+    /// Close the block [`Self::run`] is extending, if any: output of
+    /// another kind interleaved it.
+    pub fn end_run(&mut self) -> Result<(), ProviderError> {
         let mut shared = self.lock();
-        let turn = &mut shared.fold;
-        if let Some(pending) = turn.pending.remove(&index)
-            && let Some(slot) = pending.open
-            && let Some(draft) = turn.drafts.get_mut(slot)
-        {
-            *draft = Draft::Closed;
-        }
-    }
-}
-
-impl Turn {
-    /// The fold of a stream relayed from another fold, which built its
-    /// events: it only collects them.
-    pub(crate) fn relayed(provider: impl Into<String>) -> Self {
-        Self::new(provider)
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.end_run(items)
     }
 
-    // The bus writer writes through these, holding the parts it opened by
-    // their slot.
-
-    pub(crate) fn open_text(&mut self) -> usize {
-        self.draft(Draft::Text {
-            part: None,
-            text: String::new(),
-            params: None,
-        })
-    }
-
-    pub(crate) fn write_text(&mut self, items: &mut Items, slot: usize, text: &str) {
-        self.push_text(items, slot, text);
-    }
-
-    pub(crate) fn end_text(&mut self, items: &mut Items, slot: usize) {
-        self.close_text(items, slot);
-    }
-
-    pub(crate) fn open_reasoning(&mut self) -> usize {
-        self.draft(Draft::Reasoning {
-            part: None,
-            text: String::new(),
-        })
-    }
-
-    pub(crate) fn write_reasoning(&mut self, items: &mut Items, slot: usize, text: &str) {
-        self.push_reasoning(items, slot, text);
-    }
-
-    pub(crate) fn end_reasoning(&mut self, items: &mut Items, slot: usize) {
-        self.close_reasoning(items, slot, Seal::default());
-    }
-
-    pub(crate) fn write_call(
-        &mut self,
-        items: &mut Items,
-        call: ToolCall,
-    ) -> Result<(), ProviderError> {
-        let ToolCall {
-            id,
-            function,
-            signature,
-            additional_params,
-        } = call;
-        let slot = self.open_call(id, function.name)?;
-        if let Some(Draft::Call {
-            arguments,
-            signature: open_signature,
-            additional_params: open_params,
-            ..
-        }) = self.drafts.get_mut(slot)
-        {
-            arguments.announced = Some(function.arguments);
-            *open_signature = signature;
-            *open_params = additional_params;
-        }
-        self.close_call(items, slot, IfMalformed::Fail)
+    /// A whole block of an already assembled response, at the next
+    /// position, its native kept as given.
+    #[cfg(any(test, feature = "test-utils"))]
+    pub(crate) fn content(&mut self, content: AssistantContent) -> Result<(), ProviderError> {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.write_content(items, content)
     }
 }
 
@@ -1364,19 +1364,12 @@ impl Turn {
 pub(crate) fn events_of(
     response: &CompletionResponse,
 ) -> Result<Vec<Item<StreamEvent>>, ProviderError> {
-    let shared = std::sync::Mutex::new(Shared::new(Turn::new(response.provider.clone())));
-    {
-        let mut out = Out::new(&shared);
-        for content in &response.choice {
-            out.content(content.clone())?;
-        }
+    let mut turn = Turn::new(response.origin.clone());
+    let mut items = Items::new();
+    for content in &response.choice {
+        turn.write_content(&mut items, content.clone())?;
     }
-    shared
-        .into_inner()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .items
-        .into_iter()
-        .collect()
+    items.into_iter().collect()
 }
 
 #[cfg(test)]

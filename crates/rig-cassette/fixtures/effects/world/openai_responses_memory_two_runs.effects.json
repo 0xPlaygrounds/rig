@@ -74,14 +74,14 @@
           "golden/memory": "memory",
           "golden/model:default": "completion"
         },
-        "policy": 13271140417887556277
+        "policy": 15897153413323427528
       },
       "golden/run#1": {
         "required": {
           "golden/memory": "memory",
           "golden/model:default": "completion"
         },
-        "policy": 13271140417887556277
+        "policy": 15897153413323427528
       }
     }
   },
@@ -134,7 +134,9 @@
           "temperature": 0.0,
           "max_tokens": null,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false
@@ -145,7 +147,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "Ready."
+              "text": "Ready.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Ready.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "d69d08f702e303b6"
+              }
             }
           ],
           "usage": {
@@ -156,12 +175,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
-          "response_id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
-          "provider_request_id": "req_45d8e4e342154bcc94b0eaa3e5794043",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8"
+          },
+          "provider_request_id": "req_2009f11997d44c46a5f8bf23d38e4e0f",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -172,7 +194,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
+            "id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
@@ -191,7 +213,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
+                "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -210,7 +232,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.0,
             "text": {
               "format": {
@@ -280,13 +302,37 @@
             },
             {
               "role": "assistant",
-              "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
               "content": [
                 {
                   "type": "text",
-                  "text": "Ready."
+                  "text": "Ready.",
+                  "native": {
+                    "item": {
+                      "content": [
+                        {
+                          "annotations": [],
+                          "logprobs": [],
+                          "text": "Ready.",
+                          "type": "output_text"
+                        }
+                      ],
+                      "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
+                      "role": "assistant",
+                      "status": "completed",
+                      "type": "message"
+                    },
+                    "fingerprint": "d69d08f702e303b6"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8"
+              },
+              "stop": "stop"
             }
           ]
         }
@@ -326,13 +372,37 @@
             },
             {
               "role": "assistant",
-              "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
               "content": [
                 {
                   "type": "text",
-                  "text": "Ready."
+                  "text": "Ready.",
+                  "native": {
+                    "item": {
+                      "content": [
+                        {
+                          "annotations": [],
+                          "logprobs": [],
+                          "text": "Ready.",
+                          "type": "output_text"
+                        }
+                      ],
+                      "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
+                      "role": "assistant",
+                      "status": "completed",
+                      "type": "message"
+                    },
+                    "fingerprint": "d69d08f702e303b6"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8"
+              },
+              "stop": "stop"
             }
           ]
         }
@@ -363,13 +433,37 @@
             },
             {
               "role": "assistant",
-              "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
               "content": [
                 {
                   "type": "text",
-                  "text": "Ready."
+                  "text": "Ready.",
+                  "native": {
+                    "item": {
+                      "content": [
+                        {
+                          "annotations": [],
+                          "logprobs": [],
+                          "text": "Ready.",
+                          "type": "output_text"
+                        }
+                      ],
+                      "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
+                      "role": "assistant",
+                      "status": "completed",
+                      "type": "message"
+                    },
+                    "fingerprint": "d69d08f702e303b6"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8"
+              },
+              "stop": "stop"
             },
             {
               "role": "user",
@@ -386,7 +480,9 @@
           "temperature": 0.0,
           "max_tokens": null,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false
@@ -397,7 +493,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "Again."
+              "text": "Again.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Again.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_08cbc9beb3793494016abf498e602887d0b62b7d89fdb374a2",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "ec5d868384d693f7"
+              }
             }
           ],
           "usage": {
@@ -408,12 +521,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_07847561cacc1464006ab395f362c087d08f31a313e40f5b58",
-          "response_id": "resp_07847561cacc1464006ab395f1a4a487d0ba746478ea05cc80",
-          "provider_request_id": "req_23e7d5f3c8c54fdc8b0329c42b42aa49",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_08cbc9beb3793494016abf498da0d887d090fe1ca5a6f5b55b"
+          },
+          "provider_request_id": "req_85bbf651e4d547e1bad9c12ec9e64984",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -424,7 +540,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_07847561cacc1464006ab395f1a4a487d0ba746478ea05cc80",
+            "id": "resp_08cbc9beb3793494016abf498da0d887d090fe1ca5a6f5b55b",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
@@ -443,7 +559,7 @@
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_07847561cacc1464006ab395f362c087d08f31a313e40f5b58",
+                "id": "msg_08cbc9beb3793494016abf498e602887d0b62b7d89fdb374a2",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -462,7 +578,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 0.0,
             "text": {
               "format": {
@@ -532,13 +648,37 @@
             },
             {
               "role": "assistant",
-              "id": "msg_07847561cacc1464006ab395f362c087d08f31a313e40f5b58",
               "content": [
                 {
                   "type": "text",
-                  "text": "Again."
+                  "text": "Again.",
+                  "native": {
+                    "item": {
+                      "content": [
+                        {
+                          "annotations": [],
+                          "logprobs": [],
+                          "text": "Again.",
+                          "type": "output_text"
+                        }
+                      ],
+                      "id": "msg_08cbc9beb3793494016abf498e602887d0b62b7d89fdb374a2",
+                      "role": "assistant",
+                      "status": "completed",
+                      "type": "message"
+                    },
+                    "fingerprint": "ec5d868384d693f7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_08cbc9beb3793494016abf498da0d887d090fe1ca5a6f5b55b"
+              },
+              "stop": "stop"
             }
           ]
         }

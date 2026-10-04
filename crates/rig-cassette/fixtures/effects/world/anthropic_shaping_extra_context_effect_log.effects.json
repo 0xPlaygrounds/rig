@@ -80,7 +80,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool from planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+              "native": {
+                "item": {
+                  "text": "A glarb-glarb is an ancient farming tool from planet Jiro.",
+                  "type": "text"
+                },
+                "fingerprint": "7d56c2b6aafe286e"
+              }
             }
           ],
           "usage": {
@@ -90,12 +97,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLce44r5uGfWjRDs4hYN",
-          "response_id": null,
-          "provider_request_id": "req_011CfLce3RQJyTheG3eUk6Y6",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfdxsdDuL4JESgMxK3MTe"
+          },
+          "provider_request_id": "req_011Cfdxscu4Zutrxf25SYVSH",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -104,7 +114,8 @@
                 "type": "text"
               }
             ],
-            "id": "msg_011CfLce44r5uGfWjRDs4hYN",
+            "diagnostics": null,
+            "id": "msg_011CfdxsdDuL4JESgMxK3MTe",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

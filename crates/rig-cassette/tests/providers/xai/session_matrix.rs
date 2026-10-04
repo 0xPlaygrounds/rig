@@ -7,7 +7,7 @@ use rig_test_support::cassette_models::OpenAiModels;
 use crate::history_survival::sessions::{self, Cell};
 
 fn params() -> Option<serde_json::Value> {
-    Some(serde_json::json!({}))
+    Some(serde_json::json!({ "store": false }))
 }
 
 const CELL: Cell = Cell {
@@ -51,7 +51,7 @@ async fn other_model() {
         sessions::run(first, other, CELL).await;
     })
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    sessions::assert_ported(CELL, SCENARIO);
 }
 
 /// The continuation is checkpointed, restored into a fresh world, and sent
@@ -67,7 +67,7 @@ async fn checkpoint_other_model() {
         },
     )
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    sessions::assert_ported(CELL, SCENARIO);
 }
 
 /// The agent's conversation memory carries the reasoning into a second

@@ -11,14 +11,12 @@ use rig_agent::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
 // ---------------------------------------------------------------------------
 
 fn simple_text_turn() -> MockTurn {
-    MockTurn::text("hello from mock")
-        .with_usage(Usage {
-            input_tokens: Some(10),
-            output_tokens: Some(5),
-            total_tokens: Some(15),
-            ..Default::default()
-        })
-        .with_message_id("msg_mock_1")
+    MockTurn::text("hello from mock").with_usage(Usage {
+        input_tokens: Some(10),
+        output_tokens: Some(5),
+        total_tokens: Some(15),
+        ..Default::default()
+    })
 }
 
 fn simple_text_model(turns: usize) -> MockCompletionModel {
@@ -27,22 +25,18 @@ fn simple_text_model(turns: usize) -> MockCompletionModel {
 
 fn tool_then_text_model() -> MockCompletionModel {
     MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3}))
-            .with_usage(Usage {
-                input_tokens: Some(15),
-                output_tokens: Some(8),
-                total_tokens: Some(23),
-                ..Default::default()
-            })
-            .with_message_id("msg_tool"),
-        MockTurn::text("The answer is 5")
-            .with_usage(Usage {
-                input_tokens: Some(20),
-                output_tokens: Some(4),
-                total_tokens: Some(24),
-                ..Default::default()
-            })
-            .with_message_id("msg_text"),
+        MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3})).with_usage(Usage {
+            input_tokens: Some(15),
+            output_tokens: Some(8),
+            total_tokens: Some(23),
+            ..Default::default()
+        }),
+        MockTurn::text("The answer is 5").with_usage(Usage {
+            input_tokens: Some(20),
+            output_tokens: Some(4),
+            total_tokens: Some(24),
+            ..Default::default()
+        }),
     ])
 }
 
@@ -96,7 +90,8 @@ async fn prompt_response_populates_messages() {
 
     // Second message: Assistant
     match &messages[1] {
-        Message::Assistant { content, .. } => match content.first() {
+        Message::Assistant(rig::message::AssistantMessage { content, .. }) => match content.first()
+        {
             Some(AssistantContent::Text(t)) => assert_eq!(t.text, "hello from mock"),
             other => panic!("expected text assistant content, got: {other:?}"),
         },
@@ -131,7 +126,7 @@ async fn extended_with_history_both_populated() {
 
     // Second message: Assistant
     match &response_messages[1] {
-        Message::Assistant { .. } => {}
+        Message::Assistant(_) => {}
         other => panic!("expected Assistant, got: {other:?}"),
     }
 }
@@ -186,7 +181,7 @@ async fn multi_turn_messages_include_tool_calls() {
 
     // [1] Assistant with tool call
     match &messages[1] {
-        Message::Assistant { content, .. } => {
+        Message::Assistant(rig::message::AssistantMessage { content, .. }) => {
             assert!(
                 matches!(content.first(), Some(AssistantContent::ToolCall(_))),
                 "expected tool call, got: {content:?}"
@@ -208,7 +203,8 @@ async fn multi_turn_messages_include_tool_calls() {
 
     // [3] Assistant with text
     match &messages[3] {
-        Message::Assistant { content, .. } => match content.first() {
+        Message::Assistant(rig::message::AssistantMessage { content, .. }) => match content.first()
+        {
             Some(AssistantContent::Text(t)) => assert_eq!(t.text, "The answer is 5"),
             other => panic!("expected text, got: {other:?}"),
         },
@@ -349,7 +345,8 @@ async fn chat_appends_prompt_and_assistant_to_history() {
     }
 
     match &history[1] {
-        Message::Assistant { content, .. } => match content.first() {
+        Message::Assistant(rig::message::AssistantMessage { content, .. }) => match content.first()
+        {
             Some(AssistantContent::Text(text)) => assert_eq!(text.text, "hello from mock"),
             other => panic!("expected text assistant content, got: {other:?}"),
         },
@@ -392,7 +389,7 @@ async fn chat_appends_tool_roundtrip_to_history() {
     assert!(matches!(&history[0], Message::User { .. }));
 
     match &history[1] {
-        Message::Assistant { content, .. } => assert!(
+        Message::Assistant(rig::message::AssistantMessage { content, .. }) => assert!(
             content
                 .iter()
                 .any(|content| matches!(content, AssistantContent::ToolCall(_))),
@@ -412,7 +409,8 @@ async fn chat_appends_tool_roundtrip_to_history() {
     }
 
     match &history[3] {
-        Message::Assistant { content, .. } => match content.first() {
+        Message::Assistant(rig::message::AssistantMessage { content, .. }) => match content.first()
+        {
             Some(AssistantContent::Text(text)) => assert_eq!(text.text, "The answer is 5"),
             other => panic!("expected final assistant text, got: {other:?}"),
         },

@@ -17,10 +17,6 @@ mod websocket_script;
 
 use rig_core::completion::CompletionRequest;
 use rig_core::completion::{AssistantContent, FinishReason};
-use rig_core::providers::openai::responses_api::{
-    CompletionResponse, IncompleteDetailsReason, Output, ResponseObject, ResponseStatus,
-    ResponsesUsage,
-};
 use serde_json::json;
 use std::time::Duration;
 use websocket_script::{Script, session, session_with_timeout, test_client};
@@ -28,46 +24,40 @@ use websocket_script::{Script, session, session_with_timeout, test_client};
 /// The terminal body every turn ends on unless a test needs another shape.
 /// The provider's own terminal response object, read back off `raw`: the
 /// session's `completion` folds it, and the document survives verbatim.
-fn raw_response(response: rig_core::completion::CompletionResponse) -> CompletionResponse {
-    serde_json::from_value(response.raw).expect("`raw` is the Responses document")
+fn raw_response(response: rig_core::completion::CompletionResponse) -> serde_json::Value {
+    response.raw
 }
 
-fn sample_response(status: ResponseStatus) -> CompletionResponse {
-    CompletionResponse {
-        id: "resp_123".to_string(),
-        object: ResponseObject::Response,
-        created_at: 0,
-        status,
-        error: None,
-        incomplete_details: None,
-        instructions: None,
-        max_output_tokens: None,
-        model: "gpt-5.4".to_string(),
-        usage: Some(ResponsesUsage {
-            input_tokens: 1,
-            input_tokens_details: None,
-            output_tokens: 2,
-            output_tokens_details: Some(
-                rig_core::providers::openai::responses_api::OutputTokensDetails {
-                    reasoning_tokens: 0,
-                },
-            ),
-            total_tokens: 3,
-        }),
-        output: Vec::new(),
-        tools: Vec::new(),
-        additional_parameters: Default::default(),
-        provider_reasoning: None,
-        reasoning_metadata: None,
-        reasoning_context: None,
-    }
+fn sample_response(status: &str) -> serde_json::Value {
+    json!({
+        "id": "resp_123",
+        "object": "response",
+        "created_at": 0,
+        "status": status,
+        "model": "gpt-5.4",
+        "usage": {
+            "input_tokens": 1,
+            "output_tokens": 2,
+            "output_tokens_details": { "reasoning_tokens": 0 },
+            "total_tokens": 3
+        },
+        "output": [],
+        "tools": []
+    })
 }
 
-fn response_event(kind: &str, response: CompletionResponse, sequence: u64) -> String {
+/// [`sample_response`] under `id`.
+fn response_with(id: &str, status: &str) -> serde_json::Value {
+    let mut response = sample_response(status);
+    response["id"] = json!(id);
+    response
+}
+
+fn response_event(kind: &str, response: serde_json::Value, sequence: u64) -> String {
     json!({
         "type": kind,
         "sequence_number": sequence,
-        "response": serde_json::to_value(response).expect("response should serialize"),
+        "response": response,
     })
     .to_string()
 }
@@ -85,15 +75,14 @@ fn text_delta(item_id: &str, delta: &str, sequence: u64) -> String {
     .to_string()
 }
 
-fn message_output(id: &str, status: &str, text: &str) -> Output {
-    serde_json::from_value(json!({
+fn message_output(id: &str, status: &str, text: &str) -> serde_json::Value {
+    json!({
         "type": "message",
         "id": id,
         "status": status,
         "role": "assistant",
         "content": [{ "type": "output_text", "annotations": [], "text": text }]
-    }))
-    .expect("output message should deserialize")
+    })
 }
 
 /// Every session entry point writes a `response.create`; assert the script saw
@@ -110,10 +99,8 @@ async fn incomplete_turn_keeps_streamed_partial_output() {
     // The content exists ONLY in the delta events; the terminal
     // `response.incomplete` body has an empty `output`, which is a sequence the
     // wire protocol permits.
-    let mut response = sample_response(ResponseStatus::Incomplete);
-    response.incomplete_details = Some(IncompleteDetailsReason {
-        reason: "max_output_tokens".to_string(),
-    });
+    let mut response = sample_response("incomplete");
+    response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
     let script = Script::turn([
         text_delta("msg_incomplete_1", "partial", 1),
         response_event("response.incomplete", response, 2),
@@ -157,11 +144,7 @@ async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
         })
         .to_string(),
         text_delta("msg_1", "world", 3),
-        response_event(
-            "response.completed",
-            sample_response(ResponseStatus::Completed),
-            4,
-        ),
+        response_event("response.completed", sample_response("completed"), 4),
     ]);
 
     let client = test_client();
@@ -198,8 +181,8 @@ async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
 async fn completed_turn_without_deltas_falls_back_to_terminal_body() {
     // No delta events at all: the terminal body carries the full output, so
     // normalization must fall back to it.
-    let mut response = sample_response(ResponseStatus::Completed);
-    response.output = vec![message_output("msg_terminal_1", "completed", "hello there")];
+    let mut response = sample_response("completed");
+    response["output"] = json!([message_output("msg_terminal_1", "completed", "hello there")]);
     let script = Script::turn([response_event("response.completed", response, 1)]);
 
     let client = test_client();
@@ -215,7 +198,12 @@ async fn completed_turn_without_deltas_falls_back_to_terminal_body() {
         normalized.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "hello there"
     ));
-    assert_eq!(normalized.message_id.as_deref(), Some("msg_terminal_1"));
+    assert_eq!(
+        normalized.choice[0]
+            .native_item()
+            .and_then(|item| item["id"].as_str()),
+        Some("msg_terminal_1")
+    );
 }
 
 #[tokio::test]
@@ -223,15 +211,13 @@ async fn incomplete_turn_without_deltas_normalizes_terminal_body_output() {
     // No delta events at all AND an incomplete terminal whose body carries the
     // partial output: the body must be normalized rather than the turn reading
     // as empty.
-    let mut response = sample_response(ResponseStatus::Incomplete);
-    response.incomplete_details = Some(IncompleteDetailsReason {
-        reason: "max_output_tokens".to_string(),
-    });
-    response.output = vec![message_output(
+    let mut response = sample_response("incomplete");
+    response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
+    response["output"] = json!([message_output(
         "msg_body_only_1",
         "incomplete",
         "partial from body",
-    )];
+    )]);
     let script = Script::turn([response_event("response.incomplete", response, 1)]);
 
     let client = test_client();
@@ -247,12 +233,17 @@ async fn incomplete_turn_without_deltas_normalizes_terminal_body_output() {
         Some(AssistantContent::Text(text)) if text.text == "partial from body"
     ));
     assert_eq!(normalized.finish_reason(), Some(FinishReason::Length));
-    assert_eq!(normalized.message_id.as_deref(), Some("msg_body_only_1"));
+    assert_eq!(
+        normalized.choice[0]
+            .native_item()
+            .and_then(|item| item["id"].as_str()),
+        Some("msg_body_only_1")
+    );
 }
 
 #[tokio::test]
-async fn malformed_known_event_rejects_reuse_and_allows_close() {
-    let script = Script::turn([json!({ "type": "response.completed" }).to_string()]);
+async fn malformed_frame_rejects_reuse_and_allows_close() {
+    let script = Script::turn(["{not json".to_string()]);
 
     let client = test_client();
     let mut session = session(&client, &script);
@@ -265,10 +256,10 @@ async fn malformed_known_event_rejects_reuse_and_allows_close() {
     let error = session
         .next_event()
         .await
-        .expect_err("malformed known event should fail");
+        .expect_err("a frame that is not JSON should fail");
     assert!(
-        error.to_string().contains("StreamingCompletionChunk"),
-        "expected strict decode failure, got {error}"
+        matches!(error, rig_core::error::ProviderError::Json(_)),
+        "expected a JSON error, got {error}"
     );
 
     let closed = session
@@ -331,10 +322,7 @@ async fn event_timeout_rejects_reuse_and_allows_close() {
 /// One completed turn: the terminal `response.completed`, then the trailing
 /// `response.done` OpenAI may emit after it.
 fn completed_turn_with_late_done(response_id: &str, sequence: u64) -> Vec<String> {
-    let response = CompletionResponse {
-        id: response_id.to_string(),
-        ..sample_response(ResponseStatus::Completed)
-    };
+    let response = response_with(response_id, "completed");
     vec![
         response_event("response.completed", response, sequence),
         json!({
@@ -361,7 +349,7 @@ async fn late_response_done_is_ignored_on_next_turn() {
             .await
             .expect("first response should complete"),
     );
-    assert_eq!(first.id, "resp_1");
+    assert_eq!(first["id"], "resp_1");
     assert_eq!(session.previous_response_id(), Some("resp_1"));
 
     let second = raw_response(
@@ -370,7 +358,7 @@ async fn late_response_done_is_ignored_on_next_turn() {
             .await
             .expect("second response should complete"),
     );
-    assert_eq!(second.id, "resp_2");
+    assert_eq!(second["id"], "resp_2");
     assert_eq!(session.previous_response_id(), Some("resp_2"));
 }
 
@@ -390,7 +378,7 @@ async fn clearing_previous_response_id_does_not_disable_late_done_filter() {
             .await
             .expect("first response should complete"),
     );
-    assert_eq!(first.id, "resp_1");
+    assert_eq!(first["id"], "resp_1");
 
     session.clear_previous_response_id();
     assert_eq!(session.previous_response_id(), None);
@@ -401,16 +389,12 @@ async fn clearing_previous_response_id_does_not_disable_late_done_filter() {
             .await
             .expect("second response should complete"),
     );
-    assert_eq!(second.id, "resp_2");
+    assert_eq!(second["id"], "resp_2");
 }
 
 #[tokio::test]
 async fn failed_turn_keeps_late_done_out_of_next_request() {
-    let failed = CompletionResponse {
-        id: "resp_failed".to_string(),
-        status: ResponseStatus::Failed,
-        ..sample_response(ResponseStatus::Completed)
-    };
+    let failed = response_with("resp_failed", "failed");
     let script = Script::turns([
         vec![
             response_event("response.failed", failed, 1),
@@ -439,7 +423,7 @@ async fn failed_turn_keeps_late_done_out_of_next_request() {
             .await
             .expect("second response should complete"),
     );
-    assert_eq!(second.id, "resp_2");
+    assert_eq!(second["id"], "resp_2");
 }
 
 /// A `response.done`-only turn (no `response.completed` before it) still ends
@@ -450,11 +434,7 @@ async fn done_first_completed_turn_updates_previous_response_id() {
         vec![
             json!({
                 "type": "response.done",
-                "response": serde_json::to_value(CompletionResponse {
-                    id: response_id.to_string(),
-                    ..sample_response(ResponseStatus::Completed)
-                })
-                .expect("response should serialize"),
+                "response": response_with(response_id, "completed"),
             })
             .to_string(),
         ]
@@ -470,7 +450,7 @@ async fn done_first_completed_turn_updates_previous_response_id() {
             .await
             .expect("first response should complete"),
     );
-    assert_eq!(first.id, "resp_1");
+    assert_eq!(first["id"], "resp_1");
     assert_eq!(session.previous_response_id(), Some("resp_1"));
 
     let second = raw_response(
@@ -479,7 +459,7 @@ async fn done_first_completed_turn_updates_previous_response_id() {
             .await
             .expect("second response should complete"),
     );
-    assert_eq!(second.id, "resp_2");
+    assert_eq!(second["id"], "resp_2");
     assert_eq!(session.previous_response_id(), Some("resp_2"));
 
     // The chain is visible on the wire, not just in the session's state.
@@ -494,27 +474,19 @@ async fn done_first_completed_turn_updates_previous_response_id() {
 
 #[tokio::test]
 async fn done_first_failed_turn_does_not_chain_next_request() {
-    let failed = CompletionResponse {
-        id: "resp_failed".to_string(),
-        status: ResponseStatus::Failed,
-        ..sample_response(ResponseStatus::Completed)
-    };
+    let failed = response_with("resp_failed", "failed");
     let script = Script::turns([
         vec![
             json!({
                 "type": "response.done",
-                "response": serde_json::to_value(failed).expect("response should serialize"),
+                "response": failed,
             })
             .to_string(),
         ],
         vec![
             json!({
                 "type": "response.done",
-                "response": serde_json::to_value(CompletionResponse {
-                    id: "resp_2".to_string(),
-                    ..sample_response(ResponseStatus::Completed)
-                })
-                .expect("response should serialize"),
+                "response": response_with("resp_2", "completed"),
             })
             .to_string(),
         ],
@@ -536,7 +508,7 @@ async fn done_first_failed_turn_does_not_chain_next_request() {
             .await
             .expect("second response should complete"),
     );
-    assert_eq!(second.id, "resp_2");
+    assert_eq!(second["id"], "resp_2");
     assert_eq!(session.previous_response_id(), Some("resp_2"));
 
     // A failed turn must not chain: the retry starts a fresh conversation.
@@ -620,21 +592,15 @@ async fn next_event_without_send_returns_error() {
 
 #[tokio::test]
 async fn unknown_event_is_skipped_and_reasoning_metadata_is_preserved() {
-    let mut response = sample_response(ResponseStatus::Completed);
-    response.id = "resp_after_unknown".to_string();
+    let mut response = sample_response("completed");
+    response["id"] = json!("resp_after_unknown");
     let metadata = json!({
         "context": "all_turns",
         "effort": "ultra",
         "summary": null,
         "future_control": true
     });
-    response.reasoning_metadata = Some(
-        metadata
-            .as_object()
-            .expect("reasoning metadata should be an object")
-            .clone(),
-    );
-    response.reasoning_context = Some("all_turns".to_string());
+    response["reasoning"] = metadata.clone();
 
     let script = Script::turn([
         json!({ "type": "response.some_future_event", "data": "should be skipped" }).to_string(),
@@ -650,9 +616,8 @@ async fn unknown_event_is_skipped_and_reasoning_metadata_is_preserved() {
             .await
             .expect("response should complete despite unknown event"),
     );
-    assert_eq!(response.id, "resp_after_unknown");
-    assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
-    assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
+    assert_eq!(response["id"], "resp_after_unknown");
+    assert_eq!(response["reasoning"], metadata);
 }
 
 /// Re-wraps SSE conformance fixture frames as websocket text payloads: the wire
@@ -752,11 +717,7 @@ async fn reasoning_text_delta_arrives_over_websocket() {
         })
         .to_string(),
         text_delta("msg_1", "answer", 2),
-        response_event(
-            "response.completed",
-            sample_response(ResponseStatus::Completed),
-            3,
-        ),
+        response_event("response.completed", sample_response("completed"), 3),
     ]);
 
     let client = test_client();
@@ -770,12 +731,7 @@ async fn reasoning_text_delta_arrives_over_websocket() {
     assert!(
         normalized.choice.iter().any(|content| matches!(
             content,
-            AssistantContent::Reasoning(reasoning)
-                if reasoning.open(reasoning.issuer()).is_some_and(|reasoning| reasoning.content.iter().any(|block| matches!(
-                    block,
-                    rig_core::message::ReasoningContent::Text { text, .. }
-                        if text.contains("thinking hard")
-                )))
+            AssistantContent::Reasoning(reasoning) if reasoning.text.contains("thinking hard")
         )),
         "reasoning delta should survive over websocket, got {:?}",
         normalized.choice
@@ -813,18 +769,6 @@ async fn an_empty_turn_is_rejected_before_anything_is_sent() {
             with(json!({"role": "assistant", "id": null, "content": []})),
             "assistant message at index 0 has no content",
         ),
-        (
-            with(json!({
-                "role": "user",
-                "content": [{
-                    "type": "toolresult",
-                    "call": {"provider": {"call_id": "call_1"}},
-                    "name": "lookup",
-                    "content": [],
-                }],
-            })),
-            "tool result for `lookup` at index 0",
-        ),
     ];
 
     let client = test_client();
@@ -849,4 +793,51 @@ async fn an_empty_turn_is_rejected_before_anything_is_sent() {
         .await
         .expect("the session still sends");
     assert_eq!(script.sent().len(), 1);
+}
+
+/// The session shapes its history for the model the way the driver does: a
+/// turn another model produced replays from its canonical fields, and a turn
+/// that failed is not sent at all.
+#[tokio::test]
+async fn the_session_shapes_history_for_its_model() {
+    use rig_core::message::{AssistantMessage, Message, Origin, Reasoning, StopReason, Text};
+    let foreign = Message::Assistant(AssistantMessage {
+        content: vec![
+            AssistantContent::Reasoning(Reasoning::new("Thinking."))
+                .with_native(json!({"type": "thinking", "signature": "sig"})),
+            AssistantContent::Text(Text::new("Answer.")),
+        ],
+        origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
+        stop: Some(StopReason::Stop),
+    });
+    let failed = Message::Assistant(AssistantMessage {
+        content: vec![AssistantContent::Text(Text::new("cut short"))],
+        origin: Some(Origin::new("openai.responses", "openai", "gpt-5.4")),
+        stop: Some(StopReason::Error("boom".to_owned())),
+    });
+    let request = CompletionRequest::new("next").messages([
+        Message::user("first"),
+        foreign,
+        Message::user("again"),
+        failed,
+    ]);
+
+    let client = test_client();
+    let script = Script::turns(Vec::<Vec<String>>::new());
+    let mut session = session(&client, &script);
+    session.send(request).await.expect("the turn is sent");
+
+    let sent: serde_json::Value =
+        serde_json::from_str(&script.sent()[0]).expect("the payload is JSON");
+    let assistant: Vec<&serde_json::Value> = sent["input"]
+        .as_array()
+        .expect("input is an array")
+        .iter()
+        .filter(|item| item["role"] == "assistant")
+        .collect();
+    let texts: Vec<&str> = assistant
+        .iter()
+        .filter_map(|item| item["content"][0]["text"].as_str())
+        .collect();
+    assert_eq!(texts, ["Thinking.", "Answer."], "{sent}");
 }

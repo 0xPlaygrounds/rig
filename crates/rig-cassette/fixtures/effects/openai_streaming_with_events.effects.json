@@ -163,10 +163,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                  "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
-                }
+                "provider": "call_oGgQAeg7HiDegO9MUuOvJexg"
               },
               "function": {
                 "name": "subtract",
@@ -175,8 +172,17 @@
                   "y": 5
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":2,\"y\":5}",
+                  "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                  "id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
+                  "name": "subtract",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "5dd17383bb6f729f"
+              }
             }
           ],
           "usage": {
@@ -187,53 +193,86 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455"
+          },
           "provider_request_id": "req_86e2b3d19c0e4103b70c474cdbf6328b",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
-            "id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455",
             "incomplete_details": null,
             "instructions": "You are a calculator. Use the provided tools before answering arithmetic questions.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
-            "reasoning": {
-              "context": null,
-              "effort": null,
-              "summary": null
-            },
-            "usage": {
-              "input_tokens": 120,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 138
-            },
+            "moderation": null,
+            "object": "response",
             "output": [
               {
-                "id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
                 "arguments": "{\"x\":2,\"y\":5}",
                 "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                "id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
                 "name": "subtract",
                 "status": "completed",
                 "type": "function_call"
               }
             ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -252,12 +291,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Subtract y from x (i.e.: x - y)",
                 "name": "subtract",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -276,22 +315,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Subtract y from x (i.e.: x - y)",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 120,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 18,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 138
+            },
+            "user": null
           }
         }
       },
@@ -320,10 +362,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                  "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
-                }
+                "provider": "call_oGgQAeg7HiDegO9MUuOvJexg"
               },
               "function": {
                 "name": "subtract",
@@ -332,12 +371,26 @@
                   "y": 5
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"x\":2,\"y\":5}",
+                  "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                  "id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
+                  "name": "subtract",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "5dd17383bb6f729f"
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      }
     },
     {
       "tool_output": {},
@@ -387,15 +440,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                      "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
-                    }
+                    "provider": "call_oGgQAeg7HiDegO9MUuOvJexg"
                   },
                   "function": {
                     "name": "subtract",
@@ -404,10 +453,27 @@
                       "y": 5
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"x\":2,\"y\":5}",
+                      "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
+                      "id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3",
+                      "name": "subtract",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "5dd17383bb6f729f"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_02396dbad274c2d0006ab396a4756887d0baafdcc641fe3455"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -415,10 +481,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_oGgQAeg7HiDegO9MUuOvJexg",
-                      "item_id": "fc_02396dbad274c2d0006ab396a50e9c87d0a86ddfc4cd2734e3"
-                    }
+                    "provider": "call_oGgQAeg7HiDegO9MUuOvJexg"
                   },
                   "name": "subtract",
                   "content": [
@@ -490,7 +553,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "The result of \\(2 - 5\\) is \\(-3\\)."
+              "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "4716af56a76dd426"
+              }
             }
           ],
           "usage": {
@@ -501,59 +581,92 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-          "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2"
+          },
           "provider_request_id": "req_3d19b4030b74421d8625892d31d8160c",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
-            "id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_02396dbad274c2d0006ab396a5998487d0b2cad08d761444c2",
             "incomplete_details": null,
             "instructions": "You are a calculator. Use the provided tools before answering arithmetic questions.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
-            "usage": {
-              "input_tokens": 147,
-              "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
               },
-              "output_tokens": 18,
-              "output_tokens_details": {
-                "reasoning_tokens": 0
-              },
-              "total_tokens": 165
+              "verbosity": "medium"
             },
-            "output": [
-              {
-                "id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The result of \\(2 - 5\\) is \\(-3\\).",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
               }
-            ],
+            },
             "tools": [
               {
-                "type": "function",
+                "description": "Add x and y together",
                 "name": "add",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -572,12 +685,12 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Add x and y together",
-                "output_schema": null
+                "type": "function"
               },
               {
-                "type": "function",
+                "description": "Subtract y from x (i.e.: x - y)",
                 "name": "subtract",
+                "output_schema": null,
                 "parameters": {
                   "properties": {
                     "x": {
@@ -596,22 +709,25 @@
                   "type": "object"
                 },
                 "strict": false,
-                "description": "Subtract y from x (i.e.: x - y)",
-                "output_schema": null
+                "type": "function"
               }
             ],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
+            "top_logprobs": 0,
             "top_p": 1.0,
             "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "usage": {
+              "input_tokens": 147,
+              "input_tokens_details": {
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
+              },
+              "output_tokens": 18,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 165
+            },
+            "user": null
           }
         }
       },
@@ -759,11 +875,33 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The result of \\(2 - 5\\) is \\(-3\\)."
+              "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The result of \\(2 - 5\\) is \\(-3\\).",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_02396dbad274c2d0006ab396a6606087d09f88f5935db0edbf",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "4716af56a76dd426"
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      }
     }
   ]
 }

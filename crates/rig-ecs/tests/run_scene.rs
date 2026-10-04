@@ -197,11 +197,12 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
             .iter()
             .find_map(|part| match part {
                 rig_core::message::AssistantContent::ToolCall(call) => {
-                    Some(call.function.arguments.to_string())
+                    Some(call.function.arguments_value().to_string())
                 }
                 rig_core::message::AssistantContent::Text(_)
                 | rig_core::message::AssistantContent::Reasoning(_)
-                | rig_core::message::AssistantContent::Image(_) => None,
+                | rig_core::message::AssistantContent::Image(_)
+                | rig_core::message::AssistantContent::Opaque(_) => None,
             })
             .expect("the output tool's call"),
         other => panic!("a completion: {other:?}"),
@@ -591,7 +592,7 @@ fn malformed_run_graph_is_rejected_before_spawning() {
                 bad = unread.clone();
                 let run = entities_with::<Run>(&bad)[0];
                 let prompt = bad.entities[run]
-                    .remove(type_name::<rig_ecs::agent::Prompt>())
+                    .shift_remove(type_name::<rig_ecs::agent::Prompt>())
                     .expect("the run's prompt is not yet read");
                 let owner = entities_with::<Owner>(&bad)[0];
                 bad.entities[owner]

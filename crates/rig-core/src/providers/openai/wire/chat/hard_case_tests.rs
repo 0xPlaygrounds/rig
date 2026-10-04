@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::completion::{CompletionResponse, FinishReason};
-use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall};
+use crate::message::{AssistantContent, CallId, Reasoning, ToolCall};
 use crate::providers::openai::wire::{Dialect, LLAMACPP, OPENAI, OPENROUTER, OpenAIConfig};
 use crate::streaming::{Item, PartKind, StreamEvent};
 use crate::test_utils::MockStreamingClient;
@@ -93,7 +93,7 @@ fn calls(response: &CompletionResponse) -> Vec<&ToolCall> {
 }
 
 fn provider_id(call: &ToolCall) -> Option<&str> {
-    call.id.provider().map(|provider| provider.call_id.as_str())
+    call.id.provider().map(|provider| provider.as_str())
 }
 
 #[tokio::test]
@@ -115,7 +115,7 @@ async fn a_late_id_and_a_late_name_still_open_the_call() {
     };
     assert_eq!(provider_id(call), Some("call_late"));
     assert_eq!(call.function.name, "add");
-    assert_eq!(call.function.arguments, json!({"a": 1, "b": 2}));
+    assert_eq!(call.function.arguments_value(), json!({"a": 1, "b": 2}));
 }
 
 #[tokio::test]
@@ -136,8 +136,8 @@ async fn id_less_calls_get_distinct_rig_issued_ids() {
     };
     assert!(first.id.is_local() && second.id.is_local());
     assert_ne!(first.id, second.id, "each id-less call has its own id");
-    assert_eq!(first.function.arguments, json!({"a": 1}));
-    assert_eq!(second.function.arguments, json!({"a": 2}));
+    assert_eq!(first.function.arguments_value(), json!({"a": 1}));
+    assert_eq!(second.function.arguments_value(), json!({"a": 2}));
 }
 
 #[tokio::test]
@@ -174,7 +174,7 @@ async fn interleaved_indices_assemble_their_own_arguments() {
     let response = response.expect("the reply folds");
     let assembled: Vec<_> = calls(&response)
         .into_iter()
-        .map(|call| (provider_id(call), call.function.arguments.clone()))
+        .map(|call| (provider_id(call), call.function.arguments_value()))
         .collect();
     assert_eq!(
         assembled,
@@ -201,7 +201,7 @@ async fn a_whole_call_in_one_chunk_folds_on_llamacpp() {
         panic!("one call: {:?}", response.choice);
     };
     assert_eq!(provider_id(call), Some("call_whole"));
-    assert_eq!(call.function.arguments, json!({"a": 1, "b": 2}));
+    assert_eq!(call.function.arguments_value(), json!({"a": 1, "b": 2}));
 }
 
 #[tokio::test]
@@ -223,11 +223,11 @@ async fn null_placeholders_are_no_fragments() {
     let [call] = calls(&response)[..] else {
         panic!("one call: {:?}", response.choice);
     };
-    assert_eq!(call.function.arguments, json!({"a": 1}));
+    assert_eq!(call.function.arguments_value(), json!({"a": 1}));
 }
 
 #[tokio::test]
-async fn a_length_cut_inside_a_call_drops_only_that_call() {
+async fn a_length_cut_inside_a_call_keeps_what_it_states() {
     let (_, response) = stream(
         &OPENAI,
         &[
@@ -246,8 +246,16 @@ async fn a_length_cut_inside_a_call_drops_only_that_call() {
     .await;
     let response = response.expect("the reply folds");
     let ids: Vec<_> = calls(&response).into_iter().map(provider_id).collect();
-    assert_eq!(ids, [Some("call_whole")]);
-    assert!(response.choice.contains(&AssistantContent::text("noting")));
+    assert_eq!(ids, [Some("call_whole"), Some("call_cut")]);
+    let cut = calls(&response)[1].function.clone();
+    assert_eq!(cut.arguments_value(), json!({"note": "The"}));
+    assert_eq!(cut.invalid_arguments.as_deref(), Some(r#"{"note":"The"#));
+    assert!(
+        response
+            .choice
+            .iter()
+            .any(|block| block.canonical() == AssistantContent::text("noting"))
+    );
     assert_eq!(response.finish_reason(), Some(FinishReason::Length));
 }
 
@@ -256,10 +264,19 @@ fn reasoning_of(response: &CompletionResponse) -> Vec<Reasoning> {
         .choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(sealed) => sealed.open(sealed.issuer()).cloned(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
             _ => None,
         })
         .collect()
+}
+
+/// The `reasoning_details` a reasoning block holds in its provider item.
+fn details_of(reasoning: &Reasoning) -> Value {
+    reasoning
+        .native
+        .as_ref()
+        .map(|native| native.item["reasoning_details"].clone())
+        .unwrap_or_default()
 }
 
 fn signature(detail: &str) -> String {
@@ -274,8 +291,11 @@ fn signature(detail: &str) -> String {
     )
 }
 
+/// A message's reasoning is one block, as pi keeps it, so a signature that
+/// arrives after the answer joins the reasoning before it, and the message
+/// sent back holds the reasoning and the signature as one message did.
 #[tokio::test]
-async fn a_late_signature_signs_the_reasoning_text_interleaved() {
+async fn a_late_signature_joins_the_reasoning_before_the_answer() {
     let (_, response) = stream(
         &OPENROUTER,
         &[
@@ -288,22 +308,70 @@ async fn a_late_signature_signs_the_reasoning_text_interleaved() {
     )
     .await;
     let response = response.expect("the reply folds");
-    let reasoning = reasoning_of(&response);
-    let [only] = &reasoning[..] else {
-        panic!("one reasoning part: {:?}", response.choice);
+    let [
+        AssistantContent::Reasoning(first),
+        AssistantContent::Text(answer),
+    ] = response.choice.as_slice()
+    else {
+        panic!("the reasoning and the answer: {:?}", response.choice);
     };
-    assert_eq!(
-        only.content,
-        [ReasoningContent::Text {
-            text: "thinking".to_owned(),
-            signature: Some("sig-late".to_owned()),
-        }]
-    );
-    assert!(response.choice.contains(&AssistantContent::text("answer")));
+    assert_eq!(first.text, "thinking");
+    assert_eq!(answer.text, "answer");
+    let signed =
+        json!([{"type": "reasoning.text", "text": "", "signature": "sig-late", "index": 0}]);
+    assert_eq!(details_of(first), signed);
+    let turn = crate::message::AssistantMessage {
+        content: response.choice.clone(),
+        ..response.head()
+    };
+    let sent = super::tests::replayed(&wire(&OPENROUTER), turn);
+    assert_eq!(sent["reasoning"], "thinking");
+    assert_eq!(sent["reasoning_details"], signed);
 }
 
+/// Reasoning that arrives after the answer is still the turn's first block,
+/// while the events it streams keep their arrival order.
 #[tokio::test]
-async fn a_second_signature_is_a_part_of_its_own() {
+async fn late_reasoning_is_stored_first_and_streamed_in_arrival_order() {
+    let (items, response) = stream(
+        &OPENROUTER,
+        &[
+            text("answer"),
+            chunk(json!({"reasoning": "late"}), None),
+            finish("stop"),
+            DONE.to_owned(),
+        ],
+    )
+    .await;
+    let response = response.expect("the reply folds");
+    assert_eq!(
+        response
+            .choice
+            .iter()
+            .map(AssistantContent::canonical)
+            .collect::<Vec<_>>(),
+        [
+            AssistantContent::reasoning("late"),
+            AssistantContent::text("answer")
+        ]
+    );
+    let starts: Vec<&PartKind> = items
+        .iter()
+        .filter_map(|item| match item {
+            Ok(Item::Event(StreamEvent::Start { kind, .. })) => Some(kind),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        matches!(starts.as_slice(), [PartKind::Text, PartKind::Reasoning]),
+        "{starts:?}"
+    );
+}
+
+/// pi's merge: a second signature for the same detail fills nothing, as the
+/// first already signed it.
+#[tokio::test]
+async fn a_second_signature_for_one_detail_keeps_the_first() {
     let (_, response) = stream(
         &OPENROUTER,
         &[
@@ -317,27 +385,19 @@ async fn a_second_signature_is_a_part_of_its_own() {
     )
     .await;
     let response = response.expect("the reply folds");
-    let signatures: Vec<_> = reasoning_of(&response)
-        .into_iter()
-        .flat_map(|reasoning| reasoning.content)
-        .map(|content| match content {
-            ReasoningContent::Text { text, signature } => (text, signature),
-            other => panic!("text reasoning only: {other:?}"),
-        })
-        .collect();
+    let reasoning = reasoning_of(&response);
+    let [only] = &reasoning[..] else {
+        panic!("one reasoning part: {:?}", response.choice);
+    };
     assert_eq!(
-        signatures,
-        [
-            ("thinking".to_owned(), Some("sig-1".to_owned())),
-            (String::new(), Some("sig-2".to_owned())),
-        ],
-        "the first signature closes the text it signs; the second stands alone"
+        details_of(only),
+        json!([{"type": "reasoning.text", "text": "", "signature": "sig-1", "index": 0}])
     );
 }
 
 #[tokio::test]
-async fn a_provider_id_sent_twice_is_a_duplicate_call_id() {
-    let (items, response) = stream(
+async fn a_provider_id_sent_twice_is_renamed() {
+    let (_, response) = stream(
         &OPENAI,
         &[
             call(0, Some("call_same"), Some("add"), Some(r#"{"a":1}"#)),
@@ -347,22 +407,13 @@ async fn a_provider_id_sent_twice_is_a_duplicate_call_id() {
         ],
     )
     .await;
-    assert!(
-        matches!(
-            items.last(),
-            Some(Err(ProviderError::DuplicateCallId(id)))
-                if id.provider().is_some_and(|id| id.call_id == "call_same")
-        ),
-        "the duplicate is the stream's last item: {items:?}"
-    );
-    assert!(
-        matches!(
-            &response,
-            Err(ProviderError::DuplicateCallId(id))
-                if id.provider().is_some_and(|id| id.call_id == "call_same")
-        ),
-        "finish returns the error the stream yielded: {response:?}"
-    );
+    let response = response.expect("a duplicate id does not fail the reply");
+    let ids: Vec<&CallId> = response.tool_calls().map(|call| &call.id).collect();
+    let [first, second] = ids.as_slice() else {
+        panic!("both calls are kept: {ids:?}");
+    };
+    assert_eq!(**first, CallId::from_wire("call_same"));
+    assert!(matches!(second, CallId::Local(_)), "{second:?}");
 }
 
 /// Text streams as it arrives while a call waits in the buffer for its id:
@@ -417,4 +468,68 @@ async fn text_is_not_delayed_by_a_buffered_call() {
         texts.iter().all(|(at, _)| *at < call_start),
         "both fragments stream before the call surfaces: {events:?}"
     );
+}
+
+/// Answer text after the finish chunk joins the text before it: the text
+/// stays open until the stream ends, so the turn holds one text block, as
+/// the whole reply does.
+#[tokio::test]
+async fn text_after_the_finish_chunk_joins_the_open_text() {
+    let (_, response) = stream(
+        &OPENAI,
+        &[
+            chunk(json!({"role": "assistant", "content": "Hel"}), Some("stop")),
+            text("lo"),
+            DONE.to_owned(),
+        ],
+    )
+    .await;
+    let response = response.expect("the reply folds");
+    assert_eq!(
+        response
+            .choice
+            .iter()
+            .map(AssistantContent::canonical)
+            .collect::<Vec<_>>(),
+        [AssistantContent::text("Hello")]
+    );
+}
+
+/// A reasoning detail after the finish chunk joins the reasoning before
+/// it, so the turn holds one reasoning block with its detail, as the whole
+/// reply does.
+#[tokio::test]
+async fn a_reasoning_detail_after_the_finish_chunk_joins_the_open_reasoning() {
+    let detail = json!({"type": "reasoning.encrypted", "id": "call_1", "data": "SIG",
+        "format": "google-gemini-v1", "index": 0});
+    let (_, response) = stream(
+        &OPENROUTER,
+        &[
+            chunk(
+                json!({"role": "assistant", "reasoning": "plan", "content": null}),
+                None,
+            ),
+            chunk(
+                json!({"tool_calls": [{"index": 0, "id": "call_1", "type": "function",
+                    "function": {"name": "f", "arguments": "{}"}}]}),
+                Some("tool_calls"),
+            ),
+            chunk(json!({"reasoning_details": [detail.clone()]}), None),
+            DONE.to_owned(),
+        ],
+    )
+    .await;
+    let response = response.expect("the reply folds");
+    let kinds: Vec<&str> = response
+        .choice
+        .iter()
+        .map(|block| match block {
+            AssistantContent::Reasoning(_) => "reasoning",
+            AssistantContent::ToolCall(_) => "call",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["reasoning", "call"], "{:?}", response.choice);
+    let reasoning = reasoning_of(&response);
+    assert_eq!(details_of(&reasoning[0]), json!([detail]));
 }

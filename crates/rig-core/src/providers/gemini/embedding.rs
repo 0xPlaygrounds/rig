@@ -177,5 +177,13 @@ pub mod gemini_api_types {
     }
 }
 
+impl super::GeminiConfig {
+    /// The `batchEmbedContents` embedding wire. `ndims` defaults from the
+    /// model identifier.
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+        Embeddings::new(self.clone(), model, ndims)
+    }
+}
+
 #[cfg(test)]
 mod tests;

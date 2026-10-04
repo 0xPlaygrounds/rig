@@ -111,9 +111,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-1"
-                }
+                "provider": "call-1"
               },
               "function": {
                 "name": "multiply",
@@ -121,20 +119,18 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           ],
           "usage": {},
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "mock.script",
+            "provider": "mock",
+            "model": "mock-model"
+          },
           "finish_reason": null,
-          "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {},
-            "message_id": null,
             "response_id": null,
             "model": null
           }
@@ -165,9 +161,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-1"
-                }
+                "provider": "call-1"
               },
               "function": {
                 "name": "multiply",
@@ -175,13 +169,16 @@
                   "x": 2,
                   "y": 3
                 }
-              },
-              "signature": null,
-              "additional_params": null
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "mock.script",
+        "provider": "mock",
+        "model": "mock-model"
+      }
     }
   ]
 }

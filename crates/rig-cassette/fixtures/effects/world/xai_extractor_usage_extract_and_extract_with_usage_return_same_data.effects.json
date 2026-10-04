@@ -122,10 +122,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
-                  "item_id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0"
-                }
+                "provider": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0"
               },
               "function": {
                 "name": "submit",
@@ -135,8 +132,17 @@
                   "profession": "retired teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                  "call_id": "call-be1e3c34-0593-4956-a937-9ee00fcc0243-0",
+                  "id": "fc_f50c8816-705b-9c83-ab74-c57003e2b58e_0",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "7ecbd2e98f114a79"
+              }
             }
           ],
           "usage": {
@@ -146,12 +152,15 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 157
           },
-          "message_id": null,
-          "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-3-mini",
+            "response_model": "grok-4.3",
+            "response_id": "f50c8816-705b-9c83-ab74-c57003e2b58e"
+          },
           "provider_request_id": "f50c8816-705b-9c83-ab74-c57003e2b58e",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
             "background": false,
             "completed_at": 0,
@@ -332,22 +341,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_08c8041e-9ca8-9fcb-8bee-ff65d347a213",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher."
-                }
-              ]
+              "text": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher.",
+              "native": {
+                "item": {
+                  "id": "rs_08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Extracting structured data from the text. The name is Bob Johnson. The age is 55. The occupation is retired teacher.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "50ea8805a474d514"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
-                  "item_id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0"
-                }
+                "provider": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0"
               },
               "function": {
                 "name": "submit",
@@ -357,8 +370,17 @@
                   "profession": "retired teacher"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                  "call_id": "call-7525d6f6-dcb4-4a43-908c-2fb34786c777-0",
+                  "id": "fc_08c8041e-9ca8-9fcb-8bee-ff65d347a213_0",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "ca6516ec7d4361d4"
+              }
             }
           ],
           "usage": {
@@ -368,12 +390,15 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 198
           },
-          "message_id": null,
-          "response_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-3-mini",
+            "response_model": "grok-4.3",
+            "response_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213"
+          },
           "provider_request_id": "08c8041e-9ca8-9fcb-8bee-ff65d347a213",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
             "background": false,
             "completed_at": 0,

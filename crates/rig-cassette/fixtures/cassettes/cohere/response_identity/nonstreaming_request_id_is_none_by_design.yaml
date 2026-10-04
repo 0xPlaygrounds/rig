@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":32,"messages":[{"content":[{"text":"Reply with exactly: identity probe","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+  body: '{"max_tokens":32,"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"command-a-03-2025"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"c18716cf-9b0a-4cf2-ab80-aa3d206f5c7c","message":{"content":[{"text":"identity probe","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":6,"output_tokens":2},"cached_tokens":448,"tokens":{"input_tokens":501,"output_tokens":5}}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"identity probe","role":"assistant"}}],"created":0,"id":"f0507ac2-6fb6-4a4a-8043-4a3765da6135","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":2,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":6,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":8}}'

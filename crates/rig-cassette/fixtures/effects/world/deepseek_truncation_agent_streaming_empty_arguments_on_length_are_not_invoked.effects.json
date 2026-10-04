@@ -2,8 +2,23 @@
   "header": {
     "deliveries": [
       {
+        "batch": 9,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
         "batch": 10,
         "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 11,
+        "id": 1,
         "kind": {
           "delivery": "outcome"
         }
@@ -35,7 +50,8 @@
       }
     ],
     "signature": {
-      "parity/model": "completion"
+      "parity/model": "completion",
+      "parity/tool#0": "tool"
     },
     "hooks": [],
     "required": {},
@@ -100,31 +116,56 @@
       "outcome": {
         "Ok": {
           "outcome": "completion",
-          "choice": [],
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_OLKCNNpBVvi9GSsf1CYz0755"
+              },
+              "function": {
+                "name": "file_report",
+                "arguments": {}
+              },
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "",
+                    "name": "file_report"
+                  },
+                  "id": "call_00_OLKCNNpBVvi9GSsf1CYz0755",
+                  "type": "function"
+                },
+                "fingerprint": "3a3728dd64612c4a"
+              }
+            }
+          ],
           "usage": {
             "input_tokens": 346,
             "output_tokens": 16,
             "total_tokens": 362,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "38ab9160-89fb-4c7d-9125-4ad998bdd1e0",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "7349978a-4914-4223-962d-d592139a38d1"
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 346,
               "completion_tokens": 16,
-              "total_tokens": 362,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 218,
+              "prompt_tokens": 346,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 218
+              "total_tokens": 362
             },
             "finish_reason": "length",
-            "response_id": "38ab9160-89fb-4c7d-9125-4ad998bdd1e0",
+            "response_id": "7349978a-4914-4223-962d-d592139a38d1",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -134,7 +175,82 @@
           }
         }
       },
-      "events": [],
+      "events": [
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_OLKCNNpBVvi9GSsf1CYz0755"
+              },
+              "function": {
+                "name": "file_report",
+                "arguments": {}
+              },
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "",
+                    "name": "file_report"
+                  },
+                  "id": "call_00_OLKCNNpBVvi9GSsf1CYz0755",
+                  "type": "function"
+                },
+                "fingerprint": "3a3728dd64612c4a"
+              }
+            }
+          }
+        }
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      },
+      "scope": "parity/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "parity/tool#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "file_report",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "filed"
+              }
+            ]
+          }
+        }
+      },
       "scope": "parity/run#0"
     }
   ]

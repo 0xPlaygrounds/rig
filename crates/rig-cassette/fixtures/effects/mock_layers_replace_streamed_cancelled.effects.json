@@ -72,16 +72,16 @@
           "usage": {
             "total_tokens": 2
           },
-          "message_id": null,
-          "response_id": null,
+          "origin": {
+            "api": "mock.script",
+            "provider": "mock",
+            "model": "mock-model"
+          },
           "finish_reason": null,
-          "provider": "mock",
-          "model": null,
           "raw": {
             "usage": {
               "total_tokens": 2
             },
-            "message_id": null,
             "response_id": null,
             "model": null
           }
@@ -123,7 +123,12 @@
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "mock.script",
+        "provider": "mock",
+        "model": "mock-model"
+      }
     }
   ]
 }

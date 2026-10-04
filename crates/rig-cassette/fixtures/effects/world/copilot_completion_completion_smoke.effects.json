@@ -85,11 +85,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "copilot",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-11-20",
+            "response_id": "chatcmpl-REDACTED_1"
+          },
           "finish_reason": "stop",
-          "provider": "copilot",
-          "model": "gpt-4o-2024-11-20",
           "raw": {
             "choices": [
               {

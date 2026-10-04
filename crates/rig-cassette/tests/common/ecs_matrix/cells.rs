@@ -105,11 +105,18 @@ fn openai_responses_thinking(on: bool) -> serde_json::Value {
     if on {
         serde_json::json!({
             "reasoning": {"effort": "low", "summary": "auto"},
-            "include": ["reasoning.encrypted_content"]
+            "include": ["reasoning.encrypted_content"],
+            "store": false
         })
     } else {
-        serde_json::json!({"reasoning": {"effort": "minimal"}})
+        serde_json::json!({"reasoning": {"effort": "minimal"}, "store": false})
     }
+}
+
+/// The OpenAI Responses wire's parameters for a cell that names none: the
+/// matrix stores no response, so a recording leaves no state behind.
+pub(crate) fn openai_responses_stateless() -> serde_json::Value {
+    serde_json::json!({"store": false})
 }
 
 fn gemini_thinking(on: bool) -> serde_json::Value {
@@ -133,14 +140,11 @@ fn doubleword_thinking(on: bool) -> serde_json::Value {
 }
 
 fn venice_thinking(on: bool) -> serde_json::Value {
-    use rig_core::providers::venice::VeniceParameters;
-
     if on {
-        VeniceParameters::default().strip_thinking_response(false)
+        serde_json::json!({"venice_parameters": {"strip_thinking_response": false}})
     } else {
-        VeniceParameters::default().disable_thinking(true)
+        serde_json::json!({"venice_parameters": {"disable_thinking": true}})
     }
-    .into_additional_params()
 }
 
 impl ThinkingWire {

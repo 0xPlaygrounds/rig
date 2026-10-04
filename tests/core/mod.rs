@@ -22,6 +22,8 @@ mod golden_outcome;
 mod golden_output;
 mod golden_pairing;
 mod golden_recovery;
+mod history_conformance;
+mod history_conformance_registry;
 mod loaders;
 mod no_random_ids;
 mod prompt_response_messages;

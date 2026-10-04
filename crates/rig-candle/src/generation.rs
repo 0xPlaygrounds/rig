@@ -369,6 +369,17 @@ impl<'a> GenerationSession<'a> {
         request: &CompletionRequest,
         cancellation: &'a CancellationSignal,
     ) -> Result<Self, CandleError> {
+        // A prepared request names the loaded checkpoint; any other model is
+        // an override this runtime cannot serve.
+        if let Some(model) = request
+            .model
+            .as_deref()
+            .filter(|model| *model != loaded.model_id)
+        {
+            return Err(CandleError::UnsupportedFeature(format!(
+                "model override `{model}`; byte-loaded models do not support request-time model selection"
+            )));
+        }
         let prompt = crate::protocol::render_prompt(request, loaded.profile.definition.protocol)?;
         let generation =
             effective_generation(request, &loaded.generation, loaded.profile.vocab_size)?;
@@ -634,13 +645,11 @@ fn emit_parsed_items(
             AssistantContent::Text(text) => emit(GenerationEvent::Text(text.text))?,
             AssistantContent::ToolCall(call) => emit(GenerationEvent::ToolCall(call))?,
             AssistantContent::Reasoning(reasoning) => {
-                if let Some(reasoning) = reasoning.open(reasoning.issuer()).cloned() {
-                    emit(GenerationEvent::Reasoning(reasoning))?;
-                }
+                emit(GenerationEvent::Reasoning(reasoning))?;
             }
-            AssistantContent::Image(_) => {
+            AssistantContent::Image(_) | AssistantContent::Opaque(_) => {
                 return Err(CandleError::Inference(
-                    "text-only Qwen output parser produced image content".to_string(),
+                    "text-only Qwen output parser produced non-text content".to_string(),
                 ));
             }
         }

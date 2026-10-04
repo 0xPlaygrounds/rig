@@ -3,10 +3,11 @@
 //! A live budget sweep on 2026-08-16 pinned OpenRouter to the OpenAI upstream
 //! with fallbacks disabled. Unlike OpenAI directly, caps 16 and 32 returned a
 //! non-empty, unparseable argument string while still claiming
-//! `finish_reason: tool_calls`; cap 48 returned the complete object. That wire
-//! is not an outer truncation signal, so Rig must reject it loudly instead of
-//! applying #2359's narrow `length` tolerance. The two selected model routes
-//! are cheap, stable, and expose the same provider-specific mismatch.
+//! `finish_reason: tool_calls`; cap 48 returned the complete object. A
+//! malformed call never fails the reply: Rig keeps it with what its arguments
+//! state, as pi's tolerant parse reads them, and the agent never runs it. The
+//! two selected model routes are cheap, stable, and expose the same
+//! provider-specific mismatch.
 //!
 //! The complete recorded space is 2 transports × 2 models × 3 budgets × 2
 //! public surfaces = 24 cells. Model cells deserialize the provider-native
@@ -150,7 +151,7 @@ fn calls(choice: &[AssistantContent]) -> Vec<Value> {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::ToolCall(call) => Some(call.function.arguments.clone()),
+            AssistantContent::ToolCall(call) => Some(call.function.arguments_value()),
             _ => None,
         })
         .collect()
@@ -225,7 +226,9 @@ async fn run_model(client: OpenAiModels, cell: Cell) -> Observation {
                         content: AssistantContent::ToolCall(tool_call),
                         ..
                     })) => {
-                        observation.arguments.push(tool_call.function.arguments);
+                        observation
+                            .arguments
+                            .push(tool_call.function.arguments_value());
                     }
                     Ok(_) => {}
                     Err(error) => observation.errors.push(error.to_string()),
@@ -457,18 +460,32 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
             assert_eq!(observation.arguments[0]["summary"], PROMPT, "{scenario}");
         }
         Surface::Model => {
-            assert_eq!(
-                observation.errors.len(),
-                1,
-                "{scenario}: malformed non-length call stays loud: {:?}",
+            // A malformed call never fails the reply: it is kept with what
+            // its arguments state, as pi's tolerant parse reads them, and the
+            // agent never runs it.
+            assert!(
+                observation.errors.is_empty(),
+                "{scenario}: {:?}",
                 observation.errors
             );
-            assert!(
-                observation.arguments.is_empty(),
-                "{scenario}: malformed call is never emitted"
+            assert_eq!(
+                observation.finish_reason,
+                Some(FinishReason::ToolCalls),
+                "{scenario}"
             );
-            // The error ends the reply: no end follows it.
-            assert_eq!(observation.finish_reason, None, "{scenario}");
+            assert_eq!(
+                observation.arguments.len(),
+                1,
+                "{scenario}: the call is kept"
+            );
+            let summary = observation.arguments[0]["summary"]
+                .as_str()
+                .unwrap_or_default();
+            assert!(
+                PROMPT.starts_with(summary) && summary != PROMPT,
+                "{scenario}: the call states a prefix: {:?}",
+                observation.arguments
+            );
         }
         Surface::Agent if complete => assert_eq!(
             observation.invocations, 1,

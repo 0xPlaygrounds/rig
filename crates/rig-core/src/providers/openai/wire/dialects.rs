@@ -5,10 +5,12 @@
 //! assert!(by_name("deepseek").is_some());
 //! ```
 
+use crate::completion::FinishReason;
+
 use super::{
-    AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
-    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing,
-    SpeechBody, SystemInstructionsPlacement, TranscriptionBody,
+    Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks, ImageBody,
+    OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing, SpeechBody,
+    SystemInstructionsPlacement, TranscriptionBody,
 };
 
 /// Azure reads its API version from the environment because every Azure
@@ -73,9 +75,11 @@ pub const DEEPSEEK: Dialect = Dialect {
     quirks: Quirks {
         // DeepSeek accepts json_object through additional_params, not json_schema.
         supports_response_format: false,
-        emits_complete_single_chunk_tool_calls: true,
         verify_path: "/user/balance",
         rewrite: BodyRewrite::DeepSeek,
+        // Its thinking models take `reasoning_content` back on every
+        // assistant message (pi).
+        reasoning_field: Some("reasoning_content"),
         ..Quirks::openai()
     },
     ..Dialect::gateway("deepseek", "https://api.deepseek.com", "DEEPSEEK_API_KEY")
@@ -84,11 +88,6 @@ pub const DEEPSEEK: Dialect = Dialect {
 /// Groq.
 pub const GROQ: Dialect = Dialect {
     request_id_header: Some("x-request-id"),
-    quirks: Quirks {
-        emits_complete_single_chunk_tool_calls: true,
-        rewrite: BodyRewrite::GroqCompoundTools,
-        ..Quirks::openai()
-    },
     ..Dialect::gateway("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY")
 };
 
@@ -107,7 +106,6 @@ pub const HYPERBOLIC: Dialect = Dialect {
         audio_generation_path: "/v1/audio/generation",
         image_body: ImageBody::Hyperbolic,
         speech_body: SpeechBody::Hyperbolic,
-        rewrite: BodyRewrite::Hyperbolic,
         ..Quirks::openai()
     },
     // The bare host: the chat path carries its own `/v1`.
@@ -161,6 +159,8 @@ pub const TOGETHER: Dialect = Dialect {
         // Structured-output support is per model on Together, so the schema
         // is dropped with a warning rather than sent and rejected.
         supports_response_format: false,
+        // Its API reference lists `eos` for a model that ended its answer.
+        finishes: &[("eos", FinishReason::Stop)],
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",
@@ -245,59 +245,14 @@ pub const LLAMACPP: Dialect = Dialect {
     ..Dialect::gateway("llamacpp", "http://localhost:8080/v1", "LLAMACPP_API_KEY")
 };
 
-/// The width contract of Mistral's embedding models.
-///
-/// `mistral-embed` is fixed at 1024 and reads no width field: Mistral
-/// answers any other value with an error rather than truncating, so a
-/// request naming one is refused before it is built. Codestral Embed is
-/// configurable up to 3072 and takes its width as `output_dimension`.
-///
-/// The dated aliases are listed beside their rolling names because a caller
-/// pinning `mistral-embed-2312` gets the same model, and a model absent from
-/// this table reports `ndims() == 0`.
-const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
-    ModelWidth {
-        model: crate::providers::mistral::embedding::MISTRAL_EMBED,
-        default: Some(1_024),
-        accepted: AcceptedWidths::Fixed,
-    },
-    ModelWidth {
-        model: "mistral-embed-2312",
-        default: Some(1_024),
-        accepted: AcceptedWidths::Fixed,
-    },
-    ModelWidth {
-        model: crate::providers::mistral::embedding::CODESTRAL_EMBED,
-        // Configurable with no documented native width, so a handle that
-        // names none reports 0 rather than inventing one.
-        default: None,
-        accepted: AcceptedWidths::Range {
-            // Mistral documents only a ceiling. The floor is rig's own
-            // "unknown" sentinel, which never reaches the wire.
-            min: 0,
-            max: 3_072,
-            requirement: "to be at most 3072 for Codestral Embed",
-        },
-    },
-    ModelWidth {
-        model: "codestral-embed-2505",
-        default: None,
-        accepted: AcceptedWidths::Range {
-            min: 0,
-            max: 3_072,
-            requirement: "to be at most 3072 for Codestral Embed",
-        },
-    },
-];
-
 /// Mistral.
 pub const MISTRAL: Dialect = Dialect {
     request_id_header: Some("mistral-correlation-id"),
     quirks: Quirks {
-        // Mistral rejects `stream_options` and reports usage on its final
-        // chunk regardless.
+        // Mistral reports usage on its final chunk without asking.
         stream_include_usage: false,
-        emits_complete_single_chunk_tool_calls: true,
+        // pi's default fold of later system messages into the leading one.
+        later_system: crate::completion::LaterSystem::Leading,
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",
@@ -309,7 +264,7 @@ pub const MISTRAL: Dialect = Dialect {
             supports_user: false,
             // Codestral Embed takes its width as `output_dimension`.
             dimensions: DimensionsField::OutputDimension,
-            widths: MISTRAL_EMBEDDING_WIDTHS,
+            widths: super::modality::MISTRAL_EMBEDDING_WIDTHS,
             ..EmbeddingQuirks::openai()
         },
         ..Quirks::openai()
@@ -323,11 +278,8 @@ pub const OPENROUTER: Dialect = Dialect {
     quirks: Quirks {
         stream_include_usage: false,
         verify_path: "/key",
-        // A gateway forwards its upstream's own finish reason and its own
-        // reasoning blobs.
+        // A gateway forwards its upstream's own finish reason.
         native_finish_reason: true,
-        reasoning_details: true,
-        upstream_reasoning_issuer: true,
         response_format_with_tools: true,
         accepts_file_ids: false,
         rewrite: BodyRewrite::OpenRouter,
@@ -366,19 +318,6 @@ pub const VENICE: Dialect = Dialect {
     ..Dialect::gateway("venice", "https://api.venice.ai/api/v1", "VENICE_API_KEY")
 };
 
-/// Doubleword embedding widths: 32 through 4096, defaulting to 4096.
-/// Validate both bounds locally because out-of-range requests can be clamped or
-/// inconsistently rejected by the service.
-const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
-    model: crate::providers::doubleword::QWEN3_EMBEDDING_8B,
-    default: Some(4_096),
-    accepted: AcceptedWidths::Range {
-        min: 32,
-        max: 4_096,
-        requirement: "to be between 32 and 4096",
-    },
-}];
-
 /// Doubleword.
 pub const DOUBLEWORD: Dialect = Dialect {
     base_url_env: Some("DOUBLEWORD_BASE_URL"),
@@ -387,7 +326,7 @@ pub const DOUBLEWORD: Dialect = Dialect {
             requires_usage: false,
             supports_encoding_format: false,
             supports_user: false,
-            widths: DOUBLEWORD_EMBEDDING_WIDTHS,
+            widths: super::modality::DOUBLEWORD_EMBEDDING_WIDTHS,
             // Doubleword refuses a zero width itself, and stating it here
             // keeps the refusal ahead of a request that cannot succeed.
             refuse_zero_width: Some("to be greater than zero"),
@@ -450,11 +389,36 @@ pub const MOONSHOT_CHINA: Dialect = Dialect {
 /// Xiaomi MiMo's OpenAI-compatible half.
 pub const XIAOMIMIMO: Dialect = Dialect {
     base_url_env: Some("XIAOMI_MIMO_API_BASE"),
+    quirks: Quirks {
+        // Every MiMo model takes `reasoning_content` back on every assistant
+        // message (pi).
+        reasoning_field: Some("reasoning_content"),
+        ..Quirks::openai()
+    },
     ..Dialect::gateway(
         "xiaomimimo",
         "https://api.xiaomimimo.com/v1",
         "XIAOMI_MIMO_API_KEY",
     )
+};
+
+/// Cohere's OpenAI Compatibility API. Cohere's embedding endpoints are its
+/// own wires.
+pub const COHERE: Dialect = Dialect::gateway(
+    "cohere",
+    "https://api.cohere.ai/compatibility/v1",
+    "COHERE_API_KEY",
+);
+
+/// An Ollama daemon's OpenAI-compatible API. Its embedding and model-listing
+/// endpoints are its own wires.
+pub const OLLAMA: Dialect = Dialect {
+    quirks: Quirks {
+        // A local daemon takes no credential; a proxied one takes a token.
+        auth: Auth::OptionalBearer,
+        ..Quirks::openai()
+    },
+    ..Dialect::gateway("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY")
 };
 
 /// The dialect named `name`, or `None` when this build has no such provider.

@@ -17,7 +17,8 @@ async-stream = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
 prost = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+prost-reflect = { workspace = true }
+prost-types = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
@@ -30,6 +31,7 @@ tonic-prost-build = { workspace = true }
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
+rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
 anyhow = { workspace = true }
 rig-agent.workspace = true
 rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [

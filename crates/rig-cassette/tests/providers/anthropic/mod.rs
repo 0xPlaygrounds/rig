@@ -3,6 +3,7 @@ mod support;
 mod cassette {
     mod adversarial_matrix;
     mod agent;
+    mod context_binding;
     mod corpus_causal;
     mod corpus_endings;
     mod corpus_hooks;
@@ -85,6 +86,7 @@ mod cassette {
     mod request_override;
     mod response_identity;
     mod response_identity_edge;
+    mod restated_history;
     mod session_matrix;
     mod stop_sequence_terminal_matrix;
     mod streamed_server_tools;

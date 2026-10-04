@@ -135,9 +135,8 @@ async fn a_unary_body_and_the_stream_of_the_same_turn_fold_alike() {
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    assert_eq!(buffered.model, streamed.model);
-    assert_eq!(buffered.message_id, streamed.message_id);
-    assert_eq!(buffered.response_id, streamed.response_id);
+    assert_eq!(buffered.model(), streamed.model());
+    assert_eq!(buffered.response_id(), streamed.response_id());
     assert_eq!(
         text_of(&buffered),
         Some("stream identity probe".to_owned()),
@@ -182,7 +181,7 @@ async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    assert_eq!(buffered.provider, "chatgpt");
+    assert_eq!(buffered.provider(), "chatgpt");
     assert!(
         buffered
             .choice
@@ -210,6 +209,16 @@ fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
 fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> serde_json::Value {
     let encoded = wire.encode(request, mode).expect("the request encodes");
     json_body(&encoded.request)
+}
+
+/// [`encoded_body_of`] for `request` prepared as the driver prepares it.
+fn prepared_body_of(wire: &Responses, request: CompletionRequest) -> serde_json::Value {
+    let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
+        request,
+        &wire.describe(),
+    )
+    .expect("the request prepares");
+    encoded_body_of(wire, request, Mode::Unary)
 }
 
 /// The bare [`prompt`] with a history of its own.
@@ -377,22 +386,15 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
     ] {
         let response = folded_unary(chatgpt(), body).await;
 
-        let typed: crate::providers::openai::responses_api::CompletionResponse =
-            serde_json::from_value(response.raw.clone())
-                .expect("raw must deserialize back into the wire type");
         assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            response.raw,
-            "{case}: the capture must be exactly what the wire type serializes to"
+            response.raw["object"], "response",
+            "{case}: the capture is the terminal response object"
         );
         assert_eq!(response.raw["service_tier"], "default", "{case}");
-        assert_eq!(typed.id, "resp_chatgpt_raw", "{case}");
+        assert_eq!(response.raw["id"], "resp_chatgpt_raw", "{case}");
 
-        assert_eq!(
-            response.choice,
-            vec![message::AssistantContent::text("hi")],
-            "{case}: the deltas are the content"
-        );
+        assert_eq!(response.choice.len(), 1, "{case}: one message");
+        assert_eq!(response.text(), "hi", "{case}: the deltas are the content");
         assert_eq!(response.usage.total_tokens, Some(2), "{case}");
         assert_eq!(
             response.identity().response_id.as_deref(),
@@ -418,7 +420,7 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
         .expect("the request encodes");
     assert_eq!(encoded.request.uri(), "https://api.x.ai/v1/responses");
 
-    let body = encoded_body_of(
+    let body = prepared_body_of(
         &wire,
         CompletionRequest {
             documents: vec![crate::completion::Document {
@@ -433,7 +435,6 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
                 Message::user("What is glarb-glarb?"),
             ])
         },
-        Mode::Unary,
     );
 
     assert_eq!(body.get("instructions"), None, "{body}");
@@ -469,7 +470,7 @@ fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
             content: vec![
                 message::UserContent::text("before"),
                 message::UserContent::tool_result(
-                    crate::message::CallId::from_dual_wire("result-id", "call-id".to_owned()),
+                    crate::message::CallId::from_wire("call-id"),
                     crate::message::ToolName::new("tool").expect("tool name"),
                     vec![message::ToolResultContent::json(
                         serde_json::json!({ "ok": true }),
@@ -493,55 +494,61 @@ fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
     assert_eq!(input[2]["content"][0]["text"], "after");
 }
 
-/// A replayed reasoning turn goes back under the id the wire issued, its
-/// summary as `summary` and its opaque block as the one `encrypted_content`
-/// — never as summary text — ahead of the tool call it preceded.
+/// An xAI reasoning turn goes back to xAI as xAI stated it: the reasoning
+/// item with its `encrypted_content`, then the call, in their order.
 #[test]
-fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
-    let body = encoded_body_of(
-        &xai(),
+fn the_xai_dialect_replays_its_own_reasoning_item_verbatim() {
+    let reasoning = serde_json::json!({
+        "id": "rs_1",
+        "summary": [{"text": "explain", "type": "summary_text"}],
+        "type": "reasoning",
+        "status": "completed",
+        "encrypted_content": "opaque",
+    });
+    let call = serde_json::json!({
+        "arguments": "{\"arg\":\"value\"}",
+        "call_id": "call_1",
+        "name": "my_tool",
+        "type": "function_call",
+        "id": "fc_1",
+        "status": "completed",
+    });
+    let turn_of = message::AssistantMessage {
+        content: vec![
+            message::AssistantContent::Reasoning(message::Reasoning::new("explain"))
+                .with_native(reasoning.clone()),
+            message::AssistantContent::tool_call(
+                "call_1",
+                crate::message::ToolName::new("my_tool").expect("tool name"),
+                serde_json::json!({"arg": "value"}),
+            )
+            .with_native(call.clone()),
+        ],
+        origin: Some(message::Origin::new("openai.responses", "xai", xai().model)),
+        stop: Some(message::StopReason::ToolUse),
+    };
+    let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
         turn(vec![
             Message::user("Use the tool."),
-            Message::Assistant {
-                id: Some("msg_1".to_owned()),
-                content: vec![
-                    message::AssistantContent::Reasoning(
-                        message::Reasoning {
-                            id: Some("rs_1".to_owned()),
-                            content: vec![
-                                message::ReasoningContent::Summary("explain".to_owned()),
-                                message::ReasoningContent::Redacted {
-                                    data: "opaque-redacted".to_owned(),
-                                },
-                            ],
-                        }
-                        .sealed("xai"),
-                    ),
-                    message::AssistantContent::tool_call(
-                        "call_1",
-                        crate::message::ToolName::new("my_tool").expect("tool name"),
-                        serde_json::json!({"arg": "value"}),
-                    ),
-                ],
-            },
-        ]),
-        Mode::Unary,
+            Message::Assistant(turn_of),
+        ])
+        .tools(vec![crate::completion::ToolDefinition {
+            name: crate::message::ToolName::new("my_tool").expect("tool name"),
+            description: "A tool".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+        }]),
+        &xai().describe(),
+    )
+    .expect("the history is valid");
+    let body = json_body(
+        &xai()
+            .encode(request, Mode::Unary)
+            .expect("the request encodes")
+            .request,
     );
 
     let input = body["input"].as_array().expect("input is an array");
-    assert_eq!(input.len(), 3, "{body}");
-    let reasoning = &input[1];
-    assert_eq!(reasoning["type"], "reasoning");
-    assert_eq!(reasoning["id"], "rs_1");
-    assert_eq!(
-        reasoning["summary"],
-        serde_json::json!([{"type": "summary_text", "text": "explain"}])
-    );
-    assert_eq!(reasoning["encrypted_content"], "opaque-redacted");
-    assert_eq!(reasoning.get("content"), None, "{reasoning}");
-    assert_eq!(input[2]["type"], "function_call");
-    assert_eq!(input[2]["call_id"], "call_1");
-    assert_eq!(input[2]["name"], "my_tool");
+    assert_eq!(input[1..3], [reasoning, call], "{body}");
 }
 
 /// A success carrying the provider's error envelope instead of a response is
@@ -563,4 +570,86 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
         error.to_string().contains("no capacity"),
         "the provider's own message must survive: {error}"
     );
+}
+
+/// What each dialect's encoder carries: images as data or URLs, image file
+/// ids only where the endpoint keeps files and its `input_image` takes them,
+/// documents as files or text, and no audio, video or assistant image.
+#[test]
+fn each_dialect_encodes_what_its_endpoint_reads() {
+    use crate::completion::{Media, Place, ReplayTarget};
+    use crate::message::{
+        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source, Image,
+        ImageMediaType, Video, VideoMediaType,
+    };
+    let image = |data: Source, media_type: Option<ImageMediaType>| Image {
+        data,
+        media_type,
+        ..Image::default()
+    };
+    let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
+        data,
+        media_type,
+        additional_params: None,
+    };
+    let png = image(Source::base64("iVBORw0KGgo="), Some(ImageMediaType::PNG));
+    let untyped = image(Source::base64("AAAA"), None);
+    let url = image(Source::url("https://example.com/a.png"), None);
+    let image_file = image(Source::file_id("file-image"), None);
+    let string = image(Source::string("an image"), None);
+    let pdf = document(Source::base64("JVBERi0="), Some(DocumentMediaType::PDF));
+    let pdf_url = document(Source::url("https://example.com/a.pdf"), None);
+    let text = document(Source::string("plain"), Some(DocumentMediaType::TXT));
+    let csv = document(Source::base64("YSxi"), Some(DocumentMediaType::CSV));
+    let document_file = document(Source::file_id("file-document"), None);
+    let audio = Audio {
+        data: Source::base64("SUQz"),
+        media_type: Some(AudioMediaType::MP3),
+    };
+    let video = Video {
+        data: Source::url("https://example.com/a.mp4"),
+        media_type: Some(VideoMediaType::MP4),
+        additional_params: None,
+    };
+    let copilot = Responses::new(
+        OpenAIConfig::with_key(&crate::providers::copilot::wire::DIALECT, "key"),
+        "gpt-5.3-codex",
+    );
+    // (dialect, image file ids, document file ids)
+    for (wire, image_files, document_files) in [
+        (openai(), true, true),
+        (xai(), false, true),
+        (chatgpt(), false, false),
+        (copilot, false, false),
+    ] {
+        let name = wire.provider.dialect.name;
+        let model = wire.model.clone();
+        let encodes = |media| wire.encodes(&model, media);
+        for place in [Place::User, Place::ToolResult] {
+            assert!(encodes(Media::Image(&png, place)), "{name}: data");
+            assert!(encodes(Media::Image(&url, place)), "{name}: URL");
+            assert_eq!(
+                encodes(Media::Image(&image_file, place)),
+                image_files,
+                "{name}: image file id"
+            );
+            assert!(!encodes(Media::Image(&untyped, place)), "{name}: untyped");
+            assert!(!encodes(Media::Image(&string, place)), "{name}: string");
+        }
+        assert!(!encodes(Media::Image(&png, Place::Assistant)), "{name}");
+        assert!(!encodes(Media::Audio(&audio)), "{name}: audio");
+        assert!(!encodes(Media::Video(&video)), "{name}: video");
+        assert!(encodes(Media::Document(&pdf)), "{name}: PDF data");
+        assert!(encodes(Media::Document(&pdf_url)), "{name}: file URL");
+        assert!(encodes(Media::Document(&text)), "{name}: text");
+        assert!(
+            !encodes(Media::Document(&csv)),
+            "{name}: text data goes as its text"
+        );
+        assert_eq!(
+            encodes(Media::Document(&document_file)),
+            document_files,
+            "{name}: document file id"
+        );
+    }
 }

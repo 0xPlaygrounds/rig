@@ -75,7 +75,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "PINEAPPLE"
+              "text": "PINEAPPLE",
+              "native": {
+                "item": {
+                  "text": "PINEAPPLE"
+                },
+                "fingerprint": "4cf697616aa62e23"
+              }
             }
           ],
           "usage": {
@@ -84,11 +90,14 @@
             "total_tokens": 53,
             "reasoning_tokens": 26
           },
-          "message_id": null,
-          "response_id": "pXizaozIJY-mqtsPzOOGwQU",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "pXizaozIJY-mqtsPzOOGwQU"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

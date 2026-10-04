@@ -97,33 +97,43 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_wf07vfvKnM3cr9STe6yJ8155"
-                }
+                "provider": "call_00_vS61YQz3tDjnda7XRnuy8271"
               },
               "function": {
                 "name": "final_result",
                 "arguments": {
                   "title": "Seattle Rust Meetup",
                   "category": "Local Tech Meetup",
-                  "summary": "A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network."
+                  "summary": "A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network with the community."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Local Tech Meetup\", \"summary\": \"A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network with the community.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_00_vS61YQz3tDjnda7XRnuy8271",
+                  "type": "function"
+                },
+                "fingerprint": "dccaa0754526055f"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 376,
-            "output_tokens": 95,
-            "total_tokens": 471,
-            "cached_input_tokens": 0
+            "input_tokens": 381,
+            "output_tokens": 93,
+            "total_tokens": 474,
+            "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "4aee34b1-6ad5-4221-a05b-6cb4f35a9f57",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "62a6f634-317a-4b36-b890-4d860811da94"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -136,10 +146,10 @@
                   "tool_calls": [
                     {
                       "function": {
-                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Local Tech Meetup\", \"summary\": \"A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network.\"}",
+                        "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Local Tech Meetup\", \"summary\": \"A local gathering in Seattle for Rust developers and enthusiasts to share projects, discuss the language, and network with the community.\"}",
                         "name": "final_result"
                       },
-                      "id": "call_00_wf07vfvKnM3cr9STe6yJ8155",
+                      "id": "call_00_vS61YQz3tDjnda7XRnuy8271",
                       "index": 0,
                       "type": "function"
                     }
@@ -148,19 +158,19 @@
               }
             ],
             "created": 0,
-            "id": "4aee34b1-6ad5-4221-a05b-6cb4f35a9f57",
+            "id": "62a6f634-317a-4b36-b890-4d860811da94",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 95,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 376,
-              "prompt_tokens": 376,
+              "completion_tokens": 93,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 253,
+              "prompt_tokens": 381,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 128
               },
-              "total_tokens": 471
+              "total_tokens": 474
             }
           }
         }

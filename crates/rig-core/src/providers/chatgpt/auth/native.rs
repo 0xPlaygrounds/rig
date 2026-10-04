@@ -2,10 +2,10 @@
 
 use super::{AuthContext, AuthError, Authenticator, DeviceCodePrompt};
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::{request, send_json};
-use crate::providers::internal::device_auth::{
+use crate::providers::internal::auth::device::{
     emit_device_code_prompt, read_json_record, token_expired, write_json_record,
 };
+use crate::providers::internal::auth::{request, send_json};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use bytes::Bytes;

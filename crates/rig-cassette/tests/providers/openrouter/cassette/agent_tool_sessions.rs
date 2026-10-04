@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice, UserContent};
-use rig::providers::openrouter;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -328,7 +327,7 @@ pub(super) struct ToolEvent {
 pub(super) fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
     let mut calls = Vec::new();
     for (message_index, message) in history.iter().enumerate() {
-        if let Message::Assistant { content, .. } = message {
+        if let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message {
             for item in content.iter() {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
@@ -593,14 +592,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("For this release, use the canary lane."))
                 .message(Message::assistant("Understood: the release lane is canary."))
                 .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::tool_call(
+                .message(Message::Assistant(rig_core::message::AssistantMessage::new(vec![AssistantContent::tool_call(
                         "call_REDACTED_1",
                         rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                         json!({}),
-                    )],
-                })
+                    )])))
                 .message(Message::tool_result(rig_core::message::CallId::from_wire("call_REDACTED_1"), rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"), ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -612,8 +608,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             // read off OpenRouter's own response type rather than from a
             // second call.
             let response = model.call(request).await?;
-            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
-                .expect("raw is OpenRouter's own completion response");
+            let wire = response.raw.clone();
             let text = response
                 .choice
                 .iter()
@@ -630,10 +625,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                wire.openai
-                    .choices
-                    .iter()
-                    .all(|choice| !choice.openai.finish_reason.is_empty()),
+                wire["choices"].as_array().into_iter().flatten().all(|choice| choice["finish_reason"].as_str().is_some_and(|reason| !reason.is_empty())),
                 "the gateway's document should preserve every choice's finish reason"
             );
             anyhow::ensure!(
@@ -641,7 +633,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "normalized response should preserve the finish reason: {:?}",
                 response.finish_reason()
             );
-            assert_nonempty_response(&wire.openai.model);
+            assert_nonempty_response(wire["model"].as_str().unwrap_or_default());
 
             Ok(())
         },

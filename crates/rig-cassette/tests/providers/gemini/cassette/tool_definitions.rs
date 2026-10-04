@@ -157,10 +157,12 @@ impl Tool for ModernEcho {
     }
 }
 
+/// A schema with nested objects, arrays and enums reaches Gemini unchanged
+/// as `parametersJsonSchema`, and the call it produces deserializes.
 #[tokio::test]
-async fn rich_json_schema_survives_gemini_conversion() {
+async fn rich_json_schema_reaches_gemini_unchanged() {
     with_gemini_cassette(
-        "tool_definitions/rich_json_schema_survives_gemini_conversion",
+        "tool_definitions/rich_json_schema_reaches_gemini_unchanged",
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
                 .preamble("You are a travel planner. You must use the plan_trip tool to plan trips, then confirm the booking to the user.")

@@ -33,7 +33,7 @@ where
     let (cassette, groq) = groq_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         groq,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -63,7 +63,7 @@ where
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         groq,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -89,7 +89,7 @@ pub(super) async fn with_groq_prompt_caching_cassette<F, Fut>(
     let (cassette, client) = groq_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

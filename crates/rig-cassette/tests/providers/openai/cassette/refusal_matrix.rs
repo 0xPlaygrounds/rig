@@ -24,14 +24,10 @@
 //! anything — and the same rig-level request driven through the Responses API
 //! surfaced the refusal fine.
 //!
-//! The fix routes the three **unary** paths through one whole-message rule
-//! (`openai::completion::assistant_refusal_fallback`). The streaming path
-//! cannot share it: a stream decides per delta, before it knows whether text
-//! arrives later, so it applies the same intent per delta (`delta_text`). The
-//! two agree on every shape this wire sends — a refusal turn holds `content`
-//! at `null` for its whole length — and would differ only on a turn mixing
-//! both, which is pinned as a unit cell beside the fix rather than claimed
-//! away.
+//! The fix is one rule in the shared Chat decoder: a delta's text is its
+//! `content`, or else its `refusal`. A whole reply is read as a single delta
+//! carrying its message, so the blocking and streaming paths apply the same
+//! rule to every shape this wire sends.
 //!
 //! Because chat completions only populates `refusal` under a strict
 //! structured-output request, every refusal cell asks for `json_schema` output
@@ -63,25 +59,23 @@
 //! | 17 | `responses_agent_streaming_refusal_surfaces` | responses | streaming | agent | refusal deltas | recorded |
 //! | 18 | `cross_surface_refusal_parity` | both | blocking | raw model | cross-API parity | recorded |
 //!
-//! Unit cells — wire shapes the live provider will not produce on demand
-//! (a delta carrying *both* keys, an empty refusal, a refusal beside tool
-//! calls, the Responses-shaped refusal *part* arriving on the chat wire) —
-//! live beside the fix in
-//! `crates/rig-core/src/providers/openai/completion/{mod,streaming}.rs`:
-//! `refusal_*` / `delta_text_*`.
+//! Wire shapes the live provider will not produce on demand (a delta
+//! carrying *both* keys, an empty refusal, a refusal beside tool calls, the
+//! Responses-shaped refusal *part* arriving on the chat wire) are read by the
+//! same rule in `crates/rig-core/src/providers/openai/wire/chat.rs`.
 
 use rig::message::Message;
 use rig::providers::openai;
-use rig::providers::openai::completion::CompletionResponse as ChatReply;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 use super::super::support::with_openai_refusal_cassette;
 use crate::cassettes;
+use crate::support::collect_text_and_terminal;
 use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
-    collect_stream_observation, collect_text_and_terminal,
+    collect_stream_observation,
 };
 use rig::completion::CompletionRequest;
 
@@ -202,16 +196,10 @@ async fn chat_blocking_raw_and_normalized_agree() {
                 CompletionRequest::new(REFUSED_PROMPT).additional_params(chat_response_format());
 
             let response = model.call(request).await.expect("refusal turn");
-            let reply = ChatReply::deserialize(&response.raw)
-                .expect("`raw` is the serialized openai::completion::CompletionResponse");
-            let raw_refusal = reply
-                .choices
-                .first()
-                .and_then(|choice| match &choice.message {
-                    openai::Message::Assistant { refusal, .. } => refusal.clone(),
-                    _ => None,
-                })
-                .expect("the recorded turn must carry a top-level refusal");
+            let raw_refusal = response.raw["choices"][0]["message"]["refusal"]
+                .as_str()
+                .expect("the recorded turn must carry a top-level refusal")
+                .to_owned();
 
             let normalized_text =
                 assistant_text_response(&response.choice).expect("normalized text");

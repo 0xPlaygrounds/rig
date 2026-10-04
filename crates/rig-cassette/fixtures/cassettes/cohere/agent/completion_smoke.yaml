@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","temperature":0.2}'
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"command-a-03-2025","temperature":0.2}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"48c5ebe5-cc86-4a10-907a-68008b396265","message":{"content":[{"text":"Rust is a systems programming language that focuses on safety, speed, and concurrency, achieving memory safety without a garbage collector by using a strict ownership model. Memory safety matters because it prevents common bugs like null pointer dereferencing, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, and unpredictable behavior in software.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":27,"output_tokens":68},"cached_tokens":480,"tokens":{"input_tokens":556,"output_tokens":71}}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Rust is a systems programming language that focuses on safety, speed, and concurrency, achieving memory safety without a garbage collector by using a strict ownership model. Memory safety matters because it prevents common bugs like null pointer dereferencing, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, and unpredictable behavior in software.","role":"assistant"}}],"created":0,"id":"595c79ba-519c-4b8c-9486-d101dcfad3b5","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":68,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":27,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":95}}'

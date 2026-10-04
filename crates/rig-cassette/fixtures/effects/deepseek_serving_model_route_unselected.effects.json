@@ -127,9 +127,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_ptZGkIu4qwRtmUOqMQ9P3220"
-                }
+                "provider": "call_00_6zE7frMuGQVfBs7utDXy1912"
               },
               "function": {
                 "name": "add",
@@ -138,8 +136,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_6zE7frMuGQVfBs7utDXy1912",
+                  "type": "function"
+                },
+                "fingerprint": "595a7a4d08d95a67"
+              }
             }
           ],
           "usage": {
@@ -148,11 +155,14 @@
             "total_tokens": 388,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "872b7899-2e88-47c0-9c2a-187b6dd7d40f",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "78273434-0bbf-4b1f-aed7-08e4330a86fe"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -168,7 +178,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_ptZGkIu4qwRtmUOqMQ9P3220",
+                      "id": "call_00_6zE7frMuGQVfBs7utDXy1912",
                       "index": 0,
                       "type": "function"
                     }
@@ -177,7 +187,7 @@
               }
             ],
             "created": 0,
-            "id": "872b7899-2e88-47c0-9c2a-187b6dd7d40f",
+            "id": "78273434-0bbf-4b1f-aed7-08e4330a86fe",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -243,14 +253,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_ptZGkIu4qwRtmUOqMQ9P3220"
-                    }
+                    "provider": "call_00_6zE7frMuGQVfBs7utDXy1912"
                   },
                   "function": {
                     "name": "add",
@@ -259,10 +266,27 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_6zE7frMuGQVfBs7utDXy1912",
+                      "type": "function"
+                    },
+                    "fingerprint": "595a7a4d08d95a67"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "78273434-0bbf-4b1f-aed7-08e4330a86fe"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -270,9 +294,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_ptZGkIu4qwRtmUOqMQ9P3220"
-                    }
+                    "provider": "call_00_6zE7frMuGQVfBs7utDXy1912"
                   },
                   "name": "add",
                   "content": [
@@ -332,11 +354,14 @@
             "total_tokens": 402,
             "cached_input_tokens": 256
           },
-          "message_id": null,
-          "response_id": "83c4a4cf-a348-481d-a594-59a249190f10",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "533ca865-6de7-4552-8de2-7ef22da384b8"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -350,7 +375,7 @@
               }
             ],
             "created": 0,
-            "id": "83c4a4cf-a348-481d-a594-59a249190f10",
+            "id": "533ca865-6de7-4552-8de2-7ef22da384b8",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

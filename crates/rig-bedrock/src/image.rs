@@ -9,25 +9,37 @@
 //! ```
 
 use crate::client::BedrockRuntime;
-use crate::types::assistant_content::PROVIDER_NAME;
+use crate::completion::PROVIDER_NAME;
 use crate::types::errors::sdk_error;
 use crate::types::text_to_image::{TextToImageGeneration, TextToImageResponse};
 use aws_smithy_types::Blob;
+use rig_core::Model;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
 use rig_core::operation::ImageGeneration;
 use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 
-pub use crate::completion::{
-    AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
-    STABILITY_STABLE_IMAGE_ULTRA_1_0,
-};
+/// `amazon.nova-canvas-v1:0`
+pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
+/// `stability.sd3-5-large-v1:0`
+pub const STABILITY_SD3_5_LARGE: &str = "stability.sd3-5-large-v1:0";
+/// `stability.stable-image-core-v1:1`
+pub const STABILITY_STABLE_IMAGE_CORE_1_0: &str = "stability.stable-image-core-v1:1";
+/// `stability.stable-image-ultra-v1:1`
+pub const STABILITY_STABLE_IMAGE_ULTRA_1_0: &str = "stability.stable-image-ultra-v1:1";
 
 /// The image-generation endpoint for one model.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Images {
     pub model: String,
+}
+
+impl BedrockRuntime {
+    /// The image-generation model for `model`.
+    pub fn image_generation(&self, model: impl Into<String>) -> Model<Images, Self> {
+        Model::new(Images::new(model), self.clone())
+    }
 }
 
 impl Images {

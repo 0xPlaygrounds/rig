@@ -136,36 +136,6 @@ pub struct ErrorReport {
     /// headers, and request ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_response: Option<crate::provider_response::ProviderResponseError>,
-    /// Structured diagnostic for failures a consumer may want to *route*
-    /// rather than only display. Absent for the common case; see
-    /// [`ErrorDetail`] for what each variant carries and why.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detail: Option<ErrorDetail>,
-}
-
-/// Optional structured recovery diagnostic supplementing a report's kind and message.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "detail", rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum ErrorDetail {
-    /// A tool block declared complete contained invalid JSON, rather than
-    /// truncated input. Carries exact accumulated arguments and the parser
-    /// error for recovery or replay.
-    MalformedToolInput(MalformedToolInput),
-}
-
-/// The payload of [`ErrorDetail::MalformedToolInput`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MalformedToolInput {
-    /// The tool the model named.
-    pub name: String,
-    /// The call's id, retained for recovery actions, including tool results
-    /// and rollback.
-    pub id: crate::message::CallId,
-    /// The raw argument text, byte-for-byte as accumulated.
-    pub raw: String,
-    /// The JSON parser's description of what was wrong.
-    pub error: String,
 }
 
 impl ErrorReport {
@@ -181,7 +151,6 @@ impl ErrorReport {
             source_chain: Vec::new(),
             request_id: None,
             provider_response: None,
-            detail: None,
         }
     }
 
@@ -212,12 +181,6 @@ impl ErrorReport {
     /// Attach the provider's request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
-        self
-    }
-
-    /// Attach a typed diagnostic.
-    pub fn with_detail(mut self, detail: ErrorDetail) -> Self {
-        self.detail = Some(detail);
         self
     }
 
@@ -396,18 +359,12 @@ pub enum ProviderError {
         /// Width the provider actually returned.
         returned: usize,
     },
-    /// A tool block the provider declared complete carried input that is
-    /// not valid JSON. Its report carries the input as
-    /// [`ErrorDetail::MalformedToolInput`].
-    MalformedToolInput(MalformedToolInput),
     /// A failure a relay delivered as its report, such as a stream relayed
     /// over the effect bus. It reports as the relayed report, unchanged.
     Relayed(Box<ErrorReport>),
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
     Truncated,
-    /// The provider named two tool calls of one reply with the same id.
-    DuplicateCallId(crate::message::CallId),
 }
 
 impl fmt::Display for ProviderError {
@@ -438,17 +395,9 @@ impl fmt::Display for ProviderError {
                  model was created with {requested} dimensions; this provider does not resize \
                  embeddings"
             ),
-            Self::MalformedToolInput(input) => write!(
-                f,
-                "tool call `{}` arrived with malformed JSON input: {}",
-                input.name, input.error
-            ),
             Self::Relayed(report) => f.write_str(&report.message),
             Self::Truncated => {
                 f.write_str("ResponseError: the reply ended before the provider ended it")
-            }
-            Self::DuplicateCallId(id) => {
-                write!(f, "ResponseError: the provider named two tool calls `{id}`")
             }
         }
     }
@@ -512,11 +461,9 @@ impl ProviderError {
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
             Self::Request(_) => ErrorKind::Request,
-            Self::Response(_)
-            | Self::MismatchedDimensions { .. }
-            | Self::MalformedToolInput(_)
-            | Self::Truncated
-            | Self::DuplicateCallId(_) => ErrorKind::Response,
+            Self::Response(_) | Self::MismatchedDimensions { .. } | Self::Truncated => {
+                ErrorKind::Response
+            }
             Self::Provider(_) => ErrorKind::Provider,
             Self::ProviderResponse(_)
             | Self::InvalidAuthentication(_)
@@ -773,12 +720,6 @@ impl From<&ProviderError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: response.and_then(|response| response.provider_request_id.clone()),
             provider_response: response.cloned(),
-            detail: match error {
-                ProviderError::MalformedToolInput(input) => {
-                    Some(ErrorDetail::MalformedToolInput(input.clone()))
-                }
-                _ => None,
-            },
         }
     }
 }
@@ -820,7 +761,6 @@ impl From<&ToolExecutionError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response: None,
-            detail: None,
         }
     }
 }
@@ -897,7 +837,6 @@ impl From<&MemoryError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response: None,
-            detail: None,
         }
     }
 }
@@ -967,7 +906,6 @@ impl From<&VectorStoreError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response,
-            detail: None,
         }
     }
 }

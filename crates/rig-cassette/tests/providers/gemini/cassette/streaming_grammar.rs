@@ -13,21 +13,16 @@
 use futures::StreamExt;
 use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
-use rig::message::{
-    AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolChoice,
-    ToolResultContent, UserContent,
-};
+use rig::message::{AssistantContent, Reasoning, ToolCall, ToolResultContent, UserContent};
+use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
-};
-use rig::providers::gemini::interactions_api;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
+use crate::support::ALPHA_SIGNAL_OUTPUT;
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
-    ORDERED_TOOL_STREAM_PROMPT, TWO_TOOL_STREAM_PREAMBLE,
+    AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
+    TWO_TOOL_STREAM_PREAMBLE,
 };
 use rig::completion::CompletionRequest;
 
@@ -62,12 +57,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             }) => {
-                run.reasoning_blocks.push(
-                    reasoning
-                        .open(reasoning.issuer())
-                        .cloned()
-                        .expect("reasoning opens"),
-                );
+                run.reasoning_blocks.push(reasoning);
             }
             Item::Event(StreamEvent::Reasoning { text, .. }) => {
                 run.reasoning_delta.push_str(&text);
@@ -107,20 +97,11 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "terminal record should carry non-zero usage, got {:?}",
         terminal.usage
     );
-    // ID contract: Gemini reports a `responseId` for the response as a whole
-    // and no replayable assistant-message ID, so the normalized terminal must
-    // populate `response_id` and leave `message_id` empty.
+    // ID contract: Gemini reports a `responseId` for the response as a
+    // whole, which the normalized terminal surfaces.
     assert!(
-        terminal
-            .response_id
-            .as_deref()
-            .is_some_and(|id| !id.is_empty()),
+        terminal.response_id().is_some_and(|id| !id.is_empty()),
         "Gemini should surface its responseId as the response-scoped ID"
-    );
-    assert!(
-        terminal.message_id.is_none(),
-        "Gemini has no replayable assistant-message ID; got {:?}",
-        terminal.message_id
     );
 }
 
@@ -138,37 +119,28 @@ fn aggregated_reasoning_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(
-                reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content
-                    .iter(),
-            ),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|part| match part {
-            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-            ReasoningContent::Summary(text) => Some(text.as_str()),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.text.as_str()),
             _ => None,
         })
         .collect()
+}
+
+/// The signature a block's provider item carries, if any: `thoughtSignature`
+/// on GenerateContent parts, `signature` on Interactions steps.
+fn signature(content: &AssistantContent) -> Option<&str> {
+    let item = content.native_item()?;
+    item.get("thoughtSignature")
+        .or_else(|| item.get("signature"))?
+        .as_str()
 }
 
 /// `MAX_TOKENS` truncation via a small `maxOutputTokens` budget: terminal
 /// record present, finish reason normalized to `Length`, partial text kept.
 #[tokio::test]
 async fn max_tokens_truncation_normalizes_to_length() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: Some(0),
-            thinking_level: None,
-            include_thoughts: None,
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/max_tokens_truncation",
         |client| async move {
@@ -176,9 +148,7 @@ async fn max_tokens_truncation_normalizes_to_length() {
             let request =
                 CompletionRequest::new("Write a 200-word story about a lighthouse keeper.")
                     .max_tokens(24)
-                    .additional_params(
-                        serde_json::to_value(params).expect("params should serialize"),
-                    );
+                    .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -251,15 +221,11 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
 /// must not erase or duplicate the preceding unsigned thought deltas.
 #[tokio::test]
 async fn thinking_stream_aggregates_all_reasoning_text() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::High),
-            include_thoughts: Some(true),
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": {
+            "thinkingConfig": { "thinkingLevel": "high", "includeThoughts": true }
+        }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/thinking_stream",
         |client| async move {
@@ -269,7 +235,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                      Think it through carefully step by step, then answer with just the number.",
                 )
                 .additional_params(
-                    serde_json::to_value(params).expect("params should serialize"),
+                    params,
                 );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -303,17 +269,13 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
             );
             // The wire attaches `thoughtSignature` to a trailing part with no
             // `thought` flag (recorded: `{"text":"","thoughtSignature":"…"}`).
-            // The signature is replay-required provider state, and Gemini
-            // requires it back inside the part that carried it, never merged
-            // into another: it stays on that trailing text, and signs no
-            // reasoning block.
+            // That part continues the answer text, whose provider item keeps
+            // the signature; it signs no reasoning block.
             let text_signatures: Vec<&str> = run
                 .choice
                 .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Text(text) => gemini::text_thought_signature(text),
-                    _ => None,
-                })
+                .filter(|content| matches!(content, AssistantContent::Text(_)))
+                .filter_map(signature)
                 .collect();
             assert!(
                 text_signatures.iter().any(|signature| !signature.is_empty()),
@@ -322,21 +284,13 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
             );
             for content in run.choice.iter() {
                 if let AssistantContent::Reasoning(reasoning) = content {
-                    let text: String = reasoning
-                        .open(reasoning.issuer()).expect("sealed reasoning").content
-                        .iter()
-                        .filter_map(|part| match part {
-                            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect();
                     assert!(
-                        !text.trim().is_empty(),
+                        !reasoning.text.trim().is_empty(),
                         "no empty (signature-only) reasoning sibling may exist: {:?}",
                         run.choice
                     );
                     assert!(
-                        reasoning.open(reasoning.issuer()).expect("sealed reasoning").first_signature().is_none(),
+                        signature(content).is_none(),
                         "the answer's signature must not move onto reasoning: {:?}",
                         run.choice
                     );
@@ -352,15 +306,11 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
 /// F1b thinking/tool boundary, pinned on real traffic).
 #[tokio::test]
 async fn thinking_and_tool_call_interleave_as_discrete_parts() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::Medium),
-            include_thoughts: Some(true),
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": {
+            "thinkingConfig": { "thinkingLevel": "medium", "includeThoughts": true }
+        }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/thinking_then_tool_call",
         |client| async move {
@@ -374,7 +324,7 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
             )
             .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
-            .additional_params(serde_json::to_value(params).expect("params should serialize"));
+            .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -427,15 +377,9 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
 /// distinct parts with the ids the stream reported.
 #[tokio::test]
 async fn parallel_function_calls_stay_distinct() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: Some(0),
-            thinking_level: None,
-            include_thoughts: None,
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/parallel_function_calls",
         |client| async move {
@@ -448,7 +392,7 @@ async fn parallel_function_calls_stay_distinct() {
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .tool(rig::tool::tool_definition(&BetaSignal))
-            .additional_params(serde_json::to_value(params).expect("params should serialize"));
+            .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -508,21 +452,15 @@ async fn parallel_function_calls_stay_distinct() {
 /// exactly as streamed.
 #[tokio::test]
 async fn stop_finish_reason_normalizes_on_text_turn() {
-    let config = GenerationConfig {
-        thinking_config: Some(ThinkingConfig {
-            thinking_budget: Some(0),
-            thinking_level: None,
-            include_thoughts: None,
-        }),
-        ..Default::default()
-    };
-    let params = AdditionalParameters::default().with_config(config);
+    let params = serde_json::json!({
+        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/stop_finish_reason",
         |client| async move {
             let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = CompletionRequest::new("Reply with one short sentence about volcanoes.")
-                .additional_params(serde_json::to_value(params).expect("params should serialize"));
+                .additional_params(params);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -551,16 +489,13 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                      Think it through, then answer with just the number.",
                 )
                 .additional_params(
-                    serde_json::to_value(interactions_api::AdditionalParameters {
-                        generation_config: Some(interactions_api::GenerationConfig {
-                            thinking_level: Some(interactions_api::ThinkingLevel::Medium),
-                            thinking_summaries: Some(interactions_api::ThinkingSummaries::Auto),
-                            ..Default::default()
-                        }),
-                        store: Some(true),
-                        ..Default::default()
-                    })
-                    .expect("params should serialize"),
+                    serde_json::json!({
+                        "generation_config": {
+                            "thinking_level": "medium",
+                            "thinking_summaries": "auto"
+                        },
+                        "store": true
+                    }),
                 );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -606,18 +541,8 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
             let signatures: Vec<&str> = run
                 .choice
                 .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter()),
-                    _ => None,
-                })
-                .flatten()
-                .filter_map(|part| match part {
-                    ReasoningContent::Text {
-                        signature: Some(signature),
-                        ..
-                    } => Some(signature.as_str()),
-                    _ => None,
-                })
+                .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
+                .filter_map(signature)
                 .collect();
             assert!(
                 signatures.iter().any(|signature| !signature.is_empty()),
@@ -631,26 +556,14 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
             // the part carrying the streamed thinking must be the signed one.
             for content in run.choice.iter() {
                 if let AssistantContent::Reasoning(reasoning) = content {
-                    let text: String = reasoning
-                        .open(reasoning.issuer()).expect("sealed reasoning").content
-                        .iter()
-                        .filter_map(|part| match part {
-                            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-                            _ => None,
-                        })
-                        .collect();
                     assert!(
-                        !text.trim().is_empty(),
+                        !reasoning.text.trim().is_empty(),
                         "no empty (signature-only) reasoning sibling may exist: {:?}",
                         run.choice
                     );
-                    if text.contains(run.reasoning_delta.trim()) {
+                    if reasoning.text.contains(run.reasoning_delta.trim()) {
                         assert!(
-                            reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
-                                part,
-                                ReasoningContent::Text { signature: Some(signature), .. }
-                                    if !signature.is_empty()
-                            )),
+                            signature(content).is_some_and(|signature| !signature.is_empty()),
                             "the signature must land on the block carrying the thinking text: {:?}",
                             run.choice
                         );
@@ -695,13 +608,7 @@ async fn interactions_requires_action_roundtrip() {
                         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(
-                            serde_json::to_value(interactions_api::AdditionalParameters {
-                                store: Some(true),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        ),
+                        .additional_params(serde_json::json!({ "store": true })),
                 )
                 .await
                 .expect("tool-required interaction should succeed");
@@ -709,17 +616,23 @@ async fn interactions_requires_action_roundtrip() {
             // The wire status transition under test, read off the reply
             // document `raw` carries verbatim — the interaction resource is
             // the reply, and the fold is the other view of it.
-            let interaction: interactions_api::Interaction =
-                serde_json::from_value(raw.raw.clone()).expect("`raw` is the interaction resource");
-            assert!(
-                matches!(
-                    interaction.status,
-                    Some(interactions_api::InteractionStatus::RequiresAction)
-                ),
+            let interaction = raw
+                .raw
+                .as_object()
+                .expect("`raw` is the interaction resource");
+            assert_eq!(
+                interaction
+                    .get("status")
+                    .and_then(serde_json::Value::as_str),
+                Some("requires_action"),
                 "declared client tool should leave the interaction in requires_action, got {:?}",
-                interaction.status
+                interaction.get("status")
             );
-            let interaction_id = interaction.id.clone();
+            let interaction_id = interaction
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let normalized = raw;
@@ -759,11 +672,7 @@ async fn interactions_requires_action_roundtrip() {
                         vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
                     )))
                     .additional_params(
-                        serde_json::to_value(interactions_api::AdditionalParameters {
-                            previous_interaction_id: Some(interaction_id),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),
+                        serde_json::json!({ "previous_interaction_id": interaction_id }),
                     ),
                 )
                 .await
@@ -813,11 +722,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                 .tool(rig::tool::tool_definition(&crate::support::Adder))
                 .tool_choice(ToolChoice::Required)
                 .additional_params(
-                    serde_json::to_value(interactions_api::AdditionalParameters {
-                        store: Some(true),
-                        ..Default::default()
-                    })
-                    .expect("params should serialize"),
+                    serde_json::json!({ "store": true }),
                 );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -834,17 +739,17 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
             );
             for call in &add_calls {
                 assert_ne!(
-                    call.id.provider().map(|provider| provider.call_id.as_str()), Some("add"),
+                    call.id.provider().map(|provider| provider.as_str()), Some("add"),
                     "the tool name must never be fabricated into the durable id"
                 );
                 assert!(
                     call.id.provider()
                         .as_ref()
-                        .is_none_or(|provider| provider.call_id != "add"),
+                        .is_none_or(|provider| provider.as_str() != "add"),
                     "the tool name must never be fabricated into the provider call id"
                 );
                 assert!(
-                    call.function.arguments.is_object(),
+                    call.function.invalid_arguments.is_none(),
                     "each call's arguments must survive uncorrupted, got {:?}",
                     call.function.arguments
                 );
@@ -860,7 +765,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
             );
             let argument_sets: std::collections::HashSet<String> = add_calls
                 .iter()
-                .map(|call| call.function.arguments.to_string())
+                .map(|call| call.function.arguments_value().to_string())
                 .collect();
             assert_eq!(
                 argument_sets,
@@ -906,31 +811,22 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
             let request = CompletionRequest::new(
-                    "How many positive integers n < 100 are divisible by 6 but not by 9? \
+                "How many positive integers n < 100 are divisible by 6 but not by 9? \
                      Think it through, then answer with just the number.",
-                )
-                .additional_params(
-                    serde_json::to_value(interactions_api::AdditionalParameters {
-                        generation_config: Some(interactions_api::GenerationConfig {
-                            thinking_level: Some(interactions_api::ThinkingLevel::Medium),
-                            thinking_summaries: Some(interactions_api::ThinkingSummaries::None),
-                            ..Default::default()
-                        }),
-                        store: Some(true),
-                        ..Default::default()
-                    })
-                    .expect("params should serialize"),
-                );
+            )
+            .additional_params(serde_json::json!({
+                "generation_config": {
+                    "thinking_level": "medium",
+                    "thinking_summaries": "none"
+                },
+                "store": true
+            }));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
             let signature_delivered = run.choice.iter().any(|content| {
-                matches!(content, AssistantContent::Reasoning(reasoning)
-                    if reasoning.open(reasoning.issuer()).expect("sealed reasoning").content.iter().any(|part| matches!(
-                        part,
-                        ReasoningContent::Text { signature: Some(signature), .. }
-                            if !signature.is_empty()
-                    )))
+                matches!(content, AssistantContent::Reasoning(_))
+                    && signature(content).is_some_and(|signature| !signature.is_empty())
             });
             // The invariant under test: whatever the wire delivered, the
             // aggregate must never carry a reasoning part that is *only* an
@@ -942,18 +838,13 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                 .choice
                 .iter()
                 .filter_map(|content| match content {
-                    AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()),
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning),
                     _ => None,
                 })
                 .collect();
             let empty_parts = reasoning_parts
                 .iter()
-                .filter(|reasoning| {
-                    reasoning
-                        .content
-                        .iter()
-                        .all(|part| matches!(part, ReasoningContent::Text { text, .. } if text.trim().is_empty()))
-                })
+                .filter(|reasoning| reasoning.text.trim().is_empty())
                 .count();
             assert!(
                 empty_parts == 0 || reasoning_parts.len() == empty_parts,
@@ -995,20 +886,18 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::user(
                     "Use the add tool to compute 2 + 3, then state the result.",
                 ),
-                rig::message::Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::ToolCall(ToolCall {
-                        id: cross_provider_handle.clone(),
-                        function: rig::message::ToolFunction {
-                            name: rig_core::message::ToolName::new("add").expect("tool name"),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
-                        },
-                        signature: None,
-                        additional_params: None,
-                    })],
-                },
+                rig::message::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                    AssistantContent::ToolCall(ToolCall::new(
+                        cross_provider_handle.clone(),
+                        rig::message::ToolFunction::new(
+                            rig_core::message::ToolName::new("add").expect("tool name"),
+                            serde_json::json!({"x": 2, "y": 3}),
+                        ),
+                    )),
+                ])),
                 rig::message::Message::User {
                     content: vec![UserContent::ToolResult(rig::message::ToolResult {
+                        is_error: false,
                         call: cross_provider_handle,
                         name: rig_core::message::ToolName::new("add".to_owned())
                             .expect("tool name"),

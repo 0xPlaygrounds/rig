@@ -35,7 +35,9 @@
           }
         },
         {
-          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::AdditionalParams": {
+            "store": false
+          },
           "rig_ecs::agent::Conversation": "golden-conversation",
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::InvalidCalls": {
@@ -137,7 +139,9 @@
           }
         },
         {
-          "rig_ecs::agent::AdditionalParams": null,
+          "rig_ecs::agent::AdditionalParams": {
+            "store": false
+          },
           "rig_ecs::agent::Conversation": "golden-conversation",
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::InvalidCalls": {
@@ -211,8 +215,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -220,10 +224,36 @@
             "content": [
               {
                 "type": "text",
-                "text": "Ready."
+                "text": "Ready.",
+                "native": {
+                  "item": {
+                    "content": [
+                      {
+                        "annotations": [],
+                        "logprobs": [],
+                        "text": "Ready.",
+                        "type": "output_text"
+                      }
+                    ],
+                    "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
+                    "role": "assistant",
+                    "status": "completed",
+                    "type": "message"
+                  },
+                  "fingerprint": "d69d08f702e303b6"
+                }
               }
             ],
-            "message_id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
+            "head": {
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8"
+              },
+              "stop": "stop"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -244,7 +274,24 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "Ready."
+                  "text": "Ready.",
+                  "native": {
+                    "item": {
+                      "content": [
+                        {
+                          "annotations": [],
+                          "logprobs": [],
+                          "text": "Ready.",
+                          "type": "output_text"
+                        }
+                      ],
+                      "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
+                      "role": "assistant",
+                      "status": "completed",
+                      "type": "message"
+                    },
+                    "fingerprint": "d69d08f702e303b6"
+                  }
                 }
               ],
               "usage": {
@@ -255,12 +302,15 @@
                 "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
-              "response_id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
-              "provider_request_id": "req_45d8e4e342154bcc94b0eaa3e5794043",
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4o",
+                "response_model": "gpt-4o-2024-08-06",
+                "response_id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8"
+              },
+              "provider_request_id": "req_2009f11997d44c46a5f8bf23d38e4e0f",
               "finish_reason": "stop",
-              "provider": "openai",
-              "model": "gpt-4o-2024-08-06",
               "raw": {
                 "access_programs": null,
                 "background": false,
@@ -271,7 +321,7 @@
                 "created_at": 0,
                 "error": null,
                 "frequency_penalty": 0.0,
-                "id": "resp_07847561cacc1464006ab395f0411c87d0861001f94ffc4e3e",
+                "id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8",
                 "incomplete_details": null,
                 "instructions": "You are a concise assistant. Answer directly.",
                 "max_output_tokens": null,
@@ -290,7 +340,7 @@
                         "type": "output_text"
                       }
                     ],
-                    "id": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee",
+                    "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
                     "role": "assistant",
                     "status": "completed",
                     "type": "message"
@@ -309,7 +359,7 @@
                 "safety_identifier": null,
                 "service_tier": "default",
                 "status": "completed",
-                "store": true,
+                "store": false,
                 "temperature": 0.0,
                 "text": {
                   "format": {
@@ -357,20 +407,46 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 1
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_07847561cacc1464006ab395f1503087d0a79c681afbe099ee"
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.responses",
+              "provider": "openai",
+              "model": "gpt-4o",
+              "response_model": "gpt-4o-2024-08-06",
+              "response_id": "resp_08cbc9beb3793494016abf498cb49487d087731dd1deca04d8"
+            },
+            "stop": "stop"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "Ready."
+              "text": "Ready.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Ready.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_08cbc9beb3793494016abf498d74fc87d0bf85b6ff2be5cffe",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "d69d08f702e303b6"
+              }
             }
           }
         },
@@ -383,8 +459,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

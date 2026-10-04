@@ -40,7 +40,7 @@ const EXPECTED: &str = r#"{"case":"fresh completion chat","spans":[{"fields":["g
 {"case":"modality image_generation","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"image_generation","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"image_generation","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
 {"case":"modality audio_generation","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"audio_generation","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"audio_generation","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
 {"case":"modality span under a completion parent stays fresh","spans":[{"fields":["rig.completion_parent","gen_ai.operation.name","gen_ai.system_instructions","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"agent_chat","parent":null,"target":"runtime","values":{"gen_ai.operation.name":"chat","rig.completion_parent":true}},{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"embeddings","parent":"agent_chat","target":"rig::modalities","values":{"gen_ai.operation.name":"embeddings","gen_ai.provider.name":"prov","gen_ai.request.model":"model"}}]}
-{"case":"completion operation span+record (message id fallback)","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"msg_1","gen_ai.response.model":"resp_model","gen_ai.system_instructions":"[{\"type\":\"text\",\"content\":\"sys\"}]","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
+{"case":"completion operation span+record","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.model":"resp_model","gen_ai.system_instructions":"[{\"type\":\"text\",\"content\":\"sys\"}]","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
 {"case":"completion operation streaming span+record_event","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.system_instructions","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens","gen_ai.input.messages","gen_ai.output.messages"],"name":"chat_streaming","parent":null,"target":"rig::completions","values":{"gen_ai.operation.name":"chat_streaming","gen_ai.provider.name":"prov","gen_ai.request.model":"override","gen_ai.response.id":"resp_1","gen_ai.response.model":"m2","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
 {"case":"embedding operation span+record","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"embeddings","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"embeddings","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"emb_id","gen_ai.response.model":"emb_model","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
 {"case":"rerank operation span+record","spans":[{"fields":["gen_ai.operation.name","gen_ai.provider.name","gen_ai.request.model","gen_ai.response.id","gen_ai.response.model","rig.provider_request_id","gen_ai.usage.input_tokens","gen_ai.usage.output_tokens","gen_ai.usage.cache_read.input_tokens","gen_ai.usage.cache_creation.input_tokens","gen_ai.usage.tool_use_prompt_tokens","gen_ai.usage.reasoning_tokens"],"name":"rerank","parent":null,"target":"rig::modalities","values":{"gen_ai.operation.name":"rerank","gen_ai.provider.name":"prov","gen_ai.request.model":"model","gen_ai.response.id":"rr_id","gen_ai.response.model":"rr_model","gen_ai.usage.input_tokens":10,"gen_ai.usage.output_tokens":0,"gen_ai.usage.reasoning_tokens":3}}]}
@@ -145,24 +145,19 @@ fn cases() -> Vec<Value> {
             SpanBuilder::new("prov", "model", GenAiOperation::Embeddings).build();
         },
     );
-    run(
-        "completion operation span+record (message id fallback)",
-        &mut out,
-        || {
-            let request = CompletionRequest::new("hi")
-                .preamble("sys")
-                .record_content_telemetry(true);
-            let end = Finish {
-                usage: usage(),
-                message_id: Some("msg_1".into()),
-                model: Some("resp_model".into()),
-                ..Finish::default()
-            };
-            let fold = crate::test_utils::fold_for(&request, &Scripted(end.clone()), Mode::Unary);
-            fold.finish(end, reply())
-                .expect("the fold records its response");
-        },
-    );
+    run("completion operation span+record", &mut out, || {
+        let request = CompletionRequest::new("hi")
+            .preamble("sys")
+            .record_content_telemetry(true);
+        let end = Finish {
+            usage: usage(),
+            model: Some("resp_model".into()),
+            ..Finish::default()
+        };
+        let fold = crate::test_utils::fold_for(&request, &Scripted(end.clone()), Mode::Unary);
+        fold.finish(end, reply())
+            .expect("the fold records its response");
+    });
     run(
         "completion operation streaming span+record_event",
         &mut out,
@@ -171,7 +166,6 @@ fn cases() -> Vec<Value> {
             let end = Finish {
                 usage: usage(),
                 response_id: Some("resp_1".into()),
-                message_id: Some("msg_1".into()),
                 model: Some("m2".into()),
                 ..Finish::default()
             };
@@ -286,8 +280,26 @@ fn modality_spans_ignore_system_instructions() {
 
 /// A completion wire named `prov` for `model`, whose transport answers with
 /// one scripted end.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Scripted(Finish);
+
+impl crate::completion::ReplayTarget for Scripted {
+    fn api(&self) -> crate::message::Api {
+        crate::message::Api::from_static("prov.chat")
+    }
+
+    fn provider(&self) -> &str {
+        "prov"
+    }
+
+    fn model(&self) -> &str {
+        "model"
+    }
+
+    fn accepts(&self, _model: &str) -> crate::completion::Accepts {
+        crate::completion::Accepts::ALL
+    }
+}
 
 impl Wire for Scripted {
     type Op = Completion;
@@ -296,7 +308,7 @@ impl Wire for Scripted {
     type Decoder<'id> = Ends;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new("prov").model("model")
+        Descriptor::new("prov").model("model").replay(self)
     }
 
     fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<(), EncodeError> {

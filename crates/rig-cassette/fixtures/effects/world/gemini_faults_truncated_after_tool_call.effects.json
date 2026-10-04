@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -161,9 +161,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_84285"
-                }
+                "provider": "call_1924994"
               },
               "function": {
                 "name": "add",
@@ -172,12 +170,29 @@
                   "y": 25
                 }
               },
-              "signature": "EtICCs8CAWkUfRNiP0zoJFDQgiCZFFewpdgi1b3ZsXAF2avrYUSCJEGQ3kHVC7+QPAqhwgpOdsAfTzgw60QHnuqWXFfngH3RKOUtuXav+nF8fjRxuAHE5By+ryUUIoo9SYjcpk+T6wbl7vMuHpD6PQCBoZ+WZ4BAokQINjSZIy7wWll0QGI54x7lHKC7hjUOtX4swITByLdmzvqBRgz80ySUV2IYxWXQuHqUP13qscqIUxuByrkgm3NkdRJXE6d1/OI3JlItC1urKmt+8WncQl/sagnQOVPSOgrWdycxZ61svM99pXZ6yNuPBLTmDmOBUtgzVBb9pOD5VGh1PWLgX4uOnqH/vCBP3PMH8ExhJuXpSIdVk5gKB4MhnXmL2P5jFBr89bW6SndZILuD3HAc+7Jgnm6RUIZepbcJrkP3VdJv1AHwqAisc2nAN3DmBfMbgAs1W9E=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 17,
+                      "y": 25
+                    },
+                    "id": "call_1924994",
+                    "name": "add"
+                  },
+                  "thoughtSignature": "EtICCs8CAWkUfROD5nRuiZm/pf3ABxuJyNDCjIG1gqCRMlKBHkcMLtYDv0GJJJYtO13xuutrm++LWK5f+q+Ougqr/NRwFBEI91IxkQ3Of+4zrz1yftkbW8ioW3gfagEqvdriztL682+NJl9GKNx6WVn7C3uoa/hCbKR5k//B2U6716UJ8+GO5FohBCmxjEKDQBFKvGiv/gJqxDnKRH6uwDRp+4MjVrMEna7IQ2pl73VL4vIWqicR99buDZ95oKIqQDESujhEbEWDZT9SQs9yJFMshukwnEWzYYSOKjhTNmX6XDibkUk5OgqjTmp4lX1OXVCA3KvKmlyuDmXLZY8I3w5VXqgvuWghuXFrtAqUrSee56mdYmzrpy0ct2+h+jbX0BxhEFWv8ueffr83P8QBti5NsqlL1NF2byxtS+o0iqEMl/pCRPrJnimdDTSG8s2m5MuD65s="
+                },
+                "fingerprint": "07c58c1af3f8f363"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-3-flash-preview"
+      },
       "scope": "golden/run#0"
     }
   ]

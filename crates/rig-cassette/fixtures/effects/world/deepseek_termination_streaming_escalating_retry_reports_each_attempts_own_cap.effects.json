@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -58,11 +66,27 @@
         }
       },
       {
+        "batch": 14,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 15,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 16,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -114,26 +138,34 @@
         }
       },
       {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 25,
+        "batch": 22,
         "id": 0,
         "kind": {
           "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 27,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 28,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 29,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -141,7 +173,15 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -185,6 +225,14 @@
         }
       },
       {
+        "batch": 37,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
         "batch": 38,
         "id": 1,
         "kind": {
@@ -221,7 +269,7 @@
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -273,7 +321,7 @@
         }
       },
       {
-        "batch": 49,
+        "batch": 50,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -281,7 +329,7 @@
         }
       },
       {
-        "batch": 50,
+        "batch": 51,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -297,14 +345,6 @@
         }
       },
       {
-        "batch": 53,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 54,
         "id": 1,
         "kind": {
@@ -313,47 +353,7 @@
         }
       },
       {
-        "batch": 55,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 58,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
-        "id": 1,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 60,
+        "batch": 54,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -435,24 +435,27 @@
             "total_tokens": 40,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "ff3d26de-f587-4237-88d7-83cca02fd128"
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 24,
               "completion_tokens": 16,
-              "total_tokens": 40,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 24,
+              "prompt_tokens": 24,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 24
+              "total_tokens": 40
             },
             "finish_reason": "length",
-            "response_id": "6eab369d-4506-4135-932e-187d96bb6475",
+            "response_id": "ff3d26de-f587-4237-88d7-83cca02fd128",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -611,6 +614,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -661,24 +669,27 @@
             "total_tokens": 50,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "cd6843b5-c1ed-4bea-a742-19a011b1fa27"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 24,
               "completion_tokens": 26,
-              "total_tokens": 50,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 24,
+              "prompt_tokens": 24,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 24
+              "total_tokens": 50
             },
             "finish_reason": "stop",
-            "response_id": "20c82455-0fec-433d-bc11-6a8513fa8743",
+            "response_id": "cd6843b5-c1ed-4bea-a742-19a011b1fa27",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -917,6 +928,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     }
   ]
