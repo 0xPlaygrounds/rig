@@ -9,7 +9,8 @@
 //! never changes which mutants a file contributes. An identity is the
 //! mutant's file and description without its line and column, numbered when
 //! a function has several identical mutants. The baseline records the sample
-//! size, each selected mutant's outcome, and the tests that failed on it.
+//! size and each selected mutant's outcome, with how many tests failed on it
+//! and the first three of them.
 
 #[cfg(test)]
 mod tests;
@@ -27,10 +28,13 @@ use super::{Options, Result, invalid, target_dir};
 use crate::support::output;
 
 /// The sample size when neither the options nor a baseline give one.
-const DEFAULT_SAMPLE: u64 = 16;
+const DEFAULT_SAMPLE: u64 = 4;
 
 /// The baseline file's column header, after its `sample` line.
-pub(crate) const HEADER: &str = "mutant\toutcome\tkilled by";
+pub(crate) const HEADER: &str = "mutant\toutcome\tfailed tests\tfirst failed";
+
+/// How many failed tests a baseline row names; the rest are only counted.
+const NAMED_KILLERS: usize = 3;
 
 /// Test files under the mutated globs that are not mutated.
 const EXCLUDE: &[&str] = &["**/tests.rs", "**/*_tests.rs", "**/tests/**"];
@@ -118,7 +122,24 @@ impl Outcome {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Tested {
     pub(crate) outcome: Outcome,
+    /// How many tests failed on the mutant.
+    pub(crate) failed: usize,
+    /// The first of them in name order, at most [`NAMED_KILLERS`].
     pub(crate) killers: BTreeSet<String>,
+}
+
+impl Tested {
+    pub(crate) fn new(outcome: Outcome, mut killers: BTreeSet<String>) -> Self {
+        let failed = killers.len();
+        while killers.len() > NAMED_KILLERS {
+            killers.pop_last();
+        }
+        Self {
+            outcome,
+            failed,
+            killers,
+        }
+    }
 }
 
 /// A baseline or a measurement: the sample size and every selected mutant.
@@ -170,18 +191,6 @@ pub(crate) fn selected(identity: &str, sample: u64) -> bool {
     u64::from_str_radix(&hash(identity), 16).is_ok_and(|value| value % sample == 0)
 }
 
-/// `text` as a regex matching itself literally.
-pub(crate) fn escape_regex(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        if "\\.+*?()|[]{}^$#&-~".contains(ch) {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
-}
-
 /// The tests a nextest log reports as failed, timed out or killed by a
 /// signal, as `binary-id test-name`.
 pub(crate) fn killers(log: &str) -> BTreeSet<String> {
@@ -217,8 +226,9 @@ pub(crate) fn render(set: &KillSet) -> String {
         let killers: Vec<&str> = tested.killers.iter().map(String::as_str).collect();
         let _ = writeln!(
             out,
-            "{identity}\t{}\t{}",
+            "{identity}\t{}\t{}\t{}",
             tested.outcome.as_str(),
+            tested.failed,
             killers.join(", ")
         );
     }
@@ -236,9 +246,15 @@ pub(crate) fn parse(text: &str) -> Result<KillSet> {
     let mut mutants = BTreeMap::new();
     for (number, line) in lines.enumerate().skip(1) {
         let columns: Vec<&str> = line.split('\t').collect();
-        let [identity, outcome, killed_by] = columns.as_slice() else {
-            return Err(invalid(format!("mutants line {}: {line:?}", number + 3)));
+        let row = match columns.as_slice() {
+            [identity, outcome, failed, killed_by] => failed
+                .parse()
+                .ok()
+                .map(|failed: usize| (identity, outcome, failed, killed_by)),
+            _ => None,
         };
+        let (identity, outcome, failed, killed_by) =
+            row.ok_or_else(|| invalid(format!("mutants line {}: {line:?}", number + 3)))?;
         let outcome = Outcome::parse(outcome)
             .ok_or_else(|| invalid(format!("mutants line {}: {outcome:?}", number + 3)))?;
         let killers = killed_by
@@ -246,7 +262,14 @@ pub(crate) fn parse(text: &str) -> Result<KillSet> {
             .filter(|killer| !killer.is_empty())
             .map(str::to_owned)
             .collect();
-        mutants.insert((*identity).to_owned(), Tested { outcome, killers });
+        mutants.insert(
+            (*identity).to_owned(),
+            Tested {
+                outcome,
+                failed,
+                killers,
+            },
+        );
     }
     Ok(KillSet { sample, mutants })
 }
@@ -302,9 +325,15 @@ fn list(root: &Path, group: &Group) -> Result<Vec<(String, String)>> {
 }
 
 /// Run the selected mutants of `group` and read their outcomes.
+///
+/// cargo-mutants' `--re` does not filter field-deletion mutants, so the
+/// sample is applied through `--iterate` instead: every listed mutant outside
+/// it is written to the output's `previously_caught.txt`, which cargo-mutants
+/// skips by exact name.
 fn test_group(
     root: &Path,
     group: &Group,
+    listed: &[(String, String)],
     chosen: &[(String, String)],
     jobs: usize,
 ) -> Result<BTreeMap<String, Tested>> {
@@ -317,23 +346,32 @@ fn test_group(
     if out.exists() {
         std::fs::remove_dir_all(&out)?;
     }
-    std::fs::create_dir_all(&out)?;
+    let dir = out.join("mutants.out");
+    std::fs::create_dir_all(&dir)?;
+    let skipped: String = listed
+        .iter()
+        .filter(|entry| !chosen.contains(entry))
+        .map(|(name, _)| format!("{name}\n"))
+        .collect();
+    std::fs::write(dir.join("previously_caught.txt"), skipped)?;
     let mut command = mutants_command(root, group);
     command
-        .args(["--test-tool", "nextest", "--no-shuffle", "--jobs"])
+        .args([
+            "--test-tool",
+            "nextest",
+            "--no-shuffle",
+            "--iterate",
+            "--jobs",
+        ])
         .arg(jobs.to_string())
         .arg("--output")
         .arg(&out);
     for arg in group.test_args {
         command.arg(format!("--cargo-test-arg={arg}"));
     }
-    for (name, _) in chosen {
-        command.arg("-F").arg(format!("^{}$", escape_regex(name)));
-    }
     // cargo-mutants exits non-zero whenever a mutant is missed; the outcomes
     // file is the result.
     let _ = command.status()?;
-    let dir = out.join("mutants.out");
     let outcomes: Value =
         serde_json::from_str(&std::fs::read_to_string(dir.join("outcomes.json"))?)?;
     let by_name: BTreeMap<&str, &str> = chosen
@@ -364,7 +402,7 @@ fn test_group(
             .and_then(|log| std::fs::read_to_string(dir.join(log)).ok())
             .map(|log| killers(&log))
             .unwrap_or_default();
-        tested.insert((*identity).to_owned(), Tested { outcome, killers });
+        tested.insert((*identity).to_owned(), Tested::new(outcome, killers));
     }
     Ok(tested)
 }
@@ -402,7 +440,7 @@ pub(crate) fn measure(
             .cloned()
             .collect();
         let group_start = Instant::now();
-        let tested = test_group(root, group, &chosen, options.jobs)?;
+        let tested = test_group(root, group, &listed, &chosen, options.jobs)?;
         let killed = tested.values().filter(|t| t.outcome.killed()).count();
         println!(
             "mutants {}: {} listed, {} sampled, {} tested, {killed} killed, in {:.0}s",

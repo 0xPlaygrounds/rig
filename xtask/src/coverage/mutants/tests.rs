@@ -41,15 +41,6 @@ fn the_sample_is_a_fixed_hash_residue() {
 }
 
 #[test]
-fn a_name_matches_itself_as_a_regex() {
-    assert_eq!(
-        escape_regex("x.rs:1:2: replace a -> Option<(T, U)> with None"),
-        "x\\.rs:1:2: replace a \\-> Option<\\(T, U\\)> with None"
-    );
-    assert_eq!(escape_regex("[a]|b*"), "\\[a\\]\\|b\\*");
-}
-
-#[test]
 fn killers_are_read_from_nextest_status_lines() {
     let log = "\
         PASS [   0.004s] (1/3) rig-core a::passes
@@ -70,10 +61,7 @@ fn killers_are_read_from_nextest_status_lines() {
 }
 
 fn tested(outcome: Outcome, killers: &[&str]) -> Tested {
-    Tested {
-        outcome,
-        killers: killers.iter().map(|k| (*k).to_owned()).collect(),
-    }
+    Tested::new(outcome, killers.iter().map(|k| (*k).to_owned()).collect())
 }
 
 fn set(entries: &[(&str, Tested)]) -> KillSet {
@@ -99,11 +87,19 @@ fn the_baseline_round_trips() {
     ]);
     let text = render(&baseline);
     assert!(text.starts_with(&format!(
-        "sample\t8\n{HEADER}\nx.rs: a\tcaught\trig-core t1, rig-core t2\n"
+        "sample\t8\n{HEADER}\nx.rs: a\tcaught\t2\trig-core t1, rig-core t2\n"
     )));
     assert_eq!(parse(&text).unwrap(), baseline);
     assert!(parse("mutant\toutcome\n").is_err());
-    assert!(parse(&format!("sample\t8\n{HEADER}\nx\tsurvived\t\n")).is_err());
+    assert!(parse(&format!("sample\t8\n{HEADER}\nx\tsurvived\t0\t\n")).is_err());
+    assert!(parse(&format!("sample\t8\n{HEADER}\nx\tcaught\tmany\t\n")).is_err());
+}
+
+#[test]
+fn a_row_names_the_first_few_failed_tests_and_counts_the_rest() {
+    let many = tested(Outcome::Caught, &["e", "d", "c", "b", "a"]);
+    assert_eq!(many.failed, 5);
+    assert_eq!(many.killers.iter().collect::<Vec<_>>(), ["a", "b", "c"]);
 }
 
 #[test]

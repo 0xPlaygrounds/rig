@@ -372,7 +372,7 @@ baseline of it in `crates/rig-cassette/coverage/`:
   such as `type` and `finish_reason`.
 - `mutants.tsv`: a fixed sample of the `cargo mutants` mutants of the replay
   core, each run against its crate's unit tests and conformance targets, with
-  its outcome and the tests that failed on it. A mutant is in the sample when
+  its outcome, how many tests failed on it and the first three of them. A mutant is in the sample when
   the hash of its position-free name is divisible by the sample size.
 
 ```sh
