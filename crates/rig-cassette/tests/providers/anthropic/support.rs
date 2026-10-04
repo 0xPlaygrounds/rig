@@ -170,24 +170,6 @@ pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
 /// the Anthropic client appends itself.
 const OPENROUTER_MESSAGES_BASE_URL: &str = "https://openrouter.ai/api";
 
-pub(super) async fn with_anthropic_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    let (cassette, bound) = anthropic_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(AnthropicModels::new(
-        bound,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
-}
-
 /// One model's recorded session
 /// (`crates/rig-cassette/fixtures/cassettes/anthropic/models/<model>/`).
 /// The body gets the models, the session's clock and, when `upload_pdf`, a
@@ -382,21 +364,6 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     .catch_unwind()
     .await;
     cassette.finish_after_test(result).await;
-}
-
-/// Cassette wrapper for the extended-thinking usage matrix.
-///
-/// Delegates to [`with_anthropic_cassette`], separate for the same per-bug
-/// registry reason as [`with_anthropic_stop_sequence_cassette`] (see
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/reasoning_usage_matrix/`).
-pub(super) async fn with_anthropic_reasoning_usage_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
 }
 
 /// The effect corpus's request-shape matrix (Matrix E), one wrapper per

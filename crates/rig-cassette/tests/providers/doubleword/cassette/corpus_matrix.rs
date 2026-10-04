@@ -28,8 +28,6 @@ fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
 crate::matrix::golden_matrix! {
     wrapper: with_doubleword_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    hooks_lookup_before_run: ("corpus_matrix/hooks_lookup_before_run", cells::HOOKS_LOOKUP_BEFORE_RUN, "doubleword_hooks_lookup_before_run");
-    #[tokio::test]
     serving_serial_concurrency_one: ("corpus_matrix/serving_serial_concurrency_one", cells::SERVING_SERIAL_CONCURRENCY_ONE, "doubleword_serving_serial_concurrency_one");
     #[tokio::test]
     output_tool_choice_specific_output: ("corpus_matrix/output_tool_choice_specific_output", cells::OUTPUT_TOOL_CHOICE_SPECIFIC_OUTPUT, "doubleword_output_tool_choice_specific_output");

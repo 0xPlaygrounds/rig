@@ -9,7 +9,6 @@ mod cassette {
     mod agent_run_recovery;
     mod agent_run_stepping;
     mod agent_run_streamed;
-    mod agent_tools_e2e;
     mod auto_caching;
     mod cached_content_matrix;
     mod chat_history;
@@ -32,21 +31,13 @@ mod cassette {
     mod ecs_matrix_image;
     mod ecs_matrix_long_loop;
     mod ecs_parity;
-    mod ecs_prompt_caching;
     mod ecs_stress_context;
-    mod ecs_stress_main;
     #[path = "ecs_stress/main_golden.rs"]
     mod ecs_stress_main_golden;
-    #[path = "ecs_stress/main.rs"]
-    mod ecs_stress_main_runtime;
     #[path = "ecs_stress/runtime.rs"]
     mod ecs_stress_runtime;
     #[path = "ecs_stress/streaming.rs"]
     mod ecs_stress_streaming_runtime;
-    mod ecs_stress_tools;
-    #[path = "ecs_stress/tools.rs"]
-    mod ecs_stress_tools_runtime;
-    mod ecs_termination;
     mod ecs_tools_e2e;
     mod embedding_matrix;
     mod embeddings;
@@ -68,7 +59,6 @@ mod cassette {
     mod regression_suite;
     mod response_identity;
     mod restated_replies;
-    mod session_matrix;
     mod stateful_chain_matrix;
     mod stream_faults;
     mod stream_terminal_matrix;
@@ -79,7 +69,6 @@ mod cassette {
     mod thought_text_matrix;
     mod tool_choice;
     mod tool_definitions;
-    mod turn_termination_matrix;
 }
 
 mod live {

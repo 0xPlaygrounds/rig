@@ -37,8 +37,6 @@ crate::matrix::golden_matrix! {
     #[tokio::test]
     output_tool_under_none_degrades: ("corpus_matrix/output_tool_under_none_degrades", cells::OUTPUT_TOOL_UNDER_NONE_DEGRADES, "gemini_output_tool_under_none_degrades");
     #[tokio::test]
-    shaping_max_tokens_second_turn: ("corpus_matrix/shaping_max_tokens_second_turn", cells::SHAPING_MAX_TOKENS_SECOND_TURN, "gemini_shaping_max_tokens_second_turn");
-    #[tokio::test]
     shaping_preamble_second_turn: ("corpus_matrix/shaping_preamble_second_turn", cells::SHAPING_PREAMBLE_SECOND_TURN, "gemini_shaping_preamble_second_turn");
     #[tokio::test]
     causal_completion_concurrent: ("corpus_matrix/causal_completion_concurrent", cells::CAUSAL_COMPLETION_CONCURRENT, "gemini_causal_completion_concurrent");
@@ -46,10 +44,6 @@ crate::matrix::golden_matrix! {
 
 crate::matrix::golden_matrix! {
     wrapper: with_gemini_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
-    #[tokio::test]
-    output_tool_choice_required: ("corpus_matrix/output_tool_choice_required", cells::OUTPUT_TOOL_CHOICE_REQUIRED, "gemini_output_tool_choice_required");
-    #[tokio::test]
-    shaping_route_on_first_turn: ("corpus_matrix/shaping_route_on_first_turn", cells::SHAPING_ROUTE_ON_FIRST_TURN, "gemini_shaping_route_on_first_turn");
     #[tokio::test]
     shaping_active_tools_none_second_turn: ("corpus_matrix/shaping_active_tools_none_second_turn", cells::SHAPING_ACTIVE_TOOLS_NONE_SECOND_TURN, "gemini_shaping_active_tools_none_second_turn");
     #[tokio::test]

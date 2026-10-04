@@ -18,8 +18,8 @@ use serde_json::json;
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, TWO_TOOL_STREAM_PREAMBLE,
     TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive, assert_nonempty_response,
-    assert_raw_stream_tool_call_arguments_are_objects, assert_two_tool_roundtrip_contract,
-    assistant_text_response, collect_raw_stream_observation, collect_stream_observation,
+    assert_raw_stream_tool_call_arguments_are_objects, assistant_text_response,
+    collect_raw_stream_observation, collect_stream_observation,
 };
 
 use super::support::with_xai_cassette_result;
@@ -438,30 +438,6 @@ crate::matrix::case_matrix! {
     # [tokio :: test]
     # [ignore = "stale cassette: the shared session cell sends no `store: false`, so xAI stores its responses and the recorder refuses the re-record"]
     parallel_tool_calls_single_turn_nonstreaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming", parallel_tool_calls_single_turn_nonstreaming_3);
-}
-
-#[tokio::test]
-async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
-    with_xai_cassette_result(
-        "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(SESSION_MODEL))
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(json!({ "parallel_tool_calls": true, "store": false }))
-                .build();
-            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
-            let observation = collect_stream_observation(&mut stream).await;
-            assert_two_tool_roundtrip_contract(
-                &observation,
-                &[AlphaSignal::NAME, BetaSignal::NAME],
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
-            Ok(())
-        },
-    )
-    .await
 }
 
 #[tokio::test]

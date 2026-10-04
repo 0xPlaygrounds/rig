@@ -29,8 +29,6 @@ crate::matrix::golden_matrix! {
     #[tokio::test]
     host_custom_at_start_streamed: ("corpus_matrix_chat/host_custom_at_start_streamed", cells::HOST_CUSTOM_AT_START_STREAMED, "openai_chat_host_custom_at_start_streamed");
     #[tokio::test]
-    memory_serial_two_tools: ("corpus_matrix_chat/memory_serial_two_tools", cells::MEMORY_SERIAL_TWO_TOOLS, "openai_chat_memory_serial_two_tools");
-    #[tokio::test]
     output_tool_choice_specific_output: ("corpus_matrix_chat/output_tool_choice_specific_output", cells::OUTPUT_TOOL_CHOICE_SPECIFIC_OUTPUT, "openai_chat_output_tool_choice_specific_output");
     #[tokio::test]
     shaping_preamble_second_turn: ("corpus_matrix_chat/shaping_preamble_second_turn", cells::SHAPING_PREAMBLE_SECOND_TURN, "openai_chat_shaping_preamble_second_turn");

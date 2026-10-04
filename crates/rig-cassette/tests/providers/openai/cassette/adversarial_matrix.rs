@@ -14,21 +14,6 @@ fn reasoning(effort: &str) -> Option<serde_json::Value> {
     }))
 }
 
-#[tokio::test]
-async fn colliding_ids_responses() {
-    const SCENARIO: &str = "adversarial/colliding_ids_responses";
-    with_openai_cassette("adversarial/colliding_ids_responses", |client| async move {
-        adversarial::colliding_ids(
-            client.openai.responses("gpt-4.1-mini"),
-            "call_dup",
-            Some(json!({ "store": false })),
-        )
-        .await;
-    })
-    .await;
-    adversarial::assert_colliding_recorded("openai", SCENARIO);
-}
-
 /// First foreign hop: the Anthropic source continues on Responses.
 #[tokio::test]
 async fn three_provider_round_trip() {

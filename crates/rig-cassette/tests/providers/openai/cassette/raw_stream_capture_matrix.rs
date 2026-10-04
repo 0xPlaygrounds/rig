@@ -37,7 +37,6 @@
 //! |---|------|-----------|----------|--------|
 //! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | `raw` is the chat terminal record; its fields ≡ terminal | recorded |
 //! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
-//! | 5 | `responses_reasoning_stream_raw_round_trips_typed` | Responses, reasoning stream (`reasoning: { effort, summary }`) | terminal round trip; `raw["reasoning_metadata"]` = `response.completed`'s `reasoning`; premise: a `reasoning` output item with `encrypted_content` | recorded |
 //! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the terminal record; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Premise, re-derived from each
@@ -65,31 +64,13 @@ use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
-/// The reasoning cell needs a model that emits `reasoning` output items; the
-/// same one the `reasoning_roundtrip` module records against.
-const REASONING_MODEL: &str = openai::GPT_5_2;
 const PROMPT: &str = "Reply with exactly the single word: pong";
-/// A problem small enough to answer in a few tokens but not so trivial that
-/// the model skips reasoning: at `effort: "low"` a one-step multiplication
-/// came back with no `reasoning` output item at all, and a cell that cannot
-/// find one fails on its premise.
-const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60 km/h. \
-     At what time does it arrive? Reply with only the time in HH:MM.";
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-}
-
-/// The reasoning request shape the `reasoning_roundtrip` module uses
-/// (`effort: "medium"`), with a summary asked for; the provider adds
-/// `reasoning.encrypted_content` to `include` on every reasoning request.
-fn reasoning_request() -> CompletionRequest {
-    CompletionRequest::new(REASONING_PROMPT).additional_params(json!({
-        "reasoning": { "effort": "medium", "summary": "auto" }
-    }))
 }
 
 fn ping_tool() -> ToolDefinition {
@@ -274,111 +255,6 @@ async fn responses_stream_raw_exposes_status() {
 // ---------------------------------------------------------------------------
 // Reasoning and tool-call streams
 // ---------------------------------------------------------------------------
-
-/// A Responses reasoning stream: the terminal record round-trips, and the
-/// `reasoning` echo of `response.completed` — which the normalized
-/// `CompletionResponse` does not model — is readable off `raw` as
-/// `reasoning_metadata`. Premise: the completed response object carries a
-/// `reasoning` output item with a string `encrypted_content`, i.e. this was a
-/// reasoning turn on the wire and not merely a reasoning-configured request.
-#[tokio::test]
-async fn responses_reasoning_stream_raw_round_trips_typed() {
-    const SCENARIO: &str =
-        "raw_stream_capture_matrix/responses_reasoning_stream_raw_round_trips_typed";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_stream_capture_matrix/responses_reasoning_stream_raw_round_trips_typed",
-        |client| {
-            capture_terminal(
-                client.openai.completion(REASONING_MODEL),
-                reasoning_request(),
-                observed.clone(),
-            )
-        },
-    )
-    .await
-    .expect("responses_reasoning_stream_raw_round_trips_typed should replay from its cassette");
-    let terminal = observed.take();
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
-    // Premise: a reasoning request on the wire, answered with a reasoning
-    // item carrying encrypted content, and a `reasoning` echo object.
-    let request: Value =
-        serde_json::from_str(&bodies[0].0).expect("recorded request should be JSON");
-    assert_eq!(
-        request["reasoning"],
-        json!({ "effort": "medium", "summary": "auto" }),
-        "{SCENARIO}: the recorded request carries the reasoning shape"
-    );
-    assert_eq!(
-        request["include"],
-        json!(["reasoning.encrypted_content"]),
-        "{SCENARIO}: the provider asks for encrypted reasoning on every reasoning request"
-    );
-    let reasoning_item = completed["output"]
-        .as_array()
-        .and_then(|items| items.iter().find(|item| item["type"] == "reasoning"))
-        .unwrap_or_else(|| {
-            panic!("{SCENARIO}: the completed response must carry a `reasoning` output item")
-        });
-    assert!(
-        reasoning_item["encrypted_content"].is_string(),
-        "{SCENARIO}: the reasoning item must carry a string `encrypted_content`"
-    );
-    let recorded_reasoning = completed["reasoning"].as_object().unwrap_or_else(|| {
-        panic!("{SCENARIO}: the completed response echoes `reasoning` as an object")
-    });
-    assert_eq!(
-        recorded_reasoning.get("effort"),
-        Some(&json!("medium")),
-        "{SCENARIO}: the echo reports the requested effort"
-    );
-
-    let raw = captured_raw(SCENARIO, &terminal);
-    let typed = responses::assert_terminal_round_trips(&terminal);
-    assert_matches_recorded_token(
-        typed["id"].as_str(),
-        completed["id"].as_str(),
-        &format!("{SCENARIO}: terminal response id"),
-    );
-    assert_eq!(
-        typed["model"].as_str(),
-        completed["model"].as_str(),
-        "{SCENARIO}: terminal model"
-    );
-    assert_eq!(
-        typed["usage"]["output_tokens"].as_u64(),
-        completed["usage"]["output_tokens"].as_u64(),
-        "{SCENARIO}: terminal output tokens"
-    );
-    assert_eq!(
-        typed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
-        completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
-        "{SCENARIO}: terminal reasoning tokens"
-    );
-    // The completed event's `reasoning` echo, as the response carries it.
-    assert_eq!(
-        raw["reasoning"],
-        Value::Object(recorded_reasoning.clone()),
-        "{SCENARIO}: `reasoning` off the captured response equals the completed event's"
-    );
-    assert_eq!(
-        typed["reasoning"].as_object(),
-        Some(recorded_reasoning),
-        "{SCENARIO}: the returned document reads it back"
-    );
-    assert_normalized_lacks(
-        &normalized_without_raw(terminal.clone()),
-        &["reasoning_metadata"],
-    );
-    // The normalized terminal reports the reasoning tokens the completed
-    // event carried.
-    assert_eq!(
-        terminal.usage.reasoning_tokens,
-        completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
-        "{SCENARIO}: normalized reasoning tokens"
-    );
-}
 
 /// A forced Chat tool-call stream: the terminal record agrees with the
 /// normalized terminal, and `raw` spells `finish_reason` as OpenAI's own

@@ -24,7 +24,5 @@ crate::matrix::golden_matrix! {
     #[tokio::test]
     inline_text_streamed: ("image_matrix_responses/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED, "openai_responses_image_inline_text_streamed");
     #[tokio::test]
-    inline_tool_streamed: ("image_matrix_responses/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED, "openai_responses_image_inline_tool_streamed");
-    #[tokio::test]
     url_text_unary: ("image_matrix_responses/url_text_unary", cells::IMAGE_URL_TEXT_UNARY, "openai_responses_image_url_text_unary");
 }

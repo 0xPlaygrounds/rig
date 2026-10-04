@@ -285,18 +285,6 @@ pub(super) async fn with_openai_max_tokens_cassette<F, Fut>(
     with_openai_cassette(spec, test_body).await;
 }
 
-/// Per-bug wrapper for the truncated-turn matrix
-/// (`crates/rig-cassette/fixtures/cassettes/openai/truncated_turn_matrix/`).
-pub(super) async fn with_openai_truncation_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(OpenAiCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_openai_cassette(spec, test_body).await;
-}
-
 /// Live-recorded Chat Completions log-probability transport matrix.
 pub(super) async fn with_openai_chat_stream_logprobs_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,

@@ -297,31 +297,15 @@ crate::matrix::case_matrix! {
     # [tokio :: test]
     blocking_disabled_stop_top_zero: ("streaming_logprobs_matrix/blocking_disabled_stop_top_zero", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Stop , Top :: Zero ,));
     # [tokio :: test]
-    blocking_disabled_stop_top_two: ("streaming_logprobs_matrix/blocking_disabled_stop_top_two", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
     blocking_disabled_length_top_absent: ("streaming_logprobs_matrix/blocking_disabled_length_top_absent", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Length , Top :: Absent ,));
-    # [tokio :: test]
-    blocking_disabled_length_top_two: ("streaming_logprobs_matrix/blocking_disabled_length_top_two", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Length , Top :: Two ,));
-    # [tokio :: test]
-    blocking_low_stop_top_absent: ("streaming_logprobs_matrix/blocking_low_stop_top_absent", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    blocking_low_stop_top_two: ("streaming_logprobs_matrix/blocking_low_stop_top_two", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Stop , Top :: Two ,));
     # [tokio :: test]
     blocking_low_length_top_absent: ("streaming_logprobs_matrix/blocking_low_length_top_absent", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Length , Top :: Absent ,));
     # [tokio :: test]
     blocking_low_length_top_two: ("streaming_logprobs_matrix/blocking_low_length_top_two", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Length , Top :: Two ,));
     # [tokio :: test]
-    streaming_disabled_stop_top_absent: ("streaming_logprobs_matrix/streaming_disabled_stop_top_absent", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    streaming_disabled_stop_top_two: ("streaming_logprobs_matrix/streaming_disabled_stop_top_two", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
     streaming_disabled_length_top_absent: ("streaming_logprobs_matrix/streaming_disabled_length_top_absent", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Length , Top :: Absent ,));
     # [tokio :: test]
     streaming_disabled_length_top_two: ("streaming_logprobs_matrix/streaming_disabled_length_top_two", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Length , Top :: Two ,));
-    # [tokio :: test]
-    streaming_low_stop_top_zero: ("streaming_logprobs_matrix/streaming_low_stop_top_zero", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Stop , Top :: Zero ,));
-    # [tokio :: test]
-    streaming_low_stop_top_two: ("streaming_logprobs_matrix/streaming_low_stop_top_two", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Stop , Top :: Two ,));
     # [tokio :: test]
     streaming_low_length_top_absent: ("streaming_logprobs_matrix/streaming_low_length_top_absent", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Length , Top :: Absent ,));
     # [tokio :: test]

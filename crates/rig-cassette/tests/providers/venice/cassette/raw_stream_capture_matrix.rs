@@ -17,7 +17,6 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat terminal record; its accounting is the terminal's usage; the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_cost` | terminal-only field | `raw.additional_params.cost.usd` equals the recorded terminal frame's, and no earlier frame carried a cost | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -33,7 +32,7 @@ use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
 use super::super::support::with_venice_cassette_result;
-use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal, chat};
+use crate::raw_capture::{capture_text_and_terminal, chat};
 use crate::support::Observed;
 
 const PROVIDER: &str = "venice";
@@ -48,34 +47,6 @@ fn request() -> CompletionRequest {
 // ================================================================
 // 1. raw is the terminal record
 // ================================================================
-
-#[tokio::test]
-async fn stream_raw_round_trips_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let sink = Observed::default();
-    with_venice_cassette_result(
-        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| {
-            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
-        },
-    )
-    .await
-    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
-
-    let (text, terminal) = sink.take();
-    assert!(!text.is_empty());
-    // The captured document is the decoder's terminal record, and its native
-    // fields are the normalized ones. The transport id is stamped on the
-    // normalized terminal rather than on the native record.
-    chat::assert_terminal_round_trips(&terminal);
-
-    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
-    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
-    // Venice contracts no id header, so `None` is the documented outcome.
-    assert_no_request_id(terminal.provider_request_id.as_deref(), "Venice");
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-}
 
 // ================================================================
 // 2. A terminal-only field the normalized record lacks

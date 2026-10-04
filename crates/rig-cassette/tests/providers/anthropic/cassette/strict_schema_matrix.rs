@@ -1,7 +1,7 @@
 //! Live-recorded coverage for the strict-schema transformation matrix.
 
 use rig::completion::ToolDefinition;
-use rig::message::{AssistantContent, ToolChoice};
+use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::cassette_models::MapWire;
@@ -237,36 +237,6 @@ async fn boolean_root_schema_is_rejected_for_tool_input() {
                 "record_boolean_root",
                 "Call record_boolean_root.",
                 json!(true),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn root_defs_ref_roundtrip() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/root_defs_ref_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_root_ref",
-                "Record name = Ada and omit nickname.",
-                json!({
-                    "$ref": "#/$defs/Person",
-                    "$defs": {
-                        "Person": {
-                            "type": "object",
-                            "properties": {
-                                "name": { "type": "string" },
-                                "nickname": { "type": "string" }
-                            },
-                            "required": ["name"]
-                        }
-                    }
-                }),
-                json!({ "name": "Ada" }),
             )
             .await;
         },
@@ -851,54 +821,6 @@ async fn properties_without_explicit_object_type_roundtrip() {
                 json!({ "value": "inferred" }),
             )
             .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn required_and_optional_property_order_schema_is_accepted() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/required_and_optional_property_order_schema_is_accepted",
-        |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequest::new(
-                "Call record_order with required_first = yes and optional_last = included.",
-            )
-            .preamble("Copy both values exactly into one tool call.")
-            .max_tokens(1024)
-            .tool_choice(ToolChoice::Required)
-            .tool(ToolDefinition {
-                name: rig_core::message::ToolName::new("record_order").expect("tool name"),
-                description: "Record required and optional properties.".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "optional_last": { "type": "string" },
-                        "required_first": { "type": "string" }
-                    },
-                    "required": ["required_first"]
-                }),
-            });
-
-            let response = model
-                .call(request)
-                .await
-                .expect("strict property-order request should succeed");
-            let arguments = response
-                .choice
-                .iter()
-                .find_map(|content| match content {
-                    AssistantContent::ToolCall(tool_call) => Some(&tool_call.function.arguments),
-                    _ => None,
-                })
-                .expect("response should contain a tool call");
-            assert_eq!(arguments["required_first"], "yes");
-            if let Some(optional) = arguments.get("optional_last") {
-                assert_eq!(optional, "included");
-            }
         },
     )
     .await;

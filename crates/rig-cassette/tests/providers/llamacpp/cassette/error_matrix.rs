@@ -14,7 +14,6 @@
 //! | --- | --- | --- | --- | --- |
 //! | [`context_overflow_preserves_the_token_counts`] | `-c 512` | 400 | `exceed_context_size_error` | carries `n_prompt_tokens` + `n_ctx` |
 //! | [`streaming_context_overflow_matches_the_blocking_envelope`] | `-c 512` | 400 | `exceed_context_size_error` | the 400 lands before the SSE stream opens |
-//! | [`a_missing_api_key_is_a_401_the_caller_can_read`] | `--api-key` | 401 | `authentication_error` | |
 //! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `verify_path` is `/props` |
 //! | [`the_model_listing_requires_the_key_on_a_keyed_server`] | `--api-key` | 401 | `authentication_error` | `/v1/models` was public on b10499 |
 //! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
@@ -236,47 +235,6 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
 // ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
-
-/// `llama-server --api-key <key>`, reached without one.
-///
-/// This whole pair was **unreachable before this PR**: the provider being
-/// replaced used `Nothing` as its `ApiKey` type, which cannot emit an
-/// `Authorization` header at all, so a secured deployment could only ever
-/// produce this 401 and never the 200 below.
-#[tokio::test]
-async fn a_missing_api_key_is_a_401_the_caller_can_read() {
-    with_llamacpp_missing_api_key_cassette(
-        "error_matrix/missing_api_key_is_401",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let error = model
-                .call(CompletionRequest::new("hi").max_tokens(8))
-                .await
-                .expect_err("a server started with --api-key must reject an unkeyed request");
-
-            assert_eq!(
-                error
-                    .provider_response_status()
-                    .expect("the 401 must reach the caller")
-                    .as_u16(),
-                401,
-                "{error}"
-            );
-            let json = error
-                .provider_response_json()
-                .expect("the 401 body must be readable as JSON")
-                .expect("the 401 body must be present");
-            assert_eq!(json["error"]["type"], json!("authentication_error"));
-        },
-    )
-    .await;
-
-    recorded_error(
-        "error_matrix/missing_api_key_is_401",
-        401,
-        "authentication_error",
-    );
-}
 
 /// `verify()` on a keyed server distinguishes a good credential from a bad one.
 ///

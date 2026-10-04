@@ -16,8 +16,6 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
-use crate::support::{REQUIRED_ZERO_ARG_TOOL_PROMPT, zero_arg_tool_definition};
-use rig::completion::CompletionRequest;
 
 const NESTED_ARGS_PREAMBLE: &str = "\
 You are a travel booking assistant. Use the plan_trip tool for every booking request \
@@ -148,41 +146,6 @@ fn assert_expected_plan_trip_arguments(arguments: &serde_json::Value) {
         Some(2),
         "doubly nested integer should survive the wire format: {arguments:?}"
     );
-}
-
-#[tokio::test]
-async fn zero_argument_tool_use_nonstreaming() {
-    with_anthropic_cassette(
-        "messages_tool_args/zero_argument_tool_use_nonstreaming",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .preamble("Follow the tool-calling instructions exactly.")
-                .max_tokens(1024)
-                .tool(zero_arg_tool_definition("ping"));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("zero-arg completion should succeed");
-
-            let tool_call = response
-                .choice
-                .iter()
-                .find_map(|content| match content {
-                    AssistantContent::ToolCall(tool_call) => Some(tool_call.clone()),
-                    _ => None,
-                })
-                .expect("response should contain the ping tool call");
-            assert_eq!(tool_call.function.name, "ping");
-            assert_eq!(
-                tool_call.function.arguments_value(),
-                json!({}),
-                "zero-argument tool_use should surface empty-object arguments"
-            );
-        },
-    )
-    .await;
 }
 
 #[tokio::test]

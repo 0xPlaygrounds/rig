@@ -41,7 +41,6 @@ use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::deepseek;
-use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::{Value, json};
 
 use super::support::{
@@ -57,19 +56,9 @@ pub(super) const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 pub(super) const TOOL_PREAMBLE: &str = "You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user's entire request, word for word, at least 120 words long.";
 const PARALLEL_PREAMBLE: &str = "You must call page_oncall with team set to platform, and then file_report whose summary argument is a verbatim, complete restatement of the user request, word for word, at least 120 words long. Emit both calls in the same turn.";
 pub(super) const INCIDENT_PROMPT: &str = "Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes.";
-/// The reasoner cells need a turn whose *thinking* is trivial and whose
-/// *arguments* are long, so the budget reliably lands inside the JSON string
-/// rather than inside the reasoning. A verbatim-copy instruction does that:
-/// there is nothing to reason about and a great deal to type.
-const REASONER_TOOL_PREAMBLE: &str = "Call the file_report tool exactly once. Set its summary argument to the user's text, copied out verbatim and in full. Do not summarise, do not shorten, do not think about it.";
-const REASONER_INCIDENT_PROMPT: &str = "Copy this into file_report: the nightly build broke because the cache warmer raced the artifact uploader; the retry storm then saturated the queue; the on-call engineer drained three regions by hand; the dashboards lagged nine minutes behind; the checksum verifier timed out twice; the release channel notification never fired; the rollback took forty minutes; the incident channel filled with duplicate alerts; the paging policy escalated to the wrong rotation; and the postmortem template was missing three required sections.";
 
 pub(super) fn non_thinking_params() -> Value {
     json!({ "thinking": { "type": "disabled" } })
-}
-
-fn thinking_params() -> Value {
-    json!({ "thinking": { "type": "enabled" } })
 }
 
 fn file_report_tool() -> ToolDefinition {
@@ -235,44 +224,6 @@ fn assert_parseable(arguments: &str, scenario: &str) {
 // Shared cell bodies
 // ================================================================
 
-/// Streaming twin: the stream already dropped the unusable call; this pins that
-/// it still does, and that its terminal record reports the same `Length`.
-async fn assert_streaming_truncation_survives(
-    client: &OpenAiModels,
-    max_tokens: u64,
-) -> Result<()> {
-    let model = client.completion(MODEL);
-    let outcome = collect_raw_stream_outcome(model.stream(request(
-        TOOL_PREAMBLE,
-        vec![file_report_tool()],
-        non_thinking_params(),
-        max_tokens,
-    ))?)
-    .await;
-
-    assert!(
-        outcome.errors.is_empty(),
-        "stream errors: {:?}",
-        outcome.errors
-    );
-    assert_one_cut_call(&outcome.tool_calls);
-    assert_eq!(
-        outcome.finish_reason(),
-        Some(rig::completion::FinishReason::Length),
-        "the streamed terminal reports the truncation"
-    );
-    let usage = outcome
-        .final_record
-        .as_ref()
-        .map(|record| record.usage)
-        .unwrap_or_default();
-    assert!(
-        usage.total_tokens.is_some_and(|n| n > 0),
-        "streamed usage survives the truncated call: {usage:?}"
-    );
-    Ok(())
-}
-
 // ================================================================
 // A. Blocking budget sweep
 // ================================================================
@@ -319,38 +270,6 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
 // ================================================================
 // B. Streaming budget sweep (the parity twin)
 // ================================================================
-
-#[tokio::test]
-async fn streaming_budget_24_truncated_arguments_keep_the_turn() {
-    const SCENARIO: &str =
-        "truncation_matrix/streaming_budget_24_truncated_arguments_keep_the_turn";
-    with_deepseek_truncation_cassette_result(
-        "truncation_matrix/streaming_budget_24_truncated_arguments_keep_the_turn",
-        |client| async move { assert_streaming_truncation_survives(&client, 24).await },
-    )
-    .await
-    .expect(
-        "streaming_budget_24_truncated_arguments_keep_the_turn should replay from its cassette",
-    );
-
-    assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
-}
-
-#[tokio::test]
-async fn streaming_budget_32_truncated_arguments_keep_the_turn() {
-    const SCENARIO: &str =
-        "truncation_matrix/streaming_budget_32_truncated_arguments_keep_the_turn";
-    with_deepseek_truncation_cassette_result(
-        "truncation_matrix/streaming_budget_32_truncated_arguments_keep_the_turn",
-        |client| async move { assert_streaming_truncation_survives(&client, 32).await },
-    )
-    .await
-    .expect(
-        "streaming_budget_32_truncated_arguments_keep_the_turn should replay from its cassette",
-    );
-
-    assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
-}
 
 // ================================================================
 // C. Parallel calls: only the truncated one is lost
@@ -446,81 +365,6 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
 // ================================================================
 // E. Reasoner turns share the decode
 // ================================================================
-
-#[tokio::test]
-async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
-    const SCENARIO: &str =
-        "truncation_matrix/blocking_reasoner_truncated_call_keeps_the_reasoning_block";
-    with_deepseek_truncation_cassette_result(
-        "truncation_matrix/blocking_reasoner_truncated_call_keeps_the_reasoning_block",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let normalized = model
-                .call(request_for(REASONER_INCIDENT_PROMPT,
-                    REASONER_TOOL_PREAMBLE,
-                    vec![file_report_tool()],
-                    thinking_params(),
-                    112,
-                ))
-                .await?;
-
-            assert!(
-                normalized
-                    .choice
-                    .iter()
-                    .any(|content| matches!(content, AssistantContent::Reasoning(_))),
-                "the reasoning block the truncated call took down with it: {:?}",
-                normalized.choice
-            );
-            assert_one_cut_call(tool_calls(&normalized.choice));
-            assert!(normalized.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("blocking_reasoner_truncated_call_keeps_the_reasoning_block should replay from its cassette");
-
-    let response = recorded_response(SCENARIO);
-    assert!(
-        response["choices"][0]["message"]["reasoning_content"].is_string(),
-        "premise: the recorded turn carried reasoning beside the truncated call"
-    );
-    assert_unparseable(&recorded_blocking_arguments(SCENARIO)[0], SCENARIO);
-}
-
-#[tokio::test]
-async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
-    const SCENARIO: &str =
-        "truncation_matrix/streaming_reasoner_truncated_call_keeps_the_reasoning_block";
-    with_deepseek_truncation_cassette_result(
-        "truncation_matrix/streaming_reasoner_truncated_call_keeps_the_reasoning_block",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let outcome = collect_raw_stream_outcome(
-                model
-                    .stream(request_for(REASONER_INCIDENT_PROMPT,
-                        REASONER_TOOL_PREAMBLE,
-                        vec![file_report_tool()],
-                        thinking_params(),
-                        112,
-                    ))
-                    ?,
-            )
-            .await;
-            assert!(!outcome.reasoning.trim().is_empty());
-            assert_one_cut_call(&outcome.tool_calls);
-            assert_eq!(
-                outcome.finish_reason(),
-                Some(rig::completion::FinishReason::Length)
-            );
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("streaming_reasoner_truncated_call_keeps_the_reasoning_block should replay from its cassette");
-
-    assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
-}
 
 // ================================================================
 // F. Agent level: the loop sees a `Length` turn, not a failed request

@@ -29,9 +29,6 @@ use rig_test_support::support;
 #[path = "providers/gemini/mod.rs"]
 mod gemini;
 
-#[path = "common/ecs_cache.rs"]
-mod ecs_cache;
-
 #[allow(
     dead_code,
     reason = "each provider exercises its own subset of matrix cells"

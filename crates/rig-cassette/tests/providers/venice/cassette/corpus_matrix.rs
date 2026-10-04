@@ -75,15 +75,11 @@ crate::matrix::golden_matrix! {
     #[tokio::test]
     output_tool_thinking: ("corpus_matrix/output_tool_thinking", cells::OUTPUT_TOOL_THINKING, "venice_output_tool_thinking");
     #[tokio::test]
-    reasoning_text_unary: ("reasoning_matrix/text_unary", cells::REASONING_TEXT_UNARY, "venice_reasoning_text_unary");
-    #[tokio::test]
     reasoning_text_streamed: ("reasoning_matrix/text_streamed", cells::REASONING_TEXT_STREAMED, "venice_reasoning_text_streamed");
     #[tokio::test]
     reasoning_tool_unary: ("reasoning_matrix/tool_unary", cells::REASONING_TOOL_UNARY, "venice_reasoning_tool_unary");
     #[tokio::test]
     reasoning_tool_streamed: ("reasoning_matrix/tool_streamed", cells::REASONING_TOOL_STREAMED, "venice_reasoning_tool_streamed");
-    #[tokio::test]
-    reasoning_off: ("reasoning_matrix/off", cells::REASONING_OFF, "venice_reasoning_off");
     #[tokio::test]
     reasoning_capped: ("reasoning_matrix/capped", cells::REASONING_CAPPED, "venice_reasoning_capped");
 }

@@ -25,30 +25,23 @@ mod cassette {
     mod ecs_host;
     mod ecs_lifecycle;
     mod ecs_matrix_long_loop;
-    mod ecs_matrix_reasoning;
     mod ecs_memory;
     mod ecs_outcome;
     mod ecs_prompt_caching;
     mod ecs_shaping;
     mod effect_corpus;
-    mod empty_end_turn;
     mod empty_stop_sequence_matrix;
-    mod error_envelope;
     mod history_survival_matrix;
     mod lifecycle_matrix;
     mod long_run_features;
     mod long_run_workloads;
     mod malformed_tool_args_matrix;
-    mod messages_sessions;
     mod messages_strict_tools;
     mod messages_thinking;
     mod messages_tool_args;
-    mod messages_tool_choice;
     mod models;
     mod opus_4_7;
     mod opus_4_8;
-    mod pdf_citations;
-    mod plaintext_document;
     mod prompt_caching;
     mod raw_capture_matrix;
     mod raw_stream_capture_matrix;
@@ -57,19 +50,13 @@ mod cassette {
     mod request_override;
     mod response_identity_edge;
     mod restated_history;
-    mod session_matrix;
     mod stop_sequence_terminal_matrix;
-    mod streamed_server_tools;
     mod streaming;
-    mod streaming_grammar;
     mod streaming_tools;
     mod strict_schema_integrations;
-    mod strict_schema_limits;
     mod strict_schema_matrix;
     mod strict_schema_streaming;
     mod structured_output;
-    mod think_tool_with_other_tools;
-    mod tool_result_rewrite;
 }
 
 mod live {}

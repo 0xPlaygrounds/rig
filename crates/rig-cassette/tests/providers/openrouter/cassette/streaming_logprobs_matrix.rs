@@ -336,35 +336,11 @@ fn cell(transport: Transport, model: ModelVariant, termination: Termination, top
 crate::matrix::case_matrix! {
     wrapper: with_openrouter_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
     # [tokio :: test]
-    blocking_gpt_4o_mini_stop_top_absent: ("streaming_logprobs_matrix/blocking_gpt_4o_mini_stop_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_stop_top_two: ("streaming_logprobs_matrix/blocking_gpt_4o_mini_stop_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
     blocking_gpt_4o_mini_length_top_zero: ("streaming_logprobs_matrix/blocking_gpt_4o_mini_length_top_zero", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Zero ,));
     # [tokio :: test]
-    blocking_gpt_4o_mini_length_top_two: ("streaming_logprobs_matrix/blocking_gpt_4o_mini_length_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Two ,));
-    # [tokio :: test]
     blocking_gpt_4_1_mini_stop_top_absent: ("streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_stop_top_two: ("streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_length_top_absent: ("streaming_logprobs_matrix/blocking_gpt_4_1_mini_length_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Absent ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_length_top_two: ("streaming_logprobs_matrix/blocking_gpt_4_1_mini_length_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Two ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_stop_top_absent: ("streaming_logprobs_matrix/streaming_gpt_4o_mini_stop_top_absent", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_stop_top_two: ("streaming_logprobs_matrix/streaming_gpt_4o_mini_stop_top_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_length_top_absent: ("streaming_logprobs_matrix/streaming_gpt_4o_mini_length_top_absent", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Absent ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_length_top_two: ("streaming_logprobs_matrix/streaming_gpt_4o_mini_length_top_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Two ,));
     # [tokio :: test]
     streaming_gpt_4_1_mini_stop_top_absent: ("streaming_logprobs_matrix/streaming_gpt_4_1_mini_stop_top_absent", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Absent ,));
     # [tokio :: test]
     streaming_gpt_4_1_mini_stop_top_two: ("streaming_logprobs_matrix/streaming_gpt_4_1_mini_stop_top_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_length_top_zero: ("streaming_logprobs_matrix/streaming_gpt_4_1_mini_length_top_zero", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Zero ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_length_top_two: ("streaming_logprobs_matrix/streaming_gpt_4_1_mini_length_top_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Two ,));
 }

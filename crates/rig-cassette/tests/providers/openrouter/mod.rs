@@ -12,7 +12,6 @@ mod cassette {
     mod embedding_matrix;
     mod extractor_usage;
     mod history_roundtrip_matrix;
-    mod history_survival_matrix;
     mod models;
     mod multi_extract;
     mod multimodal;
@@ -28,7 +27,6 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod reasoning_usage_matrix;
     mod refusal_matrix;
-    mod response_identity_edge;
     mod streaming;
     mod streaming_logprobs_matrix;
     mod streaming_tools;

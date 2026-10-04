@@ -692,181 +692,34 @@
       }
     }
   },
-  "prompt_caching/agent_loop.yaml#0": {
+  "prompt_caching/cache_key_stable.yaml#2": {
     "mode": "unary",
     "choice": [
       {
         "reasoning": {
-          "text": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
+          "text": "The user is asking me to reply with exactly three words: \"probe still ready\". They've explicitly instructed me not to call any tools. This is a simple text response request, not a tool call request.\n\nI should just respond with the exact phrase they requested.\n",
           "redacted": false,
           "native": {
             "item": {
-              "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n"
+              "reasoning_content": "The user is asking me to reply with exactly three words: \"probe still ready\". They've explicitly instructed me not to call any tools. This is a simple text response request, not a tool call request.\n\nI should just respond with the exact phrase they requested.\n"
             },
-            "fingerprint": "414ad3e68027e003"
+            "fingerprint": "7717cdb32ac6f03b"
           }
         }
       },
       {
-        "tool_call": {
-          "id": "chatcmpl-tool-8d95ed1e01be342d",
-          "name": "lookup_cache_policy",
-          "arguments": {
-            "topic": "prefix"
-          },
-          "native": {
-            "item": {
-              "function": {
-                "arguments": "{\"topic\": \"prefix\"}",
-                "name": "lookup_cache_policy"
-              },
-              "id": "chatcmpl-tool-8d95ed1e01be342d",
-              "type": "function"
-            },
-            "fingerprint": "132cd7aa767a0b3e"
-          }
-        }
-      },
-      {
-        "tool_call": {
-          "id": "chatcmpl-tool-92a5008c99227363",
-          "name": "lookup_cache_policy",
-          "arguments": {
-            "topic": "breakpoint"
-          },
-          "native": {
-            "item": {
-              "function": {
-                "arguments": "{\"topic\": \"breakpoint\"}",
-                "name": "lookup_cache_policy"
-              },
-              "id": "chatcmpl-tool-92a5008c99227363",
-              "type": "function"
-            },
-            "fingerprint": "5a00d080a63da050"
-          }
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 5619,
-      "output_tokens": 126,
-      "total_tokens": 5745,
-      "cached_input_tokens": 5280,
-      "reasoning_tokens": 67
-    },
-    "response_id": "chatcmpl-80d75644796e2221d5536606a7360afb-r1",
-    "finish_reason": "tool_calls",
-    "model": "qwen3-5-9b",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "tool_calls",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "annotations": null,
-            "audio": null,
-            "content": "",
-            "function_call": null,
-            "reasoning_content": "The user is asking me to look up cache policies for two topics: 'prefix' and 'breakpoint'. They want me to call the lookup_cache_policy tool once for each topic, one after the other. Then they want me to reply with exactly \"cache probe ready\".\n\nLet me make the two tool calls as requested.\n",
-            "refusal": null,
-            "role": "assistant",
-            "tool_calls": [
-              {
-                "function": {
-                  "arguments": "{\"topic\": \"prefix\"}",
-                  "name": "lookup_cache_policy"
-                },
-                "id": "chatcmpl-tool-8d95ed1e01be342d",
-                "type": "function"
-              },
-              {
-                "function": {
-                  "arguments": "{\"topic\": \"breakpoint\"}",
-                  "name": "lookup_cache_policy"
-                },
-                "id": "chatcmpl-tool-92a5008c99227363",
-                "type": "function"
-              }
-            ]
-          },
-          "routed_experts": null,
-          "stop_reason": null,
-          "token_ids": null
-        }
-      ],
-      "cost": {
-        "diem": 0,
-        "usd": 0.0005808
-      },
-      "created": 0,
-      "ec_transfer_params": null,
-      "id": "chatcmpl-80d75644796e2221d5536606a7360afb-r1",
-      "kv_transfer_params": null,
-      "metrics": null,
-      "model": "qwen3-5-9b",
-      "object": "chat.completion",
-      "prompt_logprobs": null,
-      "prompt_text": null,
-      "prompt_token_ids": null,
-      "service_tier": null,
-      "usage": {
-        "cache_read_input_tokens": 5280,
-        "completion_tokens": 126,
-        "completion_tokens_details": {
-          "reasoning_tokens": 67
-        },
-        "prompt_tokens": 5619,
-        "prompt_tokens_details": {
-          "cached_tokens": 5280
-        },
-        "total_tokens": 5745
-      },
-      "venice_parameters": {
-        "disable_thinking": false,
-        "enable_e2ee": true,
-        "enable_web_citations": false,
-        "enable_web_scraping": false,
-        "enable_web_search": "off",
-        "enable_x_search": false,
-        "include_search_results_in_stream": false,
-        "include_venice_system_prompt": true,
-        "return_search_results_as_documents": false,
-        "strip_thinking_response": false,
-        "web_search_citations": []
-      }
-    }
-  },
-  "prompt_caching/agent_loop.yaml#1": {
-    "mode": "unary",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n"
-            },
-            "fingerprint": "33be9b9d64575c3c"
-          }
-        }
-      },
-      {
-        "text": "\n\ncache probe ready",
+        "text": "\n\nprobe still ready",
         "native": null
       }
     ],
     "usage": {
-      "input_tokens": 5795,
-      "output_tokens": 28,
-      "total_tokens": 5823,
-      "cached_input_tokens": 5280,
-      "reasoning_tokens": 22
+      "input_tokens": 5818,
+      "output_tokens": 61,
+      "total_tokens": 5879,
+      "cached_input_tokens": 5808,
+      "reasoning_tokens": 55
     },
-    "response_id": "chatcmpl-4fbc2f1c721a9eb931a3cbc0b9e8c0c4",
+    "response_id": "chatcmpl-4fb1c47f89cc3ffa2e773d652b351c1b",
     "finish_reason": "stop",
     "model": "qwen3-5-9b",
     "provider_request_id": null,
@@ -879,9 +732,9 @@
           "message": {
             "annotations": null,
             "audio": null,
-            "content": "\n\ncache probe ready",
+            "content": "\n\nprobe still ready",
             "function_call": null,
-            "reasoning_content": "Both tool calls completed successfully. Now I need to reply with exactly \"cache probe ready\" as requested.\n",
+            "reasoning_content": "The user is asking me to reply with exactly three words: \"probe still ready\". They've explicitly instructed me not to call any tools. This is a simple text response request, not a tool call request.\n\nI should just respond with the exact phrase they requested.\n",
             "refusal": null,
             "role": "assistant"
           },
@@ -892,11 +745,11 @@
       ],
       "cost": {
         "diem": 0,
-        "usd": 0.0005837
+        "usd": 0.00059095
       },
       "created": 0,
       "ec_transfer_params": null,
-      "id": "chatcmpl-4fbc2f1c721a9eb931a3cbc0b9e8c0c4",
+      "id": "chatcmpl-4fb1c47f89cc3ffa2e773d652b351c1b",
       "kv_transfer_params": null,
       "metrics": null,
       "model": "qwen3-5-9b",
@@ -906,16 +759,16 @@
       "prompt_token_ids": null,
       "service_tier": null,
       "usage": {
-        "cache_read_input_tokens": 5280,
-        "completion_tokens": 28,
+        "cache_read_input_tokens": 5808,
+        "completion_tokens": 61,
         "completion_tokens_details": {
-          "reasoning_tokens": 22
+          "reasoning_tokens": 55
         },
-        "prompt_tokens": 5795,
+        "prompt_tokens": 5818,
         "prompt_tokens_details": {
-          "cached_tokens": 5280
+          "cached_tokens": 5808
         },
-        "total_tokens": 5823
+        "total_tokens": 5879
       },
       "venice_parameters": {
         "disable_thinking": false,
@@ -1087,53 +940,6 @@
       }
     }
   },
-  "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml#0": {
-    "mode": "streaming",
-    "choice": [
-      {
-        "text": "pong",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 1575,
-      "output_tokens": 2,
-      "total_tokens": 1577,
-      "cached_input_tokens": 1056,
-      "reasoning_tokens": 0
-    },
-    "response_id": "chatcmpl-3800fa0e86a854d9a53bb945c363efc0",
-    "finish_reason": "stop",
-    "model": "qwen3-5-9b",
-    "provider_request_id": null,
-    "raw": {
-      "usage": {
-        "cache_read_input_tokens": 1056,
-        "completion_tokens": 2,
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "prompt_tokens": 1575,
-        "prompt_tokens_details": {
-          "cached_tokens": 1056
-        },
-        "total_tokens": 1577
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-3800fa0e86a854d9a53bb945c363efc0",
-      "model": "qwen3-5-9b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "prompt_text": null,
-        "prompt_token_ids": null,
-        "cost": {
-          "diem": 0,
-          "usd": 0.00015780000000000001
-        }
-      }
-    }
-  },
   "reasoning_matrix/capped.yaml#0": {
     "mode": "unary",
     "choice": [
@@ -1203,67 +1009,6 @@
       }
     }
   },
-  "reasoning_matrix/off.yaml#0": {
-    "mode": "unary",
-    "choice": [
-      {
-        "text": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common sources of security vulnerabilities and software crashes.",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 1008,
-      "output_tokens": 55,
-      "total_tokens": 1063
-    },
-    "response_id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd",
-    "finish_reason": "stop",
-    "model": "qwen3-235b-a22b-thinking-2507",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "content": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common sources of security vulnerabilities and software crashes.",
-            "name": null,
-            "reasoning_content": null,
-            "role": "assistant",
-            "tool_calls": null
-          }
-        }
-      ],
-      "cost": {
-        "diem": 0,
-        "usd": 0.0006461
-      },
-      "created": 0,
-      "id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd",
-      "model": "qwen3-235b-a22b-thinking-2507",
-      "object": "chat.completion",
-      "service_tier": "default",
-      "usage": {
-        "completion_tokens": 55,
-        "prompt_tokens": 1008,
-        "total_tokens": 1063
-      },
-      "venice_parameters": {
-        "disable_thinking": true,
-        "enable_e2ee": true,
-        "enable_web_citations": false,
-        "enable_web_scraping": false,
-        "enable_web_search": "off",
-        "enable_x_search": false,
-        "include_search_results_in_stream": false,
-        "include_venice_system_prompt": true,
-        "return_search_results_as_documents": false,
-        "strip_thinking_response": false,
-        "web_search_citations": []
-      }
-    }
-  },
   "reasoning_matrix/text_streamed.yaml#0": {
     "mode": "streaming",
     "choice": [
@@ -1310,79 +1055,6 @@
           "diem": 0,
           "usd": 0.0037357
         }
-      }
-    }
-  },
-  "reasoning_matrix/text_unary.yaml#0": {
-    "mode": "unary",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Identify Core Concepts:**\n   - *Rust:* A systems programming language focused on performance, concurrency, and safety, especially memory safety without a garbage collector.\n   - *Memory Safety:* Prevents bugs like buffer overflows, use-after-free, and null pointer dereferences, which are common sources of security vulnerabilities and crashes.\n\n3.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its unique ownership and borrowing system without relying on a garbage collector.\n\n4.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are leading causes of software crashes and security vulnerabilities.\n\n5.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n\n6.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its ownership model without using a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common causes of software crashes and security vulnerabilities.\"\n   This is exactly two sentences, covers both parts clearly, and stays within constraints.\n\n   Check against rules: No URLs, direct answer, matches language, concise. All good.\n\n   Output matches the refined version.✅\n   Proceed. \n   Output generation. \n   [Done] \n   *Self-Correction/Verification during thought:* \n   The prompt says \"In one or two sentences\". I'll keep it to exactly two for clarity. The content is accurate and directly addresses both parts. No extra fluff. Matches all constraints. Ready. \n   Output matches response. \n   [Proceeds]\n",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Identify Core Concepts:**\n   - *Rust:* A systems programming language focused on performance, concurrency, and safety, especially memory safety without a garbage collector.\n   - *Memory Safety:* Prevents bugs like buffer overflows, use-after-free, and null pointer dereferences, which are common sources of security vulnerabilities and crashes.\n\n3.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its unique ownership and borrowing system without relying on a garbage collector.\n\n4.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are leading causes of software crashes and security vulnerabilities.\n\n5.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n\n6.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its ownership model without using a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common causes of software crashes and security vulnerabilities.\"\n   This is exactly two sentences, covers both parts clearly, and stays within constraints.\n\n   Check against rules: No URLs, direct answer, matches language, concise. All good.\n\n   Output matches the refined version.✅\n   Proceed. \n   Output generation. \n   [Done] \n   *Self-Correction/Verification during thought:* \n   The prompt says \"In one or two sentences\". I'll keep it to exactly two for clarity. The content is accurate and directly addresses both parts. No extra fluff. Matches all constraints. Ready. \n   Output matches response. \n   [Proceeds]\n"
-            },
-            "fingerprint": "e89e89d540dec2b7"
-          }
-        }
-      },
-      {
-        "text": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its ownership and borrowing model without relying on a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are leading causes of software crashes and security vulnerabilities.",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 1006,
-      "output_tokens": 562,
-      "total_tokens": 1568
-    },
-    "response_id": "chatcmpl-RXa7u6KlfiurobUsoA461XSk",
-    "finish_reason": "stop",
-    "model": "qwen3-235b-a22b-thinking-2507",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "content": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its ownership and borrowing model without relying on a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are leading causes of software crashes and security vulnerabilities.",
-            "name": null,
-            "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Identify Core Concepts:**\n   - *Rust:* A systems programming language focused on performance, concurrency, and safety, especially memory safety without a garbage collector.\n   - *Memory Safety:* Prevents bugs like buffer overflows, use-after-free, and null pointer dereferences, which are common sources of security vulnerabilities and crashes.\n\n3.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its unique ownership and borrowing system without relying on a garbage collector.\n\n4.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are leading causes of software crashes and security vulnerabilities.\n\n5.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n\n6.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its ownership model without using a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and use-after-free errors, which are common causes of software crashes and security vulnerabilities.\"\n   This is exactly two sentences, covers both parts clearly, and stays within constraints.\n\n   Check against rules: No URLs, direct answer, matches language, concise. All good.\n\n   Output matches the refined version.✅\n   Proceed. \n   Output generation. \n   [Done] \n   *Self-Correction/Verification during thought:* \n   The prompt says \"In one or two sentences\". I'll keep it to exactly two for clarity. The content is accurate and directly addresses both parts. No extra fluff. Matches all constraints. Ready. \n   Output matches response. \n   [Proceeds]\n",
-            "role": "assistant",
-            "tool_calls": null
-          }
-        }
-      ],
-      "cost": {
-        "diem": 0,
-        "usd": 0.0024197
-      },
-      "created": 0,
-      "id": "chatcmpl-RXa7u6KlfiurobUsoA461XSk",
-      "model": "qwen3-235b-a22b-thinking-2507",
-      "object": "chat.completion",
-      "service_tier": "default",
-      "usage": {
-        "completion_tokens": 562,
-        "prompt_tokens": 1006,
-        "total_tokens": 1568
-      },
-      "venice_parameters": {
-        "disable_thinking": false,
-        "enable_e2ee": true,
-        "enable_web_citations": false,
-        "enable_web_scraping": false,
-        "enable_web_search": "off",
-        "enable_x_search": false,
-        "include_search_results_in_stream": false,
-        "include_venice_system_prompt": true,
-        "return_search_results_as_documents": false,
-        "strip_thinking_response": false,
-        "web_search_citations": []
       }
     }
   },

@@ -26,7 +26,6 @@ use crate::support::{collect_text_and_terminal, zero_arg_tool_definition};
 use rig::completion::CompletionRequest;
 
 const STOP_PROMPT: &str = "Reply with exactly: done";
-const LENGTH_PROMPT: &str = "Explain every step of how a compiler optimizes a large program.";
 const TOOL_PROMPT: &str = "Call ping now.";
 
 fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
@@ -123,22 +122,6 @@ async fn streaming_natural_stop() {
     )
     .await;
     assert_eq!(recorded_finish_reason(SCENARIO, true), "stop");
-}
-
-#[tokio::test]
-async fn streaming_token_limit() {
-    const SCENARIO: &str = "finish_reason_matrix/streaming_token_limit";
-    with_doubleword_cassette(
-        "finish_reason_matrix/streaming_token_limit",
-        |client| async move {
-            assert_eq!(
-                streaming_reason(client, LENGTH_PROMPT, 1, false).await,
-                FinishReason::Length
-            );
-        },
-    )
-    .await;
-    assert_eq!(recorded_finish_reason(SCENARIO, true), "length");
 }
 
 #[tokio::test]

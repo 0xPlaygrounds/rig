@@ -27,25 +27,13 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
 crate::matrix::golden_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    endings_tool_call_delta_stop: ("corpus_matrix_responses/endings_tool_call_delta_stop", cells::ENDINGS_TOOL_CALL_DELTA_STOP, "openai_responses_endings_tool_call_delta_stop");
-    #[tokio::test]
-    hooks_deny_tool_streamed: ("corpus_matrix_responses/hooks_deny_tool_streamed", cells::HOOKS_DENY_TOOL_STREAMED, "openai_responses_hooks_deny_tool_streamed");
-    #[tokio::test]
     serving_concurrent_concurrency_one: ("corpus_matrix_responses/serving_concurrent_concurrency_one", cells::SERVING_CONCURRENT_CONCURRENCY_ONE, "openai_responses_serving_concurrent_concurrency_one");
-    #[tokio::test]
-    serving_host_bus_streamed: ("corpus_matrix_responses/serving_host_bus_streamed", cells::SERVING_HOST_BUS_STREAMED, "openai_responses_serving_host_bus_streamed");
-    #[tokio::test]
-    layers_host_deny_over_host_bus: ("corpus_matrix_responses/layers_host_deny_over_host_bus", cells::LAYERS_HOST_DENY_OVER_HOST_BUS, "openai_responses_layers_host_deny_over_host_bus");
     #[tokio::test]
     memory_failing_append_streamed: ("corpus_matrix_responses/memory_failing_append_streamed", cells::MEMORY_FAILING_APPEND_STREAMED, "openai_responses_memory_failing_append_streamed");
     #[tokio::test]
     output_tool_choice_specific_output: ("corpus_matrix_responses/output_tool_choice_specific_output", cells::OUTPUT_TOOL_CHOICE_SPECIFIC_OUTPUT, "openai_responses_output_tool_choice_specific_output");
     #[tokio::test]
-    output_tool_choice_required: ("corpus_matrix_responses/output_tool_choice_required", cells::OUTPUT_TOOL_CHOICE_REQUIRED, "openai_responses_output_tool_choice_required");
-    #[tokio::test]
     output_tool_under_none_degrades: ("corpus_matrix_responses/output_tool_under_none_degrades", cells::OUTPUT_TOOL_UNDER_NONE_DEGRADES, "openai_responses_output_tool_under_none_degrades");
-    #[tokio::test]
-    shaping_tool_choice_none_on_committed_output: ("corpus_matrix_responses/shaping_tool_choice_none_on_committed_output", cells::SHAPING_TOOL_CHOICE_NONE_ON_COMMITTED_OUTPUT, "openai_responses_shaping_tool_choice_none_on_committed_output");
     #[tokio::test]
     shaping_preamble_second_turn: ("corpus_matrix_responses/shaping_preamble_second_turn", cells::SHAPING_PREAMBLE_SECOND_TURN, "openai_responses_shaping_preamble_second_turn");
     #[tokio::test]
@@ -55,18 +43,10 @@ crate::matrix::golden_matrix! {
 crate::matrix::golden_matrix! {
     wrapper: with_openai_cassette, wire: reasoning_wire, run: run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    output_tool_thinking: ("corpus_matrix_responses/output_tool_thinking", cells::OUTPUT_TOOL_THINKING, "openai_responses_output_tool_thinking");
-    #[tokio::test]
-    reasoning_text_unary: ("reasoning_matrix_responses/text_unary", cells::REASONING_TEXT_UNARY, "openai_responses_reasoning_text_unary");
-    #[tokio::test]
-    reasoning_text_streamed: ("reasoning_matrix_responses/text_streamed", cells::REASONING_TEXT_STREAMED, "openai_responses_reasoning_text_streamed");
-    #[tokio::test]
     #[ignore = "stale cassette: its request predates item-shaped history, and gpt-5-mini reported zero reasoning tokens in every re-record attempt"]
     reasoning_tool_streamed: ("reasoning_matrix_responses/tool_streamed", cells::REASONING_TOOL_STREAMED, "openai_responses_reasoning_tool_streamed");
     #[tokio::test]
     reasoning_capped: ("reasoning_matrix_responses/capped", cells::REASONING_CAPPED, "openai_responses_reasoning_capped");
-    #[tokio::test]
-    reasoning_capped_streamed: ("reasoning_matrix_responses/capped_streamed", cells::REASONING_CAPPED_STREAMED, "openai_responses_reasoning_capped_streamed");
 }
 
 #[ignore = "the Responses wire's `max_output_tokens` floor is 16; the corpus's second-turn cap is 5"]

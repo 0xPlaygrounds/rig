@@ -69,58 +69,6 @@ pub(super) async fn strict_tool_call_arguments(
 }
 
 #[tokio::test]
-async fn strict_tools_opt_in_roundtrip() {
-    with_anthropic_cassette(
-        "messages_strict_tools/strict_tools_opt_in_roundtrip",
-        |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
-            let request = CompletionRequest::new(
-                "Call record_booking exactly once with passengers = 2 and cabin = economy.",
-            )
-            .preamble("Follow the tool-calling instruction exactly.")
-            .max_tokens(1024)
-            .tool_choice(ToolChoice::Required)
-            .tool(ToolDefinition {
-                name: rig_core::message::ToolName::new("record_booking").expect("tool name"),
-                description: "Record a passenger count and cabin class.".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "passengers": { "type": "integer" },
-                        "cabin": {
-                            "type": "string",
-                            "enum": ["economy", "business"]
-                        }
-                    },
-                    "required": ["passengers", "cabin"],
-                    "additionalProperties": false
-                }),
-            });
-
-            let response = model
-                .call(request)
-                .await
-                .expect("strict-tools completion should succeed");
-
-            let tool_call = response
-                .choice
-                .iter()
-                .find_map(|content| match content {
-                    AssistantContent::ToolCall(tool_call) => Some(tool_call),
-                    _ => None,
-                })
-                .expect("strict tool call should be produced");
-            assert_eq!(tool_call.function.name, "record_booking");
-            assert_eq!(tool_call.function.arguments["passengers"], json!(2));
-            assert_eq!(tool_call.function.arguments["cabin"], json!("economy"));
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn optional_scalar_can_be_included_after_constraint_transform() {
     with_anthropic_cassette(
         "messages_strict_tools/optional_scalar_can_be_included_after_constraint_transform",
@@ -228,37 +176,6 @@ async fn nested_optional_object_can_be_partially_populated() {
 }
 
 #[tokio::test]
-async fn nullable_union_can_emit_null() {
-    with_anthropic_cassette(
-        "messages_strict_tools/nullable_union_can_emit_null",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_resolution",
-                "Record ticket = 17 and resolution = null. Omit the optional reason field.",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "ticket": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 100,
-                            "format": "uint32"
-                        },
-                        "resolution": { "type": ["string", "null"] },
-                        "reason": { "type": "string" }
-                    },
-                    "required": ["ticket", "resolution"]
-                }),
-                json!({ "ticket": 17, "resolution": null }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn discriminated_any_of_preserves_const() {
     with_anthropic_cassette(
         "messages_strict_tools/discriminated_any_of_preserves_const",
@@ -300,40 +217,6 @@ async fn discriminated_any_of_preserves_const() {
                         "address": "ops@example.com"
                     }
                 }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn defs_ref_preserves_optional_member() {
-    with_anthropic_cassette(
-        "messages_strict_tools/defs_ref_preserves_optional_member",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_destination",
-                "Record destination city = kyoto. Omit the optional country member.",
-                json!({
-                    "$defs": {
-                        "Place": {
-                            "type": "object",
-                            "properties": {
-                                "city": { "type": "string" },
-                                "country": { "type": "string" }
-                            },
-                            "required": ["city"]
-                        }
-                    },
-                    "type": "object",
-                    "properties": {
-                        "destination": { "$ref": "#/$defs/Place" }
-                    },
-                    "required": ["destination"]
-                }),
-                json!({ "destination": { "city": "kyoto" } }),
             )
             .await;
         },

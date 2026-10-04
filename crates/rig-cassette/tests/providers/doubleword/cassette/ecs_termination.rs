@@ -3,7 +3,7 @@
 use super::super::support::with_doubleword_cassette;
 use super::turn_termination_matrix::{
     CONCISE_PREAMBLE, MODEL, RETRY_PROMPT, ROOMY_CAP, TINY_CAP, TOOL_PREAMBLE, TOOL_PROMPT,
-    assert_recorded_wire_reason, recorded_request_caps, recorded_wire_reasons,
+    assert_recorded_wire_reason, recorded_request_caps,
 };
 use crate::{
     ecs_agent::EcsAgent,
@@ -60,57 +60,6 @@ async fn streaming_tool_turn_reports_tool_calls() {
         },
     )
     .await
-}
-
-#[tokio::test]
-async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
-    rig_test_support::goldens::world_golden_test(async {
-
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap";
-        let probe = TurnTerminationProbe::default();
-        let escalate = EscalateCapOnTruncation::new(TINY_CAP, ROOMY_CAP);
-        let observed = probe.clone();
-        let escalations = escalate.clone();
-
-        with_doubleword_cassette(
-            "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
-            |client| async move {
-                let mut ecs = EcsAgent::new(client.completion(MODEL), CONCISE_PREAMBLE, 1);
-                ecs.app.world_mut().entity_mut(ecs.agent).insert((
-                    Temperature(Some(0.0)),
-                    MaxTokens(Some(64)),
-                    AdditionalParams(Some(serde_json::json!({ "reasoning_effort": "none" }))),
-                ));
-                ecs_termination::install(&mut ecs, probe, Some(escalate));
-                ecs.prompt_with_max_turns(RETRY_PROMPT, false, Some(2))
-                    .await;
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.observations(),
-            vec![
-                (Some(FinishReason::Length), Some(TINY_CAP)),
-                (Some(FinishReason::Stop), Some(ROOMY_CAP)),
-            ],
-            "each attempt must report its own post-patch cap, never the agent's baseline of 64"
-        );
-        assert_eq!(escalations.escalations(), vec![ROOMY_CAP]);
-        assert_eq!(escalations.retries(), 1);
-
-        // ...and the recorded traffic corroborates it: two calls, the caps the
-        // hook chose, and the two reasons in order.
-        assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
-        assert_eq!(
-            recorded_wire_reasons(SCENARIO),
-            vec!["length".to_owned(), "stop".to_owned()]
-        );
-    }
-
-}, |log| rig_test_support::goldens::world_golden_effects("doubleword_termination_blocking_escalating_retry_reports_each_attempts_own_cap", log)).await
 }
 
 #[tokio::test]

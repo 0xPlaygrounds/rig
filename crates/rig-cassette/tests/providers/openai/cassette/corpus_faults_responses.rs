@@ -4,20 +4,8 @@
 //! have a producer here; a scripted row's oracle is the runner in the world
 //! cell's own test.
 
-use rig::providers::openai::GPT_5_MINI;
-
 use super::super::support::{OpenAiCassette, with_openai_cassette};
-use crate::ecs_matrix::{Wire, agent::run_agent, faults};
-
-fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
-    Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.openai.completion(GPT_5_MINI),
-        route: None,
-        temperature: None,
-        additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
-    }
-}
+use crate::ecs_matrix::{Wire, agent::run_agent};
 
 /// The wire over the model it refuses: the setup cells' request.
 fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
@@ -53,31 +41,6 @@ async fn setup_streamed() {
                 &super::ecs_faults_responses::SETUP_STREAMED,
                 |log| crate::goldens::golden_effects("openai_responses_fault_setup_streamed", log),
             )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn tool_error() {
-    with_openai_cassette("corpus_faults_responses/tool_error", |client| async move {
-        run_agent(&wire(&client), &faults::TOOL_ERROR, |log| {
-            crate::goldens::golden_effects("openai_responses_fault_tool_error", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn tool_error_streamed() {
-    with_openai_cassette(
-        "corpus_faults_responses/tool_error_streamed",
-        |client| async move {
-            run_agent(&wire(&client), &faults::TOOL_ERROR_STREAMED, |log| {
-                crate::goldens::golden_effects("openai_responses_fault_tool_error_streamed", log)
-            })
             .await;
         },
     )

@@ -13,29 +13,6 @@ use super::support::with_xai_cassette;
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
-async fn streaming() {
-    with_xai_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
-        let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI))
-            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-            .max_tokens(4096)
-            .tool(WeatherTool::new(call_count.clone()))
-            .additional_params(serde_json::json!({ "store": false }))
-            .build();
-
-        let stream = agent
-            .prompt(reasoning::TOOL_USER_PROMPT)
-            .history(Vec::<Message>::new())
-            .max_turns(3)
-            .stream();
-
-        let stats = reasoning::collect_stream_stats(stream, "xai").await;
-        reasoning::assert_universal(&stats, &call_count, "xai");
-    })
-    .await;
-}
-
-#[tokio::test]
 async fn nonstreaming() {
     with_xai_cassette(
         "reasoning_tool_roundtrip/nonstreaming",

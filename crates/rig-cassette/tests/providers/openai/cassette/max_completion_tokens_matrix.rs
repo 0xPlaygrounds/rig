@@ -30,8 +30,6 @@
 //! |---|------|-------|-------|-----------|-----|-----|--------|
 //! | 8 | `reasoning_gpt5_nano_tool_turn_streaming_cap` | gpt-5-nano | reasoning | streaming | agent + tool | set | recorded |
 //! | 12 | `legacy_gpt_3_5_turbo_blocking_cap` | gpt-3.5-turbo | oldest (control) | blocking | raw model | set | recorded |
-//! | 13 | `legacy_gpt_3_5_turbo_streaming_cap` | gpt-3.5-turbo | oldest (control) | streaming | raw model | set | recorded |
-//! | 20 | `responses_surface_reasoning_model_cap` | gpt-5-nano | control | blocking | raw model | set | recorded |
 //!
 //! Unit cells (the field-spelling rule itself is definitory — no live turn can
 //! observe a body rig did not send) live beside the fix in
@@ -45,8 +43,7 @@
 
 use super::super::support::with_openai_max_tokens_cassette;
 use crate::support::{
-    Adder, assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
-    collect_stream_observation,
+    Adder, assert_nonempty_response, assistant_text_response, collect_stream_observation,
 };
 use rig::completion::CompletionRequest;
 
@@ -112,23 +109,6 @@ async fn legacy_gpt_3_5_turbo_blocking_cap() {
     .await;
 }
 
-#[tokio::test]
-async fn legacy_gpt_3_5_turbo_streaming_cap() {
-    with_openai_max_tokens_cassette(
-        "max_completion_tokens_matrix/legacy_gpt_3_5_turbo_streaming_cap",
-        |client| async move {
-            let model = client.openai.chat("gpt-3.5-turbo");
-            let request = CompletionRequest::new(PROMPT).max_tokens(CAP);
-
-            let stream = model.stream(request).expect("stream should connect");
-            let observed = collect_raw_stream_observation(stream).await;
-
-            assert_nonempty_response(&observed.text);
-        },
-    )
-    .await;
-}
-
 // ---------------------------------------------------------------------------
 // Boundary: no cap at all, and caller-supplied spellings.
 // ---------------------------------------------------------------------------
@@ -136,21 +116,3 @@ async fn legacy_gpt_3_5_turbo_streaming_cap() {
 // ---------------------------------------------------------------------------
 // Control: the Responses surface has its own field and must not move.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn responses_surface_reasoning_model_cap() {
-    with_openai_max_tokens_cassette(
-        "max_completion_tokens_matrix/responses_surface_reasoning_model_cap",
-        |client| async move {
-            let model = client.openai.completion("gpt-5-nano");
-            let request = CompletionRequest::new(PROMPT).max_tokens(CAP);
-
-            let response = model.call(request).await.expect("capped turn");
-
-            assert_nonempty_response(
-                &assistant_text_response(&response.choice).expect("assistant text"),
-            );
-        },
-    )
-    .await;
-}

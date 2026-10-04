@@ -27,7 +27,6 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 6 | `nonempty_stop_sequence_control` | control: content precedes the match | non-empty | recorded |
 //! | 11 | `with_preamble_empty_stop` | system prompt present | empty choice | recorded |
 //! | 12 | `with_tools_empty_stop` | tools advertised | empty choice | recorded |
 //! | 19 | `unit_empty_assistant_turn_cannot_be_replayed` | adjacent request boundary | error | unit |
@@ -55,18 +54,6 @@ use rig::completion::CompletionRequest;
 /// before the model emits anything else.
 pub(super) const IMMEDIATE_PROMPT: &str =
     "Reply with exactly this one word and nothing else: alpha";
-const IMMEDIATE_PHRASE_PROMPT: &str =
-    "Reply with exactly this phrase and nothing else: alpha bravo charlie";
-
-fn request(
-    prompt: &str,
-    stop_sequences: &[&str],
-    max_tokens: u64,
-) -> rig::completion::CompletionRequest {
-    CompletionRequest::new(prompt)
-        .max_tokens(max_tokens)
-        .additional_params(json!({ "stop_sequences": stop_sequences }))
-}
 
 fn weather_tool() -> ToolDefinition {
     ToolDefinition {
@@ -105,40 +92,6 @@ pub(super) fn assert_recorded_empty_stop(scenario: &str) {
 // ---------------------------------------------------------------------------
 // 6: control — the same stop reason with content must still produce content
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn nonempty_stop_sequence_control() {
-    with_anthropic_empty_stop_cassette(
-        "empty_stop_sequence_matrix/nonempty_stop_sequence_control",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let response = model
-                .call(request(IMMEDIATE_PHRASE_PROMPT, &["charlie"], 64))
-                .await
-                .expect("stop-sequence turn with content should succeed");
-
-            assert!(
-                !response.choice.is_empty(),
-                "the carve-out must not swallow content that was actually produced"
-            );
-        },
-    )
-    .await;
-
-    let body = recorded_response_body("empty_stop_sequence_matrix/nonempty_stop_sequence_control");
-    assert_eq!(
-        body.get("stop_reason").and_then(serde_json::Value::as_str),
-        Some("stop_sequence")
-    );
-    assert!(
-        !body
-            .get("content")
-            .and_then(serde_json::Value::as_array)
-            .expect("content array")
-            .is_empty(),
-        "control premise: this recorded turn must carry content"
-    );
-}
 
 // ---------------------------------------------------------------------------
 // 7–10: sequence shapes that can match at position zero

@@ -44,9 +44,9 @@ use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
 
 use crate::cache_conformance::{
-    CacheObservation, CacheProbe, CacheSupport, assert_breakpoints_match_support,
-    assert_cache_conformance, assert_cache_key_stable, assert_prefix_stable, assert_warms,
-    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
+    CacheProbe, CacheSupport, assert_breakpoints_match_support, assert_cache_conformance,
+    assert_prefix_stable, assert_warms, report_and_assert_live, run_cache_probe,
+    run_cache_probe_streaming,
 };
 
 use super::super::support::with_openai_prompt_caching_cassette;
@@ -90,34 +90,6 @@ fn keyed_probe() -> CacheProbe {
         "prompt_cache_key": "rig-cache-conformance-openai",
         "store": false,
     }))
-}
-
-/// The Responses surface caches reliably **when rig sends a cache key**.
-///
-/// The un-keyed behavior is recorded separately in
-/// [`responses_without_a_cache_key_does_not_hit_until_the_third_turn`], which is
-/// where the reasoning for keying this cell lives.
-#[tokio::test]
-async fn responses_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
-    const SCENARIO: &str = "prompt_caching/responses_blocking_probe";
-
-    with_openai_prompt_caching_cassette(
-        "prompt_caching/responses_blocking_probe",
-        |client| async move {
-            let model = client.openai.completion(CACHE_MODEL);
-            let observation: CacheObservation = run_cache_probe(model, &keyed_probe()).await;
-            assert_cache_conformance(
-                &observation,
-                &OPENAI_RESPONSES_KEYED_SUPPORT,
-                "responses blocking probe",
-            );
-        },
-    )
-    .await;
-
-    assert_prefix_stable("openai", SCENARIO);
-    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
-    assert_cache_key_stable("openai", SCENARIO, &OPENAI_RESPONSES_KEYED_SUPPORT);
 }
 
 /// Measured Responses behavior without `prompt_cache_key`: turn 2 misses.

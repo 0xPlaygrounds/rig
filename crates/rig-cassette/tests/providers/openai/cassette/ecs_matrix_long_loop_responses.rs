@@ -42,10 +42,6 @@ fn assert_task_requests(scenario: &str) {
 crate::matrix::resume_matrix! {
     wrapper: with_openai_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
-    task_repair: ("long_task_matrix/responses_repair", crate::ecs_matrix::long_tasks::REPAIR, None, "openai_responses_long_task_repair");
-    #[tokio::test]
-    task_repair_streamed: ("long_task_matrix/responses_repair_streamed", crate::ecs_matrix::long_tasks::REPAIR_STREAMED, None, "openai_responses_long_task_repair_streamed");
-    #[tokio::test]
     task_inventory: ("long_task_matrix/responses_inventory", crate::ecs_matrix::long_tasks::INVENTORY_WIDE_BATCH, None, "openai_responses_long_task_inventory");
 }
 

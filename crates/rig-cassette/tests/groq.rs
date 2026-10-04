@@ -12,6 +12,3 @@ mod groq;
 
 use rig_test_support::history_survival;
 use rig_test_support::matrix;
-
-#[path = "common/request_identity.rs"]
-mod request_identity;

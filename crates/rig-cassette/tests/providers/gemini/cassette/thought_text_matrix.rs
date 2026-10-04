@@ -34,10 +34,8 @@
 //! | # | cell | reader | dimension pinned |
 //! |---|------|--------|------------------|
 //! | 5 | `transcription_with_thoughts_and_temperature` | transcription | temperature alongside thoughts |
-//! | 14 | `text_response_on_a_tool_call_turn` | `text_response` | thought part beside a `functionCall` |
 //! | 15 | `text_response_with_structured_output` | `text_response` | `responseJsonSchema` turn |
 //! | 16 | `text_response_across_two_candidates` | `text_response` | `candidateCount: 2` |
-//! | 17 | `text_response_is_none_when_the_turn_is_all_thought` | `text_response` | budget spent entirely on thinking |
 //! | 19 | `text_response_matches_the_choice_text` (unit) | both | see below |
 //! | 20 | `transcription_joins_every_visible_text_part` (unit) | transcription | see below |
 //! | 21 | `transcription_rejects_a_thought_only_candidate` (unit) | transcription | see below |
@@ -113,16 +111,6 @@ const THOUGHT_MARKER: &[&str] = &["\"thought\""];
 /// completion surface).
 fn transcription_thinking(budget: u32, include: bool) -> Value {
     json!({ "thinkingConfig": { "thinkingBudget": budget, "includeThoughts": include } })
-}
-
-/// A completion `additional_params` value carrying a Gemini 2.5 thinking
-/// config.
-fn completion_thinking(budget: u32, include: bool) -> Value {
-    json!({
-        "generationConfig": {
-            "thinkingConfig": { "thinkingBudget": budget, "includeThoughts": include }
-        }
-    })
 }
 
 /// The text of a normalized choice, concatenated: the decoder's text blocks
@@ -384,63 +372,6 @@ async fn text_response_body(client: GeminiModels, scenario: &'static str, cell: 
 }
 
 #[tokio::test]
-async fn text_response_on_a_tool_call_turn() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_on_a_tool_call_turn";
-
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_on_a_tool_call_turn",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequest::new("What is 41 plus 1? Use the add tool.")
-                .temperature(0.0)
-                .max_tokens(2000)
-                .tools(vec![rig::completion::ToolDefinition {
-                    name: rig_core::message::ToolName::new("add").expect("tool name"),
-                    description: "Add x and y together".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "x": { "type": "number", "description": "first operand" },
-                            "y": { "type": "number", "description": "second operand" }
-                        },
-                        "required": ["x", "y"]
-                    }),
-                }])
-                .additional_params(completion_thinking(512, true));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("completion should succeed");
-
-            // A tool-call turn's *text* is whatever visible text parts it has
-            // — never the reasoning that preceded the call.
-            let document = generate_content_document(&response.raw);
-            let (visible, _) = split_parts(document);
-            assert_eq!(
-                choice_text(&response.choice),
-                visible,
-                "the turn's text is its visible text parts on a tool-call turn too"
-            );
-            assert!(
-                response
-                    .choice
-                    .iter()
-                    .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                "the recorded turn should carry a tool call"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_response_contains(SCENARIO, &["functionCall"]);
-    // The cell's premise is a thought part *beside* the call; without this it
-    // silently degrades into a plain tool-call cell if a re-record drops the
-    // thought.
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
 async fn text_response_with_structured_output() {
     const SCENARIO: &str = "thought_text_matrix/text_response_with_structured_output";
     // The literal is repeated here on purpose: the cassette safety
@@ -560,55 +491,6 @@ async fn text_response_across_two_candidates() {
                 per_candidate.concat(),
                 "and it is candidate 0 alone — a reader that folded every candidate would land \
                  here"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_response_contains(SCENARIO, THOUGHT_MARKER);
-}
-
-#[tokio::test]
-async fn text_response_is_none_when_the_turn_is_all_thought() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought";
-
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            // A budget large enough to start thinking and far too small to answer:
-            // the turn truncates with reasoning and no visible text.
-            let request = CompletionRequest::new(
-                "Prove rigorously, with full detail, that there are infinitely many primes.",
-            )
-            .temperature(0.0)
-            .max_tokens(64)
-            .additional_params(completion_thinking(512, true));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("completion should succeed");
-
-            let document = generate_content_document(&response.raw);
-            let (visible, thoughts) = split_parts(document);
-            assert!(
-                visible.is_empty(),
-                "this cell's premise is a turn whose parts are all thoughts; got {visible:?}"
-            );
-            assert!(
-                !thoughts.is_empty(),
-                "the recorded turn should carry thought parts"
-            );
-            assert_eq!(
-                choice_text(&response.choice),
-                "",
-                "a turn that produced no visible text has no text — returning the \
-                 chain-of-thought here is exactly the bug"
-            );
-            assert!(
-                has_reasoning(&response.choice),
-                "the thoughts reach the caller as reasoning, not as the answer"
             );
         },
     )

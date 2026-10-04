@@ -341,18 +341,6 @@ pub(super) async fn with_gemini_checked_cassette<F, Fut>(
     crate::cassettes::finish_checked(cassette, "gemini", spec.scenario(), result, check).await;
 }
 
-/// Per-bug wrapper for the model-turn termination-metadata matrix
-/// (`crates/rig-cassette/fixtures/cassettes/gemini/turn_termination_matrix/`), rig#2184.
-pub(super) async fn with_gemini_turn_metadata_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
 pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

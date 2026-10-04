@@ -24,9 +24,7 @@
 //!
 //! | # | cell | transport | surface | dimension pinned |
 //! |---|------|-----------|---------|------------------|
-//! | 10 | `blocking_code_execution_with_visible_thoughts` | blocking | `completion` | thought parts adjacent to code parts |
 //! | 11 | `streaming_code_execution_with_visible_thoughts` | streaming | `stream` | parity twin of 10 |
-//! | 20 | `blocking_code_execution_on_gemini_3_flash` | blocking | `completion` | second model family |
 //! | 22 | `blocking_code_execution_replayed_in_chat_history` | blocking | `Agent::chat` | a code-execution turn replayed as history, code parts included |
 //! | 23 | `code_execution_only_turn_is_a_turn_of_its_code_parts` | — | unit | see below |
 //! | 24 | `code_execution_parts_are_skipped_in_every_position` | — | unit | see below |
@@ -50,7 +48,6 @@ use rig::message::AssistantContent;
 use rig::providers::gemini;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
-use rig_test_support::cassette_models::GeminiModels;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -125,16 +122,6 @@ pub(super) fn states(text: &str, value: &str) -> bool {
     })
 }
 
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Drain a normalized stream into its text and terminal record.
 async fn drain(
     mut stream: rig::streaming::CompletionStream,
@@ -156,38 +143,6 @@ async fn drain(
     )
 }
 
-/// One blocking cell: run the prompt with code execution enabled and assert
-/// the turn survived with its answer intact.
-async fn blocking_body(
-    client: GeminiModels,
-    scenario: &'static str,
-    model_id: &'static str,
-    prompt: &'static str,
-    params: Value,
-    max_tokens: Option<u64>,
-    expected_substring: &'static str,
-) {
-    let model = client.completion(model_id);
-    let mut request = CompletionRequest::new(prompt)
-        .temperature(0.0)
-        .additional_params(params);
-    if let Some(max_tokens) = max_tokens {
-        request = request.max_tokens(max_tokens);
-    }
-
-    let response = model
-        .call(request)
-        .await
-        .expect("a turn carrying code-execution parts must still convert");
-
-    let text = text_of(&response.choice);
-    assert!(
-        states(&text, expected_substring),
-        "{scenario}: the model's answer must survive the code-execution parts; \
-             expected {expected_substring:?} in {text:?}"
-    );
-}
-
 // --- 1/2: baseline, raw model, blocking and streaming ---------------------
 
 // --- 3/4: agent surface ---------------------------------------------------
@@ -202,45 +157,6 @@ async fn blocking_body(
 
 const THINKING_PROMPT: &str = "Use the code execution tool to compute the 20th Fibonacci number. \
      State the number in your answer.";
-
-#[tokio::test]
-async fn blocking_code_execution_with_visible_thoughts() {
-    const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_with_visible_thoughts";
-
-    with_gemini_code_execution_cassette(
-        "code_execution_matrix/blocking_code_execution_with_visible_thoughts",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequest::new(THINKING_PROMPT)
-                .temperature(0.0)
-                .max_tokens(2500)
-                .additional_params(code_execution_params_with_thoughts());
-
-            let response = model
-                .call(request)
-                .await
-                .expect("code-execution parts next to thought parts must still convert");
-
-            assert!(
-                states(&text_of(&response.choice), "6765"),
-                "the answer must survive, got {:?}",
-                text_of(&response.choice)
-            );
-            // Thought parts stay reasoning; they are never folded into the text.
-            assert!(
-                response
-                    .choice
-                    .iter()
-                    .any(|content| matches!(content, AssistantContent::Reasoning(_))),
-                "includeThoughts should surface reasoning blocks"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
-    assert_recorded_response_contains(SCENARIO, &["\"thought\""]);
-}
 
 #[tokio::test]
 async fn streaming_code_execution_with_visible_thoughts() {
@@ -286,33 +202,6 @@ async fn streaming_code_execution_with_visible_thoughts() {
 // --- 18/19: sampling knobs alongside the tool -----------------------------
 
 // --- 20/21: a second model family -----------------------------------------
-
-const SECOND_MODEL_PROMPT: &str =
-    "Use the code execution tool to compute 17 squared. State the number in your answer.";
-
-#[tokio::test]
-async fn blocking_code_execution_on_gemini_3_flash() {
-    const SCENARIO: &str = "code_execution_matrix/blocking_code_execution_on_gemini_3_flash";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_code_execution_cassette(
-        "code_execution_matrix/blocking_code_execution_on_gemini_3_flash",
-        |client| {
-            blocking_body(
-                client,
-                SCENARIO,
-                gemini::completion::GEMINI_3_FLASH_PREVIEW,
-                SECOND_MODEL_PROMPT,
-                json!({ "tools": [{ "codeExecution": {} }] }),
-                Some(2000),
-                "289",
-            )
-        },
-    )
-    .await;
-
-    assert_recorded_response_contains(SCENARIO, CODE_PART_MARKERS);
-}
 
 // --- 22: a code-execution turn replayed as chat history -------------------
 

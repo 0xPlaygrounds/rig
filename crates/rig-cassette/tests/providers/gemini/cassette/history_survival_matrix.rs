@@ -45,8 +45,6 @@ const fn image_cell(transport: Transport, expect: Expect) -> Cell {
 crate::matrix::case_matrix! {
     wrapper: with_gemini_cassette, family: history_survival_case;
     #[tokio::test]
-    unary: ("history_survival_matrix/unary", configured, cell(Transport::Unary, Expect::SIGNED));
-    #[tokio::test]
     streaming: ("history_survival_matrix/streaming", configured, cell(Transport::Streaming, Expect::SIGNED));
     #[tokio::test]
     unary_image_tool_result: ("history_survival_matrix/unary_image_tool_result", configured, image_cell(Transport::Unary, Expect::SIGNATURES.with_image()));

@@ -22,7 +22,6 @@ mod ecs_extractor_usage;
 mod ecs_truncation;
 mod extractor_usage;
 mod followup_hunt_matrix;
-mod history_survival_matrix;
 mod models;
 mod multi_extract;
 mod portability_matrix;

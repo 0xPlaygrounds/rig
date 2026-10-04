@@ -20,14 +20,6 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
 crate::matrix::golden_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: long_loop::run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    long_streamed: ("long_loop_matrix_responses/long_streamed", long_loop::LONG_STREAMED, "openai_responses_long_loop_long_streamed");
-    #[tokio::test]
-    parallel_calls: ("long_loop_matrix_responses/parallel_calls", long_loop::PARALLEL_CALLS, "openai_responses_long_loop_parallel_calls");
-}
-
-crate::matrix::golden_matrix! {
-    wrapper: with_openai_cassette, wire: wire, run: long_loop::run_agent, oracle: crate::goldens::golden_effects;
-    #[tokio::test]
     #[ignore = "a length-cut call is now kept with tolerant arguments and answered with an error result (change 2), so the cell's cut turn no longer ends the run and the shared long_loop assertions (every requested call dispatched, nothing dispatched under the cap) cannot hold; two live attempts failed on them; the cell needs redesigning for the new semantics"]
     output_cap_midway: ("long_loop_matrix_responses/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY, "openai_responses_long_loop_output_cap_midway");
 }

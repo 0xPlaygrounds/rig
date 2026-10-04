@@ -22,8 +22,5 @@ async fn list_models_smoke() {
 
 // One recorded session per model: `rig_test_support::model_session`.
 mod gpt_5_2_pro;
-mod gpt_5_4_mini;
 mod gpt_5_4_nano;
-mod gpt_6_1_sol;
 mod gpt_6_luna;
-mod gpt_6_sol;

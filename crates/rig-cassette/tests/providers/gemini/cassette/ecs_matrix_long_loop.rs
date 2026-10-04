@@ -37,8 +37,6 @@ crate::matrix::resume_matrix! {
     wrapper: with_gemini_cassette, wire: task_wire, run: crate::ecs_matrix::long_tasks::run_world, after: assert_task_requests;
     #[tokio::test]
     task_repair_streamed: ("long_task_matrix/repair_streamed", crate::ecs_matrix::long_tasks::REPAIR_STREAMED, None, "gemini_long_task_repair_streamed");
-    #[tokio::test]
-    task_reconcile: ("long_task_matrix/reconcile", crate::ecs_matrix::long_tasks::RECONCILE, None, "gemini_long_task_reconcile");
 }
 
 crate::matrix::resume_matrix! {

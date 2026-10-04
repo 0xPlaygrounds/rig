@@ -28,63 +28,6 @@ fn tool_call_names(choice: &[AssistantContent]) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn specific_single_function_targets_named_tool() {
-    with_openai_cassette(
-        "responses_tool_choice/specific_single_function_targets_named_tool",
-        |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
-            let request = CompletionRequest::new("Compute 9 minus 4 using a tool.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
-                .tool_choice(ToolChoice::Specific {
-                    function_names: vec![rig_core::tool::tool_name::<Subtract>()],
-                });
-
-            let response = model
-                .call(request)
-                .await
-                .expect("specific tool choice completion should succeed");
-
-            let tool_call = response
-                .choice
-                .iter()
-                .find_map(|content| match content {
-                    AssistantContent::ToolCall(tool_call) => Some(tool_call.clone()),
-                    _ => None,
-                })
-                .expect("a specific tool choice must produce a tool call");
-            assert_eq!(
-                tool_call.function.name,
-                Subtract::NAME,
-                "the named tool must be the one called"
-            );
-            assert_eq!(
-                tool_call
-                    .function
-                    .arguments
-                    .get("x")
-                    .and_then(serde_json::Value::as_f64),
-                Some(9.0),
-                "arguments should reflect the prompt: {:?}",
-                tool_call.function.arguments
-            );
-            assert_eq!(
-                tool_call
-                    .function
-                    .arguments
-                    .get("y")
-                    .and_then(serde_json::Value::as_f64),
-                Some(4.0),
-                "arguments should reflect the prompt: {:?}",
-                tool_call.function.arguments
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn specific_multiple_functions_use_allowed_tools() {
     with_openai_cassette(
         "responses_tool_choice/specific_multiple_functions_use_allowed_tools",

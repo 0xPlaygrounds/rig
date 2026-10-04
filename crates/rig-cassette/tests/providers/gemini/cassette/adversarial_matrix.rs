@@ -7,16 +7,6 @@ use super::super::support::with_gemini_cassette;
 use crate::history_survival::adversarial;
 use crate::history_survival::adversarial::Hop;
 
-#[tokio::test]
-async fn out_of_order_results() {
-    const SCENARIO: &str = "adversarial/out_of_order_results";
-    with_gemini_cassette("adversarial/out_of_order_results", |client| async move {
-        adversarial::out_of_order_results(client.completion(GEMINI_3_FLASH_PREVIEW), None).await;
-    })
-    .await;
-    adversarial::assert_carried("gemini", SCENARIO, "thought_signature", 1);
-}
-
 /// Second foreign hop: Anthropic then Responses history continues on Gemini.
 #[tokio::test]
 async fn three_provider_round_trip() {

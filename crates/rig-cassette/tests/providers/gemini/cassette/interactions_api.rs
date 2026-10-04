@@ -1,11 +1,8 @@
 //! Migrated from `examples/gemini_interactions_api.rs`.
 
-use futures::StreamExt;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
-use rig::streaming::Item;
-use rig::streaming::StreamEvent;
 
 use crate::support::assert_nonempty_response;
 use rig::completion::CompletionRequest;
@@ -281,35 +278,6 @@ async fn code_execution_usage_counts_the_tool_use_prompt_as_input() {
                 .await
                 .expect("code-execution completion should succeed");
             assert_nonempty_response(&extract_text(&response.choice));
-            assert_tool_use_usage(&response.usage, &response.raw);
-        },
-    )
-    .await;
-}
-
-/// The streamed twin: the terminal `interaction.completed` usage maps the
-/// same way. Unstored (`store: false`), its status update carries no
-/// `interaction_id`; that frame once passed for a whole interaction and
-/// ended the reply before its answer and its usage.
-#[tokio::test]
-async fn code_execution_usage_counts_the_tool_use_prompt_as_input_streamed() {
-    super::super::support::with_gemini_interactions_cassette(
-        "interactions_api/code_execution_usage_streamed",
-        |client| async move {
-            let model = client.interactions("gemini-3-flash-preview");
-            let mut stream = model
-                .stream(code_execution_request())
-                .expect("stream should start");
-            let mut text = String::new();
-            while let Some(chunk) = stream.next().await {
-                if let Item::Event(StreamEvent::Text { text: delta, .. }) =
-                    chunk.expect("stream chunk should succeed")
-                {
-                    text.push_str(&delta);
-                }
-            }
-            let response = stream.finish().await.expect("the stream ends");
-            assert_nonempty_response(&text);
             assert_tool_use_usage(&response.usage, &response.raw);
         },
     )

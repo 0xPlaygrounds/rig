@@ -21,9 +21,6 @@ use rig_test_support::cassettes;
 #[path = "providers/venice/mod.rs"]
 mod venice;
 
-#[path = "common/ecs_cache.rs"]
-mod ecs_cache;
-
 use rig_test_support::goldens;
 
 #[allow(dead_code)]

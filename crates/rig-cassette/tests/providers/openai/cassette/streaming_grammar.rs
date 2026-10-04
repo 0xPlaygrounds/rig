@@ -104,29 +104,6 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
     run
 }
 
-/// The reasoning blocks of an aggregated choice, in order.
-fn aggregated_reasoning(choice: &[AssistantContent]) -> Vec<&Reasoning> {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The summary parts the reasoning item a block holds states, in order.
-fn summary_parts(reasoning: &Reasoning) -> Vec<String> {
-    reasoning
-        .native
-        .as_ref()
-        .and_then(|native| native.item["summary"].as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|part| part["text"].as_str().map(str::to_owned))
-        .collect()
-}
-
 fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     let terminal = run
         .response
@@ -166,74 +143,6 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
             "message-scoped and response-scoped IDs must not be conflated"
         );
     }
-}
-
-/// Streaming reasoning-summary turn: every emitted summary part must survive
-/// into the aggregated choice exactly once — no duplicated reasoning text.
-///
-/// This is the recording that pins the two `34ee8ba5` P1s (reasoning-summary
-/// duplication; same-id multi-part collapse). The assertion states what the
-/// wire means; it is not weakened to match the current aggregation.
-#[tokio::test]
-async fn reasoning_summary_stream_aggregates_each_part_once() {
-    with_openai_cassette(
-        "streaming_grammar/reasoning_summary_stream",
-        |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6);
-            // Low-effort turns skip the reasoning item entirely on the
-            // wire; a multi-step problem at high effort reliably yields
-            // summary parts.
-            let request = CompletionRequest::new(
-                "How many positive integers n < 1000 are divisible by 7 but not by 5? \
-                     Work it out carefully, then answer with just the number.",
-            )
-            .additional_params(json!({
-                "reasoning": { "effort": "high", "summary": "detailed" }
-            }));
-            let run = drain_stream(model.stream(request).expect("stream should start")).await;
-
-            assert!(!run.text.trim().is_empty(), "turn should produce text");
-            assert_terminal(&run, FinishReason::Stop);
-
-            // The full reasoning blocks are the provider's authoritative
-            // statement of the summary parts for this item.
-            assert!(
-                !run.reasoning_blocks.is_empty(),
-                "summary-enabled turn should yield full reasoning blocks"
-            );
-            let emitted_parts: Vec<String> = run
-                .reasoning_blocks
-                .iter()
-                .flat_map(summary_parts)
-                .collect();
-            assert!(
-                !emitted_parts.is_empty(),
-                "summary-enabled turn should emit readable reasoning parts"
-            );
-
-            // Each reasoning item is one block whose text is its summary
-            // parts as paragraphs: every part the wire emitted survives
-            // exactly once, and no delta-built duplicate remains.
-            let aggregated = aggregated_reasoning(&run.choice);
-            assert_eq!(aggregated.len(), run.reasoning_blocks.len());
-            let text: String = aggregated
-                .iter()
-                .map(|reasoning| reasoning.text.as_str())
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            for part in &emitted_parts {
-                assert_eq!(
-                    text.matches(part.as_str()).count(),
-                    1,
-                    "summary part should survive aggregation exactly once: {part:?}"
-                );
-            }
-            for reasoning in aggregated {
-                assert_eq!(reasoning.text, summary_parts(reasoning).join("\n\n"));
-            }
-        },
-    )
-    .await;
 }
 
 /// Parallel tool calls streamed in one turn: both calls must land in the

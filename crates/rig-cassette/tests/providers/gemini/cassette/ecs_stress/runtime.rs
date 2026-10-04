@@ -14,14 +14,8 @@ use std::{
     collections::BTreeSet,
     sync::{Arc, Mutex},
 };
-#[derive(Clone, Debug)]
-pub(super) struct Breadcrumb {
-    pub(super) tag: &'static str,
-    pub(super) turn: usize,
-}
 #[derive(Clone, Default)]
 pub(super) struct EventTap {
-    breadcrumbs: Arc<Mutex<Vec<Breadcrumb>>>,
     run_ids: Arc<Mutex<BTreeSet<String>>>,
     streaming: Arc<Mutex<Option<bool>>>,
     agent_name: Arc<Mutex<Option<String>>>,
@@ -29,40 +23,17 @@ pub(super) struct EventTap {
     result_ids: Arc<Mutex<Vec<String>>>,
 }
 impl EventTap {
-    pub(super) fn breadcrumbs(&self) -> Vec<Breadcrumb> {
-        self.breadcrumbs.lock().expect("crumbs").clone()
-    }
-    pub fn count(&self, tag: &str) -> usize {
-        self.breadcrumbs
-            .lock()
-            .expect("crumbs")
-            .iter()
-            .filter(|c| c.tag == tag)
-            .count()
-    }
-    fn record(
-        &self,
-        run: Entity,
-        turn: usize,
-        streamed: bool,
-        name: Option<&str>,
-        tag: &'static str,
-    ) {
+    fn record(&self, run: Entity, streamed: bool, name: Option<&str>) {
         self.run_ids
             .lock()
             .expect("run ids")
             .insert(format!("{run:?}"));
         *self.streaming.lock().expect("streaming") = Some(streamed);
         *self.agent_name.lock().expect("name") = name.map(str::to_owned);
-        self.breadcrumbs
-            .lock()
-            .expect("crumbs")
-            .push(Breadcrumb { tag, turn });
     }
 }
 #[derive(Clone, Default)]
 pub(super) struct ScratchpadReader(Arc<Mutex<Vec<usize>>>);
-impl ScratchpadReader {}
 #[derive(Component, Default)]
 struct AgentTaps(Vec<EventTap>);
 #[derive(Component, Default)]
@@ -173,7 +144,6 @@ pub(super) fn install_patch(ecs: &mut EcsAgent, patch: RequestPatch, first_only:
 // Each observation follows the actual effect->turn->run graph. Optional display
 // name is application metadata; the native owner is also used for unnamed runs.
 fn emit(world: &mut World, run: Entity, tag: &'static str, id: Option<String>) {
-    let cursor = world.get::<Cursor>(run).expect("run cursor").turn;
     let streamed = world
         .get::<rig_ecs::agent::StreamRequested>(run)
         .expect("run stream mode")
@@ -189,7 +159,7 @@ fn emit(world: &mut World, run: Entity, tag: &'static str, id: Option<String>) {
         .cloned()
         .collect();
     for tap in taps {
-        tap.record(run, cursor, streamed, name.as_deref(), tag);
+        tap.record(run, streamed, name.as_deref());
         if tag == "ToolCall" {
             tap.call_ids
                 .lock()

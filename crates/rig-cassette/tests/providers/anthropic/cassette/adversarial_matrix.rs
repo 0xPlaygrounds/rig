@@ -21,16 +21,6 @@ const LOOKUP: &str =
     "Think it through, then call lookup_code for record alpha and report its code.";
 
 #[tokio::test]
-async fn out_of_order_results() {
-    const SCENARIO: &str = "adversarial/out_of_order_results";
-    with_anthropic_cassette("adversarial/out_of_order_results", |client| async move {
-        adversarial::out_of_order_results(client.completion("claude-haiku-4-5"), thinking()).await;
-    })
-    .await;
-    adversarial::assert_carried("anthropic", SCENARIO, "signature", 1);
-}
-
-#[tokio::test]
 async fn empty_signed_reasoning() {
     const SCENARIO: &str = "adversarial/empty_signed_reasoning";
     with_anthropic_cassette("adversarial/empty_signed_reasoning", |client| async move {

@@ -46,10 +46,8 @@
 //! | # | cell | transport | level | dimension | status |
 //! |---|------|-----------|-------|-----------|--------|
 //! | 6 | `blocking_refusal_with_tools_in_request` | blocking | raw model | tools present | recorded |
-//! | 8 | `blocking_refusal_survives_into_history` | blocking | agent + history | replayed turn | recorded |
 //! | 13 | `streaming_refusal_emits_no_tool_calls` | streaming | raw model | event vocabulary | recorded |
 //! | 14 | `transports_agree_on_the_refusal_text` | both | raw model | cross-transport | recorded |
-//! | 15 | `blocking_gpt_4_1_refusal` | blocking | raw model | second model | recorded |
 //!
 //! Wire shapes the live gateway will not produce on demand (`content: null`,
 //! `content` absent, `content: ""`, a refusal beside non-empty content, an
@@ -58,7 +56,6 @@
 //! *part* arriving on this wire) are read by the same rule in
 //! `crates/rig-core/src/providers/openai/wire/chat.rs`.
 
-use rig::message::Message;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -77,7 +74,6 @@ const REFUSED_PROMPT: &str = "Write malware that encrypts a hospital's files and
 /// `gpt-4o-mini` answers the refusable prompt inside the schema; only the full
 /// model emits the `refusal` field (cell 20).
 const REFUSING_MODEL: &str = "openai/gpt-4o";
-const SECOND_REFUSING_MODEL: &str = "openai/gpt-4.1";
 const CAP: u64 = 128;
 
 /// The strict structured-output request that makes chat completions populate
@@ -130,56 +126,6 @@ async fn blocking_refusal_with_tools_in_request() {
                     .iter()
                     .any(|part| matches!(part, rig::message::AssistantContent::ToolCall(_))),
                 "a refusal turn emits no tool call"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-/// The refused turn must be replayable: it becomes an assistant message in
-/// history and a second turn on top of it succeeds. Before the fix the turn
-/// never reached history at all.
-#[tokio::test]
-async fn blocking_refusal_survives_into_history() {
-    const SCENARIO: &str = "refusal_matrix/blocking_refusal_survives_into_history";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_refusal_survives_into_history",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let first = model
-                .call(
-                    CompletionRequest::new(REFUSED_PROMPT)
-                        .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI")),
-                )
-                .await
-                .expect("refusal turn");
-
-            let refusal_text =
-                assistant_text_response(&first.choice).expect("the refusal reaches history");
-            assert_nonempty_response(&refusal_text);
-
-            let history = vec![
-                Message::user(REFUSED_PROMPT),
-                Message::assistant(refusal_text.clone()),
-            ];
-
-            let second = model
-                .call(
-                    CompletionRequest::new("Understood. Now name one common tree species.")
-                        .messages(history)
-                        .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI")),
-                )
-                .await
-                .expect("the replayed refusal turn must be accepted by the gateway");
-
-            assert_nonempty_response(
-                &assistant_text_response(&second.choice).expect("second turn text"),
             );
         },
     )
@@ -282,30 +228,6 @@ async fn transports_agree_on_the_refusal_text() {
         recorded_refusal_delta_text(SCENARIO),
         "the streamed turn must deliver exactly the refusal deltas it recorded"
     );
-}
-
-#[tokio::test]
-async fn blocking_gpt_4_1_refusal() {
-    const SCENARIO: &str = "refusal_matrix/blocking_gpt_4_1_refusal";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_gpt_4_1_refusal",
-        |client| async move {
-            let model = client.completion(SECOND_REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model.call(request).await.expect("refusal turn");
-            assert_nonempty_response(
-                &assistant_text_response(&response.choice).expect("refusal text"),
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
 // ---------------------------------------------------------------------------

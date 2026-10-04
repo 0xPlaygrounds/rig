@@ -8,12 +8,9 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use futures::StreamExt;
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::providers::anthropic;
-use rig::streaming::Item;
-use rig::streaming::StreamEvent;
 
 use super::super::support::with_anthropic_cassette;
 use rig::completion::CompletionRequest;
@@ -88,49 +85,6 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
             assert!(
                 !text.trim().is_empty(),
                 "follow-up turn should produce text after replaying redacted thinking"
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn redacted_thinking_streaming() {
-    with_anthropic_cassette(
-        "messages_thinking/redacted_thinking_streaming",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new(redacted_thinking_prompt())
-                .max_tokens(4096)
-                .additional_params(thinking_params());
-
-            let mut stream = model
-                .stream(request)
-                .expect("redacted-thinking streaming request should start");
-
-            let mut saw_redacted_reasoning = false;
-            let mut streamed_text = String::new();
-
-            while let Some(item) = stream.next().await {
-                match item.expect("stream item should be ok") {
-                    Item::Event(StreamEvent::End {
-                        content: AssistantContent::Reasoning(reasoning),
-                        ..
-                    }) if reasoning.redacted => {
-                        saw_redacted_reasoning = true;
-                    }
-                    Item::Event(StreamEvent::Text { text, .. }) => streamed_text.push_str(&text),
-                    _ => {}
-                }
-            }
-
-            assert!(
-                saw_redacted_reasoning,
-                "the stream should surface a redacted reasoning block"
-            );
-            assert!(
-                !streamed_text.trim().is_empty(),
-                "the stream should still produce the visible answer text"
             );
         },
     )

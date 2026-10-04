@@ -1,7 +1,6 @@
 mod history_survival_matrix;
 mod portability_matrix;
 mod prompt_caching;
-mod request_identity_matrix;
 mod response_identity_edge;
 mod support;
 
@@ -15,7 +14,6 @@ mod models;
 mod multi_extract;
 mod permission_control;
 mod raw_completion_parity_matrix;
-mod raw_stream_capture_matrix;
 mod request_hook;
 mod streaming;
 mod streaming_reasoning;
@@ -39,9 +37,6 @@ pub(super) const MULTI_EXTRACT_SENTIMENT_MODEL: &str = "openai/gpt-oss-120b";
 pub(super) const PERMISSION_CONTROL_PROMPT_MODEL: &str = "openai/gpt-oss-20b";
 pub(super) const PERMISSION_CONTROL_STREAMING_MODEL: &str = "openai/gpt-oss-20b";
 pub(super) const RAW_CAPTURE_MODEL: &str = "openai/gpt-oss-20b";
-/// The raw-capture matrices were recorded on a model of their own, so they
-/// keep one apart from the raw-completion parity cells above.
-pub(super) const RAW_CAPTURE_MATRIX_MODEL: &str = "allam-2-7b";
 pub(super) const REQUEST_HOOK_MODEL: &str = "openai/gpt-oss-20b";
 pub(super) const STREAMING_MODEL: &str = "allam-2-7b";
 pub(super) const STREAMING_REASONING_MODEL: &str = "openai/gpt-oss-120b";

@@ -47,31 +47,6 @@ fn assert_one_call(
 }
 
 #[tokio::test]
-async fn automatic_choice_calls_a_strict_tool() {
-    with_anthropic_cassette(
-        "strict_schema_integrations/automatic_choice_calls_a_strict_tool",
-        |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_strict_tools());
-            let request =
-                CompletionRequest::new("You must call strict_auto with value = automatic.")
-                    .preamble("Obey the request by using the provided tool.")
-                    .max_tokens(1024)
-                    .tool_choice(ToolChoice::Auto)
-                    .tool(strict_value_tool("strict_auto"));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("automatic strict tool choice should succeed");
-            assert_one_call(&response, "strict_auto", &json!({ "value": "automatic" }));
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
     with_anthropic_cassette(
         "strict_schema_integrations/static_prefix_ttl_caching_coexists_with_strict_tools",

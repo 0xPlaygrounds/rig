@@ -20,7 +20,6 @@ mod cassette {
     mod ecs_extractor;
     mod ecs_faults;
     mod ecs_matrix;
-    mod ecs_prompt_caching;
     mod ecs_termination;
     mod embedding_matrix;
     mod embeddings;

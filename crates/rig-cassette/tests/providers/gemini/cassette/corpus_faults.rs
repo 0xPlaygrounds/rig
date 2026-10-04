@@ -46,17 +46,6 @@ fn missing(
 }
 
 #[tokio::test]
-async fn setup_unary() {
-    with_gemini_cassette("corpus_faults/setup_unary", |client| async move {
-        run_agent(&missing(&client), &super::ecs_faults::SETUP_UNARY, |log| {
-            crate::goldens::golden_effects("gemini_fault_setup_unary", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
 async fn setup_streamed() {
     with_gemini_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",

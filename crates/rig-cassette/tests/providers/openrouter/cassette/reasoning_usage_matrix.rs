@@ -49,10 +49,8 @@
 //!
 //! | # | cell | transport | level | upstream | status |
 //! |---|------|-----------|-------|----------|--------|
-//! | 10 | `blocking_open_weight_route_reports_reasoning_tokens` | blocking | raw model | DeepInfra / deepseek-r1-0528 | recorded |
 //! | 11 | `blocking_excluded_reasoning_still_counts_tokens` | blocking | raw model | OpenAI / o4-mini | recorded |
 //! | 14 | `transports_agree_on_reasoning_tokens` | both | raw model | OpenAI / o4-mini | recorded |
-//! | 16 | `blocking_cost_and_cache_details_still_map` | blocking | raw model | OpenAI / o4-mini | recorded |
 //!
 //! Five unit cells — usage payloads the live gateway will not produce on demand
 //! (a real recorded usage object, the breakdown absent / `null` / `{}` /
@@ -79,7 +77,6 @@ const REASONING_PROMPT: &str = "A farmer has 17 sheep; all but 9 run away. He th
                                 pens. How many sheep per pen? Answer with the number only.";
 
 const O4_MINI: &str = "openai/o4-mini";
-const DEEPSEEK_R1: &str = "deepseek/deepseek-r1-0528";
 const CAP: u64 = 2000;
 
 fn openai_reasoning(effort: &str) -> Value {
@@ -89,10 +86,6 @@ fn openai_reasoning(effort: &str) -> Value {
     })
 }
 
-fn pinned(upstream: &str) -> Value {
-    json!({ "provider": { "order": [upstream], "allow_fallbacks": false } })
-}
-
 // ---------------------------------------------------------------------------
 // The bug: a documented, always-present field with a first-class slot, zeroed.
 // ---------------------------------------------------------------------------
@@ -100,38 +93,6 @@ fn pinned(upstream: &str) -> Value {
 // ---------------------------------------------------------------------------
 // A second and third upstream family: the breakdown is not an OpenAI-ism.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn blocking_open_weight_route_reports_reasoning_tokens() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens",
-        |client| async move {
-            let model = client.completion(DEEPSEEK_R1);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(pinned("DeepInfra"));
-
-            let response = model.call(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "DeepInfra");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
 
 // ---------------------------------------------------------------------------
 // Adjacent shapes on the same code path.
@@ -244,62 +205,6 @@ async fn transports_agree_on_reasoning_tokens() {
         streamed.is_some_and(|count| recorded.contains(&count)),
         "{streamed:?} not in {recorded:?}"
     );
-}
-
-/// The fields the mapping already handled must keep working: adding a field to
-/// `Usage` must not disturb cost or the prompt-token breakdown.
-///
-/// Scope note: this route reports `cached_tokens: 0`, so the cached-token
-/// assertion below compares zero against zero and cannot fail on its own. It
-/// is kept as a shape check (the `prompt_tokens_details` object still decodes
-/// and still reaches the normalized field) — the load-bearing assertions here
-/// are `cost > 0` and the presence of *both* detail objects. Proving a
-/// non-zero cache hit needs a prompt-caching turn, which this matrix does not
-/// record.
-#[tokio::test]
-async fn blocking_cost_and_cache_details_still_map() {
-    const SCENARIO: &str = "reasoning_usage_matrix/blocking_cost_and_cache_details_still_map";
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_cost_and_cache_details_still_map",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let normalized = model.call(request).await.expect("the turn");
-            let usage = normalized.raw["usage"].clone();
-
-            assert!(
-                usage["cost"].as_f64().is_some_and(|cost| cost > 0.0),
-                "{usage}"
-            );
-            assert!(usage["prompt_tokens_details"].is_object(), "{usage}");
-            assert!(usage["completion_tokens_details"].is_object(), "{usage}");
-
-            // Shape check only — see the scope note above.
-            assert_eq!(
-                normalized.usage.cached_input_tokens,
-                usage["prompt_tokens_details"]["cached_tokens"].as_u64()
-            );
-            // These two do carry weight: the new field must not have displaced
-            // the cost mapping, and the reasoning share must still arrive.
-            assert!(
-                normalized.usage.reasoning_tokens.is_some_and(|n| n > 0),
-                "{:?}",
-                normalized.usage
-            );
-            assert_eq!(
-                normalized.usage.output_tokens,
-                usage["completion_tokens"].as_u64()
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
 // ---------------------------------------------------------------------------

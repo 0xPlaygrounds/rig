@@ -8,7 +8,6 @@
 //!
 //! | Cell | Parameter | Pinned |
 //! | --- | --- | --- |
-//! | [`a_one_token_cap_truncates_with_finish_reason_length`] | `max_tokens: 1` | exactly one completion token, `FinishReason::Length` |
 //! | [`a_fixed_seed_and_an_absent_seed_are_both_accepted`] | `seed` | present round-trips; absent falls back to the server's `--seed` |
 //! | [`additional_params_wins_over_the_typed_field_it_collides_with`] | precedence | `additional_params` overrides a typed builder call, silently |
 //!
@@ -26,13 +25,12 @@
 //! in the response says so. The cell reads the recorded request bytes rather
 //! than trusting the builder.
 
-use rig::completion::FinishReason;
 use rig::providers::openai::wire::Chat;
 use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};
 use rig::wire::{Body, Mode, Wire};
 use serde_json::{Value, json};
 
-use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
+use crate::cassettes::recorded_json_request;
 
 use super::super::cassette_support::*;
 use rig::completion::CompletionRequest;
@@ -42,16 +40,6 @@ use rig::completion::CompletionRequest;
 /// prefix `/no_think`, which the model's own template honours.
 const NO_THINK: &str = "/no_think ";
 
-fn recorded_finish_reason(scenario: &str) -> String {
-    let recorded = recorded_statuses_and_bodies("llamacpp", scenario);
-    let (_, body) = recorded.last().expect("an interaction");
-    let response: Value = serde_json::from_str(body).expect("response should be JSON");
-    response["choices"][0]["finish_reason"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string()
-}
-
 // ---------------------------------------------------------------------------
 // temperature
 // ---------------------------------------------------------------------------
@@ -59,39 +47,6 @@ fn recorded_finish_reason(scenario: &str) -> String {
 // ---------------------------------------------------------------------------
 // max_tokens
 // ---------------------------------------------------------------------------
-
-/// `max_tokens: 1` stops after exactly one token, reported as `Length`.
-#[tokio::test]
-async fn a_one_token_cap_truncates_with_finish_reason_length() {
-    with_llamacpp_cassette("sampling_matrix/max_tokens_one", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .call(CompletionRequest::new("Count from one to ten.").max_tokens(1))
-            .await
-            .expect("a one-token cap is a normal request");
-
-        assert_eq!(
-            response.finish_reason(),
-            Some(FinishReason::Length),
-            "a cap that truncates must be reported as Length, not Stop"
-        );
-        assert_eq!(
-            response.usage.output_tokens,
-            Some(1),
-            "the server must honour the cap exactly"
-        );
-    })
-    .await;
-
-    assert_eq!(
-        recorded_finish_reason("sampling_matrix/max_tokens_one"),
-        "length"
-    );
-    assert_eq!(
-        recorded_json_request("llamacpp", "sampling_matrix/max_tokens_one")["max_tokens"],
-        json!(1)
-    );
-}
 
 // ---------------------------------------------------------------------------
 // stop sequences

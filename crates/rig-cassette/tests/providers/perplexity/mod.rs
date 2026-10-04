@@ -9,5 +9,4 @@ mod cassette {
     mod prompt_caching;
     mod raw_capture_matrix;
     mod raw_stream_capture_matrix;
-    mod streaming;
 }

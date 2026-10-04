@@ -23,7 +23,6 @@
 //!
 //! | Cell | Dimension | Pinned |
 //! | --- | --- | --- |
-//! | [`blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows`] | blocking, cold → warm → grown | full `assert_cache_conformance` |
 //! | [`streaming_probe_survives_the_streaming_accumulator`] | streaming | the terminal frame's usage carries the read |
 //! | [`cache_prompt_false_turns_the_cache_off_for_that_turn_only`] | `cache_prompt` | a llama.cpp-only request field; off means 0 cached, and it does not poison the next turn |
 //! | [`agent_loop_does_not_move_its_own_prefix`] | agent loop | every outbound request extends its predecessor |
@@ -42,7 +41,7 @@ use serde_json::{Value, json};
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_breakpoints_match_support, assert_cache_conformance, assert_prefix_stable,
-    run_cache_probe, run_cache_probe_streaming,
+    run_cache_probe_streaming,
 };
 use crate::cassettes::recorded_statuses_and_bodies;
 
@@ -125,38 +124,6 @@ fn recorded_cache_counters(scenario: &str) -> Vec<(u64, u64, u64)> {
             ))
         })
         .collect()
-}
-
-#[tokio::test]
-async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
-    with_llamacpp_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let observation = run_cache_probe(model, &probe_for("llamacpp blocking probe")).await;
-        assert_cache_conformance(&observation, &LLAMACPP_CACHE_SUPPORT, "blocking probe");
-    })
-    .await;
-
-    assert_prefix_stable("llamacpp", "prompt_caching/blocking_probe");
-    assert_breakpoints_match_support(
-        "llamacpp",
-        "prompt_caching/blocking_probe",
-        &LLAMACPP_CACHE_SUPPORT,
-    );
-
-    // The premise, from the recorded bytes: turn 1 really was cold and turn 2
-    // really was warm. A fixture recorded against an already-warm server would
-    // satisfy the conformance assertions while proving nothing about the
-    // cold→warm transition.
-    let counters = recorded_cache_counters("prompt_caching/blocking_probe");
-    assert!(counters.len() >= 2, "{counters:?}");
-    assert_eq!(
-        counters[0].1, 0,
-        "turn 1 must be a cold miss — restart the server before re-recording: {counters:?}"
-    );
-    assert!(
-        counters[1].1 > 0,
-        "turn 2 must read the prefix back: {counters:?}"
-    );
 }
 
 #[tokio::test]

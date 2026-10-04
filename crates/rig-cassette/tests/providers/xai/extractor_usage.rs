@@ -11,14 +11,6 @@ pub(super) struct Person {
     pub(super) profession: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
-pub(super) struct Address {
-    pub(super) street: Option<String>,
-    pub(super) city: Option<String>,
-    pub(super) state: Option<String>,
-    pub(super) zip_code: Option<String>,
-}
-
 pub(super) fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> {
     let left = left
         .ok_or_else(|| anyhow::anyhow!("profession should be present"))?

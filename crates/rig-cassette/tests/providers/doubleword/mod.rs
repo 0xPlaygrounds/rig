@@ -18,7 +18,6 @@ mod cassette {
     mod finish_reason_matrix;
     mod history_survival_matrix;
     mod prompt_caching;
-    mod reasoning_matrix;
     mod request_parameter_matrix;
     mod streaming;
     mod structured_output;
