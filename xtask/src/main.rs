@@ -18,6 +18,7 @@
 //! cargo xtask check-wires         # fail if a provider is not a wire
 //! cargo xtask cassette record …   # re-record fixtures by owning test
 //! cargo xtask coverage --check     # fail if coverage, mutants or shapes drop
+//! cargo xtask tests prune --check  # fail if a unit test is subsumed
 //! ```
 
 mod bevy;
@@ -26,6 +27,7 @@ mod coverage;
 mod packaging;
 mod support;
 mod test_layout;
+mod test_prune;
 mod verify;
 mod wires;
 
@@ -56,15 +58,18 @@ fn main() -> ExitCode {
         Some("check-test-layout") => test_layout::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
         Some("cassette") => cassette::run(&workspace_root(), args.collect()),
+        Some("tests") => test_prune::run(&workspace_root(), &args.collect::<Vec<_>>()),
         Some(other) => Err(format!(
-            "unknown task {other:?}\n{USAGE}{}\n{}",
+            "unknown task {other:?}\n{USAGE}{}\n{}{}",
             cassette::USAGE,
-            coverage::USAGE
+            coverage::USAGE,
+            test_prune::USAGE
         )),
         None => Err(format!(
-            "no task given\n{USAGE}{}\n{}",
+            "no task given\n{USAGE}{}\n{}{}",
             cassette::USAGE,
-            coverage::USAGE
+            coverage::USAGE,
+            test_prune::USAGE
         )),
     };
     finish(result)

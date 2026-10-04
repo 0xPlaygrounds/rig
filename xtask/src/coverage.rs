@@ -21,7 +21,7 @@
 //! ```
 
 pub(crate) mod lines;
-mod mutants;
+pub(crate) mod mutants;
 pub(crate) mod shapes;
 #[cfg(test)]
 mod tests;

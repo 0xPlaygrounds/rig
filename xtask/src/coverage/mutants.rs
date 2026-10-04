@@ -119,7 +119,7 @@ impl Outcome {
     }
 
     /// A timeout counts as killed: the mutant did not pass the suites.
-    fn killed(self) -> bool {
+    pub(crate) fn killed(self) -> bool {
         matches!(self, Self::Caught | Self::Timeout)
     }
 }

@@ -102,8 +102,16 @@ fn stale_table_row(line: &str, gone: &BTreeSet<String>, kept: &BTreeSet<String>)
 }
 
 impl Finder<'_> {
+    /// `name` under the current module path; a file at the target root has
+    /// an empty one.
     fn qualified(&self, name: &str) -> String {
-        format!("{}::{name}", self.modules.join("::"))
+        self.modules
+            .iter()
+            .filter(|module| !module.is_empty())
+            .map(String::as_str)
+            .chain([name])
+            .collect::<Vec<_>>()
+            .join("::")
     }
 }
 

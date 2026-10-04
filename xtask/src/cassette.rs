@@ -12,7 +12,7 @@ mod audit;
 pub(crate) mod bank;
 mod goldens;
 mod owner;
-mod prune;
+pub(crate) mod prune;
 mod record;
 mod scan;
 mod snapshots;

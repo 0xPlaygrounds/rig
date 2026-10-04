@@ -20,9 +20,9 @@
 //! tree and fails when it would delete more, when a listed item is still
 //! there, or when the manifest is not the one a rewrite would write.
 
-mod edit;
+pub(crate) mod edit;
 mod names;
-mod select;
+pub(crate) mod select;
 #[cfg(test)]
 mod tests;
 
@@ -245,6 +245,13 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The cassette prune's candidates: the provider-target tests it may delete
+/// or keep. Their coverage depends on its selection, so no other prune
+/// credits it.
+pub(crate) fn candidates(root: &Path) -> Result<BTreeSet<(String, String)>, String> {
+    Ok(Model::load(root)?.candidates.into_iter().collect())
+}
+
 /// One manifest row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Row {
@@ -294,7 +301,7 @@ pub(crate) fn render(rows: &BTreeMap<(String, String), String>) -> String {
 }
 
 /// Whether a binary and test are a corpus sweep.
-fn is_sweep(binary: &str, test: &str) -> bool {
+pub(crate) fn is_sweep(binary: &str, test: &str) -> bool {
     SWEEPS.iter().any(|(sweep_binary, prefix)| {
         let binary_matches = *sweep_binary == binary
             || (*sweep_binary == "*" && binary.starts_with("rig-cassette::"));
