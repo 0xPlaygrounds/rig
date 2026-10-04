@@ -36,12 +36,15 @@
 #     it calls serde_json or serde_yaml both ways), an error message (an
 #     asserted argument holds a string literal and the body names an error
 #     and renders text), or rendered text (an asserted argument renders with
-#     to_string, format or Display and holds a string literal). A test whose
-#     name another tracked .rs or .md file cites (a findings registry, a
-#     contract table, a doc comment) is kept too: the citation documents what
-#     it asserts. An error-message or rendered-text test that no file cites
-#     goes when each of those assertions appears, token for token, in an
-#     earlier kept contract test; every other contract test always stays.
+#     to_string, format or Display and holds a string literal); in a
+#     table-driven test an asserted argument that renders or matches text
+#     stands for one holding a literal, since the literals are the table's.
+#     A test whose name another tracked .rs or .md file cites (a findings
+#     registry, a contract table, a doc comment) is kept too: the citation
+#     documents what it asserts. An error-message or rendered-text test that
+#     no file cites goes when each of those assertions appears, token for
+#     token, in an earlier kept contract test; every other contract test
+#     always stays.
 #     Doc examples are not tests here and always stay.
 #
 # The selection is cassette prune's: greedy set cover over the regions and
@@ -1283,6 +1286,7 @@ test	rig-ecs policy::tests::the_fold_reproduces_the_smoke_request	rig-cassette::
 test	rig-ecs::bus bus_delivery::a_recorded_divergence_is_delivered_without_overwriting_other_results	rig-ecs::bus bus_delivery::errors_before_and_after_final_keep_their_positions_and_first_outcome, rig-ecs::bus bus_delivery::policy_replay_allows_cancellation_after_multiple_judge_passes
 test	rig-ecs::bus bus_delivery::a_streamed_verdict_resumes_only_when_the_host_collects_again	rig-core::pull_protocol a_layer_does_not_repoll_an_exhausted_non_fused_stream, rig-ecs::bus bus_delivery::cancellation_after_an_original_answer_has_a_replayable_visibility_trace, rig-ecs::run run_stream_boundary::early_repair_survives_the_calls_completion
 test	rig-ecs::bus bus_delivery::bounded_intake_preserves_deliveries_for_reserved_and_new_effects	rig-cassette::runtime cells::serving_capacity_one, rig-ecs::bus bus_delivery::replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects
+test	rig-ecs::bus bus_delivery::cancelled_record_is_immutable_when_an_active_worker_poll_returns	rig-cassette::runtime cells::endings_text_delta_stop, rig-ecs bus::collect::tests::scheduled_despawn_replacement_and_shutdown_drop_owned_workers, rig-ecs bus::record::tests::cancellation_and_terminal_observation_have_one_recording_boundary, rig-ecs::bus bus_delivery::cancellation_after_an_original_answer_has_a_replayable_visibility_trace
 test	rig-ecs::bus bus_delivery::implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item	rig-agent bus::tests::a_stream_written_through_the_writer_is_well_formed, rig-ecs::bus bus_delivery::policy_cancels_at_the_same_partial_stream_state, rig-ecs::bus bus_stream_delivery::replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effect
 test	rig-ecs::bus bus_delivery::kept_streams_replay_single_and_multi_event_policy_batches	rig-cassette::anthropic anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run, rig-ecs::bus bus_delivery::interleaved_streams_preserve_partial_states_and_provider_errors
 test	rig-ecs::bus bus_delivery::opposite_answer_orders_have_distinct_logs_and_replay_their_own_winner	rig-ecs::bus bus_delivery::policy_replay_allows_cancellation_after_multiple_judge_passes
