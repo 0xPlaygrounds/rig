@@ -187,7 +187,7 @@ async fn usage_accumulates_across_failed_attempts() {
     assert_eq!(response.usage.total_tokens, Some(15));
 }
 
-async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) {
+async fn assert_billed_hook_termination_usage(case: &str, phase: StopFirstBilledResponseAt) {
     let model = MockCompletionModel::from_turns([
         submit_turn("ignored").with_usage(usage(10)),
         submit_turn("John").with_usage(usage(5)),
@@ -201,20 +201,26 @@ async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) 
         .build()
         .extract("John")
         .await
-        .expect("second attempt should succeed");
+        .unwrap_or_else(|error| panic!("{case}: second attempt should succeed: {error}"));
 
-    assert_eq!(response.output.name, "John");
-    assert_eq!(response.usage.total_tokens, Some(15));
+    assert_eq!(response.output.name, "John", "{case}");
+    assert_eq!(response.usage.total_tokens, Some(15), "{case}");
 }
 
 #[tokio::test]
-async fn completion_outcome_hook_termination_preserves_billed_usage() {
-    assert_billed_hook_termination_usage(StopFirstBilledResponseAt::CompletionOutcome).await;
-}
-
-#[tokio::test]
-async fn model_turn_finished_hook_termination_preserves_billed_usage() {
-    assert_billed_hook_termination_usage(StopFirstBilledResponseAt::ModelTurnFinished).await;
+async fn hook_termination_preserves_billed_usage_at_either_phase() {
+    for (case, phase) in [
+        (
+            "completion outcome",
+            StopFirstBilledResponseAt::CompletionOutcome,
+        ),
+        (
+            "model turn finished",
+            StopFirstBilledResponseAt::ModelTurnFinished,
+        ),
+    ] {
+        assert_billed_hook_termination_usage(case, phase).await;
+    }
 }
 
 #[tokio::test]

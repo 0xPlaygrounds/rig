@@ -261,29 +261,25 @@ fn responses_wire_can_fallback_to_system_messages_in_input() {
 
 #[test]
 fn all_instructions_system_only_input_reports_non_system_requirement() {
-    let err = openai_wire("gpt-4o-mini")
-        .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
-        .responses_request(system_only_request("System only"), false)
-        .expect_err("system-only input should fail once every item is lifted");
+    for (case, system) in [
+        ("system-only input", "System only"),
+        (
+            "whitespace-only system input, which produces no `instructions` field",
+            "   ",
+        ),
+    ] {
+        let Err(err) = openai_wire("gpt-4o-mini")
+            .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
+            .responses_request(system_only_request(system), false)
+        else {
+            panic!("{case}: should fail once every item is lifted");
+        };
 
-    assert!(
-        err.to_string().contains("non-system item"),
-        "error should explain that lifted system messages left input empty: {err}"
-    );
-}
-
-#[test]
-fn all_instructions_whitespace_only_system_input_reports_non_system_requirement() {
-    let err = openai_wire("gpt-4o-mini")
-        .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
-        .responses_request(system_only_request("   "), false)
-        .expect_err("whitespace-only system input should fail once every item is lifted");
-
-    assert!(
-        err.to_string().contains("non-system item"),
-        "even when lifted system text is whitespace-only (so no `instructions` field is \
-             produced), the error should explain that system messages were lifted: {err}"
-    );
+        assert!(
+            err.to_string().contains("non-system item"),
+            "{case}: the error should explain that lifted system messages left input empty: {err}"
+        );
+    }
 }
 
 #[test]

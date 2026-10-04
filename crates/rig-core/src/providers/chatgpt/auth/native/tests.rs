@@ -7,31 +7,19 @@ use crate::test_utils::RecordingHttpClient;
 use http::StatusCode;
 
 #[test]
-fn device_code_response_accepts_numeric_interval() {
-    let response: DeviceCodeResponse = serde_json::from_str(
-        r#"{
+fn device_code_response_accepts_a_numeric_or_string_interval() {
+    for (case, interval) in [("numeric", "5"), ("string", r#""5""#)] {
+        let response: DeviceCodeResponse = serde_json::from_str(&format!(
+            r#"{{
                 "device_auth_id": "deviceauth_123",
                 "user_code": "ABCD-EFGH",
-                "interval": 5
-            }"#,
-    )
-    .expect("device code response");
+                "interval": {interval}
+            }}"#
+        ))
+        .unwrap_or_else(|error| panic!("{case}: device code response: {error}"));
 
-    assert_eq!(response.interval, Some(5));
-}
-
-#[test]
-fn device_code_response_accepts_string_interval() {
-    let response: DeviceCodeResponse = serde_json::from_str(
-        r#"{
-                "device_auth_id": "deviceauth_123",
-                "user_code": "ABCD-EFGH",
-                "interval": "5"
-            }"#,
-    )
-    .expect("device code response");
-
-    assert_eq!(response.interval, Some(5));
+        assert_eq!(response.interval, Some(5), "{case}");
+    }
 }
 
 #[test]

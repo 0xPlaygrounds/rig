@@ -140,7 +140,7 @@ fn narrow_tools(
     }
 }
 
-fn assert_active_tools(allowed: &[&str], executable: bool) {
+fn assert_active_tools(case: &str, allowed: &[&str], executable: bool) {
     let (mut app, agent, adder, requests) = tooling(vec![
         vec![call("c1", "add", serde_json::json!({"x": 1, "y": 2}))],
         vec![AssistantContent::text("done")],
@@ -170,45 +170,46 @@ fn assert_active_tools(allowed: &[&str], executable: bool) {
         .iter()
         .map(|tool| tool.name.as_str())
         .collect();
-    assert_eq!(advertised, allowed);
+    assert_eq!(advertised, allowed, "{case}");
     if executable {
-        assert!(app.world().get::<Settled>(run).is_some());
-        assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
+        assert!(app.world().get::<Settled>(run).is_some(), "{case}");
+        assert_eq!(adder.peak.load(Ordering::SeqCst), 1, "{case}");
     } else {
         assert_eq!(
             adder.peak.load(Ordering::SeqCst),
             0,
-            "excluded tool must never execute"
+            "{case}: excluded tool must never execute"
         );
-        assert!(matches!(
-            app.world().get::<Failed>(run),
-            Some(Failed(Failure::UnknownToolCall { name })) if name == "add"
-        ));
-        assert!(app.world().get::<RunResult>(run).is_none());
+        assert!(
+            matches!(
+                app.world().get::<Failed>(run),
+                Some(Failed(Failure::UnknownToolCall { name })) if name == "add"
+            ),
+            "{case}"
+        );
+        assert!(app.world().get::<RunResult>(run).is_none(), "{case}");
         assert!(
             app.world()
                 .resource::<EffectLogResource>()
                 .log()
                 .records
                 .iter()
-                .all(|record| { !matches!(record.kind, EffectKind::ToolCall { .. }) })
+                .all(|record| { !matches!(record.kind, EffectKind::ToolCall { .. }) }),
+            "{case}"
         );
     }
 }
 
 #[test]
-fn active_tools_blocks_an_excluded_granted_tool() {
-    assert_active_tools(&["other"], false);
-}
-
-#[test]
-fn active_tools_empty_blocks_every_granted_tool() {
-    assert_active_tools(&[], false);
-}
-
-#[test]
-fn active_tools_keeps_an_allowed_tool_executable() {
-    assert_active_tools(&["add"], true);
+fn active_tools_decide_which_granted_tools_run() {
+    let cases: [(&str, &[&str], bool); 3] = [
+        ("an excluded granted tool is blocked", &["other"], false),
+        ("an empty set blocks every granted tool", &[], false),
+        ("an allowed tool stays executable", &["add"], true),
+    ];
+    for (case, allowed, executable) in cases {
+        assert_active_tools(case, allowed, executable);
+    }
 }
 
 #[test]

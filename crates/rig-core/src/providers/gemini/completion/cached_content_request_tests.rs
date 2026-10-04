@@ -41,31 +41,43 @@ fn request_with(preamble: Option<&str>, tools: bool) -> Map<String, Value> {
     .expect("request should build")
 }
 
-#[test]
-fn a_bare_id_is_rejected_before_the_request_goes_out() {
-    let mut request = request_with(None, false);
-    let error = with_cached_content(&mut request, "abc123").expect_err("a bare id is not a handle");
-    assert!(error.to_string().contains("cachedContents/<id>"), "{error}");
-}
-
-/// Gemini answers this with a 400 after a round trip, and does not say
+/// Gemini answers a conflict with a 400 after a round trip, and does not say
 /// *which* of the three conflicted. Rig should not need the round trip.
 #[test]
-fn a_preamble_alongside_a_cache_handle_is_rejected_locally() {
-    let mut request = request_with(Some("you are a helpful assistant"), false);
-    let error = with_cached_content(&mut request, "cachedContents/abc123")
-        .expect_err("a system instruction conflicts with cached content");
-    let message = error.to_string();
-    assert!(message.contains("system instruction"), "{message}");
-    assert!(message.contains("cachedContents/abc123"), "{message}");
-}
-
-#[test]
-fn tools_alongside_a_cache_handle_are_rejected_locally() {
-    let mut request = request_with(None, true);
-    let error = with_cached_content(&mut request, "cachedContents/abc123")
-        .expect_err("tools conflict with cached content");
-    assert!(error.to_string().contains("tools"), "{error}");
+fn a_bad_handle_or_a_conflict_is_rejected_before_the_request_goes_out() {
+    let cases: [(&str, Option<&str>, bool, &str, &[&str]); 3] = [
+        (
+            "a bare id is not a handle",
+            None,
+            false,
+            "abc123",
+            &["cachedContents/<id>"],
+        ),
+        (
+            "a system instruction conflicts with cached content",
+            Some("you are a helpful assistant"),
+            false,
+            "cachedContents/abc123",
+            &["system instruction", "cachedContents/abc123"],
+        ),
+        (
+            "tools conflict with cached content",
+            None,
+            true,
+            "cachedContents/abc123",
+            &["tools"],
+        ),
+    ];
+    for (case, preamble, tools, handle, expected) in cases {
+        let mut request = request_with(preamble, tools);
+        let Err(error) = with_cached_content(&mut request, handle) else {
+            panic!("{case}: the request was accepted");
+        };
+        let message = error.to_string();
+        for fragment in expected {
+            assert!(message.contains(fragment), "{case}: {message}");
+        }
+    }
 }
 
 /// The remedy differs per conflict, and only the tools arm may say so.

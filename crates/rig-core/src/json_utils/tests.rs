@@ -92,19 +92,12 @@ fn json_string_or_value_string_passthrough() {
     assert_eq!(w.arguments.as_deref(), Some(r#"{"a":1}"#));
 }
 
-/// Regression test: JSON null must collapse to None (not the string "null").
-/// Removing `.filter(|v| !v.is_null())` from the deserializer would fail this test.
 #[test]
-fn json_string_or_value_null_is_none() {
-    let w: ArgWrapper = serde_json::from_str(r#"{"arguments":null}"#).unwrap();
-    assert!(w.arguments.is_none());
-}
-
-/// A missing field is likewise None (relies on `#[serde(default)]`).
-#[test]
-fn json_string_or_value_missing_is_none() {
-    let w: ArgWrapper = serde_json::from_str(r#"{}"#).unwrap();
-    assert!(w.arguments.is_none());
+fn json_string_or_value_null_or_missing_is_none() {
+    for (case, json) in [("null", r#"{"arguments":null}"#), ("missing", r#"{}"#)] {
+        let w: ArgWrapper = serde_json::from_str(json).unwrap();
+        assert!(w.arguments.is_none(), "{case}");
+    }
 }
 
 #[test]
@@ -144,17 +137,14 @@ fn test_stringified_json_deserialize_empty_string() {
 }
 
 #[test]
-fn test_deserialize_maybe_stringified_value_from_string() {
-    let json_str = r#"{"data":"{\"key\":\"value\"}"}"#;
-    let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
-    assert_eq!(dummy.data, serde_json::json!({"key": "value"}));
-}
-
-#[test]
-fn test_deserialize_maybe_stringified_value_from_object() {
-    let json_str = r#"{"data":{"key":"value"}}"#;
-    let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
-    assert_eq!(dummy.data, serde_json::json!({"key": "value"}));
+fn test_deserialize_maybe_stringified_value_from_string_or_object() {
+    for (case, json_str) in [
+        ("string", r#"{"data":"{\"key\":\"value\"}"}"#),
+        ("object", r#"{"data":{"key":"value"}}"#),
+    ] {
+        let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
+        assert_eq!(dummy.data, serde_json::json!({"key": "value"}), "{case}");
+    }
 }
 
 #[test]
