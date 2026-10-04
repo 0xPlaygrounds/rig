@@ -1,4 +1,5 @@
-//! Each runtime's golden logs have exactly one producer in that runtime.
+//! Each runtime's golden logs have exactly one producer in that runtime,
+//! and a producer whose golden the cassette prune replaced checks in-test.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -269,7 +270,30 @@ fn sites() -> Sites {
     sites
 }
 
-fn pairing_problems(fixtures: &[String], producers: &Producers, corpus: &str) -> Vec<String> {
+/// The goldens the cassette prune replaced by an in-test check, by label
+/// (`name`, or `world/name`): their producers name a golden no file holds.
+fn checked_in_test() -> BTreeSet<String> {
+    let text = std::fs::read_to_string(root().join("crates/rig-cassette/coverage/pruned.tsv"))
+        .unwrap_or_default();
+    text.lines()
+        .filter_map(|line| {
+            let mut columns = line.split('\t');
+            match (columns.next(), columns.next(), columns.next()) {
+                (Some("golden"), Some(label), Some(covered)) if covered.starts_with("in-test ") => {
+                    Some(label.to_owned())
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+fn pairing_problems(
+    fixtures: &[String],
+    producers: &Producers,
+    corpus: &str,
+    in_test: &BTreeSet<String>,
+) -> Vec<String> {
     let mut problems = Vec::new();
     for name in fixtures {
         match producers.get(name).map(Vec::as_slice) {
@@ -282,6 +306,25 @@ fn pairing_problems(fixtures: &[String], producers: &Producers, corpus: &str) ->
         }
     }
     for (name, locations) in producers {
+        let label = if corpus == "world" {
+            format!("world/{name}")
+        } else {
+            name.clone()
+        };
+        if in_test.contains(&label) {
+            if locations.len() != 1 {
+                problems.push(format!(
+                    "{corpus} golden `{name}` checked in-test has {} producers: {locations:?}",
+                    locations.len()
+                ));
+            }
+            if fixtures.contains(name) {
+                problems.push(format!(
+                    "{corpus} golden `{name}` is committed but listed as checked in-test"
+                ));
+            }
+            continue;
+        }
         if !fixtures.contains(name) {
             problems.push(format!(
                 "{locations:?} names missing {corpus} golden `{name}`"
@@ -306,8 +349,9 @@ fn every_golden_has_exactly_one_producer_and_every_producer_a_golden() {
     );
     let sites = sites();
     let mut problems = sites.failures.clone();
-    problems.extend(pairing_problems(&agent, &sites.agent, "agent"));
-    problems.extend(pairing_problems(&world, &sites.world, "world"));
+    let in_test = checked_in_test();
+    problems.extend(pairing_problems(&agent, &sites.agent, "agent", &in_test));
+    problems.extend(pairing_problems(&world, &sites.world, "world", &in_test));
     for ignored in sites.ignored_world {
         if world.contains(&ignored) {
             problems.push(format!(

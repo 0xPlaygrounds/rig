@@ -14,6 +14,8 @@ use rig_core::message::Message;
 
 use rig_cassette::effect_log::EffectLog;
 
+#[path = "../../../crates/rig-cassette/tests/corpus/replay_check.rs"]
+mod replay_check;
 #[path = "goldens/world.rs"]
 mod world;
 pub(crate) use world::attach_world_recorder;
@@ -46,6 +48,53 @@ pub fn prior_history() -> Vec<Message> {
     ]
 }
 
+/// The goldens the cassette prune replaced by an in-test check
+/// (`crates/rig-cassette/coverage/pruned.tsv`): their producers check the
+/// log they record instead of comparing it with a committed file.
+fn checked_in_test(label: &str) -> bool {
+    static LABELS: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    LABELS
+        .get_or_init(|| {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../crates/rig-cassette/coverage/pruned.tsv");
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            text.lines()
+                .filter_map(|line| {
+                    let mut columns = line.split('\t');
+                    match (columns.next(), columns.next(), columns.next()) {
+                        (Some("golden"), Some(label), Some(covered))
+                            if covered.starts_with("in-test ") =>
+                        {
+                            Some(label.to_owned())
+                        }
+                        _ => None,
+                    }
+                })
+                .collect()
+        })
+        .contains(label)
+}
+
+/// The log as a committed golden holds it: canonical local ids, read back.
+fn as_committed(log: &EffectLog) -> (serde_json::Value, EffectLog) {
+    let value = rig_cassette::effect_log::canonical_local_ids(
+        serde_json::to_value(log).expect("the log serializes"),
+    );
+    let read = serde_json::from_value(value.clone()).expect("the canonical log reads back");
+    (value, read)
+}
+
+/// Run a world replay check on its own thread, away from the test's async
+/// runtime: the world drives its own task pools and blocks while it ticks.
+fn on_own_thread(check: impl FnOnce() + Send) {
+    std::thread::scope(|scope| {
+        if let Err(panic) = scope.spawn(check).join() {
+            std::panic::resume_unwind(panic);
+        }
+    });
+}
+
 /// The committed golden's path.
 pub fn golden_path(name: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -55,7 +104,10 @@ pub fn golden_path(name: &str) -> std::path::PathBuf {
 
 /// Write `log` as the golden `name` under `RIG_REGENERATE_GOLDEN=1`, else
 /// assert it equals the committed golden byte for byte (the header is part
-/// of the oracle: a program that changed refuses before it diverges).
+/// of the oracle: a program that changed refuses before it diverges). A
+/// golden the cassette prune replaced is never written: the log, read as a
+/// committed golden would be, replays through a world record by record
+/// instead.
 ///
 /// In record mode this is a no-op: a golden is generated from the
 /// *replayed* cassette, never from a live recording, because the golden
@@ -71,6 +123,13 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
             std::env::var_os("RIG_REGENERATE_GOLDEN").is_none(),
             "golden `{name}`: record the cassette first, then regenerate the golden in replay mode"
         );
+        return;
+    }
+    if checked_in_test(name) {
+        let (_, read) = as_committed(log);
+        on_own_thread(|| {
+            replay_check::replay_through_a_world(name, &read);
+        });
         return;
     }
     let rendered = serde_json::to_string_pretty(&rig_cassette::effect_log::canonical_local_ids(
@@ -101,7 +160,9 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
 /// Requires [`capture_world_programs`] and pre-dispatch program captures.
 /// In replay mode, `RIG_REGENERATE_GOLDEN` writes the fixture instead.
 /// Record mode does nothing and rejects simultaneous regeneration.
-/// Names must be a single file stem, not a path.
+/// Names must be a single file stem, not a path. A golden the cassette
+/// prune replaced is never written: its captured programs restore and
+/// check against the log, and the log replays by id.
 pub fn world_golden_effects(name: &str, log: &EffectLog) {
     assert!(
         !name.is_empty()
@@ -116,6 +177,15 @@ pub fn world_golden_effects(name: &str, log: &EffectLog) {
             std::env::var_os("RIG_REGENERATE_GOLDEN").is_none(),
             "world golden `{name}`: regenerate only in replay mode"
         );
+        return;
+    }
+    if checked_in_test(&format!("world/{name}")) {
+        let (_, read) = as_committed(log);
+        let programs = world::captured(log);
+        on_own_thread(|| {
+            let policy = replay_check::check_programs(name, &read, &programs);
+            replay_check::replay_world_log(name, &read, policy, false);
+        });
         return;
     }
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
