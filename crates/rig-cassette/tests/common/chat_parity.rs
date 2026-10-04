@@ -7,8 +7,13 @@
 //! serde shape, so a change to how messages serialize does not move the
 //! snapshot. Tool-call ids rig minted are projected as `"rig-issued"`, and a
 //! provider's id is kept as sent.
+//!
+//! The snapshot pins one reply per reply shape and mode: the smallest, then
+//! the first in path order. Every other reply is decoded too, and checked in
+//! the test: `call` and `stream().finish()` fold its frames to the same
+//! response.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use futures::StreamExt;
@@ -251,6 +256,89 @@ pub async fn both_paths(
     (called, streamed)
 }
 
+/// Keys whose string values a reply shape keeps, as the coverage gate's
+/// reply shapes do: bounded enums that select a decoder branch.
+const DISCRIMINATORS: &[&str] = &[
+    "finishReason",
+    "finish_reason",
+    "object",
+    "reason",
+    "role",
+    "status",
+    "stop_reason",
+    "type",
+];
+
+/// The skeleton of `value`: keys sorted, scalars reduced to their type,
+/// arrays to the set of their elements' skeletons, discriminators kept.
+fn skeleton(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_owned(),
+        Value::Bool(_) => "bool".to_owned(),
+        Value::Number(_) => "num".to_owned(),
+        Value::String(_) => "str".to_owned(),
+        Value::Array(items) => {
+            let items: BTreeSet<String> = items.iter().map(skeleton).collect();
+            format!("[{}]", items.into_iter().collect::<Vec<_>>().join("|"))
+        }
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let fields: Vec<String> = keys
+                .into_iter()
+                .map(|key| match map.get(key) {
+                    Some(Value::String(text)) if DISCRIMINATORS.contains(&key.as_str()) => {
+                        format!("{key}:{text:?}")
+                    }
+                    Some(child) => format!("{key}:{}", skeleton(child)),
+                    None => key.clone(),
+                })
+                .collect();
+            format!("{{{}}}", fields.join(","))
+        }
+    }
+}
+
+/// A recorded reply's shape: its mode and the skeleton of its body, or of
+/// each of its stream's events.
+pub fn reply_shape(interaction: &Interaction) -> String {
+    let frame_shape = |text: &str| match serde_json::from_str::<Value>(text) {
+        Ok(value) => skeleton(&value),
+        Err(_) if text == "[DONE]" => text.to_owned(),
+        Err(_) => "text".to_owned(),
+    };
+    if interaction.streaming {
+        let events: BTreeSet<String> = Framing::Sse
+            .split(interaction.body.as_bytes())
+            .iter()
+            .map(|frame| frame_shape(&frame.as_str()))
+            .collect();
+        format!(
+            "streaming[{}]",
+            events.into_iter().collect::<Vec<_>>().join("|")
+        )
+    } else {
+        format!("unary{}", frame_shape(&interaction.body))
+    }
+}
+
+/// The replies the snapshot pins: per reply shape, the smallest, then the
+/// first in path order.
+pub fn pins(interactions: &[Interaction]) -> BTreeSet<String> {
+    let mut chosen: BTreeMap<String, (usize, &str)> = BTreeMap::new();
+    for interaction in interactions {
+        let candidate = (interaction.body.len(), interaction.key.as_str());
+        chosen
+            .entry(reply_shape(interaction))
+            .and_modify(|best| *best = (*best).min(candidate))
+            .or_insert(candidate);
+    }
+    chosen
+        .into_values()
+        .map(|(_, key)| key.to_owned())
+        .collect()
+}
+
 /// The committed snapshot of `provider`'s replies.
 pub fn snapshot(provider: &str) -> BTreeMap<String, Value> {
     let path = snapshot_path(provider);
@@ -313,22 +401,31 @@ fn project_content(content: &AssistantContent) -> Value {
     }
 }
 
-/// Decode every recorded reply for `provider` and compare the projections
-/// with the committed snapshot, or rewrite it when [`REGENERATE`] is set.
+/// Decode every recorded reply for `provider` and compare the pinned ones'
+/// projections with the committed snapshot, or rewrite it when
+/// [`REGENERATE`] is set.
 pub async fn check(provider: &str) {
     let recorded = interactions(provider);
     assert!(
         !recorded.is_empty(),
         "no chat-completions replies recorded for {provider}"
     );
+    let pinned = pins(&recorded);
     let mut actual = BTreeMap::new();
+    let mut seen = BTreeSet::new();
     for interaction in &recorded {
-        let outcome = decode(provider, interaction).await;
-        let previous = actual.insert(
-            interaction.key.clone(),
-            project(interaction.streaming, &outcome),
+        assert!(
+            seen.insert(interaction.key.clone()),
+            "duplicate key {}",
+            interaction.key
         );
-        assert!(previous.is_none(), "duplicate key {}", interaction.key);
+        let outcome = decode(provider, interaction).await;
+        if pinned.contains(&interaction.key) {
+            actual.insert(
+                interaction.key.clone(),
+                project(interaction.streaming, &outcome),
+            );
+        }
     }
     let path = snapshot_path(provider);
     if std::env::var_os(REGENERATE).is_some() {
