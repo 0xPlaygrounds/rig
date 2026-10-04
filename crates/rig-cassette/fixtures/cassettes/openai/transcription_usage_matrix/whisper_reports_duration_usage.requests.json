@@ -1,0 +1,32 @@
+{
+  "interactions": [
+    {
+      "index": 0,
+      "changes": [
+        {
+          "path": "",
+          "recorded": null,
+          "sent": {
+            "multipart": [
+              {
+                "headers": {
+                  "content-disposition": "form-data; name=\"model\""
+                },
+                "body": "whisper-1"
+              },
+              {
+                "headers": {
+                  "content-disposition": "form-data; name=\"file\"; filename=\"audio.mp3\""
+                },
+                "body": {
+                  "bytes": 32976,
+                  "fnv1a64": "abfe442a9f39f1eb"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
