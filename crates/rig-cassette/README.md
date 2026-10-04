@@ -161,6 +161,18 @@ after scrubbing as canonical JSON or as multipart parts, so a fixture whose
 requests equal their recordings has none. This repository sets `check` for
 its own cassette tests.
 
+Replay compares request bodies exactly unless `RIG_CASSETTE_MATCHING=shape`
+is set or the spec says `.shape_matched()`; `.exact_matched()` keeps exact
+matching whatever the variable says. Shape matching still compares the
+method, path, query and recorded headers exactly, but compares bodies by a
+coarse key: the field structure, the order of arrays of objects, and the
+values of `model`, `role`, `name` and `stream`, with every other value, the
+types of content, tool schemas and tool arguments erased. A change to how a
+request is written then replays without a new recording, and with snapshots
+on in `check` mode the session fails until the snapshot holds the change.
+Unordered shape matching prefers an interaction the request equals. This
+repository sets `shape` for its own cassette tests.
+
 A recording only becomes the fixture when the test passed and the recording is
 clean. A failed test's exchanges, and a recording `finish` refuses, go under
 `attempt_root()` (`RIG_CASSETTE_ATTEMPT_DIR`, default `cassette-attempts` in the

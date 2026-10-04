@@ -260,10 +260,18 @@ impl Scratch {
     }
 
     async fn start(&self, mode: SnapshotMode) -> Result<ProviderCassette, CassetteError> {
+        self.start_with(CassetteSpec::new("snapshot"), mode).await
+    }
+
+    async fn start_with(
+        &self,
+        spec: CassetteSpec,
+        mode: SnapshotMode,
+    ) -> Result<ProviderCassette, CassetteError> {
         ProviderCassette::try_start_session(
             RecordVia::Proxy,
             "example",
-            CassetteSpec::new("snapshot"),
+            spec,
             UPSTREAM,
             CassetteMode::Replay,
             self.fixture(),
@@ -484,4 +492,101 @@ async fn a_snapshot_that_cannot_be_removed_fails_the_write() {
         "{error}"
     );
     assert_eq!(error.path(), scratch.fixture());
+}
+
+/// Shape matching serves a request that keeps its recording's coarse shape;
+/// the snapshot check then decides whether its bytes are the reviewed ones.
+#[tokio::test]
+async fn under_shape_matching_only_the_snapshot_admits_a_changed_request() {
+    let scratch = Scratch::new("application/json", Some(r#"{"input":"one","model":"m"}"#));
+    let shaped = CassetteSpec::new("snapshot").shape_matched();
+    let changed = br#"{"input":["one","two"],"model":"m"}"#.to_vec();
+
+    let cassette = scratch
+        .start_with(shaped, SnapshotMode::Check)
+        .await
+        .expect("session starts");
+    let (status, _) = post(&cassette, "application/json", changed.clone()).await;
+    assert_eq!(status, StatusCode::OK, "the coarse shape matches");
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("no snapshot holds the change");
+    assert!(
+        matches!(error, CassetteError::SnapshotMismatch { .. }),
+        "{error}"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains(r#"/input: snapshot "one", sent ["one","two"]"#),
+        "{error}"
+    );
+
+    let cassette = scratch
+        .start_with(shaped, SnapshotMode::Write)
+        .await
+        .expect("session starts");
+    post(&cassette, "application/json", changed.clone()).await;
+    cassette
+        .try_finish()
+        .await
+        .expect("write records the change");
+    let written: Value =
+        serde_json::from_str(&fs::read_to_string(scratch.snapshot()).expect("snapshot written"))
+            .expect("snapshot parses");
+    assert_eq!(
+        written,
+        json!({ "interactions": [{ "index": 0, "changes": [
+            { "path": "/input", "recorded": "one", "sent": ["one", "two"] },
+        ]}]})
+    );
+
+    let cassette = scratch
+        .start_with(shaped, SnapshotMode::Check)
+        .await
+        .expect("session starts");
+    post(&cassette, "application/json", changed.clone()).await;
+    cassette
+        .try_finish()
+        .await
+        .expect("the snapshot holds the change");
+
+    // Exact matching still refuses the change, snapshot or not.
+    let cassette = scratch
+        .start_with(
+            CassetteSpec::new("snapshot").exact_matched(),
+            SnapshotMode::Check,
+        )
+        .await
+        .expect("session starts");
+    let (status, _) = post(&cassette, "application/json", changed).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    cassette
+        .try_finish()
+        .await
+        .expect_err("exact matching refused the request");
+}
+
+#[tokio::test]
+async fn under_shape_matching_a_new_field_or_model_is_refused() {
+    let scratch = Scratch::new("application/json", Some(r#"{"input":"one","model":"m"}"#));
+    let shaped = CassetteSpec::new("snapshot").shape_matched();
+    for body in [
+        br#"{"input":"one","model":"m","seed":1}"#.to_vec(),
+        br#"{"input":"one","model":"n"}"#.to_vec(),
+    ] {
+        let cassette = scratch
+            .start_with(shaped, SnapshotMode::Check)
+            .await
+            .expect("session starts");
+        let (status, message) = post(&cassette, "application/json", body).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let message: Value = serde_json::from_str(&message).expect("miss body is JSON");
+        assert_eq!(message["candidates"][0]["shape_matches"], json!(false));
+        cassette
+            .try_finish()
+            .await
+            .expect_err("replay refused the request");
+    }
 }

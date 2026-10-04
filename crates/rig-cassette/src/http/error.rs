@@ -171,6 +171,17 @@ pub enum CassetteError {
         /// The value as set.
         value: String,
     },
+    /// `RIG_CASSETTE_MATCHING` holds a value other than `exact` or `shape`.
+    #[error(
+        "RIG_CASSETTE_MATCHING must be exact or shape; got {value:?} (replaying {})",
+        .path.display()
+    )]
+    InvalidMatchingMode {
+        /// The fixture path.
+        path: PathBuf,
+        /// The value as set.
+        value: String,
+    },
     /// The request snapshot beside the fixture cannot be read, does not
     /// parse, or does not apply to the fixture's recorded requests.
     #[error(
@@ -243,6 +254,7 @@ impl CassetteError {
             | Self::WriteFixture { path, .. }
             | Self::ClockWrite { path, .. }
             | Self::InvalidSnapshotMode { path, .. }
+            | Self::InvalidMatchingMode { path, .. }
             | Self::InvalidSnapshot { path, .. }
             | Self::SnapshotMismatch { path, .. }
             | Self::WriteSnapshot { path, .. } => path,

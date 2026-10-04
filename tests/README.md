@@ -239,8 +239,8 @@ session of their own.
 #### Time in cassette tests
 
 Code whose requests depend on time (a cache that expires, a TTL chosen from
-the gaps between calls) sends different bodies when time differs, and replay
-matches bodies byte for byte. Give such code the session's clock,
+the gaps between calls) sends different bodies when time differs, and the
+request snapshots pin bodies byte for byte. Give such code the session's clock,
 `ProviderCassette::clock()`, instead of the system clock:
 
 - **Recording** reads wall time and saves every reading, in order, beside the
@@ -289,10 +289,33 @@ whose requests all equal their recordings has no snapshot. Full copies of
 every request body would add about 156 MB beside 222 MB of cassettes; the
 recording already pins those bytes, so only the difference is stored.
 
-While replay matches request bodies exactly, a JSON request that differs from
-its recording is refused, and the refusal names the snapshot difference. The
-snapshots then only pin what a recording cannot hold, such as a multipart body
-the proxy recorder dropped.
+#### Shape-matched replay
+
+Replay in this workspace matches a request to a recording by its coarse
+shape, not its bytes: `.cargo/config.toml` sets `RIG_CASSETTE_MATCHING=shape`
+and `cargo xtask verify` forces it; the published engine matches exactly.
+The method, path, query and recorded headers still match exactly. The body
+key keeps:
+
+- the field structure, with every value and its type erased;
+- every array of objects in order, so the roles of `messages` and the items
+  of a Responses `input` stay in sequence;
+- the values of `model`, `role`, `name` (tool names, also inside content)
+  and `stream` (the reply mode, with the path and query);
+
+and reduces a content value (`content`, `parts`, `system`, `instructions`,
+`output`, `prompt`, `response`, `result`) to the tool names in it, so a
+string and a one-part text array agree. Tool schemas and tool arguments
+(`parameters`, `input_schema`, `arguments`, `args`, ...) are erased, an array
+of scalars collapses, and a multipart body is keyed by its field names.
+Unordered replay prefers the interaction whose snapshot the request equals.
+
+So a change to how Rig writes a request that keeps its coarse shape needs no
+re-record: the request still replays, the snapshot check fails until
+`cargo xtask cassette snapshots` records the difference, and the reviewer
+reads that diff. A change of shape (a new field, another role sequence)
+misses its recording and needs one. A cell whose subject is the exact matcher
+opts out with `CassetteSpec::exact_matched()`.
 
 ```bash
 cargo xtask cassette snapshots                  # rewrite every snapshot from replay

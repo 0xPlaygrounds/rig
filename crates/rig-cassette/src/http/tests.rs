@@ -145,7 +145,7 @@ fn replay_matching_is_ordered_by_default() {
     ];
 
     assert_eq!(
-        matching_interaction_index(policy, &interactions, &request),
+        matching_interaction_index(policy, &interactions, &request, None, |_| false),
         None
     );
 }
@@ -171,19 +171,63 @@ fn replay_matching_can_be_explicitly_unordered() {
     ];
 
     assert_eq!(
-        matching_interaction_index(policy, &interactions, &request),
+        matching_interaction_index(policy, &interactions, &request, None, |_| false),
         Some(1)
+    );
+}
+
+#[test]
+fn unordered_shape_matching_prefers_the_interaction_the_request_equals() {
+    let policy = CassettePolicy {
+        replay_matching: ReplayMatching::Unordered,
+        body_matching: BodyMatching::Shape,
+        ..CassettePolicy::default()
+    };
+    let recorded = |input: &str| CassetteRequest {
+        body: Some(json!({ "input": input }).to_string()),
+        ..cassette_request("/v1/answer")
+    };
+    let interactions = vec![
+        ReplayInteraction {
+            when: recorded("first"),
+            then: cassette_response(),
+            consumed: false,
+        },
+        ReplayInteraction {
+            when: recorded("second"),
+            then: cassette_response(),
+            consumed: false,
+        },
+    ];
+    let keys: Vec<Value> = interactions
+        .iter()
+        .map(|interaction| shape::shape_key(&recorded_body_view(policy, &interaction.when)))
+        .collect();
+    let request = incoming_request("/v1/answer", json!({ "input": "second" }).to_string());
+    let sent = shape::shape_key(&incoming_body_view(policy, &request));
+    let shapes = Some(ShapeKeys {
+        recorded: &keys,
+        sent: &sent,
+    });
+    let equals = |index: usize| request_matches(policy, &request, &interactions[index].when);
+
+    assert_eq!(
+        matching_interaction_index(policy, &interactions, &request, shapes, equals),
+        Some(1),
+        "the equal interaction wins"
+    );
+    assert_eq!(
+        matching_interaction_index(policy, &interactions, &request, shapes, |_| false),
+        Some(0),
+        "without an equal one, the first of the same shape serves"
     );
 }
 
 #[test]
 fn replay_matching_requires_bearer_provider_auth_without_recording_its_value() {
     for provider in ["openai", "doubleword"] {
-        let policy = CassettePolicy::for_scenario(
-            provider,
-            "agent/completion_smoke",
-            ReplayMatching::Ordered,
-        );
+        let policy =
+            CassettePolicy::for_scenario(provider, CassetteSpec::new("agent/completion_smoke"));
         let interaction = ReplayInteraction {
             when: cassette_request("/v1/responses"),
             then: cassette_response(),
@@ -198,7 +242,9 @@ fn replay_matching_requires_bearer_provider_auth_without_recording_its_value() {
         );
 
         assert_eq!(
-            matching_interaction_index(policy, &interactions, &request_without_auth),
+            matching_interaction_index(policy, &interactions, &request_without_auth, None, |_| {
+                false
+            }),
             None,
             "{provider} replay should require bearer authentication"
         );
@@ -207,7 +253,7 @@ fn replay_matching_requires_bearer_provider_auth_without_recording_its_value() {
             vec!["authorization"]
         );
         assert_eq!(
-            matching_interaction_index(policy, &interactions, &request_with_auth),
+            matching_interaction_index(policy, &interactions, &request_with_auth, None, |_| false),
             Some(0)
         );
     }
@@ -215,11 +261,8 @@ fn replay_matching_requires_bearer_provider_auth_without_recording_its_value() {
 
 #[test]
 fn gemini_interactions_policy_requires_api_key_header() {
-    let policy = CassettePolicy::for_scenario(
-        "gemini",
-        "interactions_api/tool_result",
-        ReplayMatching::Ordered,
-    );
+    let policy =
+        CassettePolicy::for_scenario("gemini", CassetteSpec::new("interactions_api/tool_result"));
     let mut request = incoming_request("/v1beta/models", Bytes::new());
 
     assert_eq!(
@@ -237,7 +280,7 @@ fn gemini_interactions_policy_requires_api_key_header() {
 #[tokio::test]
 async fn direct_recorder_omits_sigv4_headers() {
     let policy =
-        CassettePolicy::for_scenario("bedrock", "agent/completion_smoke", ReplayMatching::Ordered);
+        CassettePolicy::for_scenario("bedrock", CassetteSpec::new("agent/completion_smoke"));
     let interactions = Arc::new(Mutex::new(Vec::new()));
     let ledger_dir = assert_fs::TempDir::new().expect("ledger directory");
     let recorder = DirectRecorder {
@@ -313,7 +356,7 @@ fn replay_miss_diagnostics_scrub_actual_request_details() {
         consumed: false,
     }];
 
-    let message = replay_miss_message(policy, &request, &interactions, None);
+    let message = replay_miss_message(policy, &request, &interactions, None, None);
 
     assert!(!message.contains("AIzaSyExampleSecretToken123456"));
     assert!(!message.contains("raw-api-key"));
@@ -326,11 +369,8 @@ fn replay_miss_diagnostics_scrub_actual_request_details() {
 
 #[test]
 fn replay_miss_diagnostics_report_missing_required_headers_without_values() {
-    let policy = CassettePolicy::for_scenario(
-        "anthropic",
-        "agent/completion_smoke",
-        ReplayMatching::Ordered,
-    );
+    let policy =
+        CassettePolicy::for_scenario("anthropic", CassetteSpec::new("agent/completion_smoke"));
     let request = incoming_request("/v1/messages", Bytes::new());
     let interactions = vec![ReplayInteraction {
         when: cassette_request("/v1/messages"),
@@ -338,7 +378,7 @@ fn replay_miss_diagnostics_report_missing_required_headers_without_values() {
         consumed: false,
     }];
 
-    let message = replay_miss_message(policy, &request, &interactions, None);
+    let message = replay_miss_message(policy, &request, &interactions, None, None);
 
     assert!(message.contains("x-api-key"));
     assert!(message.contains("missing_required_headers"));
@@ -377,6 +417,7 @@ async fn replay_request_records_unexpected_misses() {
         misses: Vec::new(),
         policy: CassettePolicy::default(),
         snapshots: None,
+        shapes: None,
     }));
 
     let response = replay_request(

@@ -45,12 +45,17 @@ async fn start(root: &Path, scenario: &'static str) -> ProviderCassette {
 /// Post `{"input": input}` to the session and return the status the replay
 /// answered with: the caller of a provider client sees nothing else.
 async fn post(cassette: &ProviderCassette, input: usize) -> StatusCode {
+    post_body(cassette, json!({ "input": input })).await
+}
+
+/// Post `body` to the session and return the status the replay answered with.
+async fn post_body(cassette: &ProviderCassette, body: serde_json::Value) -> StatusCode {
     reqwest::Client::builder()
         .no_proxy()
         .build()
         .expect("HTTP client")
         .post(format!("{}/answer", cassette.base_url()))
-        .json(&json!({ "input": input }))
+        .json(&body)
         .send()
         .await
         .expect("local replay response")
@@ -98,8 +103,12 @@ async fn finish_refuses_a_miss_the_caller_swallowed() {
     let cassette = start(&root, "single").await;
     // A request the recording never saw: the replay refuses it, and a
     // provider client would surface that as an ordinary HTTP failure the
-    // test body may well tolerate.
-    assert_eq!(post(&cassette, 7).await, StatusCode::NOT_FOUND);
+    // test body may well tolerate. Its field is unrecorded, so exact and
+    // shape matching both refuse it.
+    assert_eq!(
+        post_body(&cassette, json!({ "unrecorded": 7 })).await,
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(post(&cassette, 0).await, StatusCode::OK);
 
     let outcome = AssertUnwindSafe(cassette.finish()).catch_unwind().await;
