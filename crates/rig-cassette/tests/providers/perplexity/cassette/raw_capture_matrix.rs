@@ -13,9 +13,7 @@
 //! matters here more than for any other provider in this family: Perplexity's
 //! wire carries `citations` and `search_results`, which no shared
 //! chat-completions type models, and they reach a caller through `raw`
-//! precisely because `raw` is the body. Cell 2 pins those two fields against
-//! the fixture that has them, so the capability stays stated rather than
-//! rediscovered.
+//! precisely because `raw` is the body.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|

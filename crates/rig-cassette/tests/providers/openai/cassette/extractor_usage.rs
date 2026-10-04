@@ -1,10 +1,4 @@
-//! Integration tests for extractor usage tracking.
-//!
-//! These tests verify that:
-//! - `extract()` yields the extracted value as `TypedPromptResponse::output`
-//! - the same `TypedPromptResponse` carries the run's usage
-//! - Usage accumulates across retry attempts
-//! - Both plain and `.history(..)` extractions work
+//! The extraction types the OpenAI `ecs_extractor_usage` cells read.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

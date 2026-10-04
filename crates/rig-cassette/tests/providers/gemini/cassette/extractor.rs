@@ -1,4 +1,4 @@
-//! Gemini extractor coverage, including the migrated example path.
+//! The `Person` extraction type the Gemini `ecs_extractor` cells read.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

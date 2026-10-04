@@ -19,7 +19,6 @@
 //! | Cell | Dimension | Server | Pinned |
 //! | --- | --- | --- | --- |
 //! | `image_tool_result::a_tool_result_image_is_read_by_the_model` | image in a tool result | vision | the #2380 capability |
-//! | `image_tool_result::the_same_image_in_a_user_message_is_read_too` | image in a user message | vision | the control for the above |
 //! | [`an_image_and_a_tool_reach_the_model_together`] | image + tools | vision | the call carries what the image showed |
 //! | [`a_video_part_is_refused_even_though_props_advertises_video`] | video | vision | 400 `unsupported content[].type` |
 //!

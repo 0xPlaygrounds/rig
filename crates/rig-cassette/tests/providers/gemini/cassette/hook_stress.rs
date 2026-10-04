@@ -1,12 +1,11 @@
 //! Long, multi-turn hook-system stress workflows recorded against real Gemini.
 //!
-//! Where the small `tool_hooks` suite pins one hook decision each, these tests
-//! drive rich multi-turn workflows and assert *structural invariants* of the
-//! merged hook system: `HookContext` identity/turn/streaming, a shared
-//! `Scratchpad` threaded across hooks and turns, `RequestPatch` context
-//! injection + `active_tools` narrowing, chained `DispatchAction::Patch` -> observe ->
-//! `OutcomeAction::Replace` redaction, and streaming lifecycle ordering / blocking-vs-
-//! streaming parity.
+//! These tests drive rich multi-turn workflows and assert *structural
+//! invariants* of the merged hook system: `HookContext` identity/turn/streaming,
+//! a shared `Scratchpad` threaded across hooks and turns, `RequestPatch`
+//! context injection + `active_tools` narrowing, chained
+//! `DispatchAction::Patch` -> observe -> `OutcomeAction::Replace` redaction,
+//! and streaming lifecycle ordering / blocking-vs-streaming parity.
 //!
 //! ## On loose assertions
 //!

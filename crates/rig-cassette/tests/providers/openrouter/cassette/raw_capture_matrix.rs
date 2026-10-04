@@ -19,16 +19,9 @@
 //! |---|------|-----------|----------|--------|
 //! | 1 | `raw_reads_back_as_openrouter_type` | JSON read-back | `raw` is the reply document and its identity agrees with the normalized response | recorded |
 //!
-//! The scenario literals — and therefore the fixture filenames — keep the
-//! names they were recorded under; the cell names describe what the cells now
-//! assert.
-//!
-//! Every cell is recorded. Each re-derives its premise from its own fixture
-//! after the wrapper returns: cell 2 reads the routed provider out of the
-//! recorded body rather than trusting the string `raw` reports, and
-//! cell 3 checks the normalized fields against the recorded body before
-//! checking them against its own `raw`, so a recording that stopped carrying a
-//! usage block or a finish reason fails loudly instead of covering nothing.
+//! The cell re-derives its premise from its fixture after the wrapper returns,
+//! so a recording that stopped carrying what it reads fails loudly instead of
+//! covering nothing.
 //! OpenRouter contracts no request-id header, so `provider_request_id` is
 //! `None` on every turn here — a documented outcome, pinned as such.
 

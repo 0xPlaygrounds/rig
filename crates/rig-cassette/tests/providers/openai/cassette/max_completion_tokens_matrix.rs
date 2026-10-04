@@ -18,7 +18,7 @@
 //! deliberate: this same extension is how rig reaches OpenAI-*compatible*
 //! servers (mistral.rs, vLLM, llama.cpp, gateways), and OpenAI's own older
 //! models still take `max_tokens` — so nothing that worked before changes a
-//! byte, which the untouched `mistralrs` suite and cells 9-13 below prove.
+//! byte, which the untouched `mistralrs` suite and cell 12 below prove.
 //!
 //! **How these cells fail on `origin/main`.** The cassette harness matches the
 //! recorded *request body*, so every **reasoning-model** cell below is a mock

@@ -10,8 +10,7 @@
 //!           "completion_tokens_details": {"reasoning_tokens": 531}, …}
 //! ```
 //!
-//! (verbatim from this matrix's own
-//! `blocking_anthropic_routed_reports_reasoning_tokens` fixture)
+//! (verbatim from a recorded Anthropic-routed reply)
 //!
 //! `openrouter::Usage` modeled `prompt_tokens`, `completion_tokens`,
 //! `total_tokens`, `cost` and `prompt_tokens_details` — but no

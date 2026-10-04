@@ -47,29 +47,11 @@
 //! | 24 | `the_terminal_record_is_the_last_item_yielded` | unit | ordering invariant |
 //! | 25 | `a_transport_error_after_the_real_terminal_also_reports_truncation` | unit | the deliberate trade-off, stated |
 //!
-//! Cells 13–25 drive synthetic SSE frames through the real client rather than
-//! recording, because the provider cannot be asked for these shapes: Gemini
-//! never emits `STOP` followed by `MAX_TOKENS`, never sends a usage-only
-//! trailer *after* an intermediate finish, and cannot be made to fail its
-//! transport mid-turn on demand. Each frame sequence is written from the
-//! bytes recorded by cells 1–12.
-//!
-//! Recording note: the two-terminal shape needs the model to take **two**
-//! code-execution rounds. Measured 4/4 with the prompt below and thinking at
-//! its default; forcing `thinkingBudget: 0` makes gemini-2.5-flash narrate
-//! the code as text instead of calling the tool, and the shape never appears.
-//! `assert_recorded_stream_finishes_early` asserts the shape's presence (or,
-//! for cell 6, its absence) against each fixture's own bytes, so a cell that
-//! stopped covering what it claims fails instead of quietly passing.
-//!
-//! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini stream_terminal_matrix -- --test-threads=1`
-
-// --- 1-8: the bug, over the shapes live traffic produces ------------------
-
-// --- 9-12: regression guards for ordinary single-terminal streams ---------
-
-// --- 13-25: shapes the provider cannot be asked for ----------------------
+//! These cells drive synthetic SSE frames through the real client, because
+//! the provider cannot be asked for these shapes: Gemini never emits `STOP`
+//! followed by `MAX_TOKENS`, never sends a usage-only trailer *after* an
+//! intermediate finish, and cannot be made to fail its transport mid-turn on
+//! demand. Each frame sequence follows the bytes of recorded Gemini streams.
 
 mod unit {
     use futures::StreamExt;

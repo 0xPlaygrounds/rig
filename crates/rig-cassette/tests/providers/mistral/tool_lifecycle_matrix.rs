@@ -1,12 +1,12 @@
 //! Live Chat Completions tool-call lifecycle and argument-integrity matrix.
 //!
-//! The complete recorded space is 2 transports × 2 models × 3 call shapes ×
-//! 2 public surfaces = 24 cells. The shapes cover a deliberate zero-argument
-//! call, a nested object containing an array and Unicode, and two parallel
-//! calls. Model cells assert on the normalized response the wire's decoder
-//! folds the reply into; agent cells prove exact-once invocation. Streaming
-//! cells additionally reassemble every id, name, and argument fragment from
-//! their fixtures.
+//! The space is 2 transports × 2 models × 3 call shapes × 2
+//! public surfaces = 24 cells, of which the two below are tests. The shapes
+//! cover a deliberate zero-argument call, a nested object containing an array
+//! and Unicode, and two parallel calls. Model cells assert on the normalized
+//! response the wire's decoder folds the reply into; agent cells prove
+//! exact-once invocation. Streaming cells additionally reassemble every id,
+//! name, and argument fragment from their fixtures.
 //!
 //! Auto/none/specific tool-choice controls are assigned to the separate
 //! request-shape matrix; this matrix fixes choice to `any` so call shape
@@ -20,8 +20,7 @@
 //! | call shape | zero arguments, nested Unicode/array object, parallel pair |
 //! | surface | model, one-turn agent |
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and every cell is
-//! recorded; none is unit-only. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/tool_lifecycle_matrix/<test-name>.yaml`.
 //! The small and 3B aliases are inexpensive, currently served, tool-capable
 //! model families. Assertions span request schemas, native blocking/streaming
@@ -31,7 +30,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/tool_lifecycle_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{zero,nested,parallel}_{model,agent}.yaml` |
+//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/mistral/tool_lifecycle_matrix/{blocking_ministral_3b_zero_agent,streaming_mistral_small_nested_agent}.yaml` |
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};

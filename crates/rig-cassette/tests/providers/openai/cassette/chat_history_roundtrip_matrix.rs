@@ -13,12 +13,11 @@
 //! | surface | provider-native raw, normalized Rig response |
 //! | history shape | text, one tool result, two ordered tool results |
 //!
-//! That is 24 recorded cells. Every cell proves the exact serialized history
-//! from its fixture and compares the observed response text to those exact
-//! blocking or SSE bytes.
+//! That is 24 cells, of which the one below is a test. Each test proves the
+//! exact serialized history from its fixture and compares the observed response
+//! text to those exact blocking or SSE bytes.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
-//! pruned or assigned to unit-only coverage. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/<test-name>.yaml`.
 //! The two inexpensive mini models are stable history/tool-call controls from
 //! separate families. Assertions cover provider-native and normalized blocking
@@ -27,7 +26,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
+//! | 1 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool.yaml` |
 
 use rig::streaming::Item;
 use std::sync::{Arc, Mutex};

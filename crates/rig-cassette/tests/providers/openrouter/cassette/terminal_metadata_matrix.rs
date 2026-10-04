@@ -15,24 +15,24 @@
 //! | output budget | roomy, constrained (`1` text token / `48` tool tokens) |
 //! | response shape | one text candidate, requested `n = 2`, forced tool |
 //!
-//! That is 24 recorded cells. Each cell proves its request and terminal premise
-//! from the fixture, then compares the native raw response/terminal metadata
-//! with those exact bytes. OpenRouter currently accepts `n = 2` but emits only
-//! candidate zero; those cells deliberately preserve that observed gateway
-//! contract instead of assuming direct OpenAI behavior.
+//! That is 24 cells, of which the six below are tests. Each cell proves its
+//! request and terminal premise from the fixture, then compares the native raw
+//! response/terminal metadata with those exact bytes. OpenRouter currently
+//! accepts `n = 2` but emits only candidate zero; those cells deliberately
+//! preserve that observed gateway contract instead of assuming direct OpenAI
+//! behavior.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and all 24 cells
-//! are recorded; none is unit-only. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/<test-name>.yaml`.
 //! The two inexpensive mini routes are pinned to OpenAI with fallbacks disabled
-//! for stable provider attribution. Every cell asserts the routed request and
+//! for stable provider attribution. Each test asserts the routed request and
 //! native terminal; together they cover provider, tier, ids, model, finish
-//! reason, usage, primary-choice behavior, fingerprint, and unmodeled
-//! top-level streaming metadata.
+//! reason, usage, primary-choice behavior, fingerprint, and unmodeled top-level
+//! streaming metadata.
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
+//! | 6 of 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/{blocking_gpt_4_1_mini_tiny_plain_two,blocking_gpt_4_1_mini_tiny_tool,blocking_gpt_4o_mini_tiny_plain_one,streaming_gpt_4_1_mini_tiny_plain_two,streaming_gpt_4_1_mini_tiny_tool,streaming_gpt_4o_mini_tiny_plain_one}.yaml` |
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};

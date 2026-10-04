@@ -27,17 +27,12 @@
 //! refusal at all.
 //!
 //! **Recorded upstreams.** OpenRouter routes `openai/gpt-4o` to either OpenAI
-//! or Azure — the very first, unpinned, hunt recording landed on Azure — so
-//! every cell pins its route with `provider.order` + `allow_fallbacks: false`
-//! and asserts the recorded `provider` field. Cells 1-15 are pinned to
-//! `OpenAI`; cells 16-17 are pinned to `Azure`, which produces the same
-//! `content: null` + `refusal` shape in different words, proving the mapping
-//! is not upstream-specific.
+//! or Azure, so every cell pins its route to `OpenAI` with `provider.order` +
+//! `allow_fallbacks: false` and asserts the recorded `provider` field.
 //!
 //! `gpt-4o` is required: `gpt-4o-mini` answers the refusable prompt *inside*
-//! the schema instead of refusing (cell 20 pins that as a control), so a
-//! cheaper route cannot produce the shape under test. Every cell caps
-//! `max_tokens` at 128 (32 in cell 9, which is about the cap).
+//! the schema instead of refusing, so a cheaper route cannot produce the
+//! shape under test. Every cell caps `max_tokens` at 128.
 //!
 //! Each cell re-reads its own fixture and fails if the recorded bytes stopped
 //! carrying the shape it is about, so a provider that stopped refusing leaves

@@ -23,13 +23,9 @@
 //! Responses API, the response object, verbatim (whose `status` and message
 //! id come from the terminal `response.completed` event alone).
 //!
-//! Cells 5–6 are the streamed twins of the reasoning and tool-call cells in
-//! `raw_capture_matrix`: a Responses reasoning stream, whose terminal
-//! carries the `reasoning` echo of `response.completed` as
-//! `reasoning_metadata` (a terminal-only field the normalized `CompletionResponse`
-//! does not model), and a forced Chat tool call, whose terminal spells
-//! `finish_reason` as `"tool_calls"` and whose normalized twin reports
-//! `FinishReason::ToolCalls`.
+//! Cell 6 is the streamed twin of the tool-call cell in `raw_capture_matrix`:
+//! a forced Chat tool call, whose terminal spells `finish_reason` as
+//! `"tool_calls"` and whose normalized twin reports `FinishReason::ToolCalls`.
 //!
 //! # Matrix
 //!
@@ -43,10 +39,9 @@
 //! cell's fixture after the wrapper returns: the recorded stream ends with a
 //! terminal frame carrying usage — Chat because the request the provider
 //! sends already asks for `stream_options.include_usage`, Responses because
-//! `response.completed` carries the whole response object. Cell 5 further
-//! requires the completed response object to carry a `reasoning` output item
-//! with a string `encrypted_content`; cell 6 requires a chunk whose delta
-//! carries `tool_calls` and a chunk finishing with `"tool_calls"`.
+//! `response.completed` carries the whole response object. Cell 6 further
+//! requires a chunk whose delta carries `tool_calls` and a chunk finishing
+//! with `"tool_calls"`.
 
 use rig::completion::CompletionRequest;
 use rig::completion::CompletionResponse;

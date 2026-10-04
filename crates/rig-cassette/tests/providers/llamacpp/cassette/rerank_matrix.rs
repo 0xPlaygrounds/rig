@@ -28,9 +28,8 @@
 //! "What is a panda?" gives `0.8225`, `-4.7583` and `-8.3761`. The ordering is
 //! meaningful and is what a reranker is for; the magnitude is not a
 //! probability and negative values are normal. That mismatch is a defect in
-//! the field's *documentation* rather than in any mapping, and this PR
-//! corrects the doc comment; [`scores_are_raw_logits_and_may_be_negative`]
-//! is what keeps the corrected wording honest.
+//! the field's *documentation* rather than in any mapping, and the doc comment
+//! states it.
 
 use rig_test_support::cassette_models::MapWire;
 use serde_json::Value;

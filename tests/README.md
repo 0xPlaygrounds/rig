@@ -451,9 +451,7 @@ that produced it. A request to that same model replays the turn's provider
 items verbatim, and any other request replays only its canonical fields.
 Further cell families exercise the same round trip: `stateful_chain_matrix`
 (OpenAI `previous_response_id` and file ids, Gemini `cachedContents` and
-Interactions), `session_matrix` (history persisted through serde, an ECS
-checkpoint restored into a fresh world, or agent memory, then continued),
-`adversarial_matrix` (reused call ids, reordered parallel results, long
+Interactions), `adversarial_matrix` (reused call ids, reordered parallel results, long
 ciphertext, signed empty reasoning, a history ported across three providers
 and back), `image_input_matrix` and `request_identity_matrix`. Chains create
 and delete their server-side resources in the recorded session, so a
@@ -733,19 +731,13 @@ The runs live in `<provider>/cassette/long_run_workloads.rs` (workloads on their
 
 | run | model | measures |
 |---|---|---|
-| `mixed_delivery_100` | claude-opus-5-5 | unary and streamed turns share one cache |
-| `tool_loop_60` | claude-opus-5-5 | large tool results and thinking replayed across tool rounds |
 | `document_60` | claude-opus-5-5 | a large fixed input with citations, read back every turn |
 | `mid_system_every_10_60` | claude-opus-5-5 | mid-conversation system messages keep the prefix |
 | `dynamic_tools_30` | claude-opus-5-5 | a changed tool list: the thinking-block binding 400 on turn 11 |
-| `mixed_delivery_100_responses` | gpt-6.1-sol | as `mixed_delivery_100`, on Responses |
-| `mixed_delivery_30_responses` | gpt-6-astra | the same, kept short for price |
-| `tool_loop_60_responses` | gpt-6-luna | as `tool_loop_60`, with encrypted reasoning |
 | `document_60_responses` | gpt-6-sol | as `document_60`, without citations |
-| `fan_out_4x25` | gpt-6-luna | four conversations reading one shared prefix |
 
-The OpenAI runs are stateless (`store: false`), reason at low effort and send one
-`prompt_cache_key`. They run on Responses only: the GPT-6 models take function tools on Chat
+The OpenAI run is stateless (`store: false`), reasons at low effort and sends one
+`prompt_cache_key`. It runs on Responses only: the GPT-6 models take function tools on Chat
 Completions only at `reasoning_effort: "none"`, and gpt-6-astra and gpt-6.1-sol not at all.
 
 To add a workload, write it in `cache_longrun::workloads` as a deterministic function taking
@@ -815,9 +807,8 @@ Practical consequences for anyone touching these fixtures:
   request bodies, request *paths* and responses, and the generated-token
   scrubber cannot reach them (it stops a token at `/`), so
   `scrub_resource_names` handles them. Never assert a literal handle.
-- `below_minimum_does_not_cache` is the cell that gives every other cell's
-  padding its meaning. If it ever starts caching, the documented 1,024-token
-  minimum is wrong and every probe's padding needs revisiting.
+- **Pad past the documented 1,024-token minimum.** Every probe's padding
+  assumes it; a prompt below it is not cached.
 
 **Automatic caching** (`gemini::caching`, fixtures under
 `gemini/auto_caching/`) is recorded as long runs: 100-turn support chats

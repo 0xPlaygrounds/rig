@@ -50,11 +50,9 @@
 //! | 6 | `verbose_json_still_reports_duration_usage` | whisper-1 | duration (richer body) | recorded |
 //! | 8 | `rejected_request_surfaces_the_provider_body` | whisper-1 | none (400) | recorded |
 //!
-//! Cells 4 and 5 were recorded while the two completion APIs were two client
-//! extensions over one credential. `/audio/transcriptions` belongs to the
-//! `OpenAI` configuration alone — whichever completion API a caller pairs it
-//! with — so they now run the same wire as cells 1 and 2 and stand as a
-//! second recording of each billing shape.
+//! `/audio/transcriptions` belongs to the `OpenAI` configuration alone,
+//! whichever completion API a caller pairs it with, so cells 4 and 5 hold one
+//! recording of each billing shape.
 //!
 //! Unit cells beside the fix
 //! (`usage_decodes_both_billing_shapes_and_keeps_unknown_ones`): both live

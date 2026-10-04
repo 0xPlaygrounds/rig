@@ -12,17 +12,14 @@
 //! | model | `mistral-small-latest`, `ministral-3b-latest` |
 //! | surface | provider-native raw, normalized Rig response |
 //!
-//! That is 8 recorded cells. Every cell proves the exact serialized history
-//! from its fixture and compares the observed response text to those exact
-//! blocking or SSE bytes.
+//! That is 8 cells. Each proves the exact serialized history from its fixture
+//! and compares the observed response text to those exact blocking or SSE
+//! bytes. Tool-history shapes are covered on OpenAI Chat and OpenRouter by the
+//! same matrix.
 //!
-//! Coverage ledger: tool-history shapes are covered on OpenAI Chat and
-//! OpenRouter by the same matrix. Each explicit test maps to
+//! The four `mistral-small-latest` cells are ignored until they are
+//! re-recorded, and no cell holds a fixture; a re-recorded cell maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/<test-name>.yaml`.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | all 8 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_text.yaml` |
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;

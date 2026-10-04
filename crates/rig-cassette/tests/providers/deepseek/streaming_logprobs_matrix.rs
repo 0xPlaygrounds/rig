@@ -15,9 +15,9 @@
 //! | termination | natural `stop`, one-token `length` |
 //! | top candidates | `top_logprobs` absent, `0`, `2` |
 //!
-//! That is 24 recorded cells. Each one re-derives the exact expected
-//! log-probability object from its fixture and compares it with the captured
-//! `raw` view of the reply it rode on. Streaming cells recursively
+//! That is 24 cells, of which eight are tests. Each re-derives the exact
+//! expected log-probability object from its fixture and compares it with the
+//! captured `raw` view of the reply it rode on. Streaming cells recursively
 //! concatenate token arrays in wire order, including DeepSeek's
 //! `reasoning_content` probability array.
 

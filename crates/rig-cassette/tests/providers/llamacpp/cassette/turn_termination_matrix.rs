@@ -27,13 +27,7 @@
 //!
 //! | # | Cell | Surface | Asserts |
 //! | --- | --- | --- | --- |
-//! | 2 | [`streaming_truncated_turn_reports_length_and_cap`] | streaming | the same, on the other surface |
-//!
-//! Cell 5 is #2184's acceptance criterion against this provider: the first
-//! attempt truncates under a deliberately tiny cap, a provider-neutral hook
-//! reads `FinishReason::Length` off the event and asks for a repeat with a
-//! larger cap, and the second attempt reports *its own* cap rather than the
-//! agent's baseline. Both attempts live in one cassette.
+//! | 2 | [`streaming_truncated_turn_reports_length_and_cap`] | streaming | `Length` and the request's cap |
 //!
 //! Every cell re-reads its own fixture and fails if the recorded turn stopped
 //! carrying the wire reason the cell is about, so a provider changing
@@ -118,15 +112,3 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
     assert_eq!(observed.first_max_tokens(), Some(TINY_CAP));
     assert_recorded_wire_reason("turn_termination_matrix/streaming_truncated_turn", "length");
 }
-
-// ---------------------------------------------------------------------------
-// Stop
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// ToolCalls
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// The escalation loop
-// ---------------------------------------------------------------------------

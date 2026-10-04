@@ -25,27 +25,11 @@
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
 //! test is the plain `generateContent` route, so nothing needs a unit stand-in.
 //!
-//! Cell 1 also carries the "one story" contract: the normalized response was
-//! folded by one decoder out of these very bytes, so the identity, finish
-//! reason, model and usage read off `raw` are the ones the response reports —
-//! `raw` and the normalized response can never disagree about the turn they
-//! describe.
-//!
-//! The un-normalized field of choice is `usageMetadata.promptTokensDetails`
-//! (a per-modality token breakdown): `modelVersion` and `responseId` are
-//! normalized into `model` / `response_id`, and `responseId` is scrubbed on
-//! the way into the fixture, so neither would prove the raw value survives
-//! against the recorded bytes.
-//!
-//! Cells 3–4 cover the two wire shapes a text turn never produces. A forced
+//! Cell 3 covers a wire shape a text turn never produces. A forced
 //! `functionCall` turn is where Gemini's own `finishReason` (`"STOP"`, even
 //! on a call-only turn) and rig's normalized `ToolCalls` visibly disagree,
 //! so `raw` must keep the wire spelling while the normalized response reports
-//! the upgraded reason. A structured-output turn (rig's `output_schema` maps
-//! onto `generationConfig.responseMimeType` + `responseJsonSchema`) proves the
-//! same provider-only fields survive when the response text is schema JSON;
-//! the request side of that premise is read back from the recorded request's
-//! `generationConfig`.
+//! the upgraded reason.
 
 use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, FinishReason,

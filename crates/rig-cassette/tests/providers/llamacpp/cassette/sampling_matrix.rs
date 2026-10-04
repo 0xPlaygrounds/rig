@@ -17,7 +17,7 @@
 //! goes through `additional_params`. That is the supported route — the shared
 //! OpenAI request merges `additional_params` into the body — but it means stop
 //! sequences are untyped for every provider, and a caller gets no help with
-//! the case-sensitivity footgun [`stop_matching_is_case_sensitive`] records.
+//! case: stop matching is case-sensitive.
 //!
 //! `temperature: 0.0` is the interesting half of the temperature cell.
 //! Serializing a zero as "absent" is a classic defect in OpenAI-compatible

@@ -13,25 +13,23 @@
 //! | surface | provider-native reply document (`raw`), normalized Rig response |
 //! | history shape | text, one tool result, two ordered tool results |
 //!
-//! That is 24 recorded cells. Every cell proves the exact serialized history
-//! from its fixture and compares the observed response text to those exact
-//! blocking or SSE bytes.
+//! That is 24 cells, of which the two below are tests. Each test proves the
+//! exact serialized history from its fixture and compares the observed response
+//! text to those exact blocking or SSE bytes.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
-//! pruned or assigned to unit-only coverage. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/<test-name>.yaml`.
 //! The two inexpensive mini routes are pinned to OpenAI with fallbacks disabled
 //! and provide stable controls from separate model families. There is one
 //! decoder now, so the native surface is the gateway's reply document on
-//! [`rig::completion::CompletionResponse::raw`] rather than a second
-//! normalizer over it. Assertions cover
-//! native and normalized blocking/streaming surfaces, routing, Unicode, exact
-//! tool ids and arguments, ordered tool results, the current prompt, and
-//! terminal arrival.
+//! [`rig::completion::CompletionResponse::raw`] rather than a second normalizer
+//! over it. Assertions cover native and normalized blocking/streaming surfaces,
+//! routing, Unicode, exact tool ids and arguments, ordered tool results, the
+//! current prompt, and terminal arrival.
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
+//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/{blocking_gpt_4_1_mini_normalized_single_tool,streaming_gpt_4_1_mini_normalized_parallel_tool}.yaml` |
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;

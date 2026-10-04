@@ -1,73 +1,24 @@
-//! Edge matrix for extended-thinking tokens reaching `Usage::reasoning_tokens`.
-//!
-//! # The bug
+//! Extended-thinking tokens reaching `Usage::reasoning_tokens`.
 //!
 //! Anthropic reports the tokens Claude spent thinking as a breakdown of
-//! `output_tokens`:
+//! `output_tokens`, so the decoder maps `output_tokens_details.thinking_tokens`
+//! to `completion::Usage::reasoning_tokens` and keeps it out of `total_tokens`:
 //!
 //! ```text
 //! "usage":{"input_tokens":773,"output_tokens":1835,
 //!          "output_tokens_details":{"thinking_tokens":1167}}
 //! ```
 //!
-//! Neither `anthropic::completion::Usage` nor the streaming `PartialUsage`
-//! modeled `output_tokens_details`, so serde dropped it and
-//! `anthropic_usage_totals` left `completion::Usage::reasoning_tokens` at `0`
-//! on every turn — blocking and streaming alike. That field's own rustdoc
-//! names "Anthropic extended thinking" as something it counts, and Gemini
-//! (`thoughts_token_count`) and DeepSeek
-//! (`completion_tokens_details.reasoning_tokens`) both populate it, so a
-//! caller comparing reasoning spend across providers saw Anthropic as free.
+//! These cells are unit tests on decoded usage because no live turn can vary
+//! what they assert: an absent or unknown bucket, the total's arithmetic, and
+//! one usage reader shared by blocking and streaming replies.
 //!
-//! The value is a *breakdown* of `output_tokens`, not a sibling of it, so it
-//! must not enter `total_tokens`.
-//!
-//! # Matrix
-//!
-//! Every row is a recorded live cell unless marked otherwise. Each recorded
-//! cell asserts the parsed `reasoning_tokens` **equals its own fixture's**
-//! recorded `thinking_tokens` (read back after the wrapper returns, since
-//! record mode writes the fixture on the way out), so a cell whose provider
-//! turn stopped thinking fails instead of passing vacuously.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 28 | `unit_absent_details_reports_none` | decoder: no `output_tokens_details` | none | unit |
-//! | 29 | `unit_unknown_detail_bucket_is_ignored` | decoder: forward compatibility | `> 0` | unit |
-//! | 30 | `unit_thinking_tokens_stay_out_of_the_total` | totals arithmetic | n/a | unit |
-//! | 31 | `unit_streaming_and_blocking_share_the_mapping` | one usage reader for both modes | n/a | unit |
-//!
-//! Cells 28–31 are unit tests because no live turn can vary what they assert:
-//! whether the decoder tolerates an absent or unknown bucket, and whether the
-//! breakdown is excluded from `total_tokens`, are properties of its one usage
-//! reader, not of any provider response.
-//!
-//! Two constraints the live API imposed, discovered while recording:
-//!
-//! - **Adaptive thinking may decline to think at all.** Opus 4.7 answers even
-//!   the multi-step prompt without thinking, reporting the bucket *present and
-//!   zero* — a different wire shape from thinking-off, which omits the bucket
-//!   entirely. Rather than force it, cells 2 and 15 pin that shape, and cells
-//!   10 and 23 (Opus 4.8) cover adaptive thinking that does engage.
-//! - **Opus 4.8 rejects `thinking.type.enabled`** (`"is not supported for
-//!   this model. Use \"thinking.type.adaptive\" and \"output_config.effort\""`),
-//!   so the second-model-family cells cover the adaptive path only.
-//!
-//! Two dimensions were considered and deliberately dropped, with reasons:
-//!
-//! - **A `message_start` carry-forward cell.** `cache_creation` needs one
-//!   because Anthropic reports it on `message_start`; `output_tokens_details`
-//!   arrives on the terminal `message_delta` instead, so there is nothing to
-//!   carry and no live turn can produce the inverse split. The streamed cells
-//!   are what pin it: each reads the breakdown off its own terminal frame, so
-//!   a fallback that started reading `message_start` would have to invent the
-//!   same number to stay green.
-//! - **A gateway cell.** The Anthropic-compatible gateways do not implement
-//!   extended thinking on the Messages endpoint, so a gateway recording would
-//!   assert the absent-breakdown case that cells 12–13 already cover.
-//!
-//! Run cassette tests in replay mode by default, or set
-//! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
+//! | # | Cell | Dimension | expected |
+//! |---|------|-----------|----------|
+//! | 28 | `unit_absent_details_reports_none` | decoder: no `output_tokens_details` | none |
+//! | 29 | `unit_unknown_detail_bucket_is_ignored` | decoder: forward compatibility | `> 0` |
+//! | 30 | `unit_thinking_tokens_stay_out_of_the_total` | totals arithmetic | n/a |
+//! | 31 | `unit_streaming_and_blocking_share_the_mapping` | one usage reader for both modes | n/a |
 
 use rig::completion::{CompletionRequest, Usage};
 use rig::providers::anthropic;

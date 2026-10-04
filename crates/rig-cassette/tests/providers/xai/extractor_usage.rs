@@ -1,4 +1,5 @@
-//! Integration tests for xAI extractor usage tracking.
+//! The `Person` extraction type and profession check the xAI
+//! `ecs_extractor_usage` cells share.
 
 use anyhow::Result;
 use schemars::JsonSchema;

@@ -14,11 +14,11 @@
 //! | response format | plain text, `json_object` |
 //! | tool policy | `auto`, forced (`any`), `none` |
 //!
-//! That is 24 recorded cells. Every cell proves the finalized wire request and
-//! compares normalized text/tool output to the exact blocking or SSE response.
+//! That is 24 cells, of which the two below are tests. Each proves the
+//! finalized wire request and compares normalized text/tool output to the
+//! exact blocking or SSE response.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and all 24 cells
-//! are recorded; none is unit-only. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/<test-name>.yaml`.
 //! The small and 3B aliases are inexpensive current models spanning Mistral's
 //! served chat families. Assertions cover finalized blocking/streaming request
@@ -28,7 +28,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{plain,json}_{auto,any,none}.yaml` |
+//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/{blocking_mistral_small_json_none,streaming_mistral_small_json_any}.yaml` |
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;

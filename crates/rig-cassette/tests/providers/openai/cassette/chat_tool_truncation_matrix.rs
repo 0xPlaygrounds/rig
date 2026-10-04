@@ -7,13 +7,13 @@
 //! below 16, so empty/no-call states are not live-producible on these models;
 //! the shared unit suite covers those synthetic policies.
 //!
-//! The complete recorded space is 2 transports × 2 models × 3 budgets × 2
-//! public surfaces = 24 cells. Model cells read the normalized blocking reply
-//! the driver decodes from the provider-native response, or drive the
-//! normalized stream; agent cells prove that a partial call is never invoked
-//! and a complete control is invoked exactly once. Every cell asserts its own
-//! request, finish reason, and accumulated
-//! argument bytes from the fixture.
+//! The space is 2 transports × 2 models × 3 budgets × 2
+//! public surfaces = 24 cells, of which the one below is a test. Model cells
+//! read the normalized blocking reply the driver decodes from the
+//! provider-native response, or drive the normalized stream; agent cells prove
+//! that a partial call is never invoked and a complete control is invoked
+//! exactly once. Each test asserts its own request, finish reason, and
+//! accumulated argument bytes from the fixture.
 //!
 //! | dimension | values |
 //! |---|---|
@@ -22,11 +22,9 @@
 //! | output cap | 16 partial, 32 partial, 48 complete |
 //! | surface | raw/normalized model, one-turn agent |
 //!
-//! Coverage ledger: the provider-supported pre-pruning product is 24 and all
-//! 24 cells are recorded. Exploratory caps below 16 are not cassette cells
-//! because OpenAI rejects those requests before generation; the shared unit
-//! suite supplies the otherwise-unproducible empty/no-call `length` shapes.
-//! Each explicit test maps to
+//! Exploratory caps below 16 are not cassette cells because OpenAI rejects
+//! those requests before generation; the shared unit suite supplies the
+//! otherwise-unproducible empty/no-call `length` shapes. Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/<test-name>.yaml`.
 //! The two inexpensive mini models were selected because both expose a stable
 //! truncation boundary. Assertions cover exact wire arguments and reason,
@@ -35,7 +33,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
+//! | 1 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/streaming_gpt4o_low_agent.yaml` |
 
 use std::sync::{
     Arc, Mutex,

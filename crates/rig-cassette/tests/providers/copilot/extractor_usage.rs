@@ -1,4 +1,4 @@
-//! Copilot integration tests for extractor usage tracking.
+//! The `Person` extraction type the Copilot `ecs_extractor*` cells read.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

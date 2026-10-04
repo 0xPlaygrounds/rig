@@ -31,13 +31,6 @@
 //! | 5 | `blocking_tool_turn_reports_tool_calls` | blocking | `ToolCalls` |
 //! | 6 | `streaming_tool_turn_reports_tool_calls` | streaming | `ToolCalls` |
 //!
-//! Cells 7 and 8 are #2184's acceptance criterion against a live provider: the
-//! first attempt truncates under a deliberately tiny cap, a provider-neutral
-//! hook reads `FinishReason::Length` off the event and asks for a repeat with
-//! a larger cap, and the second attempt reports *its own* cap rather than the
-//! agent's baseline. Both attempts live in one cassette, so the escalation is
-//! replayed rather than re-derived.
-//!
 //! Every cell re-reads its own fixture and fails if the recorded turn stopped
 //! carrying the wire reason the cell is about — otherwise a provider changing
 //! behavior would leave the cell green while covering nothing.
@@ -71,7 +64,7 @@ pub(super) const CONCISE_PREAMBLE: &str =
 pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
 
 // ---------------------------------------------------------------------------
-// Length — the provider cut the turn short at the cap we set.
+// ToolCalls: the reason a portable hook must never mistake for retryable.
 // ---------------------------------------------------------------------------
 
 crate::matrix::case_matrix! {
@@ -83,21 +76,6 @@ crate::matrix::case_matrix! {
     # [tokio :: test]
     streaming_tool_turn_reports_tool_calls: ("turn_termination_matrix/streaming_tool_turn_reports_tool_calls", streaming_tool_turn_reports_tool_calls_20);
 }
-
-// ---------------------------------------------------------------------------
-// Stop — the control. A completed turn must not read as truncated.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// ToolCalls — the reason a portable hook must never mistake for retryable.
-// OpenAI reports a distinct `tool_calls` wire value, so this maps directly
-// rather than through `reconcile_with_output`.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// The acceptance criterion: escalate the cap on truncation, against the real
-// provider, and report each attempt's own cap.
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Fixture-premise checks: the recorded bytes must still say what the cell

@@ -46,10 +46,9 @@
 //!
 //! | Surface | Module |
 //! | --- | --- |
-//! | unary | `agent`, `tools`, `extractor`, `structured_output`, and every matrix's blocking cells |
+//! | unary | `agent`, `structured_output`, and every matrix's blocking cells |
 //! | streaming | `streaming`, `streaming_tools`, `permission_control` |
-//! | `CompletionResponse::raw` | `raw_capture_matrix` |
-//! | `CompletionResponse::raw` | `raw_stream_capture_matrix`, `streaming_tools`'s `raw_*` cells |
+//! | `CompletionResponse::raw` | `streaming_tools`'s `raw_*` cells |
 //!
 //! ## Everything else
 //!
@@ -63,15 +62,13 @@
 //! | content — empty, same-role, unicode, long payloads, history | `content_matrix` | 8080 |
 //! | model family — Qwen / Llama / Mistral / Gemma | `model_family_matrix` | 8090, 8091, 8092 |
 //! | caching — cold/warm/grown, `cache_prompt`, agent loop | `prompt_caching` | 8080 |
-//! | provider-only fields — `timings` | `raw_capture_matrix`, `raw_stream_capture_matrix` | 8080 |
 //! | response shape — reasoning, `n > 1`, `logprobs`, finish reasons | `response_shape_matrix` | 8080 |
-//! | response identity + typed-route parity | `response_identity_matrix` | 8080 |
 //! | output-budget truncation of a tool call | `truncation_matrix` | 8088 |
 //! | model-turn termination metadata (rig#2184) | `turn_termination_matrix` | 8088 |
 //! | reranking | `rerank_matrix` | 8085 |
 //! | multimodal | `multimodal_matrix`, `image_tool_result` | 8080, 8082, 8093 |
 //! | unmapped surface — decisions | `unmapped_surface` | 8080, 8082 |
-//! | the plain `OPENAI`-dialect path | `bare_openai_client` | 8080 |
+//! | the plain `OPENAI`-dialect path | `unmapped_surface` | 8080 |
 //!
 //! ## Migrated smoke coverage
 //!
@@ -84,22 +81,17 @@
 //! | Module | Cells | Covers |
 //! | --- | --- | --- |
 //! | `agent` | 1 | an agent prompt end to end |
-//! | `context` | 1 | RAG context injection |
-//! | `embeddings` | 2 | `embed_texts` and the `Embed` derive (server 8081) |
-//! | `extractor` | 1 | the extractor facade |
-//! | `extractor_usage` | 5 | `extract` output and usage, with and without history |
-//! | `image_tool_result` | 2 | an image in a tool result, plus its user-message control (server 8082) |
-//! | `loaders` | 1 | the file-loader facade feeding an agent |
+//! | `embeddings` | 1 | `embed_texts` (server 8081) |
+//! | `extractor_usage` | 0 | the extraction types `ecs_extractor_usage` reads |
+//! | `image_tool_result` | 1 | an image in a tool result (server 8082) |
 //! | `models` | 1 | `list_models` smoke |
 //! | `multi_extract` | 1 | a concurrent batch extractor (`CassetteSpec::unordered`) |
-//! | `permission_control` | 2 | agent hooks gating tool calls, blocking and streaming |
-//! | `request_hook` | 1 | a hook observing the request and response |
-//! | `streaming` | 2 | a streamed prompt |
-//! | `streaming_tools` | 7 | streamed tool calls, including the `raw_stream` views |
-//! | `structured_output` | 4 | `prompt_typed` and `output_schema` |
-//! | `tools` | 2 | a blocking tool round trip |
-//! | `typed_prompt_tools` | 2 | `prompt_typed` with a tool round trip |
-//! | `matrix_index` | 3 | the guard that keeps every table on this page honest |
+//! | `permission_control` | 1 | agent hooks gating tool calls |
+//! | `streaming` | 1 | a streamed prompt |
+//! | `streaming_tools` | 3 | streamed tool calls, including the `raw_stream` views |
+//! | `structured_output` | 2 | `prompt_typed` and `output_schema` |
+//! | `typed_prompt_tools` | 1 | `prompt_typed` with a tool round trip |
+//! | `matrix_index` | 5 | the guard that keeps every table on this page honest |
 //!
 //! ## Native ECS counterparts
 //!
@@ -108,9 +100,7 @@
 //!
 //! | Module | Cells | Covers |
 //! | --- | --- | --- |
-//! | `ecs_completion` | 1 | native prompt smoke |
-//! | `ecs_extractor` | 1 | native typed extraction |
-//! | `ecs_extractor_usage` | 5 | typed extraction, history and usage |
+//! | `ecs_extractor_usage` | 1 | typed extraction |
 //!
 //! # Model tiers, and the rule for escalating
 //!
@@ -122,13 +112,14 @@
 //!   structured-output cells whose claim is that a model *chose* sensible
 //!   values rather than that the server enforced a shape.
 //! * **family** (Llama 3.2 3B, Mistral Small 3.2 24B, Gemma 3 12B) — one
-//!   blocking and one streaming tool cell each, which is where a chat-template
-//!   difference shows.
+//!   blocking tool cell each, which is where a chat-template difference
+//!   shows.
 //! * **vision** (Qwen3-VL-2B Q8_0) and **large vision** (Qwen2.5-VL-7B Q4_K_M)
 //!   — chosen per cell by measurement, not by size; see `multimodal_matrix`.
 //! * **embedding** (`Qwen/Qwen3-Embedding-0.6B-GGUF` Q8_0) and **reranker**
 //!   (`gpustack/bge-reranker-v2-m3-GGUF` Q4_K_M) — a causal LM cannot stand in
-//!   for either, and `error_matrix` records what happens when one tries.
+//!   for either, and `error_matrix` records the errors a server without one
+//!   returns.
 //!
 //! # Dimensions deliberately not recorded
 //!
@@ -137,8 +128,8 @@
 //! | a syntactically malformed request body | rig cannot produce one; every body it emits is serialized from typed values. `error_matrix` records the reachable neighbour (a mistyped field) and states this. |
 //! | a *wrong* API key, as distinct from a missing one | llama.cpp compares for equality and answers the same 401 either way; a second cell would record identical bytes. |
 //! | Gemma streaming tool calls | its chat template declares `supports_tool_calls: false`, so there is no tool-call stream to observe. |
-//! | the full cross-product of family × every dimension | one tool cell and one streaming-tool cell per family is what tests the template claim; recording the whole matrix per family produces a corpus nobody can re-record. |
-//! | the generation matrix on the plain `OPENAI`-dialect path | that duplication is what produced the 19 colliding fixtures this PR merged away. `bare_openai_client` covers only what differs. |
+//! | the full cross-product of family × every dimension | one tool cell per family is what tests the template claim; recording the whole matrix per family produces a corpus nobody can re-record. |
+//! | the generation matrix on the plain `OPENAI`-dialect path | it would duplicate every fixture; `unmapped_surface` covers only what differs. |
 
 mod cassette_support;
 

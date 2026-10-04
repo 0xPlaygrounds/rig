@@ -15,8 +15,8 @@
 //! survived.
 //!
 //! The plain-OpenAI-against-a-local-server path is still covered, by
-//! [`with_llamacpp_bare_openai_cassette`] and the cells in
-//! `cassette/bare_openai_client.rs` — deliberately small. It exists to pin
+//! [`with_llamacpp_bare_openai_cassette`] and the `unmapped_surface` cell
+//! that uses it, deliberately small. It exists to pin
 //! what genuinely differs between the two paths (base-URL composition, the
 //! `Authorization` header, the absence of this provider's associated consts),
 //! not to re-record the generation matrix. Keep it that way.

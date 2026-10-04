@@ -13,9 +13,7 @@
 //! `x-request-id` header is not in the reply document. It is a header, not a
 //! body field, and `raw` is the body. So the provider-native
 //! view reproduces `completion()` only once the call's own transport id is
-//! attached to it. Cell 3 pins exactly that asymmetry — the body-derived view
-//! lacks the id, `completion()` reports it — so the documented contract is
-//! tested rather than asserted in prose.
+//! attached to it.
 //!
 //! On the Responses route the reply document carries no transport id
 //! either, for the same reason, so the same rule holds.

@@ -7,12 +7,10 @@
 //! before any call exists; those equivalent no-call states were pruned because
 //! they do not enter the changed deserializer or streaming tool assembler.
 //!
-//! The complete recorded space is 2 transports × 2 models × 3 budgets × 2
-//! public surfaces = 24 cells. Model cells assert on the normalized blocking
-//! response or drive the normalized stream; agent cells prove that a
-//! partial call is never invoked and a complete control is invoked exactly
-//! once. Every cell asserts its own request, finish reason, and accumulated
-//! argument bytes from the fixture.
+//! The space is 2 transports × 2 models × 3 budgets × 2 public surfaces = 24
+//! cells. The one test is the streaming model cell at cap 4 on
+//! `ministral-3b-latest`: it drives the normalized stream and asserts its
+//! request, finish reason, and accumulated argument bytes from the fixture.
 //!
 //! | dimension | values |
 //! |---|---|
@@ -21,19 +19,13 @@
 //! | output cap | 4 empty/incomplete, 16 partial, 48 complete |
 //! | surface | model, one-turn agent |
 //!
-//! Coverage ledger: the exploratory pre-pruning product was 2 transports × 2
-//! models × 5 caps × 2 surfaces = 40. The 16 cap-1/cap-2 cells were pruned
-//! because their fixtures contain no tool call and never enter the changed
-//! paths; all remaining 24 cells are recorded. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/<test-name>.yaml`.
-//! The two cheap served model families share a stable boundary. Assertions
-//! cover exact wire bytes/reasons, the normalized model surface, raw
-//! stream assembly, non-invocation of incomplete calls, and exact-once agent
-//! invocation of valid calls; compound impossible shapes remain unit-only.
+//! Compound impossible shapes remain unit tests.
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 retained cells | `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{low,mid,complete}_{model,agent}.yaml` |
+//! | 1 of 24 | `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/streaming_ministral_3b_low_model.yaml` |
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;

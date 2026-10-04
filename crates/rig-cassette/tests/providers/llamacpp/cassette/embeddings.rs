@@ -2,11 +2,7 @@
 //!
 //! **Server**: the `--embeddings --pooling mean` configuration, loading
 //! `Qwen/Qwen3-Embedding-0.6B-GGUF` Q8_0 — a real embedding model rather than
-//! a causal LM pooled into one. The pre-merge fixtures for these two cells
-//! were recorded against Ollama's `all-minilm`; what a causal LM under
-//! `--pooling mean` actually returns is now its own cell in
-//! `embedding_matrix.rs`, and the difference is why this suite states its
-//! model.
+//! a causal LM pooled into one, which is why this suite states its model.
 
 use super::super::cassette_support::*;
 

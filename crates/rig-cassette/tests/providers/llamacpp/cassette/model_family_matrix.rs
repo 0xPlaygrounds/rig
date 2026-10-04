@@ -8,19 +8,14 @@
 //! was only ever checked against Qwen is a claim about Qwen.
 //!
 //! Coverage here is **targeted, not broad**, exactly as the corpus rules
-//! require: one blocking tool cell and one streaming tool cell per non-Qwen
-//! family. The rest of the matrix stays on Qwen.
+//! require: one blocking tool cell per non-Qwen family. The rest of the matrix
+//! stays on Qwen.
 //!
 //! | Family | Model | Template tool support | Blocking | Streaming |
 //! | --- | --- | --- | --- | --- |
 //! | Qwen (smoke) | `unsloth/Qwen3-1.7B-GGUF` Q4_K_M | yes | `tools.rs`, `tool_matrix.rs` | `streaming_tools.rs` |
 //! | Qwen (competent) | `unsloth/Qwen3-8B-GGUF` Q4_K_M | yes, parallel | `tool_matrix.rs` | — |
-//! | Llama | `bartowski/Llama-3.2-3B-Instruct-GGUF` Q4_K_M | yes, no parallel | [`llama_family_calls_a_tool`] | [`llama_family_streams_tool_call_arguments_as_deltas`] |
-//!
-//! Plus one cell that reads an existing fixture rather than recording:
-//! [`even_a_zero_argument_call_streams_as_two_fragments`], the strongest case
-//! against the const, since a two-character argument object is the one that
-//! would arrive whole if any did.
+//! | Llama | `bartowski/Llama-3.2-3B-Instruct-GGUF` Q4_K_M | yes, no parallel | [`llama_family_calls_a_tool`] | none |
 //!
 //! # The finding: llama.cpp does not emit single-chunk tool calls
 //!

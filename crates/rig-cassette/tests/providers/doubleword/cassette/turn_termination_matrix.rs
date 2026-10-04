@@ -1,54 +1,12 @@
-//! Live-recorded matrix for the model-turn termination metadata a hook sees
-//! (rig#2184 / PR #2341), against the real Doubleword wire — the OpenAI
-//! Chat Completions dialect; the cells are the OpenAI matrix's, on this
-//! wire's model with reasoning disabled (`reasoning_effort: none`),
-//! since a thinking model spends a tiny cap on hidden tokens.
+//! Shared inputs and fixture-premise checks for the Doubleword turn-termination
+//! cells in `ecs_termination`: the caps, prompts and preambles they send, and
+//! readers of the wire reason and request cap each recorded turn carries, so a
+//! cell fails when its fixture stops showing the premise it is about.
 //!
-//! `ModelTurnFinished` carries `finish_reason: Option<&FinishReason>` and
-//! `max_tokens: Option<u64>` — the normalized reason the provider stopped, and
-//! the effective output-token cap *that attempt* ran under, after agent
-//! configuration, the runner override, and any completion-call `RequestPatch`.
-//!
-//! **Why cassettes and not mocks.** The unit cells in `rig-agent` drive a
-//! `MockCompletionModel`, so they prove the agent plumbs whatever the model
-//! layer hands it — they cannot prove that OpenAI Chat Completions's wire
-//! `length` becomes `FinishReason::Length` by the time a hook sees it.
-//! These cells replay real recorded bytes through the provider mapper, the
-//! agent, and the hook stack, so they pin the whole chain the word
-//! "normalized" is a claim about. The probe hook and the escalation hook are
-//! the *same* types every provider suite uses (`crate::support`) — if a provider
-//! needed its own, the metadata would not be provider-neutral.
-//!
-//! This provider's vocabulary, and what it normalizes to:
-//!
-//! | normalized | OpenAI Chat Completions wire value | how |
-//! |---|---|---|
-//! | `Stop` | `stop` | direct |
-//! | `Length` | `length` | direct |
-//! | `ToolCalls` | `tool_calls` | direct — OpenAI reports a distinct value for tool turns |
-//!
-//! | # | cell | surface | asserts |
-//! |---|------|---------|---------|
-//!
-//! Cells 7 and 8 are #2184's acceptance criterion against a live provider: the
-//! first attempt truncates under a deliberately tiny cap, a provider-neutral
-//! hook reads `FinishReason::Length` off the event and asks for a repeat with
-//! a larger cap, and the second attempt reports *its own* cap rather than the
-//! agent's baseline. Both attempts live in one cassette, so the escalation is
-//! replayed rather than re-derived.
-//!
-//! Every cell re-reads its own fixture and fails if the recorded turn stopped
-//! carrying the wire reason the cell is about — otherwise a provider changing
-//! behavior would leave the cell green while covering nothing.
-//!
-//! **Deliberately not covered here.** `ContentFilter` has no benign trigger:
-//! eliciting it means asking a provider to produce content it must refuse.
-//! `Other(_)` has no benign reachable wire value on this endpoint. A provider
-//! reporting *no* reason is not reachable here either — OpenAI Chat Completions always
-//! reports one. All three are pinned by unit cells beside the fix
-//! (`crates/rig-agent/src/agent/runner.rs`, `model_turn_finished_*`) and in
-//! `crates/rig-core/src/completion/request.rs` (`truncated_output_*`), where
-//! the whole vocabulary can be enumerated without a live call.
+//! `ContentFilter`, `Other(_)` and a missing reason have no benign live
+//! trigger on this endpoint. Unit cells pin them in
+//! `crates/rig-agent/src/agent/runner.rs` (`model_turn_finished_*`) and
+//! `crates/rig-core/src/completion/request.rs` (`truncated_output_*`).
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -64,25 +22,6 @@ pub(super) const TOOL_PROMPT: &str = "Calculate 2 + 3.";
 pub(super) const CONCISE_PREAMBLE: &str =
     "You are a concise assistant. Answer directly in plain text.";
 pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
-
-// ---------------------------------------------------------------------------
-// Length — the provider cut the turn short at the cap we set.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Stop — the control. A completed turn must not read as truncated.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// ToolCalls — the reason a portable hook must never mistake for retryable.
-// OpenAI reports a distinct `tool_calls` wire value, so this maps directly
-// rather than through `reconcile_with_output`.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// The acceptance criterion: escalate the cap on truncation, against the real
-// provider, and report each attempt's own cap.
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Fixture-premise checks: the recorded bytes must still say what the cell

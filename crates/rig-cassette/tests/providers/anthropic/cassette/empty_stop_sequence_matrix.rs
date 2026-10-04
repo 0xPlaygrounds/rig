@@ -34,14 +34,9 @@
 //! Cell 19 is a unit test because it is about a request-side conversion, not
 //! about anything a provider turn can vary.
 //!
-//! Seven further unit cells pinned the blocking mapping's guard directly on
-//! hand-built provider responses (`max_tokens`, `tool_use`, `refusal`,
-//! `pause_turn`, a missing stop reason, a `stop_sequence` naming no sequence,
-//! and the legal `end_turn` empty). They asserted a second mapping from the
-//! provider response type to `AssistantContent`, which no longer exists: the
-//! wire's decoder is the one mapping, and the guard lives beside it in
-//! `crates/rig-core/src/providers/anthropic/`. Cells 1–18 still cover the
-//! behaviour end to end on recorded turns.
+//! The blocking mapping's guard lives beside the wire's decoder in
+//! `crates/rig-core/src/providers/anthropic/`; cells 11 and 12 cover it end to
+//! end on recorded turns.
 
 use rig::completion::ToolDefinition;
 use rig::providers::anthropic;

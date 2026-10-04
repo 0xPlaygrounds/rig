@@ -1,4 +1,5 @@
-//! Integration tests for DeepSeek extractor usage tracking.
+//! The `Person` extraction type and profession check the DeepSeek
+//! `ecs_extractor_usage` cells share.
 
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;

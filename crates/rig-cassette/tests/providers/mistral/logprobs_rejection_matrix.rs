@@ -3,15 +3,14 @@
 //! Mistral's current API reference exposes no chat-completions logprobs
 //! contract, and both accessible chat families reject the OpenAI-compatible
 //! request field with error code 3051 (`Logprobs are not enabled for this
-//! model`). The 24-cell terminal-metadata matrix replaces the unsupported
-//! successful-logprobs matrix; these controls preserve the live evidence for
-//! that substitution and are not counted toward its 24 cells.
+//! model`). The terminal-metadata matrix replaces the unsupported
+//! successful-logprobs matrix; these controls keep the live evidence for that
+//! substitution.
 //!
-//! The finite recordable space is 2 transports × 2 accessible model families
-//! = 4 cells. There are no pruned or unit-only cells: `top_logprobs` has no
-//! additional reachable state once `logprobs: true` is rejected before
+//! The space is 2 transports × 2 accessible model families. `top_logprobs` has
+//! no further reachable state once `logprobs: true` is rejected before
 //! generation, so every cell fixes it at `2` and asserts the same typed error.
-//! Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/<test-name>.yaml`.
 //!
 //! | dimension | values |
@@ -22,7 +21,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 4 | `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/{blocking,streaming}_{mistral_small,ministral_3b}.yaml` |
+//! | 2 of 4 | `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/{blocking,streaming}_ministral_3b.yaml` |
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};

@@ -23,10 +23,9 @@
 //! `CompletionResponse` — after the unary call returns on the blocking
 //! surface, after the whole stream is assembled on the streamed one, with
 //! `HookContext::is_streaming` telling them apart — and the medium-neutral
-//! `ModelTurnFinished`. Tool-only turns fire both. Cells 1–2 pin exactly
-//! which events fire and what each carries, and cells 3–4 that every attempt
-//! of a tool run fires them, so a hook observing either event alone provably
-//! sees the payload for every accepted call on both surfaces.
+//! `ModelTurnFinished`. Tool-only turns fire both. Cell 2 pins which events
+//! fire on the streamed surface and what each carries, and cell 3 that every
+//! attempt of a blocking tool run fires them.
 //!
 //! # Identity on this route
 //!
@@ -296,7 +295,7 @@ fn assert_distinct_fingerprints(records: &[Value], context: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// 1–2: the hook events
+// 2: the hook events
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -345,7 +344,7 @@ async fn hooks_observe_raw_streamed() {
 }
 
 // ---------------------------------------------------------------------------
-// 3–4: multi-turn tool runs
+// 3: multi-turn tool runs
 // ---------------------------------------------------------------------------
 
 #[tokio::test]

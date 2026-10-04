@@ -23,15 +23,12 @@
 //! no such key.
 //!
 //! Text turns are the easy case. The wire shapes most likely to break the
-//! reading are the ones the routes rewrite on the way in: a Responses
-//! reasoning turn (an `output[]` item of `type: "reasoning"` with
-//! `encrypted_content` and `summary`, which the normalized response carries
-//! as content blocks instead), a Chat tool call (whose
-//! `function.arguments` is a JSON *string* on the wire and stays one on
+//! reading are the ones the routes rewrite on the way in: a Chat tool call
+//! (whose `function.arguments` is a JSON *string* on the wire and stays one on
 //! `raw`, while the normalized `finish_reason()` is `ToolCalls` and the raw
 //! spelling is OpenAI's own `"tool_calls"`), and a Chat structured-output
 //! turn (`response_format: json_schema`, whose message carries a `refusal`
-//! sibling and whose body carries `system_fingerprint`). Cells 5–7 record
+//! sibling and whose body carries `system_fingerprint`). Cells 6 and 7 record
 //! each of those and hold the same two-views bar.
 //!
 //! # Matrix
@@ -45,9 +42,8 @@
 //!
 //! Every cell is recorded; none is unit-only. Each cell re-derives its premise
 //! from its own fixture after the wrapper returns: the recorded response is a
-//! completed turn whose body carries the field the cell reads — for cell 5 a
-//! `reasoning` output item with a string `encrypted_content` (and the recorded
-//! request asked for it via `include`), for cell 6 a `tool_calls` entry with
+//! completed turn whose body carries the field the cell reads: for cell 6 a
+//! `tool_calls` entry with
 //! `finish_reason: "tool_calls"`, for cell 7 a request carrying
 //! `response_format.type == "json_schema"` and a body with a string
 //! `system_fingerprint`.

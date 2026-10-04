@@ -1,4 +1,4 @@
-//! Integration tests for llama.cpp extractor usage tracking.
+//! The extraction type and preamble `ecs_extractor_usage` sends to llama.cpp.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

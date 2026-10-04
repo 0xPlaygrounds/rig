@@ -12,30 +12,19 @@
 //! verbatim: a compaction item is an opaque block that replays, and each
 //! message item, `phase` and id included, goes back as it came.
 //!
-//! **Fixtures.** Cell 1 is recorded live against `gpt-5.6-sol`, which
-//! returns `phase: "final_answer"` on every message. Its second recorded
-//! request is the proof: it carries the `phase` the first response
-//! returned. Cell 2 is hand-derived from cell 1: a `compaction` item is
-//! inserted at the head of turn 2's *request* `input[]` and at the head of
-//! turn 1's *response* `output[]` (the shape `/responses/compact` returns),
-//! with every other byte identical. Rig has no `/responses/compact` client
-//! method — the reporter's fourth ask, deferred as maintainer-owned API
-//! surface — so the item cannot be obtained live through rig; the derived
-//! cell asserts the item is present in both places so a re-record cannot
-//! silently drop it. Cells 3 to 5 are recorded live and streamed:
-//! `gpt-5.4-nano` answers with `final_answer`, and `gpt-5.3-codex` sends a
-//! `commentary` message before its answer or before a tool call.
-//!
-//! **How these cells fail on `origin/main`.** Cell 1 misses the mock on
-//! turn 2 (rig sent no `phase`, so the recorded body differs) and its
-//! post-replay assertion fails; cell 2 decodes the item only as an unknown output item and the input side
-//! rejects it with `unknown variant \`compaction\``. Cells 3 to 5 miss the
-//! mock on their follow-up: streamed text carried no `phase`, and cell 4's
-//! two messages were merged into one item.
+//! **Fixtures.** Cell 2 is hand-derived from a recorded `gpt-5.6-sol` turn: a
+//! `compaction` item is inserted at the head of turn 2's *request* `input[]`
+//! and at the head of turn 1's *response* `output[]` (the shape
+//! `/responses/compact` returns), with every other byte identical. Rig has no
+//! `/responses/compact` client method, so the item cannot be obtained live
+//! through rig; the cell asserts the item is present in both places so a
+//! re-record cannot silently drop it. Cells 3 to 5 are recorded live and
+//! streamed: `gpt-5.4-nano` answers with `final_answer`, and `gpt-5.3-codex`
+//! sends a `commentary` message before its answer or before a tool call.
 //!
 //! | # | cell | transport | proves | fixture |
 //! |---|------|-----------|--------|---------|
-//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived from 1 |
+//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived |
 //! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
 //! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
 //! | 5 | `commentary_before_a_tool_call_replays_with_its_phase` | streamed, 2 turns | a commentary message keeps its `phase` and its place before the call | recorded |

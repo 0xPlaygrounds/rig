@@ -32,7 +32,7 @@
 //! Because chat completions only populates `refusal` under a strict
 //! structured-output request, every refusal cell asks for `json_schema` output
 //! and uses `gpt-4o` (`gpt-4o-mini` answers the refusable prompt *inside* the
-//! schema instead of refusing, which cell 12 pins as a control).
+//! schema instead of refusing).
 //!
 //! Each cell re-reads its own fixture and fails if the recorded bytes do not
 //! actually carry the shape the cell is about — a provider that stopped

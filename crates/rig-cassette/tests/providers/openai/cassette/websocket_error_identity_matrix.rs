@@ -50,17 +50,15 @@
 //! `crates/rig-tungstenite/tests/handshake_rejection.rs` joins the two against
 //! a real socket.
 //!
-//! **These recorded cells now run in every execution of the target.** The
-//! suite lives in `rig-cassette`, whose dev-dependency on the facade enables
-//! `websocket` unconditionally, so the module is no longer behind a feature a
-//! lane might not select. The unit cells above, which live in `rig-core`, run
-//! on every PR as before.
+//! The recorded cell runs in every execution of the target: `rig-cassette`'s
+//! dev-dependency on the facade enables `websocket` unconditionally. The unit
+//! cells above live in `rig-core`.
 //!
 //! Only the *auth-class* failure is reachable as a recorded handshake: the
 //! model is named in the `response.create` message, not in the upgrade, so a
 //! bad model fails **in band** as an `error` event on an established socket
 //! rather than as a handshake rejection. There is exactly one recordable
-//! handshake failure, and it is cell 1.
+//! handshake failure, and cell 2 records it.
 //!
 //! | # | cell | trigger | asserts | status |
 //! |---|------|---------|---------|--------|

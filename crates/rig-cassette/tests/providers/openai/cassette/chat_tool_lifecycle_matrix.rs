@@ -1,12 +1,12 @@
 //! Live Chat Completions tool-call lifecycle and argument-integrity matrix.
 //!
-//! The complete recorded space is 2 transports × 2 models × 3 call shapes ×
-//! 2 public surfaces = 24 cells. The shapes cover a deliberate zero-argument
-//! call, a nested object containing an array and Unicode, and two parallel
-//! calls. Model cells read the normalized reply the driver decodes from the
-//! provider-native response; agent cells prove exact-once invocation.
-//! Streaming cells additionally reassemble every id, name, and argument
-//! fragment from their fixtures.
+//! The space is 2 transports × 2 models × 3 call shapes × 2
+//! public surfaces = 24 cells, of which the two below are tests. The shapes
+//! cover a deliberate zero-argument call, a nested object containing an array
+//! and Unicode, and two parallel calls. Model cells read the normalized reply
+//! the driver decodes from the provider-native response; agent cells prove
+//! exact-once invocation. Streaming cells additionally reassemble every id,
+//! name, and argument fragment from their fixtures.
 //!
 //! Auto/none/specific tool-choice controls are assigned to the separate
 //! request-shape matrix; this matrix fixes choice to `required` so call shape
@@ -20,8 +20,7 @@
 //! | call shape | zero arguments, nested Unicode/array object, parallel pair |
 //! | surface | raw/normalized model, one-turn agent |
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and every cell is
-//! recorded; none is unit-only. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/<test-name>.yaml`.
 //! The two low-cost mini models are stable, tool-capable controls from distinct
 //! model families. Assertions span request schemas, provider-native blocking
@@ -31,7 +30,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
+//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/{blocking_gpt4o_zero_agent,streaming_gpt4o_nested_model}.yaml` |
 
 use rig::streaming::Item;
 use std::sync::{Arc, Mutex};

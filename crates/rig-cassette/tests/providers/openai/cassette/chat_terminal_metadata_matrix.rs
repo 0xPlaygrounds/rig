@@ -15,24 +15,23 @@
 //! | output budget | roomy, constrained (`1` text token / `16` tool tokens) |
 //! | response shape | one text candidate, two text candidates, forced tool |
 //!
-//! That is 24 recorded cells. Each cell proves its request and terminal premise
-//! from the fixture, then compares the native raw response/terminal metadata
-//! with those exact bytes. The `n = 2` cells additionally prove that the shared
-//! streaming adapter selects candidate zero without concatenating candidate
-//! one into it.
+//! That is 24 cells, of which the three below are tests. Each cell proves its
+//! request and terminal premise from the fixture, then compares the native raw
+//! response/terminal metadata with those exact bytes. The `n = 2` cells
+//! additionally prove that the shared streaming adapter selects candidate zero
+//! without concatenating candidate one into it.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and all 24 cells
-//! are recorded; none is unit-only. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/<test-name>.yaml`.
 //! The inexpensive mini models provide stable text, multi-choice, and tool
-//! controls across two model families. Every cell asserts the request and
+//! controls across two model families. Each test asserts the request and
 //! provider-native terminal; together they cover ids, model, finish reason,
 //! usage, primary-choice routing, `service_tier`, `system_fingerprint`, and
 //! otherwise-unmodeled top-level streaming metadata.
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
+//! | 3 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/{blocking_gpt_4o_mini_tiny_plain_two,blocking_gpt_4o_mini_tiny_tool,streaming_gpt_4o_mini_tiny_plain_two}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

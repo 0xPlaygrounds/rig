@@ -15,14 +15,13 @@
 //! | termination | natural `stop`, one-token `length` |
 //! | top candidates | `top_logprobs` absent, `0`, `2` |
 //!
-//! That is 24 recorded cells. Each one re-derives the exact expected
-//! log-probability object from its fixture and compares it with the serialized
-//! native response. Streaming cells recursively concatenate token arrays in
-//! wire order. The two model families are deliberate: this is shared Chat
-//! Completions metadata rather than a one-model quirk.
+//! That is 24 cells, of which the four below are tests. Each one re-derives the
+//! exact expected log-probability object from its fixture and compares it with
+//! the serialized native response. Streaming cells recursively concatenate
+//! token arrays in wire order. The two model families are deliberate: this is
+//! shared Chat Completions metadata rather than a one-model quirk.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
-//! pruned or replaced by a unit test. Each explicit test below maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/<test-name>.yaml`.
 //! Synthetic `logprobs` values (`null`, `{}`, and a non-object) stay in the
 //! shared deserializer's unit tests because a live model cannot be instructed
@@ -33,7 +32,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{stop,length}_top_{absent,zero,two}.yaml` |
+//! | 4 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/{blocking_gpt_4_1_mini_length_top_zero,blocking_gpt_4_1_mini_stop_top_absent,streaming_gpt_4_1_mini_length_top_zero,streaming_gpt_4_1_mini_stop_top_absent}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

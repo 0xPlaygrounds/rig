@@ -16,21 +16,13 @@
 //! the terminal's accumulated `additional_params` carries the routed
 //! `provider` the frames repeat. The record's `usage` is the provider's usage
 //! object, extra fields included, so both reach a caller through `raw`. That
-//! is the capability these two cells pin.
+//! is the capability the cell pins: `raw.usage.cost` and
+//! `raw.additional_params.provider` equal the recorded terminal frame's.
 //!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 2 | `stream_raw_exposes_terminal_cost_and_provider` | terminal-only fields | `raw.usage.cost` and `raw.additional_params.provider` equal the recorded terminal frame's | recorded |
-//!
-//! The scenario literals — and therefore the fixture filenames — keep the
-//! names they were recorded under; the cell names describe what the cells now
-//! assert.
-//!
-//! Every cell is recorded. The premise every cell re-derives from its own
-//! fixture is that usage appears on exactly one frame — the stream's last data
-//! frame — so the raw terminal record's usage is knowable from the bytes and a
-//! recording whose stream stopped reporting usage fails loudly instead of
-//! covering nothing. That is [`chat::recorded_sole_usage_frame`], the
+//! The premise the cell re-derives from its fixture is that usage appears on
+//! exactly one frame, the stream's last data frame, so the raw terminal
+//! record's usage is knowable from the bytes and a recording whose stream
+//! stopped reporting usage fails loudly instead of covering nothing. That is [`chat::recorded_sole_usage_frame`], the
 //! single-frame rule rather than the agreeing-closing-frames rule the
 //! dialects that repeat their accounting need. OpenRouter contracts no
 //! request-id header, so the terminal's `provider_request_id` is `None` —

@@ -36,7 +36,7 @@
 //!   matrix uses throughout. It cannot be recorded here: these scenarios need
 //!   the direct recorder (binary response bodies), and that path captures no
 //!   interaction for a non-success response, so the cassette comes out empty.
-//!   Cells 2, 3 and 5 prove the same thing more strongly anyway — the returned
+//!   Cell 3 proves the same thing more strongly anyway: the returned
 //!   *container* changes — and the error path itself is covered beside the
 //!   provider by `audio_generation_non_success_preserves_status_and_body`.
 //! * *`instructions` rejected by a model that does not take it* — `tts-1`

@@ -9,8 +9,9 @@ runtime, and where it now runs once. The once-per-scenario copies live in the
 (`crates/rig-cassette/fixtures/bank/`, `cargo xtask cassette bank`). The
 per-provider copies the runtime target makes redundant were deleted by the
 cassette prune (`cargo xtask cassette prune`, listed in `pruned.tsv`); the
-copies that remain hold a request fact, a reply shape or a region nothing
-else does.
+copies that remain hold a request fact, a reply shape the reply bank does
+not, or a region nothing else does. The fixture counts below are the
+repetition each family had before the prune.
 
 A reply is either bank-matched (`bank::script`: the bank's reply of each
 shape and called tools the scenario recorded) or pinned (`bank::recorded`:
@@ -110,15 +111,11 @@ when an assertion reads what the reply says.
 
 ## Families that stay per provider
 
-- `session_matrix` (5 on each of six wires): history through serde, a
-  checkpoint and memory, asserted on the recorded continuation requests and
-  each dialect's reasoning state. Provider-specific.
-- `tool_lifecycle_matrix` (mistral 24, openrouter 24, openai chat 24): half
-  its rows decode streamed call fragments on the model surface.
-- `ecs_extractor*`, `ecs_ordering`, `ecs_parity`, `ecs_prompt_caching`,
-  `ecs_completion`, `ecs_agent_smoke` and Anthropic's and Gemini's other
-  `ecs_*` modules: world twins of wire-specific cells (prompt-cache prefixes,
-  typed extraction, raw provider data).
+- `tool_lifecycle_matrix` (two cells each on mistral, openrouter and openai
+  chat): streamed call fragments decoded on the model surface.
+- `ecs_extractor*`, `ecs_parity`, `ecs_prompt_caching` and Anthropic's and
+  Gemini's other `ecs_*` modules: world twins of wire-specific cells
+  (prompt-cache prefixes, typed extraction, raw provider data).
 - The long loop's scripted rows (`long_loop::Scripted`) rewrite the row-1
   recording's arguments per wire; not moved.
 

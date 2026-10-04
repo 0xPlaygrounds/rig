@@ -30,11 +30,6 @@
 //! |---|------|-----------|----------|--------|
 //! | 16 | `raw_with_tools_sequence_fires` | tools advertised | `charlie` | recorded |
 //! | 18 | `raw_with_preamble_sequence_fires` | system prompt present | `charlie` | recorded |
-//!
-//! Cells 25–26 assert the adjacent surfaces that share the same terminal
-//! construction still behave: rig's normalized `CompletionResponse` deliberately has
-//! no `stop_sequence` (it is provider-specific and lives on the raw record), so
-//! those cells pin the normalized shape rather than the new field.
 
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, ToolDefinition};
