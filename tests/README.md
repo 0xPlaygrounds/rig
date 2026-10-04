@@ -411,7 +411,13 @@ baseline of it in `crates/rig-cassette/coverage/`:
   proc-macro crates). It comes from `cargo llvm-cov nextest` over the
   workspace with all features under the `local` profile. A baseline keeps only
   what three instrumented runs all covered, so a branch that a race reaches
-  in some runs is not held against a later one.
+  in some runs is not held against a later one. A count llvm-cov prints
+  wrapped (`u64::MAX` for a line, `u32::MAX` for a branch) is not coverage:
+  llvm-cov derives some counts by subtracting counters, and a panic that
+  unwinds out of a function between two increments drives one below zero.
+  A test whose panic races another ending of the test makes such counts come
+  and go, so a test ends one way only; the live-tool tripwire in
+  `world_replay_world.rs` never answers instead of panicking on the pool.
 - `shapes.tsv`: per provider and encoder (method and path template), every
   request skeleton and reply shape the cassettes record, with its count of
   recordings and one example fixture. A request skeleton keeps the body's

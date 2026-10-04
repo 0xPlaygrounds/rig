@@ -44,9 +44,12 @@ impl Serve for ToolTripwire {
     fn descriptor(&self) -> HandlerDescriptor {
         self.descriptor.clone()
     }
+    // Never answering, rather than panicking, leaves one way for a replay
+    // to end: the loop's call count. A panic on the pool would race it and
+    // unwind through the collector whenever it won.
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        panic!("effect replay invoked a live task tool")
+        std::future::pending().await
     }
 }
 

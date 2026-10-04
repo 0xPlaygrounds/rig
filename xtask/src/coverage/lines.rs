@@ -135,7 +135,7 @@ pub(crate) fn parse_lcov(text: &str, root: &Path) -> BTreeMap<String, FileCovera
                 {
                     let entry = files.entry(file.clone()).or_default();
                     let covered = entry.lines.entry(number).or_insert(false);
-                    *covered |= count != "0";
+                    *covered |= executed(count);
                 }
             } else if let Some(rest) = line.strip_prefix("BRDA:") {
                 let fields: Vec<&str> = rest.split(',').collect();
@@ -148,12 +148,23 @@ pub(crate) fn parse_lcov(text: &str, root: &Path) -> BTreeMap<String, FileCovera
                         .branches
                         .entry((number, block, branch))
                         .or_insert(false);
-                    *covered |= !matches!(*taken, "-" | "0");
+                    *covered |= *taken != "-" && executed(taken);
                 }
             }
         }
     }
     files
+}
+
+/// Whether an LCOV execution count shows the code ran. llvm-cov derives
+/// some counts by subtracting counters, so a panic that unwinds out of a
+/// function between two increments can drive one below zero. It prints
+/// such a count wrapped, as `u64::MAX` for a line or `u32::MAX` for a
+/// branch, and a wrapped count is no evidence of execution.
+pub(crate) fn executed(count: &str) -> bool {
+    count
+        .parse::<u64>()
+        .is_ok_and(|count| count != 0 && count != u64::from(u32::MAX) && count < 1 << 63)
 }
 
 /// `1-3,7,9-10` for the sorted `lines`.

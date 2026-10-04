@@ -65,6 +65,23 @@ fn lcov_keeps_production_files_under_the_root() {
 }
 
 #[test]
+fn a_wrapped_count_is_no_evidence_of_execution() {
+    let report = "\
+SF:/repo/crates/rig-core/src/a.rs
+DA:1,18446744073709551615
+DA:2,2
+BRDA:1,0,0,4294967295
+BRDA:1,0,1,7
+end_of_record
+";
+    let files = parse_lcov(report, Path::new("/repo"));
+    let a = &files["crates/rig-core/src/a.rs"];
+    assert_eq!(a.covered_lines().collect::<Vec<_>>(), [2]);
+    assert_eq!(a.counts().branches, (1, 2));
+    assert!(!executed("0") && !executed("-") && executed("1"));
+}
+
+#[test]
 fn ranges_round_trip() {
     let lines = [1, 2, 3, 7, 9, 10];
     assert_eq!(ranges(lines), "1-3,7,9-10");
