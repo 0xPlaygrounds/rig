@@ -874,6 +874,54 @@ cargo nextest list --locked -p rig --features bedrock
 RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --test anthropic ecs_outcome -- --nocapture
 ```
 
+### Runtime scenarios and the reply bank
+
+The agent loop, the ECS world, tool lifecycle, turn endings, resume, memory
+and the effect bus behave the same on every provider. Their scenarios run
+once, in the `runtime` target of `rig-cassette`
+(`crates/rig-cassette/tests/runtime.rs` and `runtime/`), over replies from
+the reply bank instead of a provider's cassette. A bank transport serves the
+replies in order and ignores what was sent, so each reply still passes
+through its provider's real decoder while request encoding stays pinned by
+the request snapshots and the acceptance index. Streamed replies arrive one
+server-sent event per chunk, so a consumer that stops at a delta drops the
+stream before its end, as it does live.
+
+The bank lives in `crates/rig-cassette/fixtures/bank/` and is written by
+`cargo xtask cassette bank` from the corpus, offline:
+
+- `<provider>.yaml`: one real recorded reply per provider, completion
+  encoder, reply shape (the coverage gate's) and called tools, the smallest
+  the corpus holds, with the interaction it came from. A fixture whose test
+  marks it hand-derived gives the bank nothing.
+- `scripts.tsv`: every fixture's replies as bank keys. A runtime scenario
+  names the scenario whose reply shapes it runs against
+  (`rig_test_support::bank::script`).
+- `pinned.txt` and `pinned.yaml`: a scenario whose assertions read what a
+  reply says (an answer marker, tool arguments, reasoning that must be
+  non-empty) is listed by hand in `pinned.txt` with its reason, and the bank
+  keeps that fixture's replies verbatim in `pinned.yaml`
+  (`rig_test_support::bank::recorded`).
+
+An entry or script whose fixture is deleted stays in the bank, so pruning a
+cassette does not take its replies from the runtime scenarios. Never edit
+the bank by hand: re-record or re-index the cassette and rewrite it.
+
+```bash
+cargo xtask cassette bank           # rewrite the bank after a cassette changed
+cargo xtask cassette bank --check   # CI's `verify --check bank`
+cargo nextest run --locked --profile local -p rig-cassette --test runtime
+```
+
+The runtime target holds the ECS contract matrix (`cells`), its focused
+families (`families`, `faults`, `extra`), the turn-termination cells
+(`termination`, run over every bank reply that decodes to the cell's
+ending), the agent tool sessions (`sessions`), the lifecycle matrix
+(`lifecycle`), and `decode`, which decodes every bank reply through its
+provider's decoder and checks it against the tools and ending the bank read
+off its bytes. Which families run here and which stay with their providers
+is in `crates/rig-cassette/coverage/runtime-families.md`.
+
 ### Stream-fault cells
 
 `tests/providers/{gemini,openai}/cassette/stream_faults.rs` and their

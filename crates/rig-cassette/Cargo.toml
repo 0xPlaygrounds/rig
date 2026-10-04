@@ -142,6 +142,10 @@ path = "tests/verify/main.rs"
 required-features = ["agent", "ecs"]
 
 [[test]]
+name = "runtime"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
 name = "world_replay"
 required-features = ["agent", "ecs"]
 

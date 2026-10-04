@@ -83,6 +83,7 @@ const SCRIPTED: faults::Scripted<rig::Model<rig::providers::openai::wire::OpenAi
                 http,
             ))
         },
+        frames: faults::Frames::Cassette,
     };
 
 crate::matrix::native_matrix! {

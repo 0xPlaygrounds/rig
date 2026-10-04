@@ -117,6 +117,7 @@ const SCRIPTED: faults::Scripted<rig::Model<rig::providers::gemini::completion::
                 http,
             ))
         },
+        frames: faults::Frames::Cassette,
     };
 
 crate::matrix::native_matrix! {
