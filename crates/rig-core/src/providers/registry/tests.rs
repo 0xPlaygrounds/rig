@@ -610,3 +610,29 @@ fn a_configured_base_url_round_trips_through_serialization() {
         assert_eq!(read, config.with_credential(""), "{selection}");
     }
 }
+
+/// Both doors of a dual-format vendor resolve to the configuration and host
+/// their dialect documents — no credential, no network.
+#[test]
+fn both_doors_of_a_dual_format_vendor_reach_their_own_endpoint() {
+    let chat = ProviderId::resolve("zai/openai").unwrap();
+    let messages = ProviderId::resolve("zai/anthropic").unwrap();
+    assert_eq!(chat.vendor(), messages.vendor());
+    assert_ne!(chat, messages);
+
+    match chat.config("") {
+        ProviderConfig::OpenAi(provider) => {
+            assert_eq!(provider.base_url, "https://api.z.ai/api/paas/v4");
+            assert_eq!(provider.dialect.name, "zai");
+        }
+        other => panic!("zai/openai is an OpenAI configuration: {other:?}"),
+    }
+    match messages.config("") {
+        ProviderConfig::Anthropic(provider) => {
+            assert_eq!(provider.base_url, "https://api.z.ai/api/anthropic");
+            assert_eq!(provider.dialect.name, "zai");
+        }
+        other => panic!("zai/anthropic is a Messages configuration: {other:?}"),
+    }
+    assert_eq!(chat.api_key_env(), messages.api_key_env());
+}

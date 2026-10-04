@@ -48,6 +48,10 @@
 #     always stays.
 #     Doc examples are not tests here and always stay.
 #
+# Kept by hand: crates/rig-cassette/coverage/prune-keep-tests.txt lists a
+# test with its reason, such as the one deterministic killer of a mutant the
+# mutation gate showed another named killer kills only by chance.
+#
 # The selection is cassette prune's: greedy set cover over the regions and
 # mutants the credited tests do not hold, taking the candidate covering the
 # most, then a table-driven test (a loop over a table of cases) before any
@@ -1124,7 +1128,6 @@ test	rig-core providers::openai::wire::tests::only_a_dialect_with_a_rerank_path_
 test	rig-core providers::registry::tests::a_copilot_preset_reports_its_token_s_endpoint	rig-core providers::copilot::wire::tests::configured_outbound_endpoints_remain_explicit_after_rotation, rig-core providers::registry::tests::a_configured_base_url_round_trips_through_serialization
 test	rig-core providers::registry::tests::a_messages_format_base_url_drops_its_endpoint_suffix	rig-cassette::runtime decode::anthropic, rig-core providers::registry::tests::a_configured_base_url_round_trips_through_serialization, rig-core::provider_config_base_url_env a_configuration_from_the_environment_reports_the_overridden_base_url
 test	rig-core providers::registry::tests::a_preset_reports_its_dialect_s_default_base_url	rig-core providers::registry::tests::a_configured_base_url_round_trips_through_serialization
-test	rig-core providers::registry::tests::both_doors_of_a_dual_format_vendor_reach_their_own_endpoint	rig-core providers::registry::tests::credentials_never_enter_a_serialized_reference, rig-core providers::registry::tests::every_registered_identity_round_trips_through_its_qualified_spelling, rig-core providers::registry::tests::optional_auth_selections_are_not_described_as_requiring_a_credential
 test	rig-core providers::registry::tests::every_preset_sends_to_the_base_url_it_reports	rig-cassette::runtime termination::blocking_completed_turn_reports_stop_and_cap, rig-cassette::runtime termination::streaming_completed_turn_reports_stop_and_cap, rig-core providers::anthropic::completion::tests::a_kept_tool_use_item_always_states_an_object_input, rig-core providers::copilot::wire::tests::configured_outbound_endpoints_remain_explicit_after_rotation, rig-core providers::openai::wire::chat::history_tests::an_edited_reasoning_block_keeps_its_field, rig-core providers::openai::wire::chat::tests::a_gateway_may_answer_with_a_bare_string, rig-core providers::openai::wire::modality::tests::azure_sends_no_model_field, rig-core providers::registry::tests::a_configured_base_url_round_trips_through_serialization, rig::core core::history_conformance::huggingface::h01_same_model_verbatim, rig::provider_ref_credentials a_model_from_a_reference_reads_its_vendor_s_credential
 test	rig-core providers::registry::tests::the_configured_version_and_betas_reach_the_request_headers	rig-cassette::anthropic ecs_matrix::world::tests::cached_anthropic_wire_is_not_rebuilt_without_its_options, rig-core providers::anthropic::completion::tests::a_binding_model_replays_its_thinking_and_asks_for_drop_block, rig-core providers::copilot::wire::tests::registry_copilot_preserves_explicit_configuration_after_reload, rig-core wire::secret::tests::a_reloaded_wire_sends_no_credential_sentinel
 test	rig-core providers::registry::tests::the_family_is_not_the_route	rig-cassette::runtime cells::causal_completion_concurrent, rig-core providers::registry::tests::equivalent_reference_and_configuration_describe_themselves_alike
