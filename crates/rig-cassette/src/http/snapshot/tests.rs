@@ -552,6 +552,19 @@ async fn under_shape_matching_only_the_snapshot_admits_a_changed_request() {
         .await
         .expect("the snapshot holds the change");
 
+    // With snapshots off nothing pins the bytes: unordered shape matching
+    // serves the closest recording and the session passes.
+    let cassette = scratch
+        .start_with(shaped.unordered(), SnapshotMode::Off)
+        .await
+        .expect("session starts");
+    let (status, _) = post(&cassette, "application/json", changed.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    cassette
+        .try_finish()
+        .await
+        .expect("nothing checks the bytes");
+
     // Exact matching still refuses the change, snapshot or not.
     let cassette = scratch
         .start_with(
