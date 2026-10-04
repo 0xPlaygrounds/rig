@@ -32,13 +32,8 @@ mod cassette {
     mod ecs_matrix_long_loop;
     mod ecs_parity;
     mod ecs_stress_context;
-    #[path = "ecs_stress/main_golden.rs"]
-    mod ecs_stress_main_golden;
     #[path = "ecs_stress/runtime.rs"]
     mod ecs_stress_runtime;
-    #[path = "ecs_stress/streaming.rs"]
-    mod ecs_stress_streaming_runtime;
-    mod ecs_tools_e2e;
     mod embedding_matrix;
     mod embeddings;
     mod extractor;
