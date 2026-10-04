@@ -6,18 +6,113 @@
 
 use super::*;
 use crate::completion::CompletionRequest;
-use crate::message::Message;
+use crate::message::{self, Message};
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::xai::DIALECT as XAI;
-use crate::test_utils::RecordingHttpClient;
 use crate::test_utils::json_body;
+use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::Mode;
 use bytes::Bytes;
+use futures::StreamExt;
 
 // ── the cassettes, as bytes ─────────────────────────────────────────────
 
+/// One recorded interaction's reply body, read out of a cassette.
+///
+/// The format is one or more `when:`/`then:` documents; the reply body is
+/// either a single-quoted scalar (a JSON body, with `''` for a quote) or a
+/// `|+` literal block (an SSE body). Parsed here rather than with a YAML
+/// dependency, and never written.
+fn cassette_body(path: &str) -> String {
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../rig-cassette/fixtures/cassettes")
+        .join(path);
+    let text = std::fs::read_to_string(&file)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", file.display()));
+    let reply = text
+        .split_once("\nthen:")
+        .unwrap_or_else(|| panic!("{} should record a reply", file.display()))
+        .1;
+    let body = reply
+        .split_once("  body: ")
+        .unwrap_or_else(|| panic!("{} should record a reply body", file.display()))
+        .1;
+    match body.strip_prefix("|+\n") {
+        // A literal block: four-space-indented lines up to the first line
+        // that is neither blank nor indented.
+        Some(block) => {
+            let mut out = String::new();
+            for line in block.lines() {
+                match line.strip_prefix("    ") {
+                    Some(line) => out.push_str(line),
+                    None if line.trim().is_empty() => {}
+                    None => break,
+                }
+                out.push('\n');
+            }
+            out
+        }
+        // A single-quoted scalar on one line.
+        None => body
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .trim_start_matches('\'')
+            .trim_end_matches('\'')
+            .replace("''", "'"),
+    }
+}
+
+/// The unary body of the turn a recorded SSE body streams: the response
+/// object the provider itself restates on `response.completed`, which is
+/// byte-for-byte the shape its unary endpoint answers with.
+fn terminal_response_body(sse: &str) -> String {
+    let event = sse
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter_map(|data| serde_json::from_str::<serde_json::Value>(data).ok())
+        .find(|event| {
+            matches!(
+                event.get("type").and_then(serde_json::Value::as_str),
+                Some("response.completed") | Some("response.incomplete")
+            )
+        })
+        .expect("the recorded stream ends with a terminal response event");
+    event
+        .get("response")
+        .expect("a terminal event carries its response object")
+        .to_string()
+}
+
 fn prompt() -> CompletionRequest {
     CompletionRequest::new("say hi")
+}
+
+/// Fold a recorded unary body through the wire, as `Model::call`
+/// does.
+async fn folded_unary(wire: Responses, body: &str) -> completion::CompletionResponse {
+    crate::driver::Model::new(wire, RecordingHttpClient::new(Bytes::from(body.to_owned())))
+        .call(prompt())
+        .await
+        .expect("the recorded body folds")
+}
+
+/// Fold a recorded SSE body through the wire, as `Model::stream`
+/// does, draining every event first.
+async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionResponse {
+    let bound = crate::driver::Model::new(
+        wire,
+        MockStreamingClient {
+            sse_bytes: Bytes::from(body.to_owned()),
+        },
+    );
+    let mut response = bound.stream(prompt()).expect("the stream opens");
+    while response.next().await.is_some() {}
+    response
+        .finish()
+        .await
+        .expect("the stream produced a terminal record")
 }
 
 fn openai() -> Responses {
@@ -25,6 +120,84 @@ fn openai() -> Responses {
 }
 
 // ── the property the model exists for ───────────────────────────────────
+
+/// The recorded stream of one turn and that same turn's unary body — the
+/// response object its `response.completed` event restates — fold to one
+/// answer.
+#[tokio::test]
+async fn a_unary_body_and_the_stream_of_the_same_turn_fold_alike() {
+    let sse = cassette_body("openai/response_identity/responses_streaming_carries_identity.yaml");
+    let unary = terminal_response_body(&sse);
+
+    let buffered = folded_unary(openai(), &unary).await;
+    let streamed = folded_stream(openai(), &sse).await;
+
+    assert_eq!(buffered.choice, streamed.choice);
+    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(buffered.model(), streamed.model());
+    assert_eq!(buffered.response_id(), streamed.response_id());
+    assert_eq!(
+        text_of(&buffered),
+        Some("stream identity probe".to_owned()),
+        "the recorded turn's text must survive both paths"
+    );
+}
+
+/// A recorded tool turn: the call the provider restates in its unary body is
+/// the call its stream assembles from fragments.
+#[tokio::test]
+async fn a_unary_tool_turn_and_its_stream_fold_alike() {
+    let sse = cassette_body("openai/streaming_grammar/tool_then_followup_text.yaml");
+    let unary = terminal_response_body(&sse);
+
+    let buffered = folded_unary(openai(), &unary).await;
+    let streamed = folded_stream(openai(), &sse).await;
+
+    assert_eq!(buffered.choice, streamed.choice);
+    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert!(
+        buffered
+            .choice
+            .iter()
+            .any(|content| matches!(content, message::AssistantContent::ToolCall(_))),
+        "the recorded turn calls a tool: {:?}",
+        buffered.choice
+    );
+}
+
+/// ChatGPT answers a unary request with a replayed event stream, so the same
+/// recorded bytes go through `call` and through `stream`; both fold to the
+/// same turn.
+#[tokio::test]
+async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
+    let sse = cassette_body("chatgpt/codex_tool_args/zero_argument_tool_call_nonstreaming.yaml");
+    let wire = OpenAIConfig::with_key(&CHATGPT, "test-token").responses("gpt-5.4");
+
+    let buffered = folded_unary(wire.clone(), &sse).await;
+    let streamed = folded_stream(wire, &sse).await;
+
+    assert_eq!(buffered.choice, streamed.choice);
+    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(buffered.provider(), "chatgpt");
+    assert!(
+        buffered
+            .choice
+            .iter()
+            .any(|content| matches!(content, message::AssistantContent::ToolCall(_))),
+        "the recorded turn calls a tool: {:?}",
+        buffered.choice
+    );
+}
+
+fn text_of(response: &completion::CompletionResponse) -> Option<String> {
+    response.choice.iter().find_map(|content| match content {
+        message::AssistantContent::Text(text) => Some(text.text.clone()),
+        _ => None,
+    })
+}
 
 // ── what each dialect sends ─────────────────────────────────────────────
 

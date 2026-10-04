@@ -18,7 +18,7 @@ use crate::providers::openai::wire::{OPENAI, OpenAIConfig};
 use crate::test_utils::json_body;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 
-use super::super::tests::recorded;
+use super::super::tests::{recorded, recorded_json};
 
 fn wire() -> Chat {
     OpenAIConfig::new("sk-test")
@@ -28,6 +28,11 @@ fn wire() -> Chat {
 
 fn prompt(text: &str) -> CompletionRequest {
     CompletionRequest::new(text).temperature(0.0).max_tokens(16)
+}
+
+/// The blocks without their provider items.
+fn canonical(choice: &[AssistantContent]) -> Vec<AssistantContent> {
+    choice.iter().map(AssistantContent::canonical).collect()
 }
 
 /// Fold both recorded shapes of one turn and hand back the two responses.
@@ -64,6 +69,35 @@ async fn fold_both(
             .await
             .expect("the stream produced a terminal record"),
     )
+}
+
+#[tokio::test]
+async fn a_recorded_text_turn_folds_alike_from_both_reply_shapes() {
+    let (buffered, streamed) = fold_both(
+        "raw_capture_matrix/chat_raw_round_trips_typed.yaml",
+        "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
+        prompt("Reply with exactly the single word: pong"),
+    )
+    .await;
+
+    // Two recordings of one turn: the same blocks, each holding its own
+    // reply's provider item.
+    assert_eq!(canonical(&buffered.choice), canonical(&streamed.choice));
+    assert_eq!(buffered.usage, streamed.usage);
+    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(buffered.model(), streamed.model());
+
+    // The fixture, so a change in the recorded bytes cannot make the
+    // agreement vacuous.
+    assert_eq!(
+        buffered.choice.first().map(AssistantContent::canonical),
+        Some(AssistantContent::text("pong"))
+    );
+    assert_eq!(buffered.usage.input_tokens, Some(15));
+    assert_eq!(buffered.usage.output_tokens, Some(1));
+    assert_eq!(buffered.usage.total_tokens, Some(16));
+    assert_eq!(buffered.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(buffered.model(), Some("gpt-4.1-nano-2025-04-14"));
 }
 
 #[tokio::test]
@@ -121,6 +155,42 @@ async fn a_recorded_tool_call_turn_folds_alike_from_both_reply_shapes() {
     assert_eq!(call.function.arguments_value(), serde_json::json!({}));
     assert_eq!(buffered.finish_reason(), Some(FinishReason::ToolCalls));
     assert_eq!(buffered.usage.output_tokens, Some(10));
+}
+
+/// A streamed request genuinely sends different bytes, which is why `encode`
+/// takes the mode; the cassettes pin both.
+#[test]
+fn the_mode_decides_whether_the_body_asks_for_a_stream() {
+    fn body(mode: Mode) -> serde_json::Value {
+        let encoded = wire()
+            .encode(prompt("Reply with exactly the single word: pong"), mode)
+            .expect("the request encodes");
+        json_body(&encoded.request)
+    }
+
+    let unary = body(Mode::Unary);
+    assert!(unary.get("stream").is_none());
+    assert!(unary.get("stream_options").is_none());
+
+    let streaming = body(Mode::Streaming);
+    assert_eq!(streaming.get("stream"), Some(&serde_json::json!(true)));
+    assert_eq!(
+        streaming.get("stream_options"),
+        Some(&serde_json::json!({"include_usage": true}))
+    );
+
+    // Both are the bytes the cassettes recorded for this turn.
+    assert_eq!(
+        unary,
+        recorded_json("when", "raw_capture_matrix/chat_raw_round_trips_typed.yaml")
+    );
+    assert_eq!(
+        streaming,
+        recorded_json(
+            "when",
+            "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
+        )
+    );
 }
 
 /// `[DONE]` before any finish reason fails the turn, as pi's
@@ -212,6 +282,83 @@ fn openrouter_gets_a_placeholder_for_a_file_id_document() {
     assert!(openai.contains("\"file_id\":\"file-abc\""), "{openai}");
 }
 
+/// The terminal record is readable back out of the stream's `raw`, which is
+/// the escape hatch for every provider field this wire does not normalize.
+#[tokio::test]
+async fn the_streamed_terminal_reads_back_as_the_provider_record() {
+    let mut response = crate::driver::Model::new(
+        wire(),
+        MockStreamingClient {
+            sse_bytes: Bytes::from(recorded(
+                "then",
+                "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
+            )),
+        },
+    )
+    .stream(prompt("Reply with exactly the single word: pong"))
+    .expect("the stream opens");
+    while response.next().await.is_some() {}
+    let folded = response
+        .finish()
+        .await
+        .expect("the stream produced a terminal record");
+
+    let record = &folded.raw;
+    let usage = &record["usage"];
+    assert_eq!(usage["prompt_tokens"], 15);
+    assert_eq!(usage["completion_tokens"], 1);
+    assert_eq!(usage["total_tokens"], 16);
+    assert_eq!(record["model"], "gpt-4.1-nano-2025-04-14");
+    assert_eq!(record["response_id"], recorded_chunk_field("id"));
+
+    // The provider-native fields the wire does not normalize reach the caller
+    // here, which is why `raw` is the record and not the parse.
+    let additional = record["additional_params"].clone();
+    assert_eq!(additional["service_tier"], "default");
+    assert_eq!(
+        additional["system_fingerprint"],
+        recorded_chunk_field("system_fingerprint")
+    );
+
+    // And the normalized view agrees with it.
+    assert_eq!(folded.usage.input_tokens, Some(15));
+    assert_eq!(folded.model(), Some("gpt-4.1-nano-2025-04-14"));
+}
+
+/// The terminal record accumulates every top-level chunk field, `object`
+/// included — a named field would have consumed the key and dropped it while
+/// its neighbours survived.
+#[tokio::test]
+async fn the_streamed_terminal_keeps_every_envelope_field() {
+    let mut response = crate::driver::Model::new(
+        wire(),
+        MockStreamingClient {
+            sse_bytes: Bytes::from(recorded(
+                "then",
+                "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
+            )),
+        },
+    )
+    .stream(prompt("Reply with exactly the single word: pong"))
+    .expect("the stream opens");
+    while response.next().await.is_some() {}
+    let folded = response
+        .finish()
+        .await
+        .expect("the stream produced a terminal record");
+
+    let additional = folded.raw["additional_params"].clone();
+    assert_eq!(
+        additional["object"], "chat.completion.chunk",
+        "`object` is on every chunk of the fixture and must survive: {additional}"
+    );
+    assert_eq!(additional["service_tier"], "default");
+    assert_eq!(
+        additional["system_fingerprint"],
+        recorded_chunk_field("system_fingerprint")
+    );
+}
+
 /// Mira's gateway can answer a chat request with a bare JSON string instead
 /// of a completion envelope. The shared classifier reads a non-object frame
 /// as `Unknown`, so without the modeled event the turn produces no answer at
@@ -250,6 +397,25 @@ async fn a_gateway_may_answer_with_a_bare_string() {
         matches!(strict, Err(ProviderError::Truncated)),
         "openai does not answer with a bare string: {strict:?}"
     );
+}
+
+/// The last value of a top-level `field` across the recorded text stream's
+/// chunks, so an assertion follows the fixture's own bytes.
+fn recorded_chunk_field(field: &str) -> String {
+    recorded(
+        "then",
+        "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
+    )
+    .lines()
+    .filter_map(|line| line.trim().strip_prefix("data:"))
+    .filter_map(|data| serde_json::from_str::<serde_json::Value>(data.trim()).ok())
+    .filter_map(|chunk| {
+        chunk
+            .get(field)
+            .and_then(|value| value.as_str().map(str::to_owned))
+    })
+    .next_back()
+    .expect("the recorded chunks carry the field")
 }
 
 /// One frame of a chunked reply, as the decoder reads it.

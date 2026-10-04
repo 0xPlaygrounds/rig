@@ -280,6 +280,29 @@ async fn the_chat_route_folds_its_recorded_turn() {
     assert_eq!(response.usage.input_tokens, Some(38));
 }
 
+/// The Responses route's recorded turn folds to the normalized response —
+/// same operation, same fold, a different wire underneath.
+#[tokio::test]
+async fn the_responses_route_folds_its_recorded_turn() {
+    let body = cassette_body("routing/codex_models_route_through_responses.yaml", "then");
+    let response = crate::driver::Model::new(
+        copilot().completion(super::super::GPT_5_3_CODEX),
+        RecordingHttpClient::new(Bytes::from(body)),
+    )
+    .call(prompt())
+    .await
+    .expect("the recorded responses body folds");
+
+    assert_eq!(response.provider(), PROVIDER_NAME);
+    assert_eq!(response.model(), Some(super::super::GPT_5_3_CODEX));
+    assert!(
+        text_of(&response).is_some_and(|text| text.contains("Refactoring is the process")),
+        "{:?}",
+        response.choice
+    );
+    assert_eq!(response.response_id(), Some("resp_REDACTED_1"));
+}
+
 /// Copilot's Responses route answers a tool-calling turn with a
 /// *contentless* reasoning item — empty `content`, empty `summary`, no
 /// encrypted payload, just an id. The next turn has to replay it verbatim:

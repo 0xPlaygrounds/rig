@@ -44,6 +44,12 @@ pub(super) fn recorded(section: &str, relative: &str) -> String {
     block
 }
 
+/// The recorded body, parsed as JSON.
+pub(super) fn recorded_json(section: &str, relative: &str) -> serde_json::Value {
+    serde_json::from_str(&recorded(section, relative))
+        .unwrap_or_else(|error| panic!("cassette {relative} {section} body is JSON: {error}"))
+}
+
 /// A wire is data a host may store in a config file or a scene, so it must
 /// be serializable — and serializing it must never write the credential.
 #[test]

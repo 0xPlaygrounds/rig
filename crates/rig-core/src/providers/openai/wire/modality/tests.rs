@@ -1,6 +1,6 @@
 //! The non-chat wires, driven from recorded bytes.
 
-use super::super::tests::recorded;
+use super::super::tests::{recorded, recorded_json};
 use super::*;
 use crate::error::{ErrorKind, ProviderError};
 use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
@@ -20,6 +20,50 @@ fn documents() -> Vec<String> {
     ]
 }
 
+/// The vectors come back in request order, joined onto the inputs the
+/// request carried — which are not on the wire, so only the operation's fold
+/// can supply them.
+#[tokio::test]
+async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
+    let reply = recorded(
+        "then",
+        "embedding_matrix/normalized_response_is_complete.yaml",
+    );
+    let wire = OpenAIConfig::new("sk-test").embedding("text-embedding-3-small", None);
+    let bound = crate::driver::Model::new(wire, RecordingHttpClient::new(reply));
+
+    let response = bound
+        .call(documents())
+        .await
+        .expect("the recorded reply decodes");
+
+    let inputs: Vec<&str> = response
+        .embeddings
+        .iter()
+        .map(|embedding| embedding.document.as_str())
+        .collect();
+    assert_eq!(
+        inputs,
+        documents().iter().map(String::as_str).collect::<Vec<_>>(),
+        "vectors must stay paired with the input they belong to, in order"
+    );
+    assert!(
+        response
+            .embeddings
+            .iter()
+            .all(|embedding| embedding.vec.len() == 1536),
+        "widths: {:?}",
+        response
+            .embeddings
+            .iter()
+            .map(|embedding| embedding.vec.len())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(response.provider, "openai");
+    assert_eq!(response.model.as_deref(), Some("text-embedding-3-small"));
+    assert!(response.usage.input_tokens.is_some());
+}
+
 /// A batch whose reply carries the wrong number of vectors is a provider
 /// defect, and the check lives in the operation's fold rather than in this
 /// wire.
@@ -37,6 +81,21 @@ async fn a_short_embedding_reply_fails_the_call() {
     assert!(
         error.to_string().contains('1') && error.to_string().contains('3'),
         "the error names both counts: {error}"
+    );
+}
+
+/// A requested width goes on the wire in the field the dialect spells it
+/// with — and the recorded request is what that looks like.
+#[test]
+fn a_requested_width_matches_the_recorded_request() {
+    let encoded = OpenAIConfig::new("sk-test")
+        .embedding("text-embedding-3-small", Some(512))
+        .encode(documents(), Mode::Unary)
+        .expect("the request encodes");
+    let body = json_body(&encoded.request);
+    assert_eq!(
+        body,
+        recorded_json("when", "embedding_matrix/dimensions_request.yaml")
     );
 }
 
