@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{Error, Result, invalid};
@@ -139,7 +139,7 @@ pub(crate) struct Exchange {
     pub(crate) body_encoding: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub(crate) struct NameValue {
     pub(crate) name: String,
     pub(crate) value: String,
@@ -375,7 +375,7 @@ fn kind(value: &Value) -> String {
 }
 
 /// The shape of a reply: status, framing and body skeleton.
-fn reply_shape(reply: &Exchange) -> String {
+pub(crate) fn reply_shape(reply: &Exchange) -> String {
     let body = reply.body.as_deref().unwrap_or("");
     let content_type = reply.content_type();
     let framed = if body.is_empty() {
@@ -400,6 +400,23 @@ fn reply_shape(reply: &Exchange) -> String {
 
 /// The skeleton of every server-sent event in `body`, named by its `event:`.
 fn sse_events(body: &str) -> Vec<String> {
+    sse_payloads(body)
+        .into_iter()
+        .map(|(name, data)| {
+            let data = if data == "[DONE]" {
+                data
+            } else {
+                serde_json::from_str::<Value>(&data)
+                    .map_or_else(|_| "text".to_owned(), |v| skeleton(&v, DISCRIMINATORS))
+            };
+            format!("{name}={data}")
+        })
+        .collect()
+}
+
+/// Every server-sent event in `body`: its `event:` name and its joined
+/// `data:` lines.
+fn sse_payloads(body: &str) -> Vec<(String, String)> {
     body.split("\n\n")
         .filter_map(|event| {
             let mut name = "";
@@ -414,14 +431,7 @@ fn sse_events(body: &str) -> Vec<String> {
             if name.is_empty() && data.is_empty() {
                 return None;
             }
-            let data = data.join("\n");
-            let data = if data == "[DONE]" {
-                data
-            } else {
-                serde_json::from_str::<Value>(&data)
-                    .map_or_else(|_| "text".to_owned(), |v| skeleton(&v, DISCRIMINATORS))
-            };
-            Some(format!("{name}={data}"))
+            Some((name.to_owned(), data.join("\n")))
         })
         .collect()
 }
@@ -430,7 +440,23 @@ fn sse_events(body: &str) -> Vec<String> {
 /// `:event-type` header (or `:exception-type`). `None` when the frames do not
 /// parse.
 fn event_stream(bytes: &[u8]) -> Option<Vec<String>> {
-    let mut events = Vec::new();
+    Some(
+        event_messages(bytes)?
+            .into_iter()
+            .map(|(name, payload)| {
+                let data = serde_json::from_slice::<Value>(payload)
+                    .map_or_else(|_| "binary".to_owned(), |v| skeleton(&v, DISCRIMINATORS));
+                format!("{name}={data}")
+            })
+            .collect(),
+    )
+}
+
+/// Every message of an AWS event stream: its `:event-type` (or
+/// `:exception-type`) header and its payload. `None` when the frames do not
+/// parse.
+fn event_messages(bytes: &[u8]) -> Option<Vec<(String, &[u8])>> {
+    let mut messages = Vec::new();
     let mut rest = bytes;
     while !rest.is_empty() {
         let total = usize::try_from(u32::from_be_bytes(rest.get(0..4)?.try_into().ok()?)).ok()?;
@@ -443,12 +469,41 @@ fn event_stream(bytes: &[u8]) -> Option<Vec<String>> {
             .into_iter()
             .find(|(key, _)| key == ":event-type" || key == ":exception-type")
             .map_or_else(String::new, |(_, value)| value);
-        let data = serde_json::from_slice::<Value>(payload)
-            .map_or_else(|_| "binary".to_owned(), |v| skeleton(&v, DISCRIMINATORS));
-        events.push(format!("{name}={data}"));
+        messages.push((name, payload));
         rest = rest.get(total..)?;
     }
-    Some(events)
+    Some(messages)
+}
+
+/// The JSON documents a reply carries: the whole body, every server-sent
+/// event's data, or every event-stream payload. What does not parse as JSON
+/// is left out.
+pub(crate) fn reply_documents(reply: &Exchange) -> Vec<Value> {
+    let body = reply.body.as_deref().unwrap_or("");
+    let content_type = reply.content_type();
+    if body.is_empty() {
+        return Vec::new();
+    }
+    if content_type.starts_with("application/vnd.amazon.eventstream") {
+        let bytes = decode_base64(body).unwrap_or_default();
+        return event_messages(&bytes)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(_, payload)| serde_json::from_slice(payload).ok())
+            .collect();
+    }
+    if reply.is_base64() {
+        return Vec::new();
+    }
+    // A stream recorded without its content type is still a stream.
+    let sniffed = body.starts_with("event:") || body.starts_with("data:");
+    if content_type.starts_with("text/event-stream") || sniffed {
+        return sse_payloads(&body.replace("\r\n", "\n"))
+            .into_iter()
+            .filter_map(|(_, data)| serde_json::from_str(&data).ok())
+            .collect();
+    }
+    serde_json::from_str(body).into_iter().collect()
 }
 
 /// The string-valued headers of one event-stream message.

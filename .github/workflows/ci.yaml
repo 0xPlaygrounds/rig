@@ -28,7 +28,8 @@ concurrency:
 jobs:
   # Formatting, the migration-guide preamble, CWD-independent fixture paths,
   # the browser worker's JavaScript test, sibling-file test layout, the
-  # scenario catalog, xtask's own tests, and the cassette acceptance index.
+  # scenario catalog, xtask's own tests, the cassette acceptance index and
+  # the reply bank.
   # Compiles only xtask.
   guards:
     name: stable / guards
@@ -48,6 +49,8 @@ jobs:
         run: cargo xtask verify --check tooling
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check acceptance
+      - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check bank
 
   # CHANGELOG.md, crates/*/CHANGELOG.md, MIGRATING.md and docs/migrations/ are
   # written on the release PR only. Release PRs (a `release-plz-*` head or the

@@ -9,6 +9,7 @@
 
 mod acceptance;
 mod audit;
+mod bank;
 mod goldens;
 mod owner;
 mod record;
@@ -43,6 +44,9 @@ pub(crate) const USAGE: &str = "\
                               write the acceptance index, or with --check fail
                               when a request fact Rig sends has no live
                               recording or the index is stale
+  cassette bank [--check]    write the reply bank, one real recorded reply per
+                              provider, completion encoder, reply shape and
+                              called tools, or with --check fail when it is stale
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 
@@ -71,6 +75,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<(), String> {
         "audit" => audit::run(root, rest),
         "snapshots" => snapshots::run(root, rest),
         "acceptance" => acceptance::run(root, rest),
+        "bank" => bank::run(root, rest),
         "cleanup" => cleanup(root, rest),
         other => Err(format!("unknown cassette command {other:?}\n{USAGE}")),
     }

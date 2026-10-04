@@ -315,6 +315,12 @@ pub(super) fn all() -> Vec<Check> {
             "acceptance",
             vec![cargo(&["xtask", "cassette", "acceptance", "--check"])],
         ),
+        // The reply bank is what the corpus gives: crates/rig-cassette/
+        // fixtures/bank against the cassettes. Reads files only.
+        check(
+            "bank",
+            vec![cargo(&["xtask", "cassette", "bank", "--check"])],
+        ),
         check(
             "derive",
             vec![cargo(&["test", "--locked", "-p", "rig-derive"])],

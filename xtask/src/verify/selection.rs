@@ -362,6 +362,18 @@ pub(super) fn plan(
             )?;
             continue;
         }
+        // The reply bank is data the runtime scenarios read.
+        if path.starts_with("crates/rig-cassette/fixtures/bank/") {
+            add(&mut out, all, "bank", "the reply bank changed")?;
+            if !out.iter().any(|c| c.id == "provider-runtime") {
+                out.push(provider_check(
+                    "rig-cassette",
+                    "runtime",
+                    "the reply bank changed: replay the runtime scenarios it serves",
+                ));
+            }
+            continue;
+        }
         // The coverage baseline is data the gate reads, not package source.
         if path.starts_with("crates/rig-cassette/coverage/") {
             add(&mut out, all, "coverage", "coverage baseline changed")?;
@@ -450,6 +462,18 @@ pub(super) fn plan(
             all,
             "acceptance",
             "cassettes, snapshots or the index changed: every sent fact needs a recording",
+        )?;
+    }
+    // The bank is read off the cassettes.
+    if paths
+        .iter()
+        .any(|p| p.starts_with("crates/rig-cassette/fixtures/cassettes/"))
+    {
+        add(
+            &mut out,
+            all,
+            "bank",
+            "cassettes changed: the reply bank must be the one they give",
         )?;
     }
     // Rust sources move line and branch coverage; fixtures move the

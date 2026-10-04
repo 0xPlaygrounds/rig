@@ -928,6 +928,24 @@ fn cassettes_snapshots_and_the_index_select_the_acceptance_check() {
 }
 
 #[test]
+fn cassettes_and_the_bank_select_the_bank_check() {
+    for path in [
+        "crates/rig-cassette/fixtures/cassettes/openai/chat.yaml",
+        "crates/rig-cassette/fixtures/bank/openai.yaml",
+        "crates/rig-cassette/fixtures/bank/scripts.tsv",
+    ] {
+        assert!(ids("--changed", &[path]).contains("bank"), "{path}");
+    }
+    let bank = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/bank/pinned.txt"],
+    );
+    assert!(bank.contains("provider-runtime"), "{bank:?}");
+    assert!(!bank.contains("full-tests"), "{bank:?}");
+    assert!(!ids("--changed", &["crates/rig-ecs/src/lib.rs"]).contains("bank"));
+}
+
+#[test]
 fn sources_cassettes_and_the_baseline_select_the_coverage_gate() {
     for path in [
         "crates/rig-ecs/src/lib.rs",
