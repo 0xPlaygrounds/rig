@@ -107,12 +107,15 @@ const PREAMBLE: &str = "\
 #     it calls serde_json or serde_yaml both ways), an error message (an
 #     asserted argument holds a string literal and the body names an error
 #     and renders text), or rendered text (an asserted argument renders with
-#     to_string, format or Display and holds a string literal). A test whose
-#     name another tracked .rs or .md file cites (a findings registry, a
-#     contract table, a doc comment) is kept too: the citation documents what
-#     it asserts. An error-message or rendered-text test that no file cites
-#     goes when each of those assertions appears, token for token, in an
-#     earlier kept contract test; every other contract test always stays.
+#     to_string, format or Display and holds a string literal); in a
+#     table-driven test an asserted argument that renders or matches text
+#     stands for one holding a literal, since the literals are the table's.
+#     A test whose name another tracked .rs or .md file cites (a findings
+#     registry, a contract table, a doc comment) is kept too: the citation
+#     documents what it asserts. An error-message or rendered-text test that
+#     no file cites goes when each of those assertions appears, token for
+#     token, in an earlier kept contract test; every other contract test
+#     always stays.
 #     Doc examples are not tests here and always stay.
 #
 # The selection is cassette prune's: greedy set cover over the regions and

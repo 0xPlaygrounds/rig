@@ -166,7 +166,7 @@ pub(crate) fn of(name: &str, item: &ItemFn, wasm_gated: bool) -> Facts {
         .iter()
         .map(|assertion| assertion.text.clone())
         .collect();
-    let contract = contract(name, item, wasm_gated, &scan);
+    let contract = contract(name, item, wasm_gated, tables.found, &scan);
     Facts {
         lines,
         table: tables.found,
@@ -175,7 +175,13 @@ pub(crate) fn of(name: &str, item: &ItemFn, wasm_gated: bool) -> Facts {
     }
 }
 
-fn contract(name: &str, item: &ItemFn, wasm_gated: bool, scan: &Scan) -> Option<Contract> {
+fn contract(
+    name: &str,
+    item: &ItemFn,
+    wasm_gated: bool,
+    table: bool,
+    scan: &Scan,
+) -> Option<Contract> {
     let never = |reason| {
         Some(Contract {
             reason,
@@ -222,10 +228,14 @@ fn contract(name: &str, item: &ItemFn, wasm_gated: bool, scan: &Scan) -> Option<
     }
     let errs = scan.idents.iter().any(|ident| ident.contains("err"));
     let renders = RENDERS.iter().any(|render| scan.has(render));
+    // In a table-driven test the literals are the table's, so an assertion
+    // that matches text against a case stands for one that holds a literal.
+    let from_table =
+        |assertion: &&Assertion| table && assertion.matches_text && !scan.literals.is_empty();
     let literal: Vec<String> = scan
         .assertions
         .iter()
-        .filter(|assertion| assertion.literal)
+        .filter(|assertion| assertion.literal || from_table(assertion))
         .map(|assertion| assertion.text.clone())
         .collect();
     if errs && renders && !literal.is_empty() {
@@ -237,7 +247,7 @@ fn contract(name: &str, item: &ItemFn, wasm_gated: bool, scan: &Scan) -> Option<
     let rendered: Vec<String> = scan
         .assertions
         .iter()
-        .filter(|assertion| assertion.literal && assertion.renders)
+        .filter(|assertion| (assertion.literal || from_table(assertion)) && assertion.renders)
         .map(|assertion| assertion.text.clone())
         .collect();
     if !rendered.is_empty() {
@@ -300,6 +310,8 @@ struct Assertion {
     text: String,
     literal: bool,
     renders: bool,
+    /// Its asserted arguments render or match text.
+    matches_text: bool,
 }
 
 /// Identifiers that fail a test at run time besides an assertion.
@@ -365,6 +377,7 @@ impl Scan {
                             text: format!("{text}!({})", args.stream()),
                             literal: asserted.iter().any(holds_string),
                             renders: asserted.iter().any(|tree| holds_ident(tree, RENDERED)),
+                            matches_text: asserted.iter().any(|tree| holds_ident(tree, RENDERS)),
                         });
                     }
                     if CHECKS.contains(&text.as_str()) {

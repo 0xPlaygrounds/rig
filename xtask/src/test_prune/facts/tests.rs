@@ -132,6 +132,12 @@ fn contract_reasons_follow_the_name_and_the_tokens() {
             Some(Reason::StoredFormat),
         ),
         (
+            "error message from a table",
+            "rig x",
+            "#[test] fn t() { for (input, fragment) in [(\"a\", \"bad a\")] { let Err(error) = run(input) else { panic!() }; assert!(error.to_string().contains(fragment)); } }",
+            Some(Reason::ErrorMessage),
+        ),
+        (
             "compile only",
             "rig x",
             "#[test] fn t() { let _ = AgentRun::new(\"x\"); }",
