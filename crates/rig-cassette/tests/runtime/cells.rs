@@ -224,3 +224,17 @@ cells! {
     image_url_text_unary: recorded (openai_chat_image, "openai", "image_matrix_chat/url_text_unary", cells::IMAGE_URL_TEXT_UNARY);
     image_url_tool_unary: recorded (openai_responses_image, "openai", "image_matrix_responses/url_tool_unary", cells::IMAGE_URL_TOOL_UNARY);
 }
+
+// Cells whose replies differ by wire in a way the runtime branches on, run
+// again on the wire whose replies take the branch: a committed output tool
+// call missing a required field is reprompted (doubleword) or answered as
+// text (Chat); an output tool on Venice; a second serial custom effect on
+// Gemini; a text-delta stop whose stream is still delivering (DeepSeek).
+cells! {
+    shaping_tool_choice_none_on_committed_output_doubleword: recorded (doubleword, "doubleword", "corpus_matrix/shaping_tool_choice_none_on_committed_output", cells::SHAPING_TOOL_CHOICE_NONE_ON_COMMITTED_OUTPUT);
+    shaping_tool_choice_none_on_committed_output_openai_chat: recorded (openai_chat, "openai", "corpus_matrix_chat/shaping_tool_choice_none_on_committed_output", cells::SHAPING_TOOL_CHOICE_NONE_ON_COMMITTED_OUTPUT);
+    output_tool_unary_venice: (venice, "venice", "corpus_matrix/output_tool_unary", cells::OUTPUT_TOOL_UNARY);
+    output_tool_streamed_venice: (venice, "venice", "corpus_matrix/output_tool_streamed", cells::OUTPUT_TOOL_STREAMED);
+    host_custom_twice_serial_gemini: (gemini, "gemini", "corpus_matrix/host_custom_twice_serial", cells::HOST_CUSTOM_TWICE_SERIAL);
+    endings_text_delta_stop_deepseek: (deepseek, "deepseek", "corpus_matrix/endings_text_delta_stop", cells::ENDINGS_TEXT_DELTA_STOP);
+}

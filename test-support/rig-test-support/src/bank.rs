@@ -3,13 +3,13 @@
 //! `cargo xtask cassette bank` into `crates/rig-cassette/fixtures/bank/`.
 //!
 //! A runtime scenario asks the bank for the replies it needs in the order it
-//! needs them and serves them over a [`BankHttpClient`], so each reply
-//! goes through the provider's real decoder while the scenario runs once, not
-//! once per provider's cassette. It names them by the scenario whose reply
-//! shapes it runs against ([`script`], read off `scripts.tsv`) or by what
-//! each reply must be ([`Step`]). The transport does not read
-//! what Rig sends; request encoding is pinned by the request snapshots and
-//! the acceptance index.
+//! needs them and serves them over a [`BankHttpClient`], so each reply goes
+//! through the provider's real decoder while the scenario runs once, not once
+//! per provider's cassette. It names them by the scenario whose reply shapes
+//! it runs against ([`script`], read off `scripts.tsv`), or takes the
+//! scenario's own replies when it reads what they say ([`recorded`]). The
+//! transport does not read what Rig sends; request encoding is pinned by the
+//! request snapshots and the acceptance index.
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -24,6 +24,10 @@ use rig_core::http_client::{
 };
 use rig_core::wasm_compat::WasmCompatSend;
 use serde::Deserialize;
+
+#[cfg(test)]
+#[path = "bank/tests.rs"]
+mod tests;
 
 /// The bank's directory.
 pub fn bank_root() -> std::path::PathBuf {
@@ -134,13 +138,6 @@ impl Entry {
                 headers,
             )
         }
-    }
-
-    /// The scenario directory of the source, `<provider>/<dir>`.
-    pub fn source_dir(&self) -> &str {
-        self.source
-            .rsplit_once('/')
-            .map_or(self.source.as_str(), |(dir, _)| dir)
     }
 
     /// The portable class of the reply's ending.
@@ -308,89 +305,6 @@ pub fn providers() -> Vec<String> {
     providers
 }
 
-/// One reply a scenario needs.
-#[derive(Clone, Copy, Debug)]
-pub enum Step {
-    /// A finished text answer that calls no tool.
-    Text,
-    /// A turn that calls exactly these tools (by distinct name).
-    Calls(&'static [&'static str]),
-    /// A turn whose output cap cut it, calling no tool.
-    Truncated,
-    /// A reply with this non-success status.
-    Status(u16),
-}
-
-impl Step {
-    /// Whether `entry` is a reply this step takes.
-    pub fn takes(self, entry: &Entry) -> bool {
-        let status = entry.then.status;
-        match self {
-            Self::Text => status == 200 && entry.calls.is_empty() && entry.ending() == Ending::Stop,
-            Self::Calls(names) => {
-                status == 200
-                    && entry.calls.len() == names.len()
-                    && names
-                        .iter()
-                        .all(|name| entry.calls.iter().any(|call| call == name))
-                    && matches!(entry.ending(), Ending::Tool | Ending::Stop)
-            }
-            Self::Truncated => {
-                status == 200 && entry.calls.is_empty() && entry.ending() == Ending::Length
-            }
-            Self::Status(wanted) => status == wanted,
-        }
-    }
-}
-
-/// Where a scenario's replies come from: a provider's completion encoder and
-/// the reply mode.
-#[derive(Clone, Copy, Debug)]
-pub struct Source {
-    pub provider: &'static str,
-    /// The encoder, as the bank names it (`POST /chat/completions`).
-    pub encoder: &'static str,
-    pub streamed: bool,
-}
-
-impl Source {
-    /// Every entry of this source that `step` takes, in bank order.
-    pub fn candidates(&self, step: Step) -> Vec<Entry> {
-        entries(self.provider)
-            .iter()
-            .filter(|entry| {
-                entry.encoder == self.encoder
-                    && (matches!(step, Step::Status(_)) || entry.streamed() == self.streamed)
-                    && step.takes(entry)
-            })
-            .cloned()
-            .collect()
-    }
-
-    /// The reply `step` takes: among the candidates, the one whose source
-    /// directory comes first in `prefer`, then the smallest, then the first in
-    /// bank order. Panics when the bank holds none.
-    pub fn pick(&self, step: Step, prefer: &[&str]) -> Entry {
-        let rank = |entry: &Entry| {
-            prefer
-                .iter()
-                .position(|dir| entry.source_dir().ends_with(dir))
-                .unwrap_or(prefer.len())
-        };
-        self.candidates(step)
-            .into_iter()
-            .enumerate()
-            .min_by_key(|(index, entry)| (rank(entry), entry.body().len(), *index))
-            .map(|(_, entry)| entry)
-            .unwrap_or_else(|| panic!("the bank holds no {step:?} reply for {self:?}"))
-    }
-
-    /// The replies of `steps`, in order.
-    pub fn script(&self, steps: &[Step], prefer: &[&str]) -> Vec<Entry> {
-        steps.iter().map(|step| self.pick(*step, prefer)).collect()
-    }
-}
-
 /// A transport that answers each request with the next of its replies, in
 /// order, and ignores what was sent. A streamed success arrives one
 /// server-sent event per chunk, with a yield between chunks, as a socket
@@ -408,14 +322,6 @@ impl BankHttpClient {
         Self {
             replies: Arc::new(Mutex::new(replies.iter().cloned().collect())),
         }
-    }
-
-    /// The replies not served yet.
-    pub fn remaining(&self) -> usize {
-        self.replies
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .len()
     }
 
     fn next(&self) -> Option<Entry> {

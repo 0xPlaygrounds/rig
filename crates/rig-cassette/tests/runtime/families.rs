@@ -133,6 +133,8 @@ cuts! {
     checkpoint_multi_turn_streamed_cut_2: recorded (Checkpoint, openai_responses_mini, "openai", "checkpoint_matrix_responses/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(2));
     checkpoint_multi_turn_streamed_cut_3: recorded (Checkpoint, openai_responses_mini, "openai", "checkpoint_matrix_responses/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(3));
     checkpoint_multi_turn_streamed_cut_final: recorded (Checkpoint, openai_responses_mini, "openai", "checkpoint_matrix_responses/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(usize::MAX));
+    // Anthropic's stream shape in a world, cut after its last tool turn.
+    checkpoint_multi_turn_streamed_anthropic: recorded (Checkpoint, anthropic, "anthropic", "checkpoint_matrix/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(usize::MAX));
     checkpoint_parallel_batch: recorded (Checkpoint, gemini_flash_lite, "gemini", "checkpoint_matrix/parallel_batch", checkpoint::PARALLEL_BATCH, None);
     checkpoint_parallel_batch_cut_final: recorded (Checkpoint, gemini_flash_lite, "gemini", "checkpoint_matrix/parallel_batch", checkpoint::PARALLEL_BATCH, Some(usize::MAX));
     checkpoint_large_result: recorded (Checkpoint, deepseek_flash, "deepseek", "checkpoint_matrix/large_result", checkpoint::LARGE_RESULT, None);

@@ -904,8 +904,9 @@ The bank lives in `crates/rig-cassette/fixtures/bank/` and is written by
   (`rig_test_support::bank::recorded`).
 
 An entry or script whose fixture is deleted stays in the bank, so pruning a
-cassette does not take its replies from the runtime scenarios. Never edit
-the bank by hand: re-record or re-index the cassette and rewrite it.
+cassette does not take its replies from the runtime scenarios. `pinned.txt`
+is the only file of the bank written by hand; never edit a reply, re-record
+the cassette and rewrite the bank.
 
 ```bash
 cargo xtask cassette bank           # rewrite the bank after a cassette changed
