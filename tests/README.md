@@ -332,28 +332,36 @@ snapshot diff with the change.
 
 #### Acceptance index
 
-`crates/rig-cassette/fixtures/acceptance.toml` maps every fine request
-skeleton Rig sends, per provider and encoder, to one interaction recorded
-live with exactly that skeleton. The skeleton is the coverage gate's: JSON
-keys and types kept, values erased, arrays collapsed to their element kinds.
-What Rig sends is read offline from each recording with its snapshot applied,
-so the check reads files only. A recording whose request body the proxy
-recorder dropped is pinned to the skeleton its snapshot showed when the
-fixture was first indexed, until the fixture changes.
+`crates/rig-cassette/fixtures/acceptance.toml` maps every request fact Rig
+sends, per provider and encoder, to one interaction recorded live whose
+request holds it. A fact is one object of the body: its path with array
+indices collapsed, its sorted keys, and each key's scalar type or container
+kind, keeping the values of discriminators such as `role` and `type`. A
+JSON Schema's property names (`properties`, `$defs`, ...) share one path, and
+a tool call's arguments or a tool's result is not read. A body that is not
+JSON is one fact: empty, binary, text, or its multipart field names. Facts
+do not capture combinations of fields: a request that only combines objects
+already recorded needs no recording of its own. The coarse key and replay
+still exercise every whole request. What Rig sends is read offline from each
+recording with its snapshot applied, so the check reads files only. A
+recording whose request body the proxy recorder dropped is pinned to the
+facts its snapshot showed when the fixture was first indexed, until the
+fixture changes.
 
 ```bash
 cargo xtask cassette acceptance           # rewrite the index
 cargo xtask cassette acceptance --check   # CI's `verify --check acceptance`
 ```
 
-`--check` fails when a skeleton Rig sends has no live recording, naming the
-provider, the encoder and an interaction that sends it, and when the index
-is stale. The rules for a change to what Rig sends:
+`--check` fails when a fact Rig sends has no live recording, naming the
+provider, the encoder, the path, the fact and the smallest cassette that
+sends it, and when the index is stale. The rules for a change to what Rig
+sends:
 
 - it keeps every request's coarse shape: refresh the snapshots, rewrite the
   index, and record nothing;
-- it adds a fine skeleton: record one acceptance cassette per provider and
-  skeleton that `--check` lists, and only those;
+- it adds a fact: re-record one cassette per provider and fact that
+  `--check` lists, and only those;
 - never re-record a cassette whose shape did not change.
 
 ChatGPT record mode additionally needs `CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=...`.
@@ -470,12 +478,13 @@ baseline of it in `crates/rig-cassette/coverage/`:
   and go, so a test ends one way only; the live-tool tripwire in
   `world_replay_world.rs` never answers instead of panicking on the pool.
 - `shapes.tsv`: per provider and encoder (method and path template), every
-  request skeleton and reply shape the cassettes record, with its count of
-  recordings and one example fixture. A request skeleton keeps the body's
-  JSON keys and types, erases the values and collapses each array to the set
-  of its element skeletons. A reply shape is the status, the framing, and the
-  same skeleton of the body or of each stream event, keeping discriminators
-  such as `type` and `finish_reason`.
+  request fact and reply shape the cassettes record, with its count of
+  recordings and one example fixture. A request fact is the acceptance
+  index's (see "Acceptance index"). A reply shape is the status, the framing,
+  and the skeleton of the whole body or of each stream event: JSON keys and
+  types kept, values erased except discriminators such as `type` and
+  `finish_reason`, and each array collapsed to the set of its element
+  skeletons.
 - `mutants.tsv`: a fixed sample of the `cargo mutants` mutants of the replay
   core, each run against its crate's unit tests and conformance targets, with
   its outcome, how many tests failed on it and the first three of them. A mutant is in the sample when
@@ -490,7 +499,7 @@ cargo xtask coverage --per-test         # every test's lines and branches, in ta
 
 `--check` fails when an unchanged file loses a covered line or branch, a
 changed file's line or branch ratio falls, a mutant the baseline killed
-survives, or a request skeleton or reply shape loses its last recording. It
+survives, or a request fact or reply shape loses its last recording. It
 leaves each measurement in `target/coverage/`. When a change moves coverage
 on purpose, rewrite the affected baseline file and review its diff with the
 change. The lines part needs `cargo-llvm-cov`, the `llvm-tools` component,

@@ -1,19 +1,20 @@
-//! `cargo xtask cassette acceptance`: the acceptance index. For each fine
-//! request skeleton Rig sends, per provider and encoder, it names one
-//! cassette interaction recorded live with exactly that skeleton, in
+//! `cargo xtask cassette acceptance`: the acceptance index. For each request
+//! fact Rig sends, per provider and encoder, it names one cassette
+//! interaction recorded live whose request holds that fact, in
 //! `crates/rig-cassette/fixtures/acceptance.toml`.
 //!
-//! What Rig sends is read offline from the corpus: each recorded request
-//! with its request snapshot applied, which every workspace replay checks
-//! against what Rig actually sends. The skeleton is the coverage gate's
-//! (`coverage/shapes.rs`). A recording whose request body the proxy
-//! recorder dropped holds no skeleton of its own; the index pins the one its
-//! snapshot showed when the fixture was first indexed, and drops the pin
-//! when the fixture changes.
+//! A fact is one object of a request body, as the coverage gate reads it
+//! (`coverage/shapes.rs`): its path, its keys, and each key's type, with
+//! discriminator values kept. What Rig sends is read offline from the corpus:
+//! each recorded request with its request snapshot applied, which every
+//! workspace replay checks against what Rig actually sends. A recording whose
+//! request body the proxy recorder dropped holds no facts of its own; the
+//! index pins the ones its snapshot showed when the fixture was first
+//! indexed, and drops the pins when the fixture changes.
 //!
-//! `--check` fails when a skeleton Rig sends has no live recording, listing
-//! where Rig sends it so the missing cell can be recorded, and when the
-//! committed index differs from the one a rewrite would write.
+//! `--check` fails when a fact Rig sends has no live recording, naming the
+//! smallest cassette that sends it to re-record, and when the committed index
+//! differs from the one a rewrite would write.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -22,7 +23,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
-use crate::coverage::shapes::{self, Exchange, Fixture, hash, skeleton};
+use crate::coverage::shapes::{self, DISCRIMINATORS, Exchange, Fact, Facts, Fixture, facts};
 
 const CASSETTES: &str = "crates/rig-cassette/fixtures/cassettes";
 /// The index, relative to the workspace root.
@@ -30,42 +31,42 @@ pub(crate) const INDEX: &str = "crates/rig-cassette/fixtures/acceptance.toml";
 
 const PREAMBLE: &str = "\
 # The acceptance index, written by `cargo xtask cassette acceptance`.
-# Every request skeleton Rig sends, per provider and encoder, with one
-# cassette interaction recorded live with exactly that skeleton. A skeleton
-# is the hash of the request body's JSON structure with its values erased
-# and its arrays collapsed to their element kinds (see tests/README.md).
+# Every request fact Rig sends, per provider and encoder, with one cassette
+# interaction recorded live whose request holds it. A fact is one object of
+# the body: its path with array indices collapsed, its keys, and each key's
+# type, with the values of discriminators such as `role` and `type` kept
+# (see tests/README.md).
 ";
 
 const UNRECORDED: &str = "\
 # Recordings whose request body the proxy recorder dropped, each with the
-# fixture hash it was indexed at and the skeleton its snapshot then showed.
+# fixture hash it was indexed at and the facts its snapshot then showed.
 ";
 
-/// Where a skeleton is sent or recorded: a provider and an encoder.
-type Encoder = (String, String);
+/// Where a fact is sent or recorded: a provider, an encoder and the fact.
+type Cell = (String, String, Fact);
 
-/// One index entry: a skeleton and the interaction that recorded it.
+/// One index entry: a fact and the interaction that recorded it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Entry {
     pub(crate) provider: String,
     pub(crate) encoder: String,
-    pub(crate) skeleton: String,
+    pub(crate) fact: Fact,
     pub(crate) recording: String,
 }
 
-/// A recording the proxy recorder kept no request body for, and the
-/// skeleton the index takes it to hold.
+/// A fact of a recording the proxy recorder kept no request body for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Pin {
     pub(crate) recording: String,
     pub(crate) fixture: String,
-    pub(crate) skeleton: String,
+    pub(crate) fact: Fact,
 }
 
 /// The whole index.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Index {
-    pub(crate) skeletons: Vec<Entry>,
+    pub(crate) facts: Vec<Entry>,
     pub(crate) unrecorded: Vec<Pin>,
 }
 
@@ -77,19 +78,22 @@ pub(crate) struct Observed {
     pub(crate) recording: String,
     /// The fixture's hash.
     pub(crate) fixture: String,
-    /// The recorded skeleton's hash; `None` when the body was not recorded.
-    pub(crate) recorded: Option<String>,
-    /// The hash of the skeleton Rig sends.
-    pub(crate) sent: String,
+    /// The fixture's length in bytes.
+    pub(crate) size: usize,
+    /// The recorded request's facts; `None` when the body was not recorded.
+    pub(crate) recorded: Option<Facts>,
+    /// The facts of the request Rig sends.
+    pub(crate) sent: Facts,
 }
 
-/// A skeleton Rig sends with no live recording, and one place it is sent.
+/// A fact Rig sends with no live recording, and the smallest cassette
+/// interaction that sends it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Missing {
     pub(crate) provider: String,
     pub(crate) encoder: String,
-    pub(crate) skeleton: String,
-    pub(crate) sent_in: String,
+    pub(crate) fact: Fact,
+    pub(crate) rerecord: String,
 }
 
 pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
@@ -108,8 +112,8 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     };
     let (index, missing) = build(&observed, committed.as_ref().unwrap_or(&Index::default()));
     println!(
-        "acceptance: {} skeleton(s) over {} interaction(s), {} unrecorded body pin(s)",
-        index.skeletons.len(),
+        "acceptance: {} fact(s) over {} interaction(s), {} unrecorded body pin(s)",
+        index.facts.len(),
         observed.len(),
         index.unrecorded.len()
     );
@@ -117,9 +121,13 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         .iter()
         .map(|missing| {
             format!(
-                "{} `{}` skeleton {} has no live recording; Rig sends it in {} \
-                 (record one acceptance cassette with it)",
-                missing.provider, missing.encoder, missing.skeleton, missing.sent_in
+                "{} `{}` at {}: {} has no live recording; re-record {}, \
+                 the smallest cassette that sends it",
+                missing.provider,
+                missing.encoder,
+                missing.fact.path,
+                missing.fact.object,
+                missing.rerecord
             )
         })
         .collect();
@@ -215,7 +223,7 @@ fn observe_fixture(
         let request = &interaction.when;
         let unrecorded =
             request.body.is_none() && request.content_type().starts_with("multipart/form-data");
-        let recorded = shapes::request_skeleton(request);
+        let recorded = shapes::request_facts(request);
         let sent = match snapshot.get(&index) {
             Some(changes) => {
                 let mut view = recorded_view(request);
@@ -224,7 +232,7 @@ fn observe_fixture(
                         format!("{recording}: snapshot {}: {reason}", change.path)
                     })?;
                 }
-                view_skeleton(&view)
+                view_facts(&view)
             }
             None => recorded.clone(),
         };
@@ -233,8 +241,9 @@ fn observe_fixture(
             encoder: request.encoder(),
             recording,
             fixture: fixture.hash.clone(),
-            recorded: (!unrecorded).then(|| hash(&recorded)),
-            sent: hash(&sent),
+            size: fixture.size,
+            recorded: (!unrecorded).then_some(recorded),
+            sent,
         });
     }
     Ok(observed)
@@ -327,13 +336,21 @@ pub(crate) fn apply(view: &mut Value, change: &Change) -> Result<(), String> {
     }
 }
 
-/// The fine skeleton of a body in its snapshot form, as
-/// [`shapes::request_skeleton`] reads the recorded one.
-pub(crate) fn view_skeleton(view: &Value) -> String {
+/// The facts of a body in its snapshot form, as
+/// [`shapes::request_facts`] reads the recorded one.
+pub(crate) fn view_facts(view: &Value) -> Facts {
+    let root = |object: String| {
+        Facts::from([Fact {
+            path: "$".to_owned(),
+            object,
+        }])
+    };
     match view {
-        Value::Null => "empty".to_owned(),
-        Value::String(_) => "text".to_owned(),
-        Value::Object(map) if map.len() == 2 && map.contains_key("bytes") => "binary".to_owned(),
+        Value::Null => root("empty".to_owned()),
+        Value::String(_) => root("text".to_owned()),
+        Value::Object(map) if map.len() == 2 && map.contains_key("bytes") => {
+            root("binary".to_owned())
+        }
         Value::Object(map) if map.len() == 1 && map.contains_key("multipart") => {
             let names: BTreeSet<&str> = map
                 .get("multipart")
@@ -343,77 +360,84 @@ pub(crate) fn view_skeleton(view: &Value) -> String {
                 .filter_map(|part| part.pointer("/headers/content-disposition")?.as_str())
                 .filter_map(|disposition| disposition.split("name=\"").nth(1)?.split('"').next())
                 .collect();
-            format!(
+            root(format!(
                 "multipart[{}]",
                 names.into_iter().collect::<Vec<_>>().join(",")
-            )
+            ))
         }
-        value => skeleton(value, &[]),
+        value => facts(value, DISCRIMINATORS),
     }
 }
 
-/// The index the corpus gives, and every sent skeleton no live recording
-/// holds. `committed` contributes only its pins: a body-less recording keeps
-/// the skeleton it was indexed with while its fixture is unchanged.
+/// The index the corpus gives, and every sent fact no live recording holds.
+/// `committed` contributes only its pins: a bodyless recording keeps the
+/// facts it was indexed with while its fixture is unchanged.
 pub(crate) fn build(observed: &[Observed], committed: &Index) -> (Index, Vec<Missing>) {
-    let old_pins: BTreeMap<&str, &Pin> = committed
-        .unrecorded
-        .iter()
-        .map(|pin| (pin.recording.as_str(), pin))
-        .collect();
+    let mut old_pins: BTreeMap<&str, (&str, Facts)> = BTreeMap::new();
+    for pin in &committed.unrecorded {
+        old_pins
+            .entry(pin.recording.as_str())
+            .or_insert_with(|| (pin.fixture.as_str(), Facts::new()))
+            .1
+            .insert(pin.fact.clone());
+    }
     let mut pins = Vec::new();
-    // Per provider, encoder and skeleton: the recordings that hold it, with
-    // those whose request Rig still sends unchanged first.
-    let mut live: BTreeMap<(Encoder, String), BTreeSet<(bool, String)>> = BTreeMap::new();
+    // Per cell: the recordings that hold it, with those whose request Rig
+    // still sends with the fact first.
+    let mut live: BTreeMap<Cell, BTreeSet<(bool, &str)>> = BTreeMap::new();
     for item in observed {
         let recorded = match &item.recorded {
             Some(recorded) => recorded.clone(),
             None => {
-                let pin = match old_pins.get(item.recording.as_str()) {
-                    Some(pin) if pin.fixture == item.fixture => (*pin).clone(),
-                    _ => Pin {
-                        recording: item.recording.clone(),
-                        fixture: item.fixture.clone(),
-                        skeleton: item.sent.clone(),
-                    },
+                let facts = match old_pins.get(item.recording.as_str()) {
+                    Some((fixture, facts)) if *fixture == item.fixture => facts.clone(),
+                    _ => item.sent.clone(),
                 };
-                let skeleton = pin.skeleton.clone();
-                pins.push(pin);
-                skeleton
+                pins.extend(facts.iter().map(|fact| Pin {
+                    recording: item.recording.clone(),
+                    fixture: item.fixture.clone(),
+                    fact: fact.clone(),
+                }));
+                facts
             }
         };
-        let changed = recorded != item.sent;
-        live.entry(((item.provider.clone(), item.encoder.clone()), recorded))
-            .or_default()
-            .insert((changed, item.recording.clone()));
+        for fact in recorded {
+            let dropped = !item.sent.contains(&fact);
+            live.entry((item.provider.clone(), item.encoder.clone(), fact))
+                .or_default()
+                .insert((dropped, item.recording.as_str()));
+        }
     }
-    let mut sent: BTreeMap<(Encoder, String), &str> = BTreeMap::new();
+    // Per cell Rig sends: the smallest fixture that sends it.
+    let mut sent: BTreeMap<Cell, (usize, &str)> = BTreeMap::new();
     for item in observed {
-        sent.entry((
-            (item.provider.clone(), item.encoder.clone()),
-            item.sent.clone(),
-        ))
-        .or_insert(item.recording.as_str());
+        for fact in &item.sent {
+            let candidate = (item.size, item.recording.as_str());
+            sent.entry((item.provider.clone(), item.encoder.clone(), fact.clone()))
+                .and_modify(|best| *best = (*best).min(candidate))
+                .or_insert(candidate);
+        }
     }
     let mut index = Index {
-        skeletons: Vec::new(),
+        facts: Vec::new(),
         unrecorded: pins,
     };
     let mut missing = Vec::new();
-    for (key, sent_in) in sent {
-        let ((provider, encoder), skeleton) = key.clone();
-        match live.get(&key).and_then(|recordings| recordings.first()) {
-            Some((_, recording)) => index.skeletons.push(Entry {
+    for (cell, (_, rerecord)) in sent {
+        let recording = live.get(&cell).and_then(|recordings| recordings.first());
+        let (provider, encoder, fact) = cell;
+        match recording {
+            Some((_, recording)) => index.facts.push(Entry {
                 provider,
                 encoder,
-                skeleton,
-                recording: recording.clone(),
+                fact,
+                recording: (*recording).to_owned(),
             }),
             None => missing.push(Missing {
                 provider,
                 encoder,
-                skeleton,
-                sent_in: sent_in.to_owned(),
+                fact,
+                rerecord: rerecord.to_owned(),
             }),
         }
     }
@@ -422,14 +446,15 @@ pub(crate) fn build(observed: &[Observed], committed: &Index) -> (Index, Vec<Mis
 
 /// The index as TOML: one inline table per line.
 pub(crate) fn render(index: &Index) -> String {
-    let mut out = format!("{PREAMBLE}skeletons = [\n");
-    for entry in &index.skeletons {
+    let mut out = format!("{PREAMBLE}facts = [\n");
+    for entry in &index.facts {
         let _ = writeln!(
             out,
-            "  {{ provider = {}, encoder = {}, skeleton = {}, recording = {} }},",
+            "  {{ provider = {}, encoder = {}, path = {}, fact = {}, recording = {} }},",
             quote(&entry.provider),
             quote(&entry.encoder),
-            quote(&entry.skeleton),
+            quote(&entry.fact.path),
+            quote(&entry.fact.object),
             quote(&entry.recording)
         );
     }
@@ -439,10 +464,11 @@ pub(crate) fn render(index: &Index) -> String {
     for pin in &index.unrecorded {
         let _ = writeln!(
             out,
-            "  {{ recording = {}, fixture = {}, skeleton = {} }},",
+            "  {{ recording = {}, fixture = {}, path = {}, fact = {} }},",
             quote(&pin.recording),
             quote(&pin.fixture),
-            quote(&pin.skeleton)
+            quote(&pin.fact.path),
+            quote(&pin.fact.object)
         );
     }
     out.push_str("]\n");
@@ -474,19 +500,25 @@ pub(crate) fn parse(text: &str) -> Result<Index, String> {
                 .cloned()
                 .ok_or_else(|| at(&format!("no `{name}`")))
         };
+        let fact = || -> Result<Fact, String> {
+            Ok(Fact {
+                path: field("path")?,
+                object: field("fact")?,
+            })
+        };
         match section.as_deref() {
-            Some("skeletons") => index.skeletons.push(Entry {
+            Some("facts") => index.facts.push(Entry {
                 provider: field("provider")?,
                 encoder: field("encoder")?,
-                skeleton: field("skeleton")?,
+                fact: fact()?,
                 recording: field("recording")?,
             }),
             Some("unrecorded") => index.unrecorded.push(Pin {
                 recording: field("recording")?,
                 fixture: field("fixture")?,
-                skeleton: field("skeleton")?,
+                fact: fact()?,
             }),
-            _ => return Err(at("outside `skeletons` and `unrecorded`")),
+            _ => return Err(at("outside `facts` and `unrecorded`")),
         }
     }
     Ok(index)

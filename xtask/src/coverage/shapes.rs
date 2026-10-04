@@ -1,14 +1,17 @@
-//! Shape coverage: the request skeletons and reply shapes the cassette corpus
+//! Shape coverage: the request facts and reply shapes the cassette corpus
 //! records, per provider and encoder.
 //!
 //! An encoder is a request method and path template: model names and
-//! resource ids in the path are erased. A request skeleton keeps the body's
-//! JSON structure and types, erases every value, and collapses each array to
-//! the sorted set of its element skeletons. A reply shape is the status, the
-//! framing, and the same skeleton of the body, or for a stream the set of its
-//! event skeletons, keeping the values of discriminator keys such as `type`
-//! and `finish_reason`. Each one is stored as a stable hash with its count of
-//! recordings and the first fixture that holds it.
+//! resource ids in the path are erased. A request fact is one object of the
+//! body: its path with array indices collapsed, its keys, and each key's
+//! scalar type or container kind, keeping the values of discriminator keys
+//! such as `role` and `type`. What the caller chose is not read: JSON Schema
+//! property names, tool arguments and tool results. A body that is not JSON
+//! is one fact, its kind. A reply shape is the status, the framing, and the
+//! skeleton of the whole body, or for a stream the set of its event
+//! skeletons, with the same discriminators kept; it is stored as a stable
+//! hash. Each one is stored with its count of recordings and the first
+//! fixture that holds it.
 
 #[cfg(test)]
 mod tests;
@@ -26,9 +29,9 @@ use crate::support::files_under;
 /// The baseline file's column header.
 pub(crate) const HEADER: &str = "provider\tencoder\tkind\tshape\trecordings\texample";
 
-/// Keys whose string values a reply shape keeps: bounded enums that select
-/// a decoder branch.
-const DISCRIMINATORS: &[&str] = &[
+/// Keys whose string values request facts and reply shapes keep: bounded
+/// enums that select an encoder or decoder branch.
+pub(crate) const DISCRIMINATORS: &[&str] = &[
     "finishReason",
     "finish_reason",
     "object",
@@ -39,7 +42,16 @@ const DISCRIMINATORS: &[&str] = &[
     "type",
 ];
 
-/// Whether a skeleton is of a request or of a reply.
+/// JSON Schema keywords whose value maps names the caller chose to schemas.
+/// No fact holds such a map; its members share the path `.<keyword>.*`.
+const NAME_MAPS: &[&str] = &["$defs", "definitions", "patternProperties", "properties"];
+
+/// Keys whose object value is a tool call's arguments or a tool's result:
+/// values the caller chose, so a fact stops at them. An array `input` is a
+/// Responses conversation and is read.
+const CALLER_VALUES: &[&str] = &["args", "arguments", "input", "result"];
+
+/// Whether a shape is a request fact or a reply shape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Kind {
     Request,
@@ -69,8 +81,29 @@ pub(crate) struct ShapeKey {
     pub(crate) provider: String,
     pub(crate) encoder: String,
     pub(crate) kind: Kind,
-    pub(crate) hash: String,
+    /// A request [`Fact`] as text, or the hash of a reply shape.
+    pub(crate) shape: String,
 }
+
+/// One object of a request body, as [`facts`] reads it.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct Fact {
+    /// Where the object sits: `$` for the root, `.key` per member and `[]`
+    /// per array element, so every element of an array shares one path.
+    pub(crate) path: String,
+    /// The object's sorted keys, each with its scalar type, a discriminator's
+    /// value, `{}` for an object, or the set of element kinds of an array.
+    pub(crate) object: String,
+}
+
+impl std::fmt::Display for Fact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.path, self.object)
+    }
+}
+
+/// The distinct facts of one body.
+pub(crate) type Facts = BTreeSet<Fact>;
 
 /// How often a shape is recorded, and where it was first seen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,6 +153,8 @@ pub(crate) struct Fixture {
     pub(crate) provider: String,
     /// [`hash`] of the file's text: it changes when the fixture is re-recorded.
     pub(crate) hash: String,
+    /// The file's length in bytes.
+    pub(crate) size: usize,
     pub(crate) interactions: Vec<Interaction>,
 }
 
@@ -161,6 +196,7 @@ pub(crate) fn corpus(cassettes: &Path) -> Result<Vec<Fixture>> {
             relative,
             provider,
             hash: hash(&text),
+            size: text.len(),
             interactions,
         });
     }
@@ -180,15 +216,16 @@ pub(crate) fn collect(cassettes: &Path) -> Result<Shapes> {
         for (index, interaction) in interactions.into_iter().enumerate() {
             let encoder = interaction.when.encoder();
             let example = format!("{relative}#{index}");
-            for (kind, shape) in [
-                (Kind::Request, request_skeleton(&interaction.when)),
-                (Kind::Reply, reply_shape(&interaction.then)),
-            ] {
+            let requests = request_facts(&interaction.when)
+                .into_iter()
+                .map(|fact| (Kind::Request, fact.to_string()));
+            let reply = (Kind::Reply, hash(&reply_shape(&interaction.then)));
+            for (kind, shape) in requests.chain([reply]) {
                 let key = ShapeKey {
                     provider: provider.clone(),
                     encoder: encoder.clone(),
                     kind,
-                    hash: hash(&shape),
+                    shape,
                 };
                 shapes
                     .entry(key)
@@ -230,14 +267,22 @@ pub(crate) fn path_template(path: &str) -> String {
     segments.join("/")
 }
 
-/// The fine skeleton of a request body.
-pub(crate) fn request_skeleton(request: &Exchange) -> String {
+/// The facts of a request body: one per object of a JSON body, or the one
+/// fact `$ <kind>` of a body that is empty, binary, multipart (its sorted
+/// field names) or text.
+pub(crate) fn request_facts(request: &Exchange) -> Facts {
+    let root = |object: String| {
+        Facts::from([Fact {
+            path: "$".to_owned(),
+            object,
+        }])
+    };
     let body = request.body.as_deref().unwrap_or("");
     if body.is_empty() {
-        return "empty".to_owned();
+        return root("empty".to_owned());
     }
     if request.is_base64() {
-        return "binary".to_owned();
+        return root("binary".to_owned());
     }
     if request.content_type().starts_with("multipart/form-data") {
         let names: BTreeSet<&str> = body
@@ -245,14 +290,87 @@ pub(crate) fn request_skeleton(request: &Exchange) -> String {
             .skip(1)
             .filter_map(|rest| rest.split('"').next())
             .collect();
-        return format!(
+        return root(format!(
             "multipart[{}]",
             names.into_iter().collect::<Vec<_>>().join(",")
-        );
+        ));
     }
     match serde_json::from_str::<Value>(body) {
-        Ok(value) => skeleton(&value, &[]),
-        Err(_) => "text".to_owned(),
+        Ok(value) => facts(&value, DISCRIMINATORS),
+        Err(_) => root("text".to_owned()),
+    }
+}
+
+/// Every object of `value` as a [`Fact`], and the root as one when it is not
+/// an object. The string value of a key in `keep` survives.
+pub(crate) fn facts(value: &Value, keep: &[&str]) -> Facts {
+    let mut out = Facts::new();
+    if !value.is_object() {
+        out.insert(Fact {
+            path: "$".to_owned(),
+            object: kind(value),
+        });
+    }
+    walk_facts(&mut out, "$".to_owned(), value, keep);
+    out
+}
+
+fn walk_facts(out: &mut Facts, path: String, value: &Value, keep: &[&str]) {
+    match value {
+        Value::Array(items) => {
+            let path = format!("{path}[]");
+            for item in items {
+                walk_facts(out, path.clone(), item, keep);
+            }
+        }
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let mut object = String::from("{");
+            for (index, key) in keys.iter().enumerate() {
+                if index > 0 {
+                    object.push(',');
+                }
+                object.push_str(key);
+                object.push(':');
+                match map.get(*key) {
+                    Some(Value::String(text)) if keep.contains(&key.as_str()) => {
+                        let _ = write!(object, "{text:?}");
+                    }
+                    Some(child) => object.push_str(&kind(child)),
+                    None => {}
+                }
+            }
+            object.push('}');
+            out.insert(Fact {
+                path: path.clone(),
+                object,
+            });
+            for key in keys {
+                match map.get(key) {
+                    Some(Value::Object(names)) if NAME_MAPS.contains(&key.as_str()) => {
+                        let path = format!("{path}.{key}.*");
+                        for child in names.values() {
+                            walk_facts(out, path.clone(), child, keep);
+                        }
+                    }
+                    Some(Value::Object(_)) if CALLER_VALUES.contains(&key.as_str()) => {}
+                    Some(child) => walk_facts(out, format!("{path}.{key}"), child, keep),
+                    None => {}
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The kind of a value inside a fact: its scalar type, `{}` for an object,
+/// or the sorted set of its elements' kinds for an array.
+fn kind(value: &Value) -> String {
+    match value {
+        Value::Object(_) => "{}".to_owned(),
+        Value::Array(items) => set(items.iter().map(kind)),
+        scalar => skeleton(scalar, &[]),
     }
 }
 
@@ -459,7 +577,7 @@ pub(crate) fn render(shapes: &Shapes) -> String {
             key.provider,
             key.encoder,
             key.kind.as_str(),
-            key.hash,
+            key.shape,
             seen.recordings,
             seen.example
         );
@@ -472,7 +590,7 @@ pub(crate) fn parse(text: &str) -> Result<Shapes> {
     let mut shapes = Shapes::new();
     for (number, line) in text.lines().enumerate().skip(1) {
         let columns: Vec<&str> = line.split('\t').collect();
-        let [provider, encoder, kind, hash, recordings, example] = columns.as_slice() else {
+        let [provider, encoder, kind, shape, recordings, example] = columns.as_slice() else {
             return Err(invalid(format!("shapes line {}: {line:?}", number + 1)));
         };
         let kind = Kind::parse(kind)
@@ -485,7 +603,7 @@ pub(crate) fn parse(text: &str) -> Result<Shapes> {
                 provider: (*provider).to_owned(),
                 encoder: (*encoder).to_owned(),
                 kind,
-                hash: (*hash).to_owned(),
+                shape: (*shape).to_owned(),
             },
             Recorded {
                 recordings,
@@ -502,19 +620,19 @@ pub(crate) fn lost(baseline: &Shapes, current: &Shapes) -> Vec<String> {
         .iter()
         .filter(|(key, _)| !current.contains_key(*key))
         .map(|(key, seen)| {
+            let shape = match key.kind {
+                Kind::Request => "fact",
+                Kind::Reply => "reply shape",
+            };
             format!(
-                "{} {} `{}` {} lost its last recording (was {})",
-                key.provider,
-                key.kind.as_str(),
-                key.encoder,
-                key.hash,
-                seen.example
+                "{} `{}` {shape} `{}` lost its last recording (was {})",
+                key.provider, key.encoder, key.shape, seen.example
             )
         })
         .collect()
 }
 
-/// Per provider: distinct request skeletons and reply shapes.
+/// Per provider: distinct request facts and reply shapes.
 pub(crate) fn summary(shapes: &Shapes) -> BTreeMap<&str, (usize, usize)> {
     let mut counts: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
     for key in shapes.keys() {

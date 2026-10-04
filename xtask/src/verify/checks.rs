@@ -308,7 +308,7 @@ pub(super) fn all() -> Vec<Check> {
         // crates/rig-cassette/coverage. Mutation (`--mutants`) takes hours and
         // runs locally only, in PRs that delete tests.
         check("coverage", vec![cargo(&["xtask", "coverage", "--check"])]),
-        // Every request skeleton Rig sends has a live recording: the corpus
+        // Every request fact Rig sends has a live recording: the corpus
         // and its request snapshots against crates/rig-cassette/fixtures/
         // acceptance.toml. Reads files only.
         check(

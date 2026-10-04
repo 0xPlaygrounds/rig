@@ -41,7 +41,7 @@ pub(crate) const USAGE: &str = "\
                               with --check fail when a request differs from one
   cassette acceptance [--check]
                               write the acceptance index, or with --check fail
-                              when a request skeleton Rig sends has no live
+                              when a request fact Rig sends has no live
                               recording or the index is stale
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";

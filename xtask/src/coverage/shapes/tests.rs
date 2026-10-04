@@ -70,25 +70,107 @@ fn a_reply_skeleton_keeps_discriminator_values() {
     );
 }
 
+fn root(object: &str) -> Facts {
+    Facts::from([Fact {
+        path: "$".to_owned(),
+        object: object.to_owned(),
+    }])
+}
+
+fn texts(facts: &Facts) -> Vec<String> {
+    facts.iter().map(ToString::to_string).collect()
+}
+
 #[test]
 fn request_bodies_are_classified_before_their_json_is_read() {
     let mut empty = exchange("application/json", "");
-    assert_eq!(request_skeleton(&empty), "empty");
+    assert_eq!(request_facts(&empty), root("empty"));
     empty.body = None;
-    assert_eq!(request_skeleton(&empty), "empty");
+    assert_eq!(request_facts(&empty), root("empty"));
     let mut binary = exchange("application/octet-stream", "AAAA");
     binary.body_encoding = Some("base64".to_owned());
-    assert_eq!(request_skeleton(&binary), "binary");
+    assert_eq!(request_facts(&binary), root("binary"));
     let multipart = exchange(
         "multipart/form-data; boundary=x",
         "--x\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nm\r\n\
          --x\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a\"\r\n\r\nb\r\n--x--",
     );
-    assert_eq!(request_skeleton(&multipart), "multipart[file,model]");
-    assert_eq!(request_skeleton(&exchange("text/plain", "hello")), "text");
+    assert_eq!(request_facts(&multipart), root("multipart[file,model]"));
     assert_eq!(
-        request_skeleton(&exchange("application/json", "{\"a\":[1,2]}")),
-        "{a:[num]}"
+        request_facts(&exchange("text/plain", "hello")),
+        root("text")
+    );
+    assert_eq!(
+        request_facts(&exchange("application/json", "{\"a\":[1,2]}")),
+        root("{a:[num]}")
+    );
+    assert_eq!(
+        texts(&request_facts(&exchange(
+            "application/json",
+            "[[1],{\"b\":2}]"
+        ))),
+        ["$ [[num]|{}]", "$[] {b:num}"]
+    );
+}
+
+#[test]
+fn a_fact_is_one_objects_keys_and_kinds_at_its_path() {
+    let value = serde_json::json!({
+        "model": "gpt",
+        "stream": true,
+        "max_tokens": 5,
+        "messages": [
+            {"role": "system", "content": "a"},
+            {"role": "user", "content": "b"},
+            {"role": "user", "content": [{"type": "text", "text": "c"}]},
+            {"role": "user", "content": [{"type": "text", "text": "d"}]}
+        ],
+        "tools": [],
+        "stop": null
+    });
+    assert_eq!(
+        texts(&facts(&value, DISCRIMINATORS)),
+        [
+            "$ {max_tokens:num,messages:[{}],model:str,stop:null,stream:bool,tools:[]}",
+            "$.messages[] {content:[{}],role:\"user\"}",
+            "$.messages[] {content:str,role:\"system\"}",
+            "$.messages[] {content:str,role:\"user\"}",
+            "$.messages[].content[] {text:str,type:\"text\"}",
+        ]
+    );
+}
+
+#[test]
+fn schema_property_names_and_tool_values_are_not_facts() {
+    let value = serde_json::json!({
+        "tools": [{
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "city": {"type": "string"},
+                    "zip": {"type": "string"},
+                    "properties": {"type": "object", "properties": {"x": {"type": "number"}}}
+                },
+                "$defs": {"Unit": {"enum": ["c", "f"]}}
+            }
+        }],
+        "messages": [{"content": [{"type": "tool_use", "input": {"city": "Paris"}}]}],
+        "input": [{"type": "function_result", "result": {"sum": 3}}]
+    });
+    assert_eq!(
+        texts(&facts(&value, DISCRIMINATORS)),
+        [
+            "$ {input:[{}],messages:[{}],tools:[{}]}",
+            "$.input[] {result:{},type:\"function_result\"}",
+            "$.messages[] {content:[{}]}",
+            "$.messages[].content[] {input:{},type:\"tool_use\"}",
+            "$.tools[] {input_schema:{}}",
+            "$.tools[].input_schema {$defs:{},properties:{},type:\"object\"}",
+            "$.tools[].input_schema.$defs.* {enum:[str]}",
+            "$.tools[].input_schema.properties.* {properties:{},type:\"object\"}",
+            "$.tools[].input_schema.properties.* {type:\"string\"}",
+            "$.tools[].input_schema.properties.*.properties.* {type:\"number\"}",
+        ]
     );
 }
 
@@ -161,7 +243,7 @@ fn key(provider: &str, kind: Kind, hash: &str) -> ShapeKey {
         provider: provider.to_owned(),
         encoder: "POST /v1/messages".to_owned(),
         kind,
-        hash: hash.to_owned(),
+        shape: hash.to_owned(),
     }
 }
 
@@ -215,7 +297,7 @@ fn the_corpus_is_read_document_by_document() {
         .find(|(key, _)| key.kind == Kind::Request)
         .unwrap();
     assert_eq!(request.0.encoder, "POST /openai/v1/chat/completions");
-    assert_eq!(request.0.hash, hash("{model:str}"));
+    assert_eq!(request.0.shape, "$ {model:str}");
     assert_eq!(request.1.recordings, 2);
     assert_eq!(request.1.example, "groq/scenario/a.yaml#0");
 }

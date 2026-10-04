@@ -2,7 +2,7 @@
 //! keeps a compact baseline of each under `crates/rig-cassette/coverage/`:
 //! line and branch coverage of production code per file (`lines.tsv`), the
 //! mutants the fast suites kill in the replay core (`mutants.tsv`), and the
-//! request skeletons and reply shapes the cassette corpus records
+//! request facts and reply shapes the cassette corpus records
 //! (`shapes.tsv`).
 //!
 //! Without `--check` the measured parts overwrite their baseline files. With
@@ -199,9 +199,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<()> {
                 let current =
                     shapes::collect(&root.join("crates/rig-cassette/fixtures/cassettes"))?;
                 for (provider, (requests, replies)) in shapes::summary(&current) {
-                    println!(
-                        "shapes {provider}: {requests} request skeletons, {replies} reply shapes"
-                    );
+                    println!("shapes {provider}: {requests} request facts, {replies} reply shapes");
                 }
                 let lost = match &baseline {
                     Some(text) => shapes::lost(&shapes::parse(text)?, &current),

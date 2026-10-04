@@ -449,7 +449,7 @@ pub(super) fn plan(
             &mut out,
             all,
             "acceptance",
-            "cassettes, snapshots or the index changed: every sent skeleton needs a recording",
+            "cassettes, snapshots or the index changed: every sent fact needs a recording",
         )?;
     }
     // Rust sources move line and branch coverage; fixtures move the

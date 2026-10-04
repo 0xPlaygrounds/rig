@@ -156,7 +156,7 @@ jobs:
 
   # The coverage gate's cheap parts: line and branch coverage of every
   # production file, from an instrumented all-features run of the local
-  # nextest profile, and the cassette corpus's request skeletons and reply
+  # nextest profile, and the cassette corpus's request facts and reply
   # shapes, each against crates/rig-cassette/coverage. Mutation is too slow
   # for every PR; `cargo xtask coverage --check --mutants` runs it locally.
   # No warm cache: the instrumented build shares no artifacts with the rest.
