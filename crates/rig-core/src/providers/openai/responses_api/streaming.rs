@@ -560,7 +560,10 @@ impl ResponsesDecoder {
             Kind::Message | Kind::Reasoning => {
                 let text = text_of(&item);
                 if text.is_empty() {
-                    if !done.text.is_empty() {
+                    // Raw reasoning text the done item leaves out stays out:
+                    // written in as a summary, it would replay one the
+                    // provider never produced.
+                    if !done.text.is_empty() && done.field != Some("reasoning") {
                         item = stating(item, done.kind, &done.text);
                     }
                 } else if let Some(rest) = text.strip_prefix(done.text.as_str()) {

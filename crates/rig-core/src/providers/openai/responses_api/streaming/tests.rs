@@ -513,6 +513,30 @@ fn reasoning_output_item_done_emits_reasoning_text_content() {
     );
 }
 
+/// Raw `reasoning_text` deltas whose done item states no text keep the
+/// block's text, and the item stays as the provider stated it: written in
+/// as a summary, it would replay one the provider never produced.
+#[test]
+fn raw_reasoning_text_is_not_written_into_the_item_as_a_summary() {
+    let done = json!({"type": "reasoning", "id": "rs_1", "summary": [],
+        "encrypted_content": "ENC", "status": "completed"});
+    let decoded = decoded_body(&body_of(&[
+        json!({"type": "response.output_item.added", "output_index": 0, "sequence_number": 1,
+            "item": {"type": "reasoning", "id": "rs_1", "summary": []}}),
+        json!({"type": "response.reasoning_text.delta", "output_index": 0, "item_id": "rs_1",
+            "content_index": 0, "sequence_number": 2, "delta": "raw chain"}),
+        json!({"type": "response.output_item.done", "output_index": 0, "sequence_number": 3,
+            "item": done.clone()}),
+        completed_with(4, json!([done.clone()])),
+    ]));
+    let ended = decoded.ended();
+    let [AssistantContent::Reasoning(reasoning)] = ended.as_slice() else {
+        panic!("one reasoning part: {:?}", decoded.events());
+    };
+    assert_eq!(reasoning.text, "raw chain");
+    assert_eq!(ended[0].native_item(), Some(&done));
+}
+
 /// Envelope-less replay shape (ChatGPT bodies): an id-less summary delta,
 /// the done item restating the whole part, then visible text.
 #[test]
